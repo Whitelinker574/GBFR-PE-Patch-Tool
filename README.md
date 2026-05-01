@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="build/appicon.png" width="128" />
+</p>
+
 # GBFR PE Patch Tool
 
 Granblue Fantasy: Relink (碧蓝幻想：Relink) 静态 PE 补丁工具，通过修改游戏可执行文件中的指令立即数来实现数值修改。
