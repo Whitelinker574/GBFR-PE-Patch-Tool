@@ -3,6 +3,7 @@ module gbfrPlayerInfoEdit
 go 1.23.0
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/sys v0.30.0
 )

@@ -2,6 +2,7 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { AutoDetect, SetExePath, GetStatus, PatchFile, BackupFile, RestoreFile, CharaAttach, CharaDetach, CharaGetAll, CharaSetOne, CharaSetAll } from '../../wailsjs/go/main/App'
 import { WindowMinimise, Quit } from '../../wailsjs/runtime/runtime'
+import SigilGenerator from './SigilGenerator.vue'
 
 const state = reactive({
   exePath: '',
@@ -12,6 +13,7 @@ const state = reactive({
   patches: [],
 })
 
+const activeTab = ref('patch')
 const manualPath = ref('')
 const patchValues = reactive({}) // { patchID: 'value' }
 const isLoaded = ref(false)
@@ -180,7 +182,7 @@ function charaSetBatch() {
   <div class="app-window">
     <div class="titlebar" style="--wails-draggable:drag">
       <div class="titlebar-left">
-        <span class="titlebar-title">GBFR PE 补丁工具</span>
+        <span class="titlebar-title">GBFR 存档修改工具</span>
         <transition name="fade">
           <span v-if="saveStatus" class="titlebar-status" :class="statusType">
             {{ statusType === 'success' ? '●' : '✕' }} {{ saveStatus }}
@@ -197,7 +199,16 @@ function charaSetBatch() {
       </div>
     </div>
 
-    <main class="container" style="--wails-draggable:no-drag">
+    <div class="tab-bar" style="--wails-draggable:no-drag">
+      <button class="tab-btn" :class="{ active: activeTab === 'patch' }" @click="activeTab = 'patch'">
+        补丁修改
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'sigil' }" @click="activeTab = 'sigil'">
+        因子生成
+      </button>
+    </div>
+
+    <main v-if="activeTab === 'patch'" class="container" style="--wails-draggable:no-drag">
       <div class="path-section">
         <div class="path-label">
           <span v-if="isDetecting">正在扫描 Steam 安装路径...</span>
@@ -311,11 +322,37 @@ function charaSetBatch() {
       </transition>
       <div class="footer-hint"><a href="https://github.com/BitterG/GBFR-PE-Patch-Tool" target="_blank" class="footer-link">github.com/BitterG/GBFR-PE-Patch-Tool</a></div>
     </main>
+
+    <main v-else class="container" style="--wails-draggable:no-drag">
+      <SigilGenerator @status="showStatus" />
+    </main>
   </div>
 </template>
 
 <style scoped>
 .app-window { display:flex; flex-direction:column; height:100vh; overflow:hidden; background-color:rgba(27,38,54,1); border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6); }
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 14px;
+  background: rgba(18,26,38,0.95);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.tab-btn {
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.35);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+.tab-btn.active { color: #67e8f9; background: rgba(103,232,249,0.12); }
 .titlebar { display:flex; align-items:center; justify-content:space-between; height:38px; padding:0 6px 0 14px; background:rgba(18,26,38,0.95); border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0; user-select:none; }
 .titlebar-left { display:flex; align-items:center; gap:8px; }
 .titlebar-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.55); letter-spacing:0.5px; }

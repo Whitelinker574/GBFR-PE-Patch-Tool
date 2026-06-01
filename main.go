@@ -13,11 +13,12 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+	sigilGen := NewSigilGen()
 
 	err := wails.Run(&options.App{
-		Title:     "GBFR PE 补丁工具",
-		Width:     540,
-		Height:    860,
+		Title:     "GBFR 存档修改工具",
+		Width:     560,
+		Height:    900,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -26,6 +27,7 @@ func main() {
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
+			sigilGen,
 		},
 	})
 
