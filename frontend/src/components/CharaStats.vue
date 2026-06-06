@@ -9,6 +9,7 @@ const editValues = reactive({})
 const batchValue = ref('')
 const loading = ref(false)
 const sortDesc = ref(false)
+const charaEditEnabled = false // 开关：是否显示次数修改功能
 
 const sorted = computed(() => {
   if (!sortDesc.value) return list.value
@@ -84,7 +85,15 @@ const emit = defineEmits(['status'])
       </div>
 
       <template v-if="connected && list.length">
-        <div class="batch-row">
+        <div v-if="charaEditEnabled" class="batch-row">
+          <input v-model="batchValue" type="number" min="0" class="batch-input" placeholder="目标值" />
+          <button class="btn-batch" @click="setBatch" :disabled="!batchValue || isNaN(parseInt(batchValue))">全部设置为</button>
+          <button class="btn-refresh" @click="refresh">刷新</button>
+          <button class="btn-sort" @click="sortDesc = !sortDesc">
+            {{ sortDesc ? '恢复原序' : '按次数排序' }}
+          </button>
+        </div>
+        <div v-else class="batch-row">
           <button class="btn-refresh" @click="refresh">刷新</button>
           <button class="btn-sort" @click="sortDesc = !sortDesc">
             {{ sortDesc ? '恢复原序' : '按次数排序' }}
@@ -95,11 +104,16 @@ const emit = defineEmits(['status'])
             <span class="col-idx">#</span>
             <span class="col-name">角色</span>
             <span class="col-count">次数</span>
+            <span v-if="charaEditEnabled" class="col-edit">修改</span>
           </div>
           <div v-for="c in sorted" :key="c.index" class="row">
             <span class="col-idx">{{ c.index }}</span>
             <span class="col-name">{{ c.name }}</span>
             <span class="col-count">{{ c.count }}</span>
+            <div v-if="charaEditEnabled" class="col-edit">
+              <input v-model="editValues[c.index]" type="number" min="0" class="edit-input" @keyup.enter="setOne(c.index)" />
+              <button class="btn-set" @click="setOne(c.index)">设置</button>
+            </div>
           </div>
         </div>
       </template>
@@ -138,6 +152,19 @@ const emit = defineEmits(['status'])
 .pid { font-size:0.72rem; color:rgba(255,255,255,0.35); font-family:'Courier New',monospace; }
 
 .batch-row { display:flex; gap:8px; align-items:center; }
+.batch-input {
+  width:80px; padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15);
+  background:rgba(255,255,255,0.07); color:#fff; font-size:0.82rem; outline:none;
+}
+.batch-input:focus { border-color:rgba(103,232,249,0.5); }
+.batch-input::-webkit-outer-spin-button, .batch-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.btn-batch {
+  padding:6px 14px; border-radius:6px; border:1px solid rgba(165,180,252,0.3);
+  background:rgba(165,180,252,0.1); color:#a5b4fc; font-size:0.78rem; font-weight:600; cursor:pointer;
+  transition:background 0.2s; white-space:nowrap;
+}
+.btn-batch:not(:disabled):hover { background:rgba(165,180,252,0.2); }
+.btn-batch:disabled { opacity:0.4; cursor:not-allowed; }
 .btn-refresh {
   padding:6px 14px; border-radius:6px; border:1px solid rgba(255,255,255,0.12);
   background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.5); font-size:0.78rem; font-weight:600; cursor:pointer;
@@ -157,6 +184,19 @@ const emit = defineEmits(['status'])
 .col-idx { width:24px; text-align:center; font-size:0.72rem; color:rgba(255,255,255,0.3); font-family:'Courier New',monospace; flex-shrink:0; }
 .col-name { flex:1; font-size:0.8rem; color:rgba(255,255,255,0.6); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .col-count { width:48px; text-align:right; font-size:0.8rem; color:#67e8f9; font-family:'Courier New',monospace; flex-shrink:0; }
+.col-edit { width:120px; display:flex; gap:4px; align-items:center; flex-shrink:0; }
+.edit-input {
+  width:56px; padding:4px 6px; border-radius:4px; border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.06); color:#fff; font-size:0.78rem; outline:none; text-align:center;
+}
+.edit-input:focus { border-color:rgba(103,232,249,0.4); }
+.edit-input::-webkit-outer-spin-button, .edit-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.btn-set {
+  padding:4px 10px; border-radius:4px; border:1px solid rgba(165,180,252,0.25);
+  background:rgba(165,180,252,0.08); color:#a5b4fc; font-size:0.72rem; font-weight:600; cursor:pointer;
+  transition:background 0.15s; white-space:nowrap;
+}
+.btn-set:hover { background:rgba(165,180,252,0.18); }
 
 .empty { font-size:0.78rem; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
 </style>

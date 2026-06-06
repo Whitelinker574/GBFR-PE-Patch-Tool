@@ -4,7 +4,7 @@
 
 # GBFR 存档修改工具
 
-Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档修改工具，包含 PE 补丁、角色使用次数、因子生成三部分功能。
+Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档修改工具，包含 PE 补丁、角色使用次数、因子生成、祝福生成、副本次数查看五部分功能。
 
 ## 功能
 
@@ -21,6 +21,14 @@ Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档修改工具，包含 PE 
 - **排序查看** — 支持按次数倒序排列
 - 修改后需对应角色结算一局生效
 
+### 祝福生成（离线存档修改）
+
+- **生成祝福** — 搜索选择祝福（Wrightstone），配置三个特性和等级，写入输出存档
+- **队列批量** — 支持同时添加多个不同配置的祝福，按数量批量生成
+- **查看已有祝福** — 加载存档后展示所有已有祝福，显示 ID、特性信息
+- **CLI 模式** — 支持命令行模式，无需 GUI 即可批量生成祝福
+- **中文翻译** — 祝福名、特性名均已本地化为简体中文
+
 ### 因子生成（离线存档修改）
 
 - **生成因子** — 搜索选择因子，配置等级、主特性、副特性，写入输出存档
@@ -29,7 +37,26 @@ Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档修改工具，包含 PE 
 - **批量删除** — 勾选已有因子批量删除，也可一键清除全部因子
 - **中文翻译** — 因子名、特性名均已本地化为简体中文
 
+### 副本次数（离线存档查看）
+
+- **存档扫描** — 自动扫描存档目录，列出所有存档槽位
+- **任务统计** — 查看每个存档中所有任务/副本的通关次数
+- **排序查看** — 支持按通关次数正序/倒序排列
+- **存档概览** — 显示卢比、MSP、赞数、道具/武器/因子数量等存档摘要
+
 ## 使用说明
+
+### 祝福生成
+
+1. 切换到「祝福生成」标签页
+2. **加载存档** — 点击「选择存档」打开存档文件（`.dat`）
+   > 默认存档路径：`C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\` 下的 `.dat` 文件
+3. **查看已有祝福** — 加载后自动显示，可查看当前存档中的祝福
+4. **配置祝福** — 在搜索框输入关键词过滤，从列表选中祝福
+5. 依次选择三个特性及对应等级（每个特性等级选项由数据定义）
+6. 设置数量，点击「添加到队列」，可重复添加多个不同配置
+7. 在「输出」栏填写输出路径（默认自动生成 `_modified.dat`）
+8. 点击「应用写入」，祝福将写入输出存档（原存档不被修改）
 
 ### 因子生成
 
@@ -57,10 +84,20 @@ Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档修改工具，包含 PE 
 ### 角色使用次数
 
 1. **启动游戏并进入存档**
-2. 切换到「补丁修改」标签页，滚动到底部
+2. 切换到「角色次数统计」标签页
 3. 点击「连接游戏进程」，确认显示 PID
 4. 查看各角色当前使用次数
-5. 修改后需用对应角色结算一局生效
+5. 支持按次数排序查看
+6. 可直接修改单个角色次数，或批量设置全部角色
+7. 修改后需用对应角色结算一局生效
+
+### 副本次数
+
+1. 切换到「副本次数」标签页
+2. 自动扫描存档目录，点击存档槽位加载
+3. 查看各任务/副本通关次数
+4. 支持按次数正序/倒序排列
+5. 高亮显示高通关次数（>100 次）的任务
 
 ## 补丁原理
 
@@ -113,33 +150,47 @@ wails build -s
 
 构建产物在 `build/bin/GBFR PE Patch Tool.exe`。
 
-## 因子数据说明
+## 数据说明
 
-因子数据文件位于 `data/` 目录（嵌入二进制）：
+因子和祝福数据文件位于 `data/` 目录（嵌入二进制）：
 
 | 文件 | 说明 |
 |------|------|
 | `sigils.json` | 因子定义（ID、哈希、名称、允许等级、主/副特性列表） |
 | `traits.json` | 特性定义（ID、哈希、名称、最大等级） |
 | `secondary-trait-rules.json` | 副特性兼容性规则 |
+| `wrightstones.json` | 祝福定义（ID、哈希、名称、默认特性） |
+| `wrightstone_traits.json` | 祝福特性定义（ID、哈希、名称、最大等级、允许等级） |
+| `quest_names_i18n.csv` | 任务 ID 到中文名的翻译表 |
 
 因子/特性中文翻译位于 `sigil_locale.go`（`sigilCN` 和 `traitCN` 两个 map），可直接编辑英文名→中文名的映射。
+祝福/特性中文翻译位于 `wrightstone_locale.go`（`wscn` 和 `wstCN` 两个 map）。
 
 目前部分因子缺失，常用因子基本都有。
 
 ## 项目结构
 
 ```
-├── main.go              # Wails 入口，窗口配置
-├── app.go               # PE 补丁、进程内存读写、Steam 路径扫描
+├── main.go              # Wails 入口，窗口配置、祝福 CLI 模式
+├── app.go               # PE 补丁、进程内存读写、Steam 路径扫描、角色次数管理
+├── save_app.go          # 存档文件扫描、任务次数读取、中文任务名映射
+├── save_parse.go        # 存档文件 FlatBuffer 解析、存档摘要提取
 ├── sigil_data.go        # 因子/特性数据模型，嵌入式 JSON 加载与解析
-├── sigil_store.go       # 存档文件 FlatBuffer 解析、因子槽位读写、XXHash64 校验和
+├── sigil_ctdata.go      # 因子合成表（Factor Synthesis）数据
+├── sigil_store.go       # 存档文件因子槽位读写、XXHash64 校验和
 ├── sigil_gen.go         # 因子生成业务逻辑（Wails 前端绑定）
 ├── sigil_locale.go      # 因子/特性中文翻译映射表
-├── data/                # 嵌入式 JSON 数据文件
+├── wrightstone_data.go  # 祝福/祝福特性数据模型，嵌入式 JSON 加载与解析
+├── wrightstone_store.go # 存档文件祝福槽位读写
+├── wrightstone_gen.go   # 祝福生成业务逻辑（Wails 前端绑定 + CLI 模式）
+├── wrightstone_locale.go # 祝福/特性中文翻译映射表
+├── data/                # 嵌入式 JSON/CSV 数据文件
 │   ├── sigils.json
 │   ├── traits.json
-│   └── secondary-trait-rules.json
+│   ├── secondary-trait-rules.json
+│   ├── wrightstones.json
+│   ├── wrightstone_traits.json
+│   └── quest_names_i18n.csv
 ├── wails.json           # Wails 项目配置
 ├── go.mod               # Go 模块依赖
 ├── build/               # 构建资源（图标、manifest）
@@ -149,11 +200,14 @@ wails build -s
     ├── vite.config.js
     └── src/
         ├── main.js
-        ├── App.vue                    # 根组件
-        ├── style.css                  # 全局样式（深色主题）
+        ├── App.vue                     # 根组件
+        ├── style.css                   # 全局样式（深色主题）
         └── components/
-            ├── PatchTool.vue          # 补丁修改 + 角色使用次数 + 标签导航
-            └── SigilGenerator.vue     # 因子生成器界面
+            ├── PatchTool.vue           # 主窗口：补丁修改 + 标签导航
+            ├── SigilGenerator.vue      # 因子生成器界面
+            ├── WrightstoneGenerator.vue # 祝福生成器界面
+            ├── CharaStats.vue          # 角色次数统计界面
+            └── SaveEditor.vue          # 副本次数查看界面
 ```
 
 ## 免责声明
@@ -161,3 +215,7 @@ wails build -s
 本工具仅供学习研究使用。使用本工具修改游戏文件所产生的一切后果由使用者自行承担。
 
 存档因子相关部分解析方法来自 [GBFR-Sigil-Generator](https://github.com/Xzire91x/GBFR-Sigil-Generator)
+
+祝福添加相关部分解析方法来自 [GBFR-Wrightstone-Generator](https://github.com/Xzire91x/GBFR-Wrightstone-Generator)
+
+存档解析基于 [GBFRDataTools.SaveFile](https://github.com/Nenkai/GBFRDataTools/tree/master/GBFRDataTools.SaveFile)
