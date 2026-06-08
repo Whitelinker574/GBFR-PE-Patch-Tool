@@ -62,7 +62,7 @@ scanSaves()
 </template>
 
 <style scoped>
-.root { display:flex; flex-direction:column; gap:10px; width:100%; max-width:720px; margin:0 auto; padding-bottom:40px; }
+.root { display:flex; flex-direction:column; gap:10px; width:100%; max-width:720px; height:100%; min-height:0; margin:0 auto; padding-bottom:0; box-sizing:border-box; }
 .slots { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
 .slot-btn {
   padding:10px 20px; border-radius:10px; border:1px solid rgba(255,255,255,0.1);
@@ -79,7 +79,7 @@ scanSaves()
 
 .loading { text-align:center; color:#67e8f9; font-size:0.82rem; padding:16px; }
 
-.quests { border-radius:12px; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); overflow:hidden; }
+.quests { border-radius:12px; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
 .head { display:flex; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.05); gap:10px; }
 .head span { font-size:0.75rem; color:rgba(255,255,255,0.35); flex:1; }
 .sort {
@@ -88,7 +88,7 @@ scanSaves()
 }
 .sort:hover { color:#67e8f9; border-color:rgba(103,232,249,0.3); }
 
-.list { max-height:420px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent; }
+.list { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent; }
 .row { display:flex; align-items:center; gap:8px; padding:7px 14px; border-bottom:1px solid rgba(255,255,255,0.02); }
 .row:hover { background:rgba(255,255,255,0.02); }
 .id { width:48px; font-size:0.68rem; color:rgba(255,255,255,0.2); font-family:'Courier New',monospace; flex-shrink:0; }

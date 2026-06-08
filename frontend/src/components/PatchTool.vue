@@ -6,6 +6,7 @@ import SigilGenerator from './SigilGenerator.vue'
 import WrightstoneGenerator from './WrightstoneGenerator.vue'
 import SaveEditor from './SaveEditor.vue'
 import CharaStats from './CharaStats.vue'
+import MiscTools from './MiscTools.vue'
 
 const state = reactive({
   exePath: '',
@@ -155,6 +156,9 @@ function showStatus(msg, type) {
       <button class="tab-btn" :class="{ active: activeTab === 'save' }" @click="activeTab = 'save'">
         副本次数
       </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'misc' }" @click="activeTab = 'misc'">
+        杂项
+      </button>
     </div>
 
     <main v-if="activeTab === 'patch'" class="container" style="--wails-draggable:no-drag">
@@ -238,6 +242,10 @@ function showStatus(msg, type) {
 
     <main v-else-if="activeTab === 'save'" class="container" style="--wails-draggable:no-drag">
       <SaveEditor />
+    </main>
+
+    <main v-else-if="activeTab === 'misc'" class="container" style="--wails-draggable:no-drag">
+      <MiscTools @status="showStatus" />
     </main>
   </div>
 </template>

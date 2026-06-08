@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,12 +74,14 @@ type StatusInfo struct {
 // ── App ──
 
 type App struct {
-	ctx        context.Context
-	exePath    string
-	hProcess   windows.Handle
-	moduleBase uintptr
-	managerPtr uintptr
-	charaPID   uint32
+	ctx               context.Context
+	exePath           string
+	hProcess          windows.Handle
+	moduleBase        uintptr
+	managerPtr        uintptr
+	charaPID          uint32
+	countdownAddr     uintptr
+	faceAccessoryAddr uintptr
 }
 
 func NewApp() *App { return &App{} }
@@ -708,6 +711,8 @@ func (a *App) CharaDetach() {
 	a.moduleBase = 0
 	a.managerPtr = 0
 	a.charaPID = 0
+	a.countdownAddr = 0
+	a.faceAccessoryAddr = 0
 }
 
 // CharaGetAll reads all character counts, returns valid characters (skipping empty slots).
@@ -804,6 +809,324 @@ func (a *App) CharaSetAll(value int) (int, error) {
 	return modified, nil
 }
 
+// ── 角色脸部符文显示 (运行时 JE/JNE 切换) ──
+
+var faceAccessoryPattern = []byte{
+	0x49, 0x8B, 0x45, 0,
+	0x4C, 0x39, 0xF0,
+	0x0F, 0, 0, 0, 0, 0,
+	0x4C, 0x89, 0xE9,
+}
+
+var faceAccessoryMask = []bool{
+	true, true, true, false,
+	true, true, true,
+	true, false, false, false, false, false,
+	true, true, true,
+}
+
+type FaceAccessoryStatus struct {
+	Found        bool   `json:"found"`
+	Address      uint64 `json:"address"`
+	RVA          uint64 `json:"rva"`
+	Hidden       bool   `json:"hidden"`
+	JumpOpcode   string `json:"jumpOpcode"`
+	CurrentBytes string `json:"currentBytes"`
+}
+
+func (a *App) FaceAccessoryScan() (FaceAccessoryStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return FaceAccessoryStatus{}, err
+	}
+	addr, err := a.scanPatternUnique(faceAccessoryPattern, faceAccessoryMask, "脸部符文特征")
+	if err != nil {
+		a.faceAccessoryAddr = 0
+		return FaceAccessoryStatus{}, err
+	}
+	a.faceAccessoryAddr = addr
+	return a.readFaceAccessoryStatus(addr)
+}
+
+func (a *App) FaceAccessoryGetStatus() (FaceAccessoryStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return FaceAccessoryStatus{}, err
+	}
+	if a.faceAccessoryAddr == 0 {
+		return a.FaceAccessoryScan()
+	}
+	status, err := a.readFaceAccessoryStatus(a.faceAccessoryAddr)
+	if err != nil {
+		a.faceAccessoryAddr = 0
+		return a.FaceAccessoryScan()
+	}
+	return status, nil
+}
+
+func (a *App) FaceAccessorySetHidden(hidden bool) (FaceAccessoryStatus, error) {
+	status, err := a.FaceAccessoryGetStatus()
+	if err != nil {
+		return FaceAccessoryStatus{}, err
+	}
+	if !status.Found || a.faceAccessoryAddr == 0 {
+		return FaceAccessoryStatus{}, fmt.Errorf("未定位脸部符文指令")
+	}
+	opcode := byte(0x84)
+	if hidden {
+		opcode = 0x85
+	}
+	if err := writeCodeMemory(a.hProcess, a.faceAccessoryAddr+8, []byte{opcode}); err != nil {
+		return FaceAccessoryStatus{}, fmt.Errorf("写入脸部符文显示开关失败: %w", err)
+	}
+	return a.readFaceAccessoryStatus(a.faceAccessoryAddr)
+}
+
+func (a *App) readFaceAccessoryStatus(addr uintptr) (FaceAccessoryStatus, error) {
+	buf := make([]byte, len(faceAccessoryPattern))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return FaceAccessoryStatus{}, fmt.Errorf("读取脸部符文指令失败: %w", err)
+	}
+	if !matchPattern(buf, faceAccessoryPattern, faceAccessoryMask) {
+		return FaceAccessoryStatus{}, fmt.Errorf("脸部符文指令字节已变化，请重新扫描")
+	}
+	if buf[8] != 0x84 && buf[8] != 0x85 {
+		return FaceAccessoryStatus{}, fmt.Errorf("脸部符文跳转 opcode 异常: 0x%02X", buf[8])
+	}
+	jumpOpcode := "JE"
+	if buf[8] == 0x85 {
+		jumpOpcode = "JNE"
+	}
+	return FaceAccessoryStatus{
+		Found:        true,
+		Address:      uint64(addr),
+		RVA:          uint64(addr - a.moduleBase),
+		Hidden:       buf[8] == 0x85,
+		JumpOpcode:   jumpOpcode,
+		CurrentBytes: bytesToHex(buf),
+	}, nil
+}
+
+// ── 固定倒计时 (运行时指令立即数修改) ──
+
+var countdownPattern = []byte{
+	0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,
+	0x48, 0x89, 0x87, 0, 0, 0, 0,
+	0xC5, 0xFA, 0x10, 0x05,
+}
+
+var countdownMask = []bool{
+	true, true, false, false, false, false, false, false, false, false,
+	true, true, true, false, false, false, false,
+	true, true, true, true,
+}
+
+type CountdownStatus struct {
+	Found        bool    `json:"found"`
+	Address      uint64  `json:"address"`
+	RVA          uint64  `json:"rva"`
+	Value1       float32 `json:"value1"`
+	Value2       float32 `json:"value2"`
+	CurrentBytes string  `json:"currentBytes"`
+}
+
+func (a *App) CountdownScan() (CountdownStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return CountdownStatus{}, err
+	}
+
+	addr, err := a.scanCountdownPattern()
+	if err != nil {
+		a.countdownAddr = 0
+		return CountdownStatus{}, err
+	}
+	a.countdownAddr = addr
+	return a.readCountdownStatus(addr)
+}
+
+func (a *App) CountdownGetStatus() (CountdownStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return CountdownStatus{}, err
+	}
+	if a.countdownAddr == 0 {
+		return a.CountdownScan()
+	}
+	status, err := a.readCountdownStatus(a.countdownAddr)
+	if err != nil {
+		a.countdownAddr = 0
+		return a.CountdownScan()
+	}
+	return status, nil
+}
+
+func (a *App) CountdownSet(value float64) (CountdownStatus, error) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 9999 {
+		return CountdownStatus{}, fmt.Errorf("请输入 0 到 9999 之间的有效倒计时数值")
+	}
+	status, err := a.CountdownGetStatus()
+	if err != nil {
+		return CountdownStatus{}, err
+	}
+	if !status.Found || a.countdownAddr == 0 {
+		return CountdownStatus{}, fmt.Errorf("未定位倒计时指令")
+	}
+
+	val := float32(value)
+	bits := math.Float32bits(val)
+	patch := make([]byte, 8)
+	binary.LittleEndian.PutUint32(patch[0:4], bits)
+	binary.LittleEndian.PutUint32(patch[4:8], bits)
+
+	if err := writeCodeMemory(a.hProcess, a.countdownAddr+2, patch); err != nil {
+		return CountdownStatus{}, fmt.Errorf("写入倒计时失败: %w", err)
+	}
+	return a.readCountdownStatus(a.countdownAddr)
+}
+
+func (a *App) ensureGameProcess() error {
+	if a.hProcess != 0 && a.moduleBase != 0 {
+		return nil
+	}
+	pid, err := findProcessByName(charaProcessName)
+	if err != nil {
+		return fmt.Errorf("未找到游戏进程，请先启动游戏")
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
+	if err != nil {
+		return fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+	}
+	modBase, err := getModuleBase(h)
+	if err != nil {
+		windows.CloseHandle(h)
+		return fmt.Errorf("无法获取模块基址: %v", err)
+	}
+	a.hProcess = h
+	a.moduleBase = modBase
+	a.charaPID = pid
+	return nil
+}
+
+func (a *App) scanCountdownPattern() (uintptr, error) {
+	return a.scanPatternUnique(countdownPattern, countdownMask, "倒计时特征")
+}
+
+func (a *App) scanPatternUnique(pattern []byte, mask []bool, label string) (uintptr, error) {
+	moduleSize, err := getRemoteModuleSize(a.hProcess, a.moduleBase)
+	if err != nil {
+		return 0, err
+	}
+	const chunkSize uintptr = 0x10000
+	patternLen := len(countdownPattern)
+	var matches []uintptr
+	var carry []byte
+	var carryBase uintptr
+
+	for off := uintptr(0); off < moduleSize; off += chunkSize {
+		size := chunkSize
+		if off+size > moduleSize {
+			size = moduleSize - off
+		}
+		buf := make([]byte, int(size))
+		addr := a.moduleBase + off
+		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+			carry = nil
+			continue
+		}
+
+		scanBuf := buf
+		scanBase := addr
+		if len(carry) > 0 {
+			scanBuf = append(append([]byte{}, carry...), buf...)
+			scanBase = carryBase
+		}
+		matches = append(matches, findPatternMatches(scanBuf, scanBase, pattern, mask)...)
+		if len(matches) > 1 {
+			return 0, fmt.Errorf("%s命中多个位置: %d", label, len(matches))
+		}
+
+		if len(buf) >= patternLen-1 {
+			carry = append([]byte{}, buf[len(buf)-patternLen+1:]...)
+			carryBase = addr + uintptr(len(buf)-patternLen+1)
+		} else {
+			carry = append(append([]byte{}, carry...), buf...)
+			if len(carry) > patternLen-1 {
+				carry = carry[len(carry)-patternLen+1:]
+				carryBase = addr + uintptr(len(buf)-len(carry))
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("未找到%s码", label)
+	}
+	return matches[0], nil
+}
+
+func (a *App) readCountdownStatus(addr uintptr) (CountdownStatus, error) {
+	buf := make([]byte, len(countdownPattern))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return CountdownStatus{}, fmt.Errorf("读取倒计时指令失败: %w", err)
+	}
+	if !matchPattern(buf, countdownPattern, countdownMask) {
+		return CountdownStatus{}, fmt.Errorf("倒计时指令字节已变化，请重新扫描")
+	}
+	v1 := math.Float32frombits(binary.LittleEndian.Uint32(buf[2:6]))
+	v2 := math.Float32frombits(binary.LittleEndian.Uint32(buf[6:10]))
+	return CountdownStatus{
+		Found:        true,
+		Address:      uint64(addr),
+		RVA:          uint64(addr - a.moduleBase),
+		Value1:       v1,
+		Value2:       v2,
+		CurrentBytes: bytesToHex(buf),
+	}, nil
+}
+
+func findPatternMatches(buf []byte, base uintptr, pattern []byte, mask []bool) []uintptr {
+	if len(buf) < len(pattern) {
+		return nil
+	}
+	var matches []uintptr
+	for i := 0; i <= len(buf)-len(pattern); i++ {
+		if matchPattern(buf[i:i+len(pattern)], pattern, mask) {
+			matches = append(matches, base+uintptr(i))
+		}
+	}
+	return matches
+}
+
+func matchPattern(buf []byte, pattern []byte, mask []bool) bool {
+	if len(buf) < len(pattern) {
+		return false
+	}
+	for i := range pattern {
+		if mask[i] && buf[i] != pattern[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func getRemoteModuleSize(h windows.Handle, moduleBase uintptr) (uintptr, error) {
+	headers := make([]byte, 0x400)
+	if err := readProcessMemory(h, moduleBase, unsafe.Pointer(&headers[0]), uintptr(len(headers))); err != nil {
+		return 0, fmt.Errorf("读取模块头失败: %w", err)
+	}
+	if headers[0] != 'M' || headers[1] != 'Z' {
+		return 0, fmt.Errorf("模块 DOS 头无效")
+	}
+	peOff := int(binary.LittleEndian.Uint32(headers[0x3C:0x40]))
+	if peOff <= 0 || peOff+0x5C > len(headers) {
+		return 0, fmt.Errorf("模块 PE 头偏移无效")
+	}
+	if headers[peOff] != 'P' || headers[peOff+1] != 'E' || headers[peOff+2] != 0 || headers[peOff+3] != 0 {
+		return 0, fmt.Errorf("模块 PE 头无效")
+	}
+	sizeOfImage := binary.LittleEndian.Uint32(headers[peOff+0x18+0x38 : peOff+0x18+0x3C])
+	if sizeOfImage == 0 {
+		return 0, fmt.Errorf("模块 SizeOfImage 无效")
+	}
+	return uintptr(sizeOfImage), nil
+}
+
 // ── Windows 进程操作辅助函数 ──
 
 func findProcessByName(name string) (uint32, error) {
@@ -892,4 +1215,18 @@ func readProcessMemory(h windows.Handle, addr uintptr, buf unsafe.Pointer, size 
 func writeProcessMemory(h windows.Handle, addr uintptr, buf unsafe.Pointer, size uintptr) error {
 	var written uintptr
 	return windows.WriteProcessMemory(h, addr, (*byte)(buf), size, &written)
+}
+
+func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var oldProtect uint32
+	if err := windows.VirtualProtectEx(h, addr, uintptr(len(data)), windows.PAGE_EXECUTE_READWRITE, &oldProtect); err != nil {
+		return err
+	}
+	writeErr := writeProcessMemory(h, addr, unsafe.Pointer(&data[0]), uintptr(len(data)))
+	var restoreProtect uint32
+	_ = windows.VirtualProtectEx(h, addr, uintptr(len(data)), oldProtect, &restoreProtect)
+	return writeErr
 }

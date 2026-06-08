@@ -220,7 +220,10 @@ async function applyQueueToSave() {
     </div>
 
     <div class="section">
-      <div class="section-title">祝福配置</div>
+      <div class="section-title">
+        祝福配置
+        <span class="info-dot" title="选择祝福后配置三个词条与等级；不加入队列时，直接点击应用会写入当前选择。">!</span>
+      </div>
       <div v-if="dataError" class="data-error">{{ dataError }}</div>
       <div class="field">
         <label>祝福 {{ dataLoading ? '(加载中...)' : '' }}</label>
@@ -302,9 +305,15 @@ async function applyQueueToSave() {
 .wrightstone-container { display: flex; flex-direction: column; gap: 14px; width: 100%; }
 .section { border-radius: 12px; padding: 14px 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 10px; }
 .section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.35); letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
+.info-dot { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(103,232,249,0.35); color: #67e8f9; background: rgba(103,232,249,0.08); font-size: 0.68rem; font-weight: 700; cursor: help; letter-spacing: 0; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 0.7rem; color: rgba(255,255,255,0.3); }
 .text-input, .select-input { padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #fff; font-size: 0.82rem; font-family: inherit; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
+.select-input { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) rgba(0,0,0,0.2); }
+.select-input::-webkit-scrollbar { width: 6px; }
+.select-input::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 3px; }
+.select-input::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+.select-input::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 .select-input option { background: rgba(27,38,54,1); color: #fff; }
 .text-input:focus, .select-input:focus { border-color: rgba(103,232,249,0.4); background: rgba(255,255,255,0.1); }
 .select-input:disabled { opacity: 0.4; cursor: not-allowed; }
