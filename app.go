@@ -23,7 +23,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.5.0"
+	appVersion  = "v1.5.1"
 	repoOwner   = "BitterG"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -1341,10 +1341,10 @@ func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
 }
 
 var (
-	modKernel32              = windows.NewLazySystemDLL("kernel32.dll")
-	procVirtualAllocEx       = modKernel32.NewProc("VirtualAllocEx")
-	procVirtualFreeEx        = modKernel32.NewProc("VirtualFreeEx")
-	procVirtualQueryEx       = modKernel32.NewProc("VirtualQueryEx")
+	modKernel32        = windows.NewLazySystemDLL("kernel32.dll")
+	procVirtualAllocEx = modKernel32.NewProc("VirtualAllocEx")
+	procVirtualFreeEx  = modKernel32.NewProc("VirtualFreeEx")
+	procVirtualQueryEx = modKernel32.NewProc("VirtualQueryEx")
 )
 
 type memoryBasicInformation struct {
@@ -1360,12 +1360,12 @@ type memoryBasicInformation struct {
 
 func virtualAllocRemoteNear(h windows.Handle, nearAddr uintptr, size uintptr) (uintptr, error) {
 	const (
-		memCommit             = 0x1000
-		memReserve            = 0x2000
-		memFree               = 0x10000
-		pageExecuteReadWrite  = 0x40
-		allocGranularity      = uintptr(0x10000)
-		maxRel32Distance int64 = 0x7FFFFFFF
+		memCommit                  = 0x1000
+		memReserve                 = 0x2000
+		memFree                    = 0x10000
+		pageExecuteReadWrite       = 0x40
+		allocGranularity           = uintptr(0x10000)
+		maxRel32Distance     int64 = 0x7FFFFFFF
 	)
 
 	alignDown := func(v uintptr) uintptr { return v &^ (allocGranularity - 1) }
