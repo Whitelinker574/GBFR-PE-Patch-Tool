@@ -2045,6 +2045,23 @@
                        "confidence":  "low"
                    },
                    {
+                       "internalId":  "SKILL_166_50",
+                       "hash":  "0x40223C28",
+                       "displayName":  "Catastrophe",
+                       "category":  null,
+                       "maxLevel":  30,
+                       "allowedLevels":  null,
+                       "observedLevels":  [
+
+                                          ],
+                       "canAppearAsPrimary":  true,
+                       "canAppearAsSecondary":  true,
+                       "bannedAsSecondaryOnPlusSigils":  false,
+                       "notes":  "Added from in-game hash verification and CT hash-name mapping. Distinct from Less Is More (0x82CE278D / 身无长技). Exact internalId still needs authoritative table export verification.",
+                       "source":  "Cheat Engine live memory verification; sigil_ctdata.go hash-name mapping; user in-game validation",
+                       "confidence":  "low"
+                   },
+                   {
                        "internalId":  "SKILL_167_00",
                        "hash":  "0xF71F8997",
                        "displayName":  "Auto Potion",
