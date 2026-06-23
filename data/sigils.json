@@ -3619,10 +3619,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_046_00",
             "primaryTraitName": "Poison Resistance",
             "firstTraitMaxLevel": 15,
@@ -3647,10 +3647,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_047_00",
             "primaryTraitName": "Burn Resistance",
             "firstTraitMaxLevel": 15,
@@ -3675,10 +3675,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_051_00",
             "primaryTraitName": "Sandtomb Resistance",
             "firstTraitMaxLevel": 15,
@@ -3703,10 +3703,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_052_00",
             "primaryTraitName": "Glaciate Resistance",
             "firstTraitMaxLevel": 15,
@@ -3731,10 +3731,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_054_00",
             "primaryTraitName": "Dizzy Resistance",
             "firstTraitMaxLevel": 15,
@@ -3759,10 +3759,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_055_00",
             "primaryTraitName": "Paralysis Resistance",
             "firstTraitMaxLevel": 15,
@@ -3787,10 +3787,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_057_00",
             "primaryTraitName": "Skill Sealed Resistance",
             "firstTraitMaxLevel": 15,
@@ -3815,10 +3815,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_058_00",
             "primaryTraitName": "SBA Sealed Resistance",
             "firstTraitMaxLevel": 15,
@@ -5379,10 +5379,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_077_00",
             "primaryTraitName": "Low Profile",
             "firstTraitMaxLevel": 15,
@@ -5407,10 +5407,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_078_00",
             "primaryTraitName": "Provoke",
             "firstTraitMaxLevel": 15,
@@ -5435,10 +5435,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_079_00",
             "primaryTraitName": "Fast Learner",
             "firstTraitMaxLevel": 15,
@@ -5463,10 +5463,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_080_00",
             "primaryTraitName": "Rupie Tycoon",
             "firstTraitMaxLevel": 15,
@@ -5815,10 +5815,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_086_00",
             "primaryTraitName": "Slow Resistance",
             "firstTraitMaxLevel": 15,
@@ -5871,10 +5871,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_088_00",
             "primaryTraitName": "Blight Resistance",
             "firstTraitMaxLevel": 15,
@@ -6089,10 +6089,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_100_00",
             "primaryTraitName": "Supplements",
             "firstTraitMaxLevel": 15,
@@ -6631,10 +6631,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_109_00",
             "primaryTraitName": "Precise Wrath",
             "firstTraitMaxLevel": 15,
@@ -21709,10 +21709,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_136_00",
             "primaryTraitName": "Held Under Resistance",
             "firstTraitMaxLevel": 15,
@@ -21737,10 +21737,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_137_00",
             "primaryTraitName": "Darkflame Resistance",
             "firstTraitMaxLevel": 15,
@@ -21765,10 +21765,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_138_00",
             "primaryTraitName": "Attack Down Resistance",
             "firstTraitMaxLevel": 15,
@@ -21793,10 +21793,10 @@
             "isPlusSigil": null,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                5
+                15
             ],
-            "defaultSigilLevel": 5,
-            "maxSigilLevel": 5,
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
             "primaryTraitId": "SKILL_139_00",
             "primaryTraitName": "Defense Down Resistance",
             "firstTraitMaxLevel": 15,
