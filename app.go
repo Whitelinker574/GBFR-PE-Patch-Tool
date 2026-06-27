@@ -1388,6 +1388,12 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Hook:     true,
 	},
 	{
+		ID:       "sba_chain_timer",
+		Name:     "奥义接续计时",
+		RVA:      0x677B45,
+		Original: []byte{0x48, 0xB8, 0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x40, 0x40},
+	},
+	{
 		ID:       "purple_drain",
 		Name:     "紫条不自然扣减",
 		RVA:      0xA0379A,
@@ -1446,11 +1452,20 @@ func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMult
 	if enabled && point != nil && needsMonsterValue(point.ID) && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
 		return MonsterEnhanceResult{}, fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
 	}
+	if enabled && point != nil && point.ID == "sba_chain_timer" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
+		return MonsterEnhanceResult{}, fmt.Errorf("奥义接续计时请输入 0 到 9999 之间的数值")
+	}
 	if enabled && point != nil && point.ID == "overdrive_state" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || (hpMultiplier != 1 && hpMultiplier != 4 && hpMultiplier != 9)) {
 		return MonsterEnhanceResult{}, fmt.Errorf("Overdrive 状态请选择 1、4 或自动OD")
 	}
 
 	if enabled {
+		if point != nil && point.ID == "sba_chain_timer" {
+			if err := a.setSBAChainTimer(point, hpMultiplier); err != nil {
+				return MonsterEnhanceResult{}, err
+			}
+			return a.readMonsterEnhanceStatus("")
+		}
 		command := pointID
 		if point != nil && needsMonsterValue(point.ID) {
 			commandValue := hpMultiplier
@@ -1543,7 +1558,9 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 		currentHex := bytesToHex(current)
 		parts = append(parts, fmt.Sprintf("%s:%s", point.Name, currentHex))
 		enabled := false
-		if point.Hook {
+		if point.ID == "sba_chain_timer" {
+			enabled = !bytesEqual(current, point.Original)
+		} else if point.Hook {
 			enabled = len(current) > 0 && current[0] == 0xE9
 		} else {
 			enabled = bytesEqual(current, point.Patch)
@@ -1584,7 +1601,9 @@ func (a *App) restoreMonsterEnhance(id string) error {
 			continue
 		}
 		currentIsPatch := false
-		if point.Hook {
+		if point.ID == "sba_chain_timer" {
+			currentIsPatch = len(current) >= 2 && current[0] == 0x48 && current[1] == 0xB8
+		} else if point.Hook {
 			currentIsPatch = len(current) > 0 && current[0] == 0xE9
 		} else {
 			currentIsPatch = bytesEqual(current, point.Patch)
@@ -1609,10 +1628,32 @@ func (a *App) restoreMonsterEnhance(id string) error {
 	return nil
 }
 
+func (a *App) setSBAChainTimer(point *monsterPatchPoint, value float64) error {
+	addr := a.moduleBase + point.RVA
+	current := make([]byte, len(point.Original))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {
+		return fmt.Errorf("读取%s失败: %w", point.Name, err)
+	}
+	if current[0] != 0x48 || current[1] != 0xB8 {
+		return fmt.Errorf("%s指令字节未知: %s", point.Name, bytesToHex(current))
+	}
+	bits := math.Float32bits(float32(value))
+	patch := append([]byte{}, point.Original...)
+	binary.LittleEndian.PutUint32(patch[2:6], bits)
+	binary.LittleEndian.PutUint32(patch[6:10], bits)
+	if err := writeCodeMemory(a.hProcess, addr, patch); err != nil {
+		return fmt.Errorf("写入%s失败: %w", point.Name, err)
+	}
+	return nil
+}
+
 func isMonsterPatchBytesAtRVA(rva uintptr, data []byte) bool {
 	for _, point := range monsterPatchPoints {
 		if point.RVA != rva {
 			continue
+		}
+		if point.ID == "sba_chain_timer" && len(data) >= 2 && data[0] == 0x48 && data[1] == 0xB8 {
+			return true
 		}
 		if point.Hook && len(data) > 0 && data[0] == 0xE9 {
 			return true

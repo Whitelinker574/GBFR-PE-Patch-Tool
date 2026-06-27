@@ -6,7 +6,7 @@ const emit = defineEmits(['status'])
 
 const loading = ref(false)
 const result = reactive({ pid: 0, dllPath: '', injected: false, enabled: false, currentBytes: '', items: [] })
-const multipliers = reactive({ monster_hp: '10', monster_stun: '10', monster_damage: '1', crocodile_damage: '1' })
+const multipliers = reactive({ monster_hp: '10', monster_stun: '10', monster_damage: '1', crocodile_damage: '1', sba_chain_timer: '3' })
 const overdriveState = ref('1')
 
 function applyResult(res) {
@@ -29,11 +29,15 @@ function refreshStatus() {
 }
 
 function needsMultiplier(item) {
-  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage' || item.id === 'crocodile_damage'
+  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage' || item.id === 'crocodile_damage' || item.id === 'sba_chain_timer'
 }
 
 function needsOverdriveState(item) {
   return item.id === 'overdrive_state'
+}
+
+function needsSbaTimer(item) {
+  return item.id === 'sba_chain_timer'
 }
 
 function multiplierHint(item) {
@@ -41,6 +45,7 @@ function multiplierHint(item) {
   if (item.id === 'monster_stun') return '输入 10 = 怪物10倍昏厥条'
   if (item.id === 'monster_damage') return '输入 32 = 怪物伤害32倍'
   if (item.id === 'crocodile_damage') return '输入 10 = 鳄鱼10倍血'
+  if (item.id === 'sba_chain_timer') return '游戏默认 3 秒'
   return ''
 }
 
@@ -67,7 +72,7 @@ function setOne(item, enabled, id = item.id) {
   MonsterEnhanceSetPatchValueEnabled(id, enabled, patchValue(item))
     .then((res) => {
       applyResult(res)
-      const verb = id === 'overdrive_state_apply' ? '已应用' : (enabled ? '已开启' : '已关闭')
+      const verb = id === 'overdrive_state_apply' || (item.id === 'sba_chain_timer' && enabled) ? '已应用' : (enabled ? '已开启' : '已关闭')
       emit('status', `${item.name}${verb}`, 'success')
     })
     .catch((err) => {
@@ -121,11 +126,26 @@ refreshStatus()
           <button class="btn-batch" @click="setOne(item, true, 'overdrive_state_apply')" :disabled="loading || overdriveState === '9'">应用</button>
           <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
         </div>
+        <div class="memory-row" v-else-if="needsSbaTimer(item)">
+          <button class="btn-batch" @click="setOne(item, true)" :disabled="loading">应用</button>
+          <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">恢复默认</button>
+        </div>
         <div class="memory-row" v-else>
           <button class="btn-batch" @click="setOne(item, true)" :disabled="loading || item.enabled">开启</button>
           <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
         </div>
         <div class="memory-bytes">{{ item.currentBytes }}</div>
+        </div>
+        <div class="memory-card custom-note-card">
+          <div class="memory-header">
+            <span class="memory-title">作者的废话 : )</span>
+          </div>
+          <div class="custom-note-text">
+            <strong class="note-warn">本页功能需要在主机下使用生效,开启也请告知队友</strong>，
+            做这个功能是因为我感觉原版的打多了很多无聊每次都差不多&发现了libmem库想来试试&我之前每次都是用自己写的ce脚本打开修改都要点好多下很烦，遂做了这个页面的功能。
+            我逆向水平一般也并非熟练的c++开发者，作这页功能最失败的决定就是之前用纯go来内存hook，没啥好用的库。
+            最后能来仓库点个star⭐就更好了。
+          </div>
         </div>
       </div>
 
@@ -156,13 +176,17 @@ refreshStatus()
   background:rgba(255,255,255,0.045); border:1px solid rgba(165,180,252,0.16);
   display:flex; flex-direction:column; gap:8px;
 }
+.custom-note-card { min-height:96px; }
+.custom-note-text { font-size:0.76rem; line-height:1.55; color:rgba(255,255,255,0.46); }
 .memory-header, .memory-info, .memory-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .memory-header { justify-content:flex-start; }
 .memory-header .memory-hint { margin-left:auto; }
 .memory-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.62); }
 .memory-hint, .memory-info { font-size:0.68rem; color:rgba(255,255,255,0.32); }
-.batch-input { width:80px; padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#fff; font-size:0.82rem; outline:none; }
+.batch-input { width:80px; padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#fff; font-size:0.82rem; outline:none; color-scheme:dark; }
+.batch-input::-webkit-inner-spin-button, .batch-input::-webkit-outer-spin-button { filter:invert(1) opacity(0.7); }
 .od-select { width:120px; }
+.od-select option { background:#111827; color:#e5e7eb; }
 .memory-bytes { font-size:0.66rem; color:rgba(255,255,255,0.24); font-family:'Courier New',monospace; word-break:break-all; }
 .btn-batch, .btn-refresh {
   padding:6px 14px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer;
@@ -178,4 +202,5 @@ refreshStatus()
 .state.on { color:#4ade80; background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.22); }
 .empty { font-size:0.78rem; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
 @media (max-width: 640px) { .card-grid { grid-template-columns:1fr; } }
+.note-warn { color:#67e8f9; }
 </style>

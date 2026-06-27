@@ -665,13 +665,12 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 static DWORD WINAPI InitThread(LPVOID)
 {
     wchar_t message[256]{};
-    bool ok = ApplyMonsterPatches(message, _countof(message));
+    ApplyMonsterPatches(message, _countof(message));
 
     wchar_t debugMessage[320]{};
     swprintf_s(debugMessage, L"[patch_core] %s\n", message);
     OutputDebugStringW(debugMessage);
 
-    MessageBoxW(nullptr, message, ok ? L"patch_core success" : L"patch_core failed", ok ? MB_OK | MB_ICONINFORMATION : MB_OK | MB_ICONERROR);
     return 0;
 }
 
