@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { MonsterEnhanceGetStatus, MonsterEnhanceSetEnabled, MonsterEnhanceSetPatchValueEnabled } from '../../wailsjs/go/main/App'
+import { MonsterEnhanceGetStatus, MonsterEnhanceSetPatchValueEnabled } from '../../wailsjs/go/main/App'
 
 const emit = defineEmits(['status'])
 
@@ -23,17 +23,6 @@ function refreshStatus() {
   loading.value = true
   MonsterEnhanceGetStatus()
     .then((res) => applyResult(res))
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { loading.value = false })
-}
-
-function setAll(enabled) {
-  loading.value = true
-  MonsterEnhanceSetEnabled(enabled)
-    .then((res) => {
-      applyResult(res)
-      emit('status', enabled ? '怪物增强已全部开启' : '怪物增强已全部关闭', 'success')
-    })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { loading.value = false })
 }
@@ -74,27 +63,16 @@ refreshStatus()
         <span class="hint">DLL 注入开启 · Go 恢复关闭</span>
       </div>
 
-      <div class="memory-card">
-        <div class="memory-header">
-          <span class="memory-title">总开关</span>
-          <span class="memory-hint">{{ result.enabled ? '全部已开启' : '未全部开启' }}</span>
-        </div>
+      <div class="process-card">
         <div class="memory-info">
           <span>目标进程: granblue_fantasy_relink.exe</span>
           <span v-if="result.pid">PID: {{ result.pid }}</span>
-          <span v-if="result.injected">本次已注入</span>
+          <button class="btn-refresh compact" @click="refreshStatus" :disabled="loading">刷新</button>
         </div>
-        <div class="memory-row">
-          <button class="btn-batch" @click="setAll(true)" :disabled="loading || result.enabled">
-            {{ loading ? '处理中...' : '全部开启' }}
-          </button>
-          <button class="btn-refresh" @click="setAll(false)" :disabled="loading || !result.items.some(i => i.enabled)">全部关闭</button>
-          <button class="btn-refresh" @click="refreshStatus" :disabled="loading">刷新</button>
-        </div>
-        <div class="memory-bytes">{{ result.dllPath || 'DLL 已内置，开启时释放到临时目录' }}</div>
       </div>
 
-      <div v-for="item in result.items" :key="item.id" class="memory-card">
+      <div class="card-grid">
+        <div v-for="item in result.items" :key="item.id" class="memory-card">
         <div class="memory-header">
           <span class="memory-title">{{ item.name }}</span>
           <span class="state" :class="{ on: item.enabled }">{{ item.enabled ? '开启' : '关闭' }}</span>
@@ -102,13 +80,14 @@ refreshStatus()
         </div>
         <div v-if="item.id === 'monster_hp' || item.id === 'monster_stun'" class="memory-row">
           <input v-model="multipliers[item.id]" type="number" min="0.1" max="9999" step="0.1" class="batch-input" placeholder="倍率" />
-          <span class="memory-hint">{{ item.id === 'monster_hp' ? '输入 10 = 伤害 0.1 倍' : '输入 10 = 昏厥量 0.1 倍' }}</span>
+          <span class="memory-hint">{{ item.id === 'monster_hp' ? '输入 10 = 怪物10倍血' : '输入 10 = 怪物10倍昏厥条' }}</span>
         </div>
         <div class="memory-row">
           <button class="btn-batch" @click="setOne(item, true)" :disabled="loading || item.enabled">开启</button>
           <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
         </div>
         <div class="memory-bytes">{{ item.currentBytes }}</div>
+        </div>
       </div>
 
       <div v-if="!result.items.length" class="empty">请启动游戏后刷新状态</div>
@@ -128,6 +107,11 @@ refreshStatus()
 .title { font-size:0.88rem; font-weight:600; color:rgba(255,255,255,0.65); letter-spacing:1px; }
 .info-dot { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid rgba(103,232,249,0.35); color:#67e8f9; background:rgba(103,232,249,0.08); font-size:0.68rem; font-weight:700; cursor:help; flex-shrink:0; }
 .hint { font-size:0.68rem; color:rgba(255,255,255,0.25); margin-left:auto; }
+.process-card {
+  border-radius:10px; padding:8px 10px;
+  background:rgba(255,255,255,0.035); border:1px solid rgba(103,232,249,0.12);
+}
+.card-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
 .memory-card {
   border-radius:12px; padding:12px;
   background:rgba(255,255,255,0.045); border:1px solid rgba(165,180,252,0.16);
@@ -149,7 +133,9 @@ refreshStatus()
 .btn-batch:not(:disabled):hover { background:rgba(165,180,252,0.2); }
 .btn-refresh:not(:disabled):hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); }
 .btn-batch:disabled, .btn-refresh:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-refresh.compact { padding:4px 10px; font-size:0.72rem; }
 .state { font-size:0.68rem; padding:2px 8px; border-radius:999px; color:#f87171; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.22); }
 .state.on { color:#4ade80; background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.22); }
 .empty { font-size:0.78rem; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
+@media (max-width: 640px) { .card-grid { grid-template-columns:1fr; } }
 </style>

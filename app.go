@@ -1354,14 +1354,14 @@ var monsterPatchPoints = []monsterPatchPoint{
 	},
 	{
 		ID:       "monster_hp",
-		Name:     "怪物倍血",
+		Name:     "怪物多倍血",
 		RVA:      0x1B3F798,
 		Original: []byte{0x01, 0x91, 0xB8, 0x15, 0x00, 0x00},
 		Hook:     true,
 	},
 	{
 		ID:       "monster_stun",
-		Name:     "怪物昏厥条",
+		Name:     "怪物多倍昏厥条",
 		RVA:      0xA09ADF,
 		Original: []byte{0xC4, 0xC1, 0x4A, 0x58, 0x85, 0x20, 0x07, 0x00, 0x00},
 		Hook:     true,
