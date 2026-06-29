@@ -24,7 +24,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.6.1"
+	appVersion  = "v1.6.2"
 	repoOwner   = "BitterG"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -106,16 +106,17 @@ type AppConfig struct {
 // ── App ──
 
 type App struct {
-	ctx               context.Context
-	exePath           string
-	hProcess          windows.Handle
-	moduleBase        uintptr
-	managerPtr        uintptr
-	charaPID          uint32
-	countdownAddr     uintptr
-	faceAccessoryAddr uintptr
-	config            AppConfig
-	configLoaded      bool
+	ctx                 context.Context
+	exePath             string
+	hProcess            windows.Handle
+	moduleBase          uintptr
+	managerPtr          uintptr
+	charaPID            uint32
+	countdownAddr       uintptr
+	faceAccessoryAddr   uintptr
+	unlockAllTrophyAddr uintptr
+	config              AppConfig
+	configLoaded        bool
 }
 
 func NewApp() *App { return &App{} }
@@ -1237,6 +1238,92 @@ func (a *App) readOtherSkinPurpleRuneStatus() (OtherSkinPurpleRuneStatus, error)
 		RVA:          uint64(otherSkinPurpleRuneRVA),
 		Enabled:      buf[0] == 0x74,
 		JumpOpcode:   jumpOpcode,
+		CurrentBytes: bytesToHex(buf),
+	}, nil
+}
+
+// ── 游戏内全称号解锁 (运行时 SETNE/SETNO 切换) ──
+
+type UnlockAllTrophyStatus struct {
+	Found        bool   `json:"found"`
+	Address      uint64 `json:"address"`
+	RVA          uint64 `json:"rva"`
+	Enabled      bool   `json:"enabled"`
+	CurrentBytes string `json:"currentBytes"`
+}
+
+var unlockAllTrophyPattern = []byte{
+	0x80, 0xBC, 0x1F, 0x89, 0x00, 0x00, 0x00, 0x00,
+	0x0F, 0x00, 0xC0, 0x40, 0x30, 0xE8, 0x75, 0xE0,
+}
+
+var unlockAllTrophyMask = []bool{
+	true, true, true, true, true, true, true, true,
+	true, false, true, true, true, true, true, true,
+}
+
+func (a *App) UnlockAllTrophyScan() (UnlockAllTrophyStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return UnlockAllTrophyStatus{}, err
+	}
+	addr, err := a.scanPatternUnique(unlockAllTrophyPattern, unlockAllTrophyMask, "全称号解锁特征")
+	if err != nil {
+		a.unlockAllTrophyAddr = 0
+		return UnlockAllTrophyStatus{}, err
+	}
+	a.unlockAllTrophyAddr = addr
+	return a.readUnlockAllTrophyStatus(addr)
+}
+
+func (a *App) UnlockAllTrophyGetStatus() (UnlockAllTrophyStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return UnlockAllTrophyStatus{}, err
+	}
+	if a.unlockAllTrophyAddr == 0 {
+		return a.UnlockAllTrophyScan()
+	}
+	status, err := a.readUnlockAllTrophyStatus(a.unlockAllTrophyAddr)
+	if err != nil {
+		a.unlockAllTrophyAddr = 0
+		return a.UnlockAllTrophyScan()
+	}
+	return status, nil
+}
+
+func (a *App) UnlockAllTrophySetEnabled(enabled bool) (UnlockAllTrophyStatus, error) {
+	status, err := a.UnlockAllTrophyGetStatus()
+	if err != nil {
+		return UnlockAllTrophyStatus{}, err
+	}
+	if !status.Found || a.unlockAllTrophyAddr == 0 {
+		return UnlockAllTrophyStatus{}, fmt.Errorf("未定位全称号解锁指令")
+	}
+	opcode := byte(0x95)
+	if enabled {
+		opcode = 0x91
+	}
+	if err := writeCodeMemory(a.hProcess, a.unlockAllTrophyAddr+9, []byte{opcode}); err != nil {
+		return UnlockAllTrophyStatus{}, fmt.Errorf("写入全称号解锁失败: %w", err)
+	}
+	return a.readUnlockAllTrophyStatus(a.unlockAllTrophyAddr)
+}
+
+func (a *App) readUnlockAllTrophyStatus(addr uintptr) (UnlockAllTrophyStatus, error) {
+	buf := make([]byte, len(unlockAllTrophyPattern))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return UnlockAllTrophyStatus{}, fmt.Errorf("读取全称号解锁指令失败: %w", err)
+	}
+	if !matchPattern(buf, unlockAllTrophyPattern, unlockAllTrophyMask) {
+		return UnlockAllTrophyStatus{}, fmt.Errorf("全称号解锁指令字节已变化，请重新扫描")
+	}
+	if buf[9] != 0x91 && buf[9] != 0x95 {
+		return UnlockAllTrophyStatus{}, fmt.Errorf("全称号解锁 opcode 异常: 0x%02X", buf[9])
+	}
+	return UnlockAllTrophyStatus{
+		Found:        true,
+		Address:      uint64(addr),
+		RVA:          uint64(addr - a.moduleBase),
+		Enabled:      buf[9] == 0x91,
 		CurrentBytes: bytesToHex(buf),
 	}, nil
 }

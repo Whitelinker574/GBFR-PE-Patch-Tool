@@ -4,6 +4,7 @@ import { CharaAttach, CharaDetach,
          CountdownGetStatus, CountdownScan, CountdownSet,
          FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
          InfiniteChallengeGetStatus, InfiniteChallengeSetEnabled,
+         UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
          OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
          GetAppVersion, CheckUpdate, OpenReleasePage } from '../../wailsjs/go/main/App'
 
@@ -20,6 +21,9 @@ const faceAccessoryStatus = reactive({ found: false, address: 0, rva: 0, hidden:
 const faceAccessoryLoading = ref(false)
 const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const infiniteChallengeLoading = ref(false)
+const unlockAllTrophyStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
+const unlockAllTrophyLoading = ref(false)
+const showUnlockAllTrophyConfirm = ref(false)
 const otherSkinPurpleRuneStatus = reactive({ rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
 const otherSkinPurpleRuneLoading = ref(false)
 const updateInfo = reactive({ currentVersion: 'v1.5.0', latestVersion: '', hasUpdate: false, releaseUrl: '', body: '', assets: [] })
@@ -36,6 +40,7 @@ function connect() {
       loadCountdownStatus()
       loadFaceAccessoryStatus()
       loadInfiniteChallengeStatus()
+      loadUnlockAllTrophyStatus()
       loadOtherSkinPurpleRuneStatus()
     })
     .catch((err) => emit('status', String(err), 'error'))
@@ -50,6 +55,7 @@ function disconnect() {
       Object.assign(countdownStatus, { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
       Object.assign(faceAccessoryStatus, { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
       Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, currentBytes: '' })
+      Object.assign(unlockAllTrophyStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(otherSkinPurpleRuneStatus, { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
     })
     .catch((err) => emit('status', String(err), 'error'))
@@ -150,6 +156,47 @@ function setInfiniteChallengeEnabled(enabled) {
     .then((status) => { applyInfiniteChallengeStatus(status); emit('status', enabled ? '已开启无限挑战' : '已恢复挑战次数递增', 'success') })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { infiniteChallengeLoading.value = false })
+}
+
+function applyUnlockAllTrophyStatus(status) {
+  Object.assign(unlockAllTrophyStatus, status || { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
+}
+
+function loadUnlockAllTrophyStatus() {
+  if (!connected.value) return
+  unlockAllTrophyLoading.value = true
+  UnlockAllTrophyGetStatus()
+    .then(applyUnlockAllTrophyStatus)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { unlockAllTrophyLoading.value = false })
+}
+
+function scanUnlockAllTrophy() {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  unlockAllTrophyLoading.value = true
+  UnlockAllTrophyScan()
+    .then((status) => { applyUnlockAllTrophyStatus(status); emit('status', '全称号解锁特征定位成功', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { unlockAllTrophyLoading.value = false })
+}
+
+function setUnlockAllTrophyEnabled(enabled) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  if (enabled) { showUnlockAllTrophyConfirm.value = true; return }
+  applyUnlockAllTrophyEnabled(false)
+}
+
+function confirmUnlockAllTrophy() {
+  showUnlockAllTrophyConfirm.value = false
+  applyUnlockAllTrophyEnabled(true)
+}
+
+function applyUnlockAllTrophyEnabled(enabled) {
+  unlockAllTrophyLoading.value = true
+  UnlockAllTrophySetEnabled(enabled)
+    .then((status) => { applyUnlockAllTrophyStatus(status); emit('status', enabled ? '已开启游戏内全称号解锁' : '已恢复称号默认判断', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { unlockAllTrophyLoading.value = false })
 }
 
 function applyOtherSkinPurpleRuneStatus(status) {
@@ -284,6 +331,24 @@ function openReleasePage() {
 
         <div class="memory-card">
           <div class="memory-header">
+            <span class="memory-title">游戏内全称号解锁</span>
+            <span class="memory-hint">AOB 定位后切换 SETNE/SETNO</span>
+          </div>
+          <div class="memory-info">
+            <span>RVA: {{ formatHex(unlockAllTrophyStatus.rva) }}</span>
+            <span>状态: {{ unlockAllTrophyStatus.enabled ? '开启' : '默认' }}</span>
+          </div>
+          <div class="memory-row">
+            <button class="btn-batch" @click="setUnlockAllTrophyEnabled(true)" :disabled="unlockAllTrophyLoading || unlockAllTrophyStatus.enabled">开启全称号</button>
+            <button class="btn-refresh" @click="setUnlockAllTrophyEnabled(false)" :disabled="unlockAllTrophyLoading || !unlockAllTrophyStatus.enabled">恢复默认</button>
+            <button class="btn-refresh" @click="loadUnlockAllTrophyStatus" :disabled="unlockAllTrophyLoading">刷新</button>
+            <button class="btn-sort" @click="scanUnlockAllTrophy" :disabled="unlockAllTrophyLoading">重新扫描</button>
+          </div>
+          <div class="memory-bytes">{{ unlockAllTrophyStatus.currentBytes || '未定位' }}</div>
+        </div>
+
+        <div class="memory-card">
+          <div class="memory-header">
             <span class="memory-title">在其他皮肤显示紫色符文</span>
             <span class="memory-hint">固定 RVA 切换 JNE/JE</span>
           </div>
@@ -302,6 +367,16 @@ function openReleasePage() {
 
       </template>
       <div v-else class="empty">请先连接游戏进程</div>
+    </div>
+    <div v-if="showUnlockAllTrophyConfirm" class="confirm-overlay" @click.self="showUnlockAllTrophyConfirm = false">
+      <div class="confirm-dialog">
+        <div class="confirm-title">确认开启游戏内全称号解锁</div>
+        <div class="confirm-body">目前存档时机尚不明确，可以领取任务奖励、佩戴选定称号、选择佩戴界面有多个“未设置”是正常现象</div>
+        <div class="confirm-actions">
+          <button class="btn-refresh" @click="showUnlockAllTrophyConfirm = false">取消</button>
+          <button class="btn-warn" @click="confirmUnlockAllTrophy" :disabled="unlockAllTrophyLoading">确认开启</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -383,4 +458,12 @@ function openReleasePage() {
 .od-burst-active { background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.25); animation:od-burst-pulse 1s infinite alternate; }
 @keyframes od-burst-pulse { from { opacity:0.7; } to { opacity:1; } }
 .burst-timer { color:#facc15; font-weight:600; font-family:'Courier New',monospace; }
+.confirm-overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,0.48); }
+.confirm-dialog { width:min(420px, 100%); border-radius:12px; padding:16px; background:linear-gradient(135deg, rgba(251,191,36,0.22) 0%, rgba(239,68,68,0.16) 100%); border:1px solid rgba(251,191,36,0.34); box-shadow:0 12px 40px rgba(0,0,0,0.42); display:flex; flex-direction:column; gap:12px; }
+.confirm-title { font-size:0.9rem; font-weight:700; color:#facc15; }
+.confirm-body { font-size:0.78rem; line-height:1.65; color:rgba(255,255,255,0.72); }
+.confirm-actions { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.btn-warn { padding:6px 14px; border-radius:6px; border:1px solid rgba(251,191,36,0.45); background:rgba(251,191,36,0.16); color:#facc15; font-size:0.78rem; font-weight:600; cursor:pointer; transition:background 0.2s; white-space:nowrap; }
+.btn-warn:not(:disabled):hover { background:rgba(251,191,36,0.26); }
+.btn-warn:disabled { opacity:0.4; cursor:not-allowed; }
 </style>
