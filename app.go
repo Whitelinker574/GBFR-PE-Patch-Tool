@@ -115,6 +115,7 @@ type App struct {
 	countdownAddr       uintptr
 	faceAccessoryAddr   uintptr
 	unlockAllTrophyAddr uintptr
+	terminusDropAddr    uintptr
 	config              AppConfig
 	configLoaded        bool
 }
@@ -943,6 +944,8 @@ func (a *App) CharaDetach() {
 	a.charaPID = 0
 	a.countdownAddr = 0
 	a.faceAccessoryAddr = 0
+	a.unlockAllTrophyAddr = 0
+	a.terminusDropAddr = 0
 }
 
 // CharaGetAll reads all character counts, returns valid characters (skipping empty slots).
@@ -1324,6 +1327,103 @@ func (a *App) readUnlockAllTrophyStatus(addr uintptr) (UnlockAllTrophyStatus, er
 		Address:      uint64(addr),
 		RVA:          uint64(addr - a.moduleBase),
 		Enabled:      buf[9] == 0x91,
+		CurrentBytes: bytesToHex(buf),
+	}, nil
+}
+
+// ── 巴武掉落 100% (运行时 NOP 原巴巴武 lot 80% 排除检查) ──
+
+type TerminusDropStatus struct {
+	Found        bool   `json:"found"`
+	Address      uint64 `json:"address"`
+	RVA          uint64 `json:"rva"`
+	Enabled      bool   `json:"enabled"`
+	CurrentBytes string `json:"currentBytes"`
+}
+
+var terminusDropPattern = []byte{
+	0x41, 0x39, 0x47, 0x28,
+	0x77, 0x22,
+	0x45, 0x8B, 0x07,
+	0x41, 0x81, 0xF8, 0xB0, 0xE0, 0x7A, 0x88,
+}
+
+var terminusDropMask = []bool{
+	true, true, true, true,
+	true, true,
+	true, true, true,
+	true, true, true, true, true, true, true,
+}
+
+var (
+	terminusDropOrig  = []byte{0x77, 0x22}
+	terminusDropPatch = []byte{0x90, 0x90}
+)
+
+func (a *App) TerminusDropScan() (TerminusDropStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	addr, err := a.scanPatternUnique(terminusDropPattern, terminusDropMask, "巴武掉落特征")
+	if err != nil {
+		a.terminusDropAddr = 0
+		return TerminusDropStatus{}, err
+	}
+	a.terminusDropAddr = addr
+	return a.readTerminusDropStatus(addr)
+}
+
+func (a *App) TerminusDropGetStatus() (TerminusDropStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	if a.terminusDropAddr == 0 {
+		return a.TerminusDropScan()
+	}
+	status, err := a.readTerminusDropStatus(a.terminusDropAddr)
+	if err != nil {
+		a.terminusDropAddr = 0
+		return a.TerminusDropScan()
+	}
+	return status, nil
+}
+
+func (a *App) TerminusDropSetEnabled(enabled bool) (TerminusDropStatus, error) {
+	status, err := a.TerminusDropGetStatus()
+	if err != nil {
+		return TerminusDropStatus{}, err
+	}
+	if !status.Found || a.terminusDropAddr == 0 {
+		return TerminusDropStatus{}, fmt.Errorf("未定位巴武掉落指令")
+	}
+	patch := terminusDropOrig
+	if enabled {
+		patch = terminusDropPatch
+	}
+	if err := writeCodeMemory(a.hProcess, a.terminusDropAddr+4, patch); err != nil {
+		return TerminusDropStatus{}, fmt.Errorf("写入巴武掉落失败: %w", err)
+	}
+	return a.readTerminusDropStatus(a.terminusDropAddr)
+}
+
+func (a *App) readTerminusDropStatus(addr uintptr) (TerminusDropStatus, error) {
+	buf := make([]byte, len(terminusDropPattern))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return TerminusDropStatus{}, fmt.Errorf("读取巴武掉落指令失败: %w", err)
+	}
+	if !bytesEqual(buf[4:6], terminusDropOrig) && !bytesEqual(buf[4:6], terminusDropPatch) {
+		return TerminusDropStatus{}, fmt.Errorf("巴武掉落跳转字节异常: %s", bytesToHex(buf))
+	}
+	check := append([]byte(nil), buf...)
+	copy(check[4:6], terminusDropOrig)
+	if !matchPattern(check, terminusDropPattern, terminusDropMask) {
+		return TerminusDropStatus{}, fmt.Errorf("巴武掉落指令字节已变化，请重新扫描")
+	}
+	return TerminusDropStatus{
+		Found:        true,
+		Address:      uint64(addr),
+		RVA:          uint64(addr - a.moduleBase),
+		Enabled:      bytesEqual(buf[4:6], terminusDropPatch),
 		CurrentBytes: bytesToHex(buf),
 	}, nil
 }

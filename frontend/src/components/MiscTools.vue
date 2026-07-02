@@ -4,6 +4,7 @@ import { CharaAttach, CharaDetach,
          CountdownGetStatus, CountdownScan, CountdownSet,
          FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
          InfiniteChallengeGetStatus, InfiniteChallengeSetEnabled,
+         TerminusDropGetStatus, TerminusDropScan, TerminusDropSetEnabled,
          UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
          OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
          GetAppVersion, CheckUpdate, OpenReleasePage } from '../../wailsjs/go/main/App'
@@ -21,6 +22,8 @@ const faceAccessoryStatus = reactive({ found: false, address: 0, rva: 0, hidden:
 const faceAccessoryLoading = ref(false)
 const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const infiniteChallengeLoading = ref(false)
+const terminusDropStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
+const terminusDropLoading = ref(false)
 const unlockAllTrophyStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
 const unlockAllTrophyLoading = ref(false)
 const showUnlockAllTrophyConfirm = ref(false)
@@ -40,6 +43,7 @@ function connect() {
       loadCountdownStatus()
       loadFaceAccessoryStatus()
       loadInfiniteChallengeStatus()
+      loadTerminusDropStatus()
       loadUnlockAllTrophyStatus()
       loadOtherSkinPurpleRuneStatus()
     })
@@ -55,6 +59,7 @@ function disconnect() {
       Object.assign(countdownStatus, { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
       Object.assign(faceAccessoryStatus, { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
       Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, currentBytes: '' })
+      Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(unlockAllTrophyStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(otherSkinPurpleRuneStatus, { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
     })
@@ -156,6 +161,37 @@ function setInfiniteChallengeEnabled(enabled) {
     .then((status) => { applyInfiniteChallengeStatus(status); emit('status', enabled ? '已开启无限挑战' : '已恢复挑战次数递增', 'success') })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { infiniteChallengeLoading.value = false })
+}
+
+function applyTerminusDropStatus(status) {
+  Object.assign(terminusDropStatus, status || { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
+}
+
+function loadTerminusDropStatus() {
+  if (!connected.value) return
+  terminusDropLoading.value = true
+  TerminusDropGetStatus()
+    .then(applyTerminusDropStatus)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { terminusDropLoading.value = false })
+}
+
+function scanTerminusDrop() {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  terminusDropLoading.value = true
+  TerminusDropScan()
+    .then((status) => { applyTerminusDropStatus(status); emit('status', '巴武掉落特征定位成功', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { terminusDropLoading.value = false })
+}
+
+function setTerminusDropEnabled(enabled) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  terminusDropLoading.value = true
+  TerminusDropSetEnabled(enabled)
+    .then((status) => { applyTerminusDropStatus(status); emit('status', enabled ? '已开启巴武掉落 100%' : '已恢复巴武默认掉率', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { terminusDropLoading.value = false })
 }
 
 function applyUnlockAllTrophyStatus(status) {
@@ -327,6 +363,25 @@ function openReleasePage() {
             <button class="btn-refresh" @click="loadInfiniteChallengeStatus" :disabled="infiniteChallengeLoading">刷新</button>
           </div>
           <div class="memory-bytes">{{ infiniteChallengeStatus.currentBytes || '未读取' }}</div>
+        </div>
+
+        <div class="memory-card">
+          <div class="memory-header">
+            <span class="memory-title">巴武掉落 100%</span>
+            <span class="info-dot" title="仅让原型巴哈姆特任务的巴武 lot 不再被 80% 排除；仍保留未拥有、角色已解锁等游戏原始检查。">!</span>
+            <span class="memory-hint">AOB 定位后 NOP 巴武 lot 排除跳转</span>
+          </div>
+          <div class="memory-info">
+            <span>RVA: {{ formatHex(terminusDropStatus.rva) }}</span>
+            <span>状态: {{ terminusDropStatus.enabled ? '开启' : '默认' }}</span>
+          </div>
+          <div class="memory-row">
+            <button class="btn-batch" @click="setTerminusDropEnabled(true)" :disabled="terminusDropLoading || terminusDropStatus.enabled">开启巴武 100%</button>
+            <button class="btn-refresh" @click="setTerminusDropEnabled(false)" :disabled="terminusDropLoading || !terminusDropStatus.enabled">恢复默认</button>
+            <button class="btn-refresh" @click="loadTerminusDropStatus" :disabled="terminusDropLoading">刷新</button>
+            <button class="btn-sort" @click="scanTerminusDrop" :disabled="terminusDropLoading">重新扫描</button>
+          </div>
+          <div class="memory-bytes">{{ terminusDropStatus.currentBytes || '未定位' }}</div>
         </div>
 
         <div class="memory-card">
