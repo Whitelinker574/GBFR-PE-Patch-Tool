@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import { CharaAttach, CharaDetach,
          CountdownGetStatus, CountdownScan, CountdownSet,
          FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
@@ -7,6 +7,8 @@ import { CharaAttach, CharaDetach,
          TerminusDropGetStatus, TerminusDropScan, TerminusDropSetEnabled,
          UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
          OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
+         MonsterEnhanceSetPatchValueEnabled,
+         DamageMeterGetStatus, DamageMeterReset,
          GetAppVersion, CheckUpdate, OpenReleasePage } from '../../wailsjs/go/main/App'
 
 const emit = defineEmits(['status'])
@@ -31,6 +33,15 @@ const otherSkinPurpleRuneStatus = reactive({ rva: 0, enabled: false, jumpOpcode:
 const otherSkinPurpleRuneLoading = ref(false)
 const updateInfo = reactive({ currentVersion: 'v1.5.0', latestVersion: '', hasUpdate: false, releaseUrl: '', body: '', assets: [] })
 const updateLoading = ref(false)
+const damageMeterStatus = reactive({ connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
+const damageMeterLoading = ref(false)
+let damageMeterTimer = 0
+
+function getMonsterEnhanceMultiplier(id) {
+  const saved = window.gbfrMonsterEnhanceMultipliers || {}
+  const value = parseFloat(saved[id] || '1')
+  return isNaN(value) || value <= 0 || value > 9999 ? 1 : value
+}
 
 GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
 
@@ -46,6 +57,7 @@ function connect() {
       loadTerminusDropStatus()
       loadUnlockAllTrophyStatus()
       loadOtherSkinPurpleRuneStatus()
+      startDamageMeterTimer()
     })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { loading.value = false })
@@ -55,6 +67,7 @@ function disconnect() {
   CharaDetach()
     .then(() => {
       connected.value = false
+      stopDamageMeterTimer()
       Object.assign(info, { pid: 0, moduleBase: 0, manager: 0 })
       Object.assign(countdownStatus, { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
       Object.assign(faceAccessoryStatus, { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
@@ -62,6 +75,7 @@ function disconnect() {
       Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(unlockAllTrophyStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(otherSkinPurpleRuneStatus, { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
+      Object.assign(damageMeterStatus, { connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
     })
     .catch((err) => emit('status', String(err), 'error'))
 }
@@ -261,6 +275,67 @@ function setOtherSkinPurpleRuneEnabled(enabled) {
     .finally(() => { otherSkinPurpleRuneLoading.value = false })
 }
 
+function formatDamage(value) {
+  return Number(value || 0).toLocaleString()
+}
+
+function applyDamageMeterStatus(status) {
+  Object.assign(damageMeterStatus, {
+    connected: !!(status && status.connected),
+    totalDamage: Number((status && status.totalDamage) || 0),
+    monsterDamage: Number((status && status.monsterDamage) || 0),
+    crocodileDamage: Number((status && status.crocodileDamage) || 0),
+  })
+}
+
+function displayDamage() {
+  return Math.round(damageMeterStatus.monsterDamage * getMonsterEnhanceMultiplier('monster_hp') + damageMeterStatus.crocodileDamage * getMonsterEnhanceMultiplier('crocodile_damage'))
+}
+
+function startDamageMeterTimer() {
+  stopDamageMeterTimer()
+  loadDamageMeterStatus()
+  damageMeterTimer = window.setInterval(() => loadDamageMeterStatus(true), 500)
+}
+
+function stopDamageMeterTimer() {
+  if (!damageMeterTimer) return
+  window.clearInterval(damageMeterTimer)
+  damageMeterTimer = 0
+}
+
+function loadDamageMeterStatus(silent = false) {
+  if (!connected.value) return
+  if (!silent) damageMeterLoading.value = true
+  DamageMeterGetStatus()
+    .then(applyDamageMeterStatus)
+    .catch((err) => { if (!silent) emit('status', String(err), 'error') })
+    .finally(() => { if (!silent) damageMeterLoading.value = false })
+}
+
+function enableDamageMeter() {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  damageMeterLoading.value = true
+  MonsterEnhanceSetPatchValueEnabled('monster_hp', true, getMonsterEnhanceMultiplier('monster_hp'))
+    .then(() => MonsterEnhanceSetPatchValueEnabled('crocodile_damage', true, getMonsterEnhanceMultiplier('crocodile_damage')))
+    .then(() => DamageMeterGetStatus())
+    .then((status) => {
+      applyDamageMeterStatus(status)
+      emit('status', '伤害记录已开启，已自动开启怪物多倍血和鳄鱼多倍血', 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { damageMeterLoading.value = false })
+}
+
+function resetDamageMeter() {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  damageMeterLoading.value = true
+  DamageMeterReset()
+    .then((status) => { applyDamageMeterStatus(status); emit('status', '团队伤害已清零', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { damageMeterLoading.value = false })
+}
+
 function checkUpdate() {
   updateLoading.value = true
   CheckUpdate()
@@ -277,6 +352,7 @@ function openReleasePage() {
     .catch((err) => emit('status', String(err), 'error'))
 }
 
+onBeforeUnmount(stopDamageMeterTimer)
 
 </script>
 
@@ -314,6 +390,24 @@ function openReleasePage() {
       </div>
 
       <template v-if="connected">
+        <div class="memory-card" :class="{ active: damageMeterStatus.connected && damageMeterStatus.totalDamage > 0 }">
+          <div class="memory-header">
+            <span class="memory-title">团队伤害记录</span>
+            <span class="memory-hint">基于怪物实际扣血点</span>
+          </div>
+          <div class="memory-info damage-meter-info">
+            <span>状态: {{ damageMeterStatus.connected ? '记录中' : '等待共享内存' }}</span>
+            <span>需先开启怪物多倍血或鳄鱼多倍血 hook</span>
+          </div>
+          <div class="damage-meter-value">{{ formatDamage(displayDamage()) }}</div>
+          <div class="damage-meter-raw">原始: {{ formatDamage(damageMeterStatus.totalDamage) }}</div>
+          <div class="memory-row">
+            <button class="btn-batch" @click="enableDamageMeter" :disabled="damageMeterLoading">开启记录</button>
+            <button class="btn-refresh" @click="loadDamageMeterStatus" :disabled="damageMeterLoading">刷新</button>
+            <button class="btn-refresh" @click="resetDamageMeter" :disabled="damageMeterLoading">清零</button>
+          </div>
+        </div>
+
         <div class="memory-card" :class="{ active: isCountdownActive() }">
           <div class="memory-header">
             <span class="memory-title">任务结算倒计时/零帧开箱</span>
@@ -498,6 +592,11 @@ function openReleasePage() {
 .memory-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.62); }
 .memory-hint, .memory-info { font-size:0.68rem; color:rgba(255,255,255,0.32); }
 .memory-bytes { font-size:0.66rem; color:rgba(255,255,255,0.24); font-family:'Courier New',monospace; word-break:break-all; }
+.damage-meter-info { justify-content:space-between; }
+.damage-meter-value { font-size:1.8rem; font-weight:700; color:#67e8f9; line-height:1; }
+.damage-meter-raw { margin-top:-4px; font-size:0.72rem; color:rgba(255,255,255,0.28); }
+.memory-card.active .damage-meter-value { color:#1f2937; }
+.memory-card.active .damage-meter-raw { color:rgba(31,41,55,0.56); }
 .update-new { color:#4ade80; }
 .update-body { max-height:86px; overflow-y:auto; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.03); color:rgba(255,255,255,0.36); font-size:0.7rem; line-height:1.45; white-space:pre-wrap; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.12) transparent; }
 .batch-input {

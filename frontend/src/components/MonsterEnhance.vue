@@ -1,12 +1,15 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { MonsterEnhanceGetStatus, MonsterEnhanceSetPatchValueEnabled } from '../../wailsjs/go/main/App'
+import { MonsterEnhanceGetStatus, MonsterEnhanceSetPatchValueEnabled, DamageMeterGetStatus } from '../../wailsjs/go/main/App'
 
 const emit = defineEmits(['status'])
 
+const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage: '1', crocodile_damage: '1', sba_chain_timer: '3' }
+const sessionMultipliers = window.gbfrMonsterEnhanceMultipliers || (window.gbfrMonsterEnhanceMultipliers = { ...defaultMultipliers })
+
 const loading = ref(false)
 const result = reactive({ pid: 0, dllPath: '', injected: false, enabled: false, currentBytes: '', items: [] })
-const multipliers = reactive({ monster_hp: '10', monster_stun: '10', monster_damage: '1', crocodile_damage: '1', sba_chain_timer: '3' })
+const multipliers = reactive(sessionMultipliers)
 const overdriveState = ref('1')
 
 function applyResult(res) {
@@ -50,11 +53,19 @@ function multiplierHint(item) {
 }
 
 function getMultiplier(item) {
-  return parseFloat(multipliers[item.id] || '10')
+  return parseFloat(multipliers[item.id] || defaultMultipliers[item.id] || '1')
 }
 
 function patchValue(item) {
   return needsOverdriveState(item) ? parseInt(overdriveState.value, 10) : (needsMultiplier(item) ? getMultiplier(item) : 0)
+}
+
+function startsDamageMeter(item) {
+  return item.id === 'monster_hp' || item.id === 'crocodile_damage'
+}
+
+function ensureDamageMeter() {
+  return DamageMeterGetStatus().catch((err) => emit('status', `伤害记录开启失败: ${String(err)}`, 'error'))
 }
 
 function setOne(item, enabled, id = item.id) {
@@ -71,6 +82,7 @@ function setOne(item, enabled, id = item.id) {
   loading.value = true
   MonsterEnhanceSetPatchValueEnabled(id, enabled, patchValue(item))
     .then((res) => {
+      if (enabled && startsDamageMeter(item)) ensureDamageMeter()
       applyResult(res)
       const verb = id === 'overdrive_state_apply' || (item.id === 'sba_chain_timer' && enabled) ? '已应用' : (enabled ? '已开启' : '已关闭')
       emit('status', `${item.name}${verb}`, 'success')

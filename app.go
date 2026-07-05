@@ -116,6 +116,8 @@ type App struct {
 	faceAccessoryAddr   uintptr
 	unlockAllTrophyAddr uintptr
 	terminusDropAddr    uintptr
+	damageMeterMapping  windows.Handle
+	damageMeterView     uintptr
 	config              AppConfig
 	configLoaded        bool
 }
@@ -140,6 +142,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.saveWindowSize(ctx)
+	a.closeDamageMeter()
 }
 
 func (a *App) saveWindowSize(ctx context.Context) {
@@ -1708,6 +1711,68 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x70, 0x0A, 0x00, 0x00},
 		Patch:    []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
 	},
+}
+
+const damageMeterMappingName = "Local\\GBFRPlayerInfoEditDamageMeterV3"
+const damageMeterSize = 16
+
+type DamageMeterStatus struct {
+	Connected       bool   `json:"connected"`
+	TotalDamage     uint64 `json:"totalDamage"`
+	MonsterDamage   uint64 `json:"monsterDamage"`
+	CrocodileDamage uint64 `json:"crocodileDamage"`
+}
+
+func (a *App) DamageMeterGetStatus() (DamageMeterStatus, error) {
+	if err := a.ensureDamageMeter(); err != nil {
+		return DamageMeterStatus{}, err
+	}
+	monsterDamage := uint64(*(*int64)(unsafe.Pointer(a.damageMeterView)))
+	crocodileDamage := uint64(*(*int64)(unsafe.Pointer(a.damageMeterView + 8)))
+	return DamageMeterStatus{Connected: true, TotalDamage: monsterDamage + crocodileDamage, MonsterDamage: monsterDamage, CrocodileDamage: crocodileDamage}, nil
+}
+
+func (a *App) DamageMeterReset() (DamageMeterStatus, error) {
+	if err := a.ensureDamageMeter(); err != nil {
+		return DamageMeterStatus{}, err
+	}
+	for i := 0; i < damageMeterSize; i++ {
+		*(*byte)(unsafe.Pointer(a.damageMeterView + uintptr(i))) = 0
+	}
+	return DamageMeterStatus{Connected: true}, nil
+}
+
+func (a *App) ensureDamageMeter() error {
+	if a.damageMeterView != 0 {
+		return nil
+	}
+	name, err := windows.UTF16PtrFromString(damageMeterMappingName)
+	if err != nil {
+		return err
+	}
+	mapping, err := windows.CreateFileMapping(windows.InvalidHandle, nil, windows.PAGE_READWRITE, 0, damageMeterSize, name)
+	if err != nil && (mapping == 0 || err != windows.ERROR_ALREADY_EXISTS) {
+		return fmt.Errorf("创建伤害记录共享内存失败: %w", err)
+	}
+	view, err := windows.MapViewOfFile(mapping, windows.FILE_MAP_READ|windows.FILE_MAP_WRITE, 0, 0, damageMeterSize)
+	if err != nil {
+		windows.CloseHandle(mapping)
+		return fmt.Errorf("映射伤害记录共享内存失败: %w", err)
+	}
+	a.damageMeterMapping = mapping
+	a.damageMeterView = view
+	return nil
+}
+
+func (a *App) closeDamageMeter() {
+	if a.damageMeterView != 0 {
+		_ = windows.UnmapViewOfFile(a.damageMeterView)
+		a.damageMeterView = 0
+	}
+	if a.damageMeterMapping != 0 {
+		_ = windows.CloseHandle(a.damageMeterMapping)
+		a.damageMeterMapping = 0
+	}
 }
 
 func (a *App) MonsterEnhanceGetStatus() (MonsterEnhanceResult, error) {

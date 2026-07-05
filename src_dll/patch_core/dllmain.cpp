@@ -8,6 +8,39 @@
 #include <cstring>
 
 static LONG g_autoOverdriveApplied = 0;
+struct DamageMeterState
+{
+    volatile LONG64 monsterDamage;
+    volatile LONG64 crocodileDamage;
+};
+
+static HANDLE g_damageMeterMapping = nullptr;
+static DamageMeterState* g_damageMeter = nullptr;
+static const wchar_t* kDamageMeterName = L"Local\\GBFRPlayerInfoEditDamageMeterV3";
+
+static void InitDamageMeter()
+{
+    if (g_damageMeter) return;
+
+    g_damageMeterMapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DamageMeterState), kDamageMeterName);
+    if (!g_damageMeterMapping) return;
+
+    g_damageMeter = reinterpret_cast<DamageMeterState*>(MapViewOfFile(g_damageMeterMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(DamageMeterState)));
+}
+
+static void CloseDamageMeter()
+{
+    if (g_damageMeter)
+    {
+        UnmapViewOfFile(g_damageMeter);
+        g_damageMeter = nullptr;
+    }
+    if (g_damageMeterMapping)
+    {
+        CloseHandle(g_damageMeterMapping);
+        g_damageMeterMapping = nullptr;
+    }
+}
 
 struct PatchPoint
 {
@@ -155,17 +188,79 @@ static lm_address_t AllocNear(lm_address_t target, size_t size)
     return LM_ADDRESS_BAD;
 }
 
+static void AppendTeamDamageFromRcXEdxR8(lm_byte_t* code, size_t& i, uint8_t damageOffset)
+{
+    code[i++] = 0x44; code[i++] = 0x8B; code[i++] = 0x49; code[i++] = 0x10;                         // mov r9d,[rcx+10]
+    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xC9;                                           // test r9d,r9d
+    code[i++] = 0x7E; size_t jleSkipOldHp = i++;                                                     // jle skip
+    code[i++] = 0x45; code[i++] = 0x89; code[i++] = 0xCA;                                           // mov r10d,r9d
+    code[i++] = 0x41; code[i++] = 0x29; code[i++] = 0xD2;                                           // sub r10d,edx
+    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xC0;                                           // test r8d,r8d
+    code[i++] = 0x74; size_t jzAllowZero = i++;                                                      // jz allow zero
+    code[i++] = 0x41; code[i++] = 0x83; code[i++] = 0xFA; code[i++] = 0x01;                         // cmp r10d,1
+    code[i++] = 0x7D; size_t jgeHaveRemaining = i++;                                                 // jge have remaining
+    code[i++] = 0x41; code[i++] = 0xBA; code[i++] = 0x01; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00; // mov r10d,1
+    code[i++] = 0xEB; size_t jmpHaveRemaining = i++;                                                 // jmp have remaining
+    size_t allowZeroOffset = i;
+    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xD2;                                           // test r10d,r10d
+    code[i++] = 0x7F; size_t jgHaveRemaining = i++;                                                  // jg have remaining
+    code[i++] = 0x45; code[i++] = 0x31; code[i++] = 0xD2;                                           // xor r10d,r10d
+    size_t haveRemainingOffset = i;
+    code[i++] = 0x45; code[i++] = 0x29; code[i++] = 0xD1;                                           // sub r9d,r10d
+    code[i++] = 0x7E; size_t jleSkipDelta = i++;                                                     // jle skip
+    code[i++] = 0x49; code[i++] = 0xBB; uintptr_t meterAddr = reinterpret_cast<uintptr_t>(&g_damageMeter); memcpy(code + i, &meterAddr, sizeof(meterAddr)); i += sizeof(meterAddr); // mov r11,&g_damageMeter
+    code[i++] = 0x4D; code[i++] = 0x8B; code[i++] = 0x1B;                                           // mov r11,[r11]
+    code[i++] = 0x4D; code[i++] = 0x85; code[i++] = 0xDB;                                           // test r11,r11
+    code[i++] = 0x74; size_t jzSkipMeter = i++;                                                      // jz skip
+    code[i++] = 0xF0; code[i++] = 0x4D; code[i++] = 0x01; code[i++] = 0x4B; code[i++] = damageOffset;              // lock add [r11+damageOffset],r9
+    size_t skipOffset = i;
+
+    code[jleSkipOldHp] = static_cast<lm_byte_t>(skipOffset - (jleSkipOldHp + 1));
+    code[jzAllowZero] = static_cast<lm_byte_t>(allowZeroOffset - (jzAllowZero + 1));
+    code[jgeHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jgeHaveRemaining + 1));
+    code[jmpHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jmpHaveRemaining + 1));
+    code[jgHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jgHaveRemaining + 1));
+    code[jleSkipDelta] = static_cast<lm_byte_t>(skipOffset - (jleSkipDelta + 1));
+    code[jzSkipMeter] = static_cast<lm_byte_t>(skipOffset - (jzSkipMeter + 1));
+}
+
+static void AppendTeamDamageFromRsiEdi(lm_byte_t* code, size_t& i, uint8_t damageOffset)
+{
+    code[i++] = 0x44; code[i++] = 0x8B; code[i++] = 0x4E; code[i++] = 0x10;                         // mov r9d,[rsi+10]
+    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xC9;                                           // test r9d,r9d
+    code[i++] = 0x7E; size_t jleSkipOldHp = i++;                                                     // jle skip
+    code[i++] = 0x45; code[i++] = 0x89; code[i++] = 0xCA;                                           // mov r10d,r9d
+    code[i++] = 0x41; code[i++] = 0x29; code[i++] = 0xFA;                                           // sub r10d,edi
+    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xD2;                                           // test r10d,r10d
+    code[i++] = 0x7F; size_t jgHaveRemaining = i++;                                                  // jg have remaining
+    code[i++] = 0x45; code[i++] = 0x31; code[i++] = 0xD2;                                           // xor r10d,r10d
+    size_t haveRemainingOffset = i;
+    code[i++] = 0x45; code[i++] = 0x29; code[i++] = 0xD1;                                           // sub r9d,r10d
+    code[i++] = 0x7E; size_t jleSkipDelta = i++;                                                     // jle skip
+    code[i++] = 0x49; code[i++] = 0xBB; uintptr_t meterAddr = reinterpret_cast<uintptr_t>(&g_damageMeter); memcpy(code + i, &meterAddr, sizeof(meterAddr)); i += sizeof(meterAddr); // mov r11,&g_damageMeter
+    code[i++] = 0x4D; code[i++] = 0x8B; code[i++] = 0x1B;                                           // mov r11,[r11]
+    code[i++] = 0x4D; code[i++] = 0x85; code[i++] = 0xDB;                                           // test r11,r11
+    code[i++] = 0x74; size_t jzSkipMeter = i++;                                                      // jz skip
+    code[i++] = 0xF0; code[i++] = 0x4D; code[i++] = 0x01; code[i++] = 0x4B; code[i++] = damageOffset;              // lock add [r11+damageOffset],r9
+    size_t skipOffset = i;
+
+    code[jleSkipOldHp] = static_cast<lm_byte_t>(skipOffset - (jleSkipOldHp + 1));
+    code[jgHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jgHaveRemaining + 1));
+    code[jleSkipDelta] = static_cast<lm_byte_t>(skipOffset - (jleSkipDelta + 1));
+    code[jzSkipMeter] = static_cast<lm_byte_t>(skipOffset - (jzSkipMeter + 1));
+}
+
 static bool PatchDamageHook(lm_address_t target, wchar_t* message, size_t messageSize)
 {
     float scale = ReadScale();
-    lm_address_t cave = AllocNear(target, 128);
+    lm_address_t cave = AllocNear(target, 256);
     if (cave == LM_ADDRESS_BAD)
     {
         swprintf_s(message, messageSize, L"alloc near failed: monster hp");
         return false;
     }
 
-    lm_byte_t code[64]{};
+    lm_byte_t code[160]{};
     size_t i = 0;
     code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xEC; code[i++] = 0x28;                         // sub rsp,28
     code[i++] = 0x0F; code[i++] = 0x11; code[i++] = 0x04; code[i++] = 0x24;                         // movups [rsp],xmm0
@@ -173,6 +268,7 @@ static bool PatchDamageHook(lm_address_t target, wchar_t* message, size_t messag
     code[i++] = 0xF3; code[i++] = 0x0F; code[i++] = 0x59; code[i++] = 0x05;                         // mulss xmm0,[rip+disp32]
     size_t scaleDisp = i; i += 4;
     code[i++] = 0xF3; code[i++] = 0x0F; code[i++] = 0x2C; code[i++] = 0xD0;                         // cvttss2si edx,xmm0
+    AppendTeamDamageFromRcXEdxR8(code, i, 0);
     code[i++] = 0x0F; code[i++] = 0x10; code[i++] = 0x04; code[i++] = 0x24;                         // movups xmm0,[rsp]
     code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xC4; code[i++] = 0x28;                         // add rsp,28
     code[i++] = 0x01; code[i++] = 0x91; code[i++] = 0xB8; code[i++] = 0x15; code[i++] = 0x00; code[i++] = 0x00; // add [rcx+15B8],edx
@@ -311,7 +407,7 @@ static bool PatchCrocodileDamageHook(lm_address_t target, lm_address_t moduleBas
         return false;
     }
 
-    lm_byte_t code[128]{};
+    lm_byte_t code[192]{};
     size_t i = 0;
     code[i++] = 0x50;                                                                               // push rax
     code[i++] = 0x51;                                                                               // push rcx
@@ -329,6 +425,7 @@ static bool PatchCrocodileDamageHook(lm_address_t target, lm_address_t moduleBas
     code[i++] = 0xBF; code[i++] = 0x01; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;       // mov edi,1
 
     size_t originalOffset = i;
+    AppendTeamDamageFromRsiEdi(code, i, 8);
     code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xC4; code[i++] = 0x08;                         // add rsp,8
     code[i++] = 0x59;                                                                               // pop rcx
     code[i++] = 0x58;                                                                               // pop rax
@@ -660,6 +757,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 
 static DWORD WINAPI InitThread(LPVOID)
 {
+    InitDamageMeter();
+
     wchar_t message[256]{};
     ApplyMonsterPatches(message, _countof(message));
 
@@ -685,6 +784,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         }
         break;
     case DLL_PROCESS_DETACH:
+        CloseDamageMeter();
         break;
     }
     return TRUE;
