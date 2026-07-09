@@ -71,11 +71,31 @@ var overLimitLevelOptions = []OverLimitOption{
 }
 
 var (
-	overLimitSelectedPattern = []byte{0x4C, 0x8B, 0x45, 0xC0, 0x4D, 0x85, 0xC0, 0x0F, 0x84, 0, 0, 0, 0, 0x49, 0, 0, 0, 0, 0, 0, 0x0F, 0x84, 0, 0, 0, 0, 0x41, 0, 0}
-	overLimitSelectedMask    = []bool{true, true, true, true, true, true, true, true, true, false, false, false, false, true, false, false, false, false, false, false, true, true, false, false, false, false, true, false, false}
-	overLimitSelectedOrig    = []byte{0x4C, 0x8B, 0x45, 0xC0, 0x4D, 0x85, 0xC0}
-	overLimitCommitPattern   = []byte{0xE8, 0, 0, 0, 0, 0x41, 0x80, 0x64, 0xB7, 0, 0}
-	overLimitCommitMask      = []bool{true, false, false, false, false, true, true, true, true, false, false}
+	overLimitSelectedPattern = []byte{
+		0x8B, 0x03, 0x89, 0x02, 0x8B, 0x43, 0x04, 0x89, 0x42, 0x04,
+		0x48, 0x8B, 0x43, 0x08, 0x48, 0x89, 0x42, 0x08,
+		0x49, 0x83, 0x86, 0xD8, 0x0A, 0x00, 0x00, 0x10,
+		0xEB, 0, 0x48, 0x85, 0xF6,
+	}
+	overLimitSelectedMask = []bool{
+		true, true, true, true, true, true, true, true, true, true,
+		true, true, true, true, true, true, true, true,
+		true, true, true, true, true, true, true, true,
+		true, false, true, true, true,
+	}
+	overLimitSelectedOrig  = []byte{0x8B, 0x03, 0x89, 0x02, 0x8B, 0x43, 0x04}
+	overLimitCommitPattern = []byte{
+		0x48, 0xC7, 0x85, 0xE8, 0x0F, 0x00, 0x00, 0x2B, 0x00, 0x00, 0x00,
+		0x48, 0x8D, 0x4D, 0xB8, 0x48, 0x8D, 0x95, 0xE0, 0x0F, 0x00, 0x00,
+		0xC5, 0xF8, 0x77, 0xE8, 0, 0, 0, 0,
+		0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x48, 0x8B, 0x4D, 0xB8, 0x48, 0x89, 0x0D, 0, 0, 0, 0,
+	}
+	overLimitCommitMask = []bool{
+		true, true, true, true, true, true, true, true, true, true, true,
+		true, true, true, true, true, true, true, true, true, true, true,
+		true, true, true, true, false, false, false, false,
+		true, true, true, false, false, false, false, true, true, true, true, true, true, true, false, false, false, false,
+	}
 )
 
 const (
@@ -83,6 +103,14 @@ const (
 	overLimitSlotStride     = uintptr(0x10)
 	overLimitSlotCount      = 4
 )
+
+func overLimitSelectedHookedMask() []bool {
+	mask := append([]bool{}, overLimitSelectedMask...)
+	for i := 0; i < len(overLimitSelectedOrig) && i < len(mask); i++ {
+		mask[i] = false
+	}
+	return mask
+}
 
 func (a *App) OverLimitGetOptions() map[string][]OverLimitOption {
 	return map[string][]OverLimitOption{
@@ -97,8 +125,11 @@ func (a *App) OverLimitScan() (OverLimitStatus, error) {
 	}
 	addr, err := a.scanPatternUnique(overLimitSelectedPattern, overLimitSelectedMask, "上限突破角色指针特征")
 	if err != nil {
-		a.overLimitHookAddr = 0
-		return OverLimitStatus{}, err
+		addr, err = a.scanPatternUnique(overLimitSelectedPattern, overLimitSelectedHookedMask(), "上限突破角色指针特征")
+		if err != nil {
+			a.overLimitHookAddr = 0
+			return OverLimitStatus{}, err
+		}
 	}
 	a.overLimitHookAddr = addr
 	return a.readOverLimitStatus()
@@ -171,6 +202,7 @@ func (a *App) OverLimitSetSlot(update OverLimitUpdate) (OverLimitStatus, error) 
 	if !ok {
 		return OverLimitStatus{}, fmt.Errorf("无效的上限突破属性: 0x%08X", update.Attribute)
 	}
+	effectID := overLimitEffectID(update.Attribute)
 	if update.Value <= 0 {
 		update.Value = maxValue
 	}
@@ -192,6 +224,9 @@ func (a *App) OverLimitSetSlot(update OverLimitUpdate) (OverLimitStatus, error) 
 	if err := writeUint32Remote(a.hProcess, base+4, update.Level); err != nil {
 		return OverLimitStatus{}, fmt.Errorf("写入槽位 %d 等级失败: %w", update.Index+1, err)
 	}
+	if err := writeUint32Remote(a.hProcess, base+8, effectID); err != nil {
+		return OverLimitStatus{}, fmt.Errorf("写入槽位 %d 效果ID失败: %w", update.Index+1, err)
+	}
 	if err := writeFloat32Remote(a.hProcess, base+0xC, update.Value/scale); err != nil {
 		return OverLimitStatus{}, fmt.Errorf("写入槽位 %d 数值失败: %w", update.Index+1, err)
 	}
@@ -206,16 +241,7 @@ func (a *App) OverLimitCommit() (OverLimitStatus, error) {
 	if status.SelectedAddr == 0 {
 		return OverLimitStatus{}, fmt.Errorf("请先在游戏突破界面加载角色")
 	}
-	commitAddr, err := a.findOverLimitCommitAddr()
-	if err != nil {
-		return OverLimitStatus{}, err
-	}
-	for off := uintptr(0); off <= 0x40; off += 4 {
-		if err := a.callRemoteOneArg(commitAddr, uintptr(status.SelectedAddr)+off); err != nil {
-			return OverLimitStatus{}, fmt.Errorf("保存上限突破修改失败: %w", err)
-		}
-	}
-	return a.readOverLimitStatus()
+	return status, nil
 }
 
 func (a *App) readOverLimitStatus() (OverLimitStatus, error) {
@@ -235,7 +261,7 @@ func (a *App) readOverLimitStatus() (OverLimitStatus, error) {
 	selected := uintptr(0)
 	if hooked {
 		if a.overLimitCaveAddr == 0 {
-			return OverLimitStatus{}, fmt.Errorf("上限突破 hook 已存在，但本工具没有代码洞地址，请重启游戏后重新开启")
+			a.overLimitCaveAddr = relJumpTarget(a.overLimitHookAddr, buf)
 		}
 		if err := readProcessMemory(a.hProcess, a.overLimitCaveAddr+overLimitCaveDataOffset, unsafe.Pointer(&selected), unsafe.Sizeof(selected)); err != nil {
 			return OverLimitStatus{}, fmt.Errorf("读取上限突破角色指针失败: %w", err)
@@ -264,12 +290,14 @@ func (a *App) readOverLimitStatus() (OverLimitStatus, error) {
 }
 
 func buildOverLimitSelectedCave(cave uintptr, returnAddr uintptr) ([]byte, error) {
-	code := make([]byte, 0, 0x48)
-	code = append(code, 0x4C, 0x8B, 0x45, 0xC0) // mov r8,[rbp-40]
-	code = append(code, 0x49, 0xBB)             // mov r11, data
+	code := make([]byte, 0, 0x80)
+	code = append(code, 0x49, 0xBA) // mov r10,data
 	code = binary.LittleEndian.AppendUint64(code, uint64(cave+overLimitCaveDataOffset))
-	code = append(code, 0x4D, 0x89, 0x03) // mov [r11],r8
-	code = append(code, 0x4D, 0x85, 0xC0) // test r8,r8
+	code = append(code, 0x4C, 0x8B, 0xDA) // mov r11,rdx
+	code = append(code, 0x49, 0x29, 0xDB) // sub r11,rbx
+	code = append(code, 0x49, 0x01, 0xF3) // add r11,rsi
+	code = append(code, 0x4D, 0x89, 0x1A) // mov [r10],r11
+	code = append(code, overLimitSelectedOrig...)
 	jmp, err := makeRelJump(cave+uintptr(len(code)), returnAddr, 5)
 	if err != nil {
 		return nil, err
@@ -298,6 +326,10 @@ func makeRelJump(src uintptr, dst uintptr, size int) ([]byte, error) {
 	return patch, nil
 }
 
+func relJumpTarget(src uintptr, buf []byte) uintptr {
+	return uintptr(int64(src+5) + int64(int32(binary.LittleEndian.Uint32(buf[1:5]))))
+}
+
 func readOverLimitSlots(h windows.Handle, base uintptr) ([]OverLimitSlot, error) {
 	slots := make([]OverLimitSlot, 0, overLimitSlotCount)
 	for i := 0; i < overLimitSlotCount; i++ {
@@ -324,13 +356,17 @@ func (a *App) findOverLimitCommitAddr() (uintptr, error) {
 	if a.overLimitCommitAddr != 0 {
 		return a.overLimitCommitAddr, nil
 	}
-	callAddr, err := a.scanPatternUnique(overLimitCommitPattern, overLimitCommitMask, "上限突破保存函数特征")
+	addr, err := a.scanPatternUnique(overLimitCommitPattern, overLimitCommitMask, "上限突破保存函数特征")
 	if err != nil {
 		return 0, err
 	}
+	callAddr := addr + 0x19
 	buf := make([]byte, 5)
 	if err := readProcessMemory(a.hProcess, callAddr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
 		return 0, fmt.Errorf("读取上限突破保存 call 失败: %w", err)
+	}
+	if buf[0] != 0xE8 {
+		return 0, fmt.Errorf("上限突破保存 call 字节异常: %s", bytesToHex(buf))
 	}
 	target := uintptr(int64(callAddr+5) + int64(int32(binary.LittleEndian.Uint32(buf[1:5]))))
 	a.overLimitCommitAddr = target
@@ -399,6 +435,15 @@ func overLimitValueSpec(v uint32) (float32, float32, bool) {
 		}
 	}
 	return 0, 1, false
+}
+
+func overLimitEffectID(v uint32) uint32 {
+	for _, opt := range overLimitAttributeOptions {
+		if opt.ID == v {
+			return opt.EffectID
+		}
+	}
+	return 0
 }
 
 func overLimitAttributeName(v uint32) string {

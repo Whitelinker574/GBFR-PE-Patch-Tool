@@ -81,13 +81,20 @@ function enable() {
 }
 
 function refresh() {
-  run(() => OverLimitGetStatus(), '')
+  loading.value = true
+  OverLimitGetStatus()
+    .then((res) => {
+      applyStatus(res)
+      emit('status', res?.selectedAddr ? '上限突破角色数据已刷新' : '已刷新，尚未读取到角色数据；请在突破界面切换一次角色或重新打开突破界面', res?.selectedAddr ? 'success' : 'error')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { loading.value = false })
 }
 
 function writeSaveAll() {
   run(
     () => edits.reduce((p, edit, index) => p.then(() => OverLimitSetSlot({ index, attribute: Number(edit.attribute), level: Number(edit.level), value: Number(edit.value) })), Promise.resolve()).then(() => OverLimitCommit()),
-    '四个上限突破槽位已写入并保存'
+    '四个上限突破槽位已写入，请返回游戏确认保存'
   )
 }
 </script>
@@ -101,10 +108,23 @@ function writeSaveAll() {
         <span class="hint">读取当前突破界面四个能力槽</span>
       </div>
 
+      <div class="memory-card guide-card">
+        <div class="memory-header">
+          <span class="memory-title">使用提示</span>
+          <span class="memory-hint">按顺序操作</span>
+        </div>
+        <ol class="guide-list">
+          <li>启动游戏后开启读取，确保角色任意突破过一次否则无法识别</li>
+          <li>先进行一次 3 级突破，停在 “Over the limit!” 界面。</li>
+          <li>点击刷新，设置词条后写入，回到游戏确认。</li>
+          <li>再次进行 3 级突破，但不确认替换之前突破，直接取消。</li>
+          <li>以上操作完成后存档即可持久保存。</li>
+        </ol>
+      </div>
+
       <div class="memory-card" :class="{ active: status.hooked }">
         <div class="memory-header">
           <span class="memory-title">突破界面读取</span>
-          <span class="memory-hint">一次写入四槽并调用保存函数</span>
         </div>
         <div class="memory-info">
           <span>RVA: {{ formatHex(status.rva) }}</span>
@@ -115,7 +135,7 @@ function writeSaveAll() {
           <button class="btn-batch" @click="enable" :disabled="loading || status.hooked">开启读取</button>
           <button class="btn-refresh" @click="refresh" :disabled="loading">刷新</button>
           <button class="btn-sort" @click="scan" :disabled="loading">重新扫描</button>
-          <button class="btn-batch" @click="writeSaveAll" :disabled="loading || !status.selectedAddr">写入保存</button>
+          <button class="btn-batch" @click="writeSaveAll" :disabled="loading || !status.selectedAddr">写入结果</button>
         </div>
         <div class="memory-bytes">{{ status.currentBytes || '未定位' }}</div>
       </div>
@@ -172,6 +192,9 @@ function writeSaveAll() {
 .memory-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.62); }
 .memory-hint, .memory-info { font-size:0.68rem; color:rgba(255,255,255,0.32); }
 .memory-bytes { font-size:0.66rem; color:rgba(255,255,255,0.24); font-family:'Courier New',monospace; word-break:break-all; }
+.guide-card { gap:10px; }
+.guide-list { margin:0; padding-left:18px; color:rgba(255,255,255,0.46); font-size:0.72rem; line-height:1.65; }
+.guide-list li { padding-left:2px; }
 .slot-list { display:flex; flex-direction:column; gap:10px; }
 .slot-card::after { display:none; }
 .slot-grid { display:grid; grid-template-columns:minmax(210px, 1fr) 96px 78px; gap:8px; align-items:end; }
