@@ -8,6 +8,7 @@ import (
 
 const (
 	sigilMemoryHookRVA        = uintptr(0x345157)
+	sigilMemorySaveRVA        = uintptr(0x79D820)
 	sigilMemoryHookSize       = 8
 	sigilMemoryCaveDataOffset = uintptr(0x40)
 )
@@ -41,6 +42,7 @@ type SigilMemoryStatus struct {
 	Address             uint64 `json:"address"`
 	RVA                 uint64 `json:"rva"`
 	SelectedAddr        uint64 `json:"selectedAddr"`
+	SaveRVA             uint64 `json:"saveRva"`
 	CurrentBytes        string `json:"currentBytes"`
 	SigilHash           uint32 `json:"sigilHash"`
 	SigilName           string `json:"sigilName"`
@@ -242,7 +244,20 @@ func (a *App) SigilMemoryUpdate(update SigilMemoryUpdate) (SigilMemoryStatus, er
 			return SigilMemoryStatus{}, fmt.Errorf("写入%s失败: %w", write.name, err)
 		}
 	}
+	if err := a.saveSigilMemory(base); err != nil {
+		return SigilMemoryStatus{}, err
+	}
 	return a.readSigilMemoryStatus()
+}
+
+func (a *App) saveSigilMemory(base uintptr) error {
+	fn := a.moduleBase + sigilMemorySaveRVA
+	for offset := uintptr(0); offset <= 0x20; offset += 4 {
+		if err := a.callRemoteOneArg(fn, base+offset); err != nil {
+			return fmt.Errorf("保存因子字段 +0x%02X 失败: %w", offset, err)
+		}
+	}
+	return nil
 }
 
 func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
@@ -263,6 +278,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 		Hooked:       hooked,
 		Address:      uint64(a.sigilMemoryHookAddr),
 		RVA:          uint64(a.sigilMemoryHookAddr - a.moduleBase),
+		SaveRVA:      uint64(sigilMemorySaveRVA),
 		CurrentBytes: bytesToHex(buf),
 	}
 	if !hooked {

@@ -60,8 +60,9 @@ async function write() {
   if (!status.hooked || !status.selectedAddr) { show('请先开启读取，并在游戏内选中一个因子', 'error'); return }
   applying.value = true
   try {
-    applyStatus(await SigilMemoryUpdate({ ...form }), true)
-    show('选中因子已写入。切换选择后可刷新确认。', 'success')
+    const next = await SigilMemoryUpdate({ ...form })
+    applyStatus(next, true)
+    show(`已写入并提交保存: ${next.sigilName}`, 'success')
   } catch (e) { show(String(e), 'error') }
   finally { applying.value = false }
 }
