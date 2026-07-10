@@ -119,6 +119,8 @@ type App struct {
 	overLimitCommitAddr uintptr
 	unlockAllTrophyAddr uintptr
 	terminusDropAddr    uintptr
+	sigilMemoryHookAddr uintptr
+	sigilMemoryCaveAddr uintptr
 	damageMeterMapping  windows.Handle
 	damageMeterView     uintptr
 	damageOverlay       *damageOverlayWindow
@@ -1003,6 +1005,8 @@ func (a *App) CharaDetach() {
 	a.overLimitCommitAddr = 0
 	a.unlockAllTrophyAddr = 0
 	a.terminusDropAddr = 0
+	a.sigilMemoryHookAddr = 0
+	a.sigilMemoryCaveAddr = 0
 }
 
 // CharaGetAll reads all character counts, returns valid characters (skipping empty slots).

@@ -3,6 +3,7 @@ import { reactive, ref, computed, onMounted } from 'vue'
 import { AutoDetect, SetExePath, GetStatus, PatchFile, BackupFile, RestoreFile } from '../../wailsjs/go/main/App'
 import { WindowMinimise, Quit } from '../../wailsjs/runtime/runtime'
 import SigilGenerator from './SigilGenerator.vue'
+import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
 import WrightstoneGenerator from './WrightstoneGenerator.vue'
 import SaveEditor from './SaveEditor.vue'
 import CharaStats from './CharaStats.vue'
@@ -154,6 +155,9 @@ function showStatus(msg, type) {
       <button class="tab-btn" :class="{ active: activeTab === 'sigil' }" @click="activeTab = 'sigil'">
         因子生成
       </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'sigilMemory' }" @click="activeTab = 'sigilMemory'">
+        因子生成-新
+      </button>
       <button class="tab-btn" :class="{ active: activeTab === 'wrightstone' }" @click="activeTab = 'wrightstone'">
         祝福生成
       </button>
@@ -243,6 +247,10 @@ function showStatus(msg, type) {
 
     <main v-else-if="activeTab === 'sigil'" class="container" style="--wails-draggable:no-drag">
       <SigilGenerator @status="showStatus" />
+    </main>
+
+    <main v-else-if="activeTab === 'sigilMemory'" class="container" style="--wails-draggable:no-drag">
+      <SigilMemoryGenerator @status="showStatus" />
     </main>
 
     <main v-else-if="activeTab === 'wrightstone'" class="container" style="--wails-draggable:no-drag">
