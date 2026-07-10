@@ -24,7 +24,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.7"
+	appVersion  = "v1.7.1"
 	repoOwner   = "BitterG"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -897,6 +897,50 @@ type CharaInfo struct {
 	Count int32  `json:"count"`
 }
 
+type CurrencyInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	RVA     uint64 `json:"rva"`
+	Offset  uint64 `json:"offset"`
+	Address uint64 `json:"address"`
+	Value   int32  `json:"value"`
+}
+
+type PotionInfo struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	RVA     uint64   `json:"rva"`
+	Offsets []uint64 `json:"offsets"`
+	Address uint64   `json:"address"`
+	Value   int32    `json:"value"`
+}
+
+type currencyDef struct {
+	ID     string
+	Name   string
+	RVA    uintptr
+	Offset uintptr
+}
+
+var currencyDefs = []currencyDef{
+	{ID: "msp", Name: "MSP", RVA: 0x0701E220, Offset: 0x98},
+	{ID: "rupies", Name: "金币", RVA: 0x0701E220, Offset: 0x30},
+	{ID: "purple_msp", Name: "紫MSP", RVA: 0x07C49CB0, Offset: 0x9C},
+	{ID: "cp_extreme_void", Name: "CP(极沌空域)", RVA: 0x07C23E38, Offset: 0x24},
+}
+
+type potionDef struct {
+	ID      string
+	Name    string
+	RVA     uintptr
+	Offsets []uintptr
+}
+
+var potionDefs = []potionDef{
+	{ID: "revive", Name: "复活药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x38}},
+	{ID: "group_chat", Name: "群疗药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x18}},
+}
+
 // CharaAttach finds the game process, opens a handle, reads module base and manager pointer.
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	// Close existing handle if any
@@ -1055,6 +1099,155 @@ func (a *App) CharaSetAll(value int) (int, error) {
 	return modified, nil
 }
 
+func (a *App) currencyAddress(def currencyDef) (uintptr, error) {
+	if a.hProcess == 0 || a.moduleBase == 0 {
+		return 0, fmt.Errorf("未连接游戏进程")
+	}
+	var base uintptr
+	ptrAddr := a.moduleBase + def.RVA
+	if err := readProcessMemory(a.hProcess, ptrAddr, unsafe.Pointer(&base), unsafe.Sizeof(base)); err != nil {
+		return 0, fmt.Errorf("读取%s指针失败: %w", def.Name, err)
+	}
+	if base == 0 {
+		return 0, fmt.Errorf("%s指针为空，请确保已进入游戏存档", def.Name)
+	}
+	return base + def.Offset, nil
+}
+
+func (a *App) readCurrency(def currencyDef) (CurrencyInfo, error) {
+	addr, err := a.currencyAddress(def)
+	if err != nil {
+		return CurrencyInfo{}, err
+	}
+	var value int32
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value)); err != nil {
+		return CurrencyInfo{}, fmt.Errorf("读取%s失败: %w", def.Name, err)
+	}
+	return CurrencyInfo{ID: def.ID, Name: def.Name, RVA: uint64(def.RVA), Offset: uint64(def.Offset), Address: uint64(addr), Value: value}, nil
+}
+
+// CurrencyGetAll reads all supported currency values from stable pointer paths.
+func (a *App) CurrencyGetAll() ([]CurrencyInfo, error) {
+	result := make([]CurrencyInfo, 0, len(currencyDefs))
+	for _, def := range currencyDefs {
+		info, err := a.readCurrency(def)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, info)
+	}
+	return result, nil
+}
+
+// CurrencySetOne writes one supported currency value by id.
+func (a *App) CurrencySetOne(id string, value int) (CurrencyInfo, error) {
+	id = strings.TrimSpace(id)
+	if value < 0 || value > math.MaxInt32 {
+		return CurrencyInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
+	}
+	for _, def := range currencyDefs {
+		if def.ID != id {
+			continue
+		}
+		addr, err := a.currencyAddress(def)
+		if err != nil {
+			return CurrencyInfo{}, err
+		}
+		newVal := int32(value)
+		if err := writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&newVal), unsafe.Sizeof(newVal)); err != nil {
+			return CurrencyInfo{}, fmt.Errorf("写入%s失败: %w", def.Name, err)
+		}
+		return a.readCurrency(def)
+	}
+	return CurrencyInfo{}, fmt.Errorf("未知货币: %s", id)
+}
+
+func (a *App) potionAddress(def potionDef) (uintptr, error) {
+	if a.hProcess == 0 || a.moduleBase == 0 {
+		return 0, fmt.Errorf("未连接游戏进程")
+	}
+	if len(def.Offsets) == 0 {
+		return 0, fmt.Errorf("%s指针路径为空", def.Name)
+	}
+	var addr uintptr
+	ptrAddr := a.moduleBase + def.RVA
+	if err := readProcessMemory(a.hProcess, ptrAddr, unsafe.Pointer(&addr), unsafe.Sizeof(addr)); err != nil {
+		return 0, fmt.Errorf("读取%s指针失败: %w", def.Name, err)
+	}
+	if addr == 0 {
+		return 0, fmt.Errorf("%s指针为空，请确保已进入游戏存档", def.Name)
+	}
+	for i, offset := range def.Offsets {
+		addr += offset
+		if i == len(def.Offsets)-1 {
+			return addr, nil
+		}
+		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&addr), unsafe.Sizeof(addr)); err != nil {
+			return 0, fmt.Errorf("读取%s指针链失败: %w", def.Name, err)
+		}
+		if addr == 0 {
+			return 0, fmt.Errorf("%s指针链为空，请确保已进入游戏存档", def.Name)
+		}
+	}
+	return addr, nil
+}
+
+func potionOffsetsJSON(offsets []uintptr) []uint64 {
+	result := make([]uint64, 0, len(offsets))
+	for _, offset := range offsets {
+		result = append(result, uint64(offset))
+	}
+	return result
+}
+
+func (a *App) readPotion(def potionDef) (PotionInfo, error) {
+	addr, err := a.potionAddress(def)
+	if err != nil {
+		return PotionInfo{}, err
+	}
+	var value int32
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value)); err != nil {
+		return PotionInfo{}, fmt.Errorf("读取%s失败: %w", def.Name, err)
+	}
+	return PotionInfo{ID: def.ID, Name: def.Name, RVA: uint64(def.RVA), Offsets: potionOffsetsJSON(def.Offsets), Address: uint64(addr), Value: value}, nil
+}
+
+// PotionGetAll reads all supported potion values from stable pointer chains.
+func (a *App) PotionGetAll() ([]PotionInfo, error) {
+	result := make([]PotionInfo, 0, len(potionDefs))
+	for _, def := range potionDefs {
+		info, err := a.readPotion(def)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, info)
+	}
+	return result, nil
+}
+
+// PotionSetOne writes one supported potion value by id.
+func (a *App) PotionSetOne(id string, value int) (PotionInfo, error) {
+	id = strings.TrimSpace(id)
+	if value < 0 || value > math.MaxInt32 {
+		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
+	}
+	for _, def := range potionDefs {
+		if def.ID != id {
+			continue
+		}
+		addr, err := a.potionAddress(def)
+		if err != nil {
+			return PotionInfo{}, err
+		}
+		newVal := int32(value)
+		if err := writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&newVal), unsafe.Sizeof(newVal)); err != nil {
+			return PotionInfo{}, fmt.Errorf("写入%s失败: %w", def.Name, err)
+		}
+		return a.readPotion(def)
+	}
+	return PotionInfo{}, fmt.Errorf("未知药水: %s", id)
+}
+
 // ── 角色脸部符文显示 (运行时 JE/JNE 切换) ──
 
 var faceAccessoryPattern = []byte{
@@ -1200,6 +1393,59 @@ func (a *App) readInfiniteChallengeStatus() (InfiniteChallengeStatus, error) {
 	return InfiniteChallengeStatus{
 		RVA:          uint64(infiniteChallengeRVA),
 		Enabled:      bytesEqual(buf, infiniteChallengePatch),
+		CurrentBytes: bytesToHex(buf),
+	}, nil
+}
+
+// ── 升级/强化材料消耗 (运行时 NOP add [r14+04],esi) ──
+
+type MaterialConsumeStatus struct {
+	RVA          uint64 `json:"rva"`
+	Enabled      bool   `json:"enabled"`
+	CurrentBytes string `json:"currentBytes"`
+}
+
+const materialConsumeRVA = uintptr(0x356621)
+
+var (
+	materialConsumeOrig  = []byte{0x41, 0x01, 0x76, 0x04}
+	materialConsumePatch = []byte{0x90, 0x90, 0x90, 0x90}
+)
+
+func (a *App) MaterialConsumeGetStatus() (MaterialConsumeStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	return a.readMaterialConsumeStatus()
+}
+
+func (a *App) MaterialConsumeSetEnabled(enabled bool) (MaterialConsumeStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	patch := materialConsumeOrig
+	if enabled {
+		patch = materialConsumePatch
+	}
+	addr := a.moduleBase + materialConsumeRVA
+	if err := writeCodeMemory(a.hProcess, addr, patch); err != nil {
+		return MaterialConsumeStatus{}, fmt.Errorf("写入升级/强化材料消耗失败: %w", err)
+	}
+	return a.readMaterialConsumeStatus()
+}
+
+func (a *App) readMaterialConsumeStatus() (MaterialConsumeStatus, error) {
+	addr := a.moduleBase + materialConsumeRVA
+	buf := make([]byte, len(materialConsumeOrig))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return MaterialConsumeStatus{}, fmt.Errorf("读取升级/强化材料消耗指令失败: %w", err)
+	}
+	if !bytesEqual(buf, materialConsumeOrig) && !bytesEqual(buf, materialConsumePatch) {
+		return MaterialConsumeStatus{}, fmt.Errorf("升级/强化材料消耗指令字节异常: %s", bytesToHex(buf))
+	}
+	return MaterialConsumeStatus{
+		RVA:          uint64(materialConsumeRVA),
+		Enabled:      bytesEqual(buf, materialConsumePatch),
 		CurrentBytes: bytesToHex(buf),
 	}, nil
 }

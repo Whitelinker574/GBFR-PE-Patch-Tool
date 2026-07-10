@@ -149,7 +149,7 @@ function showStatus(msg, type) {
 
     <div class="tab-bar" style="--wails-draggable:no-drag">
       <button class="tab-btn" :class="{ active: activeTab === 'patch' }" @click="activeTab = 'patch'">
-        补丁修改
+        补丁修改（未修复）
       </button>
       <button class="tab-btn" :class="{ active: activeTab === 'sigil' }" @click="activeTab = 'sigil'">
         因子生成
@@ -170,7 +170,7 @@ function showStatus(msg, type) {
         上限突破
       </button>
       <button class="tab-btn" :class="{ active: activeTab === 'monster' }" @click="activeTab = 'monster'">
-        怪物增强
+        怪物增强（未修复）
       </button>
     </div>
 

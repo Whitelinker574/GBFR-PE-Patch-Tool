@@ -1,9 +1,12 @@
 <script setup>
 import { onBeforeUnmount, reactive, ref } from 'vue'
 import { CharaAttach, CharaDetach,
+         CurrencyGetAll, CurrencySetOne,
+         PotionGetAll, PotionSetOne,
          CountdownGetStatus, CountdownScan, CountdownSet,
          FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
          InfiniteChallengeGetStatus, InfiniteChallengeSetEnabled,
+         MaterialConsumeGetStatus, MaterialConsumeSetEnabled,
          TerminusDropGetStatus, TerminusDropScan, TerminusDropSetEnabled,
          UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
          OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
@@ -25,6 +28,8 @@ const faceAccessoryStatus = reactive({ found: false, address: 0, rva: 0, hidden:
 const faceAccessoryLoading = ref(false)
 const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const infiniteChallengeLoading = ref(false)
+const materialConsumeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
+const materialConsumeLoading = ref(false)
 const terminusDropStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
 const terminusDropLoading = ref(false)
 const unlockAllTrophyStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
@@ -36,8 +41,15 @@ const updateInfo = reactive({ currentVersion: 'v1.5.0', latestVersion: '', hasUp
 const updateLoading = ref(false)
 const damageMeterStatus = reactive({ connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
 const damageMeterLoading = ref(false)
+const currencies = ref([])
+const currencyInputs = reactive({})
+const currencyLoading = ref(false)
+const potions = ref([])
+const potionInputs = reactive({})
+const potionLoading = ref(false)
 const damageOverlayEnabled = ref(false)
 const damageOverlayFontSize = ref(Number(localStorage.getItem('gbfrDamageOverlayFontSize') || 48))
+const showOutdatedFeatures = false
 let damageMeterTimer = 0
 
 function getMonsterEnhanceMultiplier(id) {
@@ -54,13 +66,20 @@ function connect() {
     .then((res) => {
       connected.value = true
       Object.assign(info, res)
-      loadCountdownStatus()
-      loadFaceAccessoryStatus()
-      loadInfiniteChallengeStatus()
-      loadTerminusDropStatus()
-      loadUnlockAllTrophyStatus()
-      loadOtherSkinPurpleRuneStatus()
-      startDamageMeterTimer()
+      if (showOutdatedFeatures) {
+        loadCountdownStatus()
+        loadFaceAccessoryStatus()
+      }
+      if (showOutdatedFeatures) loadInfiniteChallengeStatus()
+      loadMaterialConsumeStatus()
+      if (showOutdatedFeatures) {
+        loadTerminusDropStatus()
+        loadUnlockAllTrophyStatus()
+        loadOtherSkinPurpleRuneStatus()
+      }
+      loadCurrencyValues()
+      loadPotionValues()
+      if (showOutdatedFeatures) startDamageMeterTimer()
     })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { loading.value = false })
@@ -75,10 +94,15 @@ function disconnect() {
       Object.assign(countdownStatus, { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
       Object.assign(faceAccessoryStatus, { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
       Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, currentBytes: '' })
+      Object.assign(materialConsumeStatus, { rva: 0, enabled: false, currentBytes: '' })
       Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(unlockAllTrophyStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
       Object.assign(otherSkinPurpleRuneStatus, { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
       Object.assign(damageMeterStatus, { connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
+      currencies.value = []
+      Object.keys(currencyInputs).forEach((key) => delete currencyInputs[key])
+      potions.value = []
+      Object.keys(potionInputs).forEach((key) => delete potionInputs[key])
     })
     .catch((err) => emit('status', String(err), 'error'))
 }
@@ -184,6 +208,28 @@ function setInfiniteChallengeEnabled(enabled) {
     .finally(() => { infiniteChallengeLoading.value = false })
 }
 
+function applyMaterialConsumeStatus(status) {
+  Object.assign(materialConsumeStatus, status || { rva: 0, enabled: false, currentBytes: '' })
+}
+
+function loadMaterialConsumeStatus() {
+  if (!connected.value) return
+  materialConsumeLoading.value = true
+  MaterialConsumeGetStatus()
+    .then(applyMaterialConsumeStatus)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { materialConsumeLoading.value = false })
+}
+
+function setMaterialConsumeEnabled(enabled) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  materialConsumeLoading.value = true
+  MaterialConsumeSetEnabled(enabled)
+    .then((status) => { applyMaterialConsumeStatus(status); emit('status', enabled ? '已开启升级/强化不材料消耗' : '已恢复升级/强化材料变化', 'success') })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { materialConsumeLoading.value = false })
+}
+
 function applyTerminusDropStatus(status) {
   Object.assign(terminusDropStatus, status || { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
 }
@@ -280,6 +326,78 @@ function setOtherSkinPurpleRuneEnabled(enabled) {
 
 function formatDamage(value) {
   return Number(value || 0).toLocaleString()
+}
+
+function formatInt(value) {
+  return Number(value || 0).toLocaleString()
+}
+
+function applyCurrencyValues(items) {
+  currencies.value = Array.isArray(items) ? items : []
+  currencies.value.forEach((item) => {
+    currencyInputs[item.id] = String(item.value)
+  })
+}
+
+function loadCurrencyValues() {
+  if (!connected.value) return
+  currencyLoading.value = true
+  CurrencyGetAll()
+    .then(applyCurrencyValues)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { currencyLoading.value = false })
+}
+
+function setCurrency(item) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  const value = Number(currencyInputs[item.id])
+  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
+  currencyLoading.value = true
+  CurrencySetOne(item.id, value)
+    .then((updated) => {
+      const index = currencies.value.findIndex((entry) => entry.id === updated.id)
+      if (index >= 0) currencies.value.splice(index, 1, updated)
+      currencyInputs[updated.id] = String(updated.value)
+      emit('status', `${updated.name}写入成功`, 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { currencyLoading.value = false })
+}
+
+function formatOffsets(offsets) {
+  return (offsets || []).map(formatHex).join(' + ')
+}
+
+function applyPotionValues(items) {
+  potions.value = Array.isArray(items) ? items : []
+  potions.value.forEach((item) => {
+    potionInputs[item.id] = String(item.value)
+  })
+}
+
+function loadPotionValues() {
+  if (!connected.value) return
+  potionLoading.value = true
+  PotionGetAll()
+    .then(applyPotionValues)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { potionLoading.value = false })
+}
+
+function setPotion(item) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  const value = Number(potionInputs[item.id])
+  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
+  potionLoading.value = true
+  PotionSetOne(item.id, value)
+    .then((updated) => {
+      const index = potions.value.findIndex((entry) => entry.id === updated.id)
+      if (index >= 0) potions.value.splice(index, 1, updated)
+      potionInputs[updated.id] = String(updated.value)
+      emit('status', `${updated.name}写入成功`, 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { potionLoading.value = false })
 }
 
 function applyDamageMeterStatus(status) {
@@ -401,7 +519,7 @@ onBeforeUnmount(() => {
   <div class="root">
     <div class="section">
       <div class="header">
-        <span class="title">杂项</span>
+        <span class="title">杂项（隐藏了不可用功能/新增了一些新功能）</span>
         <span class="info-dot" title="这些功能会修改游戏运行时内存，不写入存档；重启游戏或切换版本后需要重新连接并设置。">!</span>
         <span class="hint">需游戏运行中使用 · 重启游戏后需重新设置</span>
       </div>
@@ -431,7 +549,43 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-if="connected">
-        <div class="memory-card" :class="{ active: damageMeterStatus.connected && damageMeterStatus.totalDamage > 0 }">
+        <div class="memory-card" :class="{ active: currencies.length }">
+          <div class="memory-header">
+            <span class="memory-title">货币编辑</span>
+            <span class="memory-hint">稳定指针读取/写入 int32</span>
+          </div>
+          <div class="currency-grid">
+            <div v-for="item in currencies" :key="item.id" class="currency-row">
+              <div class="currency-name">{{ item.name }}</div>
+              <div class="currency-meta">{{ formatInt(item.value) }} · {{ formatHex(item.rva) }} + {{ formatHex(item.offset) }}</div>
+              <input v-model="currencyInputs[item.id]" type="number" min="0" max="2147483647" step="1" class="batch-input currency-input" />
+              <button class="btn-batch" @click="setCurrency(item)" :disabled="currencyLoading">写入</button>
+            </div>
+          </div>
+          <div class="memory-row">
+            <button class="btn-refresh" @click="loadCurrencyValues" :disabled="currencyLoading">刷新货币</button>
+          </div>
+        </div>
+
+        <div class="memory-card" :class="{ active: potions.length }">
+          <div class="memory-header">
+            <span class="memory-title">药神（进入副本后点刷新看到药水数量正常后设置即可）</span>
+            <span class="memory-hint">稳定指针链读取/写入 int32</span>
+          </div>
+          <div class="currency-grid">
+            <div v-for="item in potions" :key="item.id" class="currency-row">
+              <div class="currency-name">{{ item.name }}</div>
+              <div class="currency-meta">{{ formatInt(item.value) }} · {{ formatHex(item.rva) }} + {{ formatOffsets(item.offsets) }}</div>
+              <input v-model="potionInputs[item.id]" type="number" min="0" max="2147483647" step="1" class="batch-input currency-input" />
+              <button class="btn-batch" @click="setPotion(item)" :disabled="potionLoading">写入</button>
+            </div>
+          </div>
+          <div class="memory-row">
+            <button class="btn-refresh" @click="loadPotionValues" :disabled="potionLoading">刷新药水</button>
+          </div>
+        </div>
+
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: damageMeterStatus.connected && damageMeterStatus.totalDamage > 0 }">
           <div class="memory-header">
             <span class="memory-title">团队伤害记录</span>
             <span class="memory-hint">依赖怪物增强中倍率血量，本功能自动开启默认1倍</span>
@@ -452,7 +606,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="memory-card" :class="{ active: isCountdownActive() }">
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: isCountdownActive() }">
           <div class="memory-header">
             <span class="memory-title">任务结算倒计时/零帧开箱</span>
             <span class="info-dot" title="任务结算倒计时超过30s会导致进度条消失，但计时正常；零帧开箱需设置为0s。">!</span>
@@ -472,7 +626,7 @@ onBeforeUnmount(() => {
           <div class="memory-bytes">{{ countdownStatus.currentBytes || '未定位' }}</div>
         </div>
 
-        <div class="memory-card" :class="{ active: faceAccessoryStatus.hidden }">
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: faceAccessoryStatus.hidden }">
           <div class="memory-header">
             <span class="memory-title">脸部符文显示(紫色皮肤包)</span>
             <span class="memory-hint">切换 JE/JNE 控制渲染判断</span>
@@ -491,7 +645,7 @@ onBeforeUnmount(() => {
           <div class="memory-bytes">{{ faceAccessoryStatus.currentBytes || '未定位' }}</div>
         </div>
 
-        <div class="memory-card" :class="{ active: infiniteChallengeStatus.enabled }">
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: infiniteChallengeStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">无限挑战</span>
             <span class="memory-hint">NOP 挑战次数递增</span>
@@ -508,7 +662,25 @@ onBeforeUnmount(() => {
           <div class="memory-bytes">{{ infiniteChallengeStatus.currentBytes || '未读取' }}</div>
         </div>
 
-        <div class="memory-card" :class="{ active: terminusDropStatus.enabled }">
+        <div class="memory-card" :class="{ active: materialConsumeStatus.enabled }">
+          <div class="memory-header">
+            <span class="memory-title">升级/强化/练成不材料消耗（及开及用，开启后进入副本会导致无药水/无法获得奖励材料等问题）</span>
+            <span class="info-dot" title="开启后材料数量不会减少；同一指令也会阻止材料增加。">!</span>
+            <span class="memory-hint">NOP add [r14+04],esi</span>
+          </div>
+          <div class="memory-info">
+            <span>RVA: {{ formatHex(materialConsumeStatus.rva) }}</span>
+            <span>状态: {{ materialConsumeStatus.enabled ? '开启' : '默认' }}</span>
+          </div>
+          <div class="memory-row">
+            <button class="btn-batch" @click="setMaterialConsumeEnabled(true)" :disabled="materialConsumeLoading || materialConsumeStatus.enabled">开启不消耗</button>
+            <button class="btn-refresh" @click="setMaterialConsumeEnabled(false)" :disabled="materialConsumeLoading || !materialConsumeStatus.enabled">恢复默认</button>
+            <button class="btn-refresh" @click="loadMaterialConsumeStatus" :disabled="materialConsumeLoading">刷新</button>
+          </div>
+          <div class="memory-bytes">{{ materialConsumeStatus.currentBytes || '未读取' }}</div>
+        </div>
+
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: terminusDropStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">巴武掉落 100%</span>
             <span class="info-dot" title="仅让原型巴哈姆特任务的巴武 lot 不再被 80% 排除；仍保留未拥有、角色已解锁等游戏原始检查。">!</span>
@@ -527,7 +699,7 @@ onBeforeUnmount(() => {
           <div class="memory-bytes">{{ terminusDropStatus.currentBytes || '未定位' }}</div>
         </div>
 
-        <div class="memory-card" :class="{ active: unlockAllTrophyStatus.enabled }">
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: unlockAllTrophyStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">游戏内全称号解锁</span>
             <span class="memory-hint">AOB 定位后切换 SETNE/SETNO</span>
@@ -545,7 +717,7 @@ onBeforeUnmount(() => {
           <div class="memory-bytes">{{ unlockAllTrophyStatus.currentBytes || '未定位' }}</div>
         </div>
 
-        <div class="memory-card" :class="{ active: otherSkinPurpleRuneStatus.enabled }">
+        <div v-if="showOutdatedFeatures" class="memory-card" :class="{ active: otherSkinPurpleRuneStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">在其他皮肤显示紫色符文</span>
             <span class="memory-hint">固定 RVA 切换 JNE/JE</span>
@@ -641,6 +813,13 @@ onBeforeUnmount(() => {
 .damage-meter-raw { margin-top:-4px; font-size:0.72rem; color:rgba(255,255,255,0.28); }
 .memory-card.active .damage-meter-value { color:#1f2937; }
 .memory-card.active .damage-meter-raw { color:rgba(31,41,55,0.56); }
+.currency-grid { display:flex; flex-direction:column; gap:8px; }
+.currency-row { display:grid; grid-template-columns:90px 1fr 120px auto; align-items:center; gap:8px; }
+.currency-name { font-size:0.78rem; font-weight:600; color:rgba(255,255,255,0.62); }
+.currency-meta { font-size:0.66rem; color:rgba(255,255,255,0.28); font-family:'Courier New',monospace; }
+.currency-input { width:120px; }
+.memory-card.active .currency-name { color:#1f2937; }
+.memory-card.active .currency-meta { color:rgba(31,41,55,0.56); }
 .update-new { color:#4ade80; }
 .update-body { max-height:86px; overflow-y:auto; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.03); color:rgba(255,255,255,0.36); font-size:0.7rem; line-height:1.45; white-space:pre-wrap; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.12) transparent; }
 .batch-input {
