@@ -29,11 +29,15 @@ var sigilMemoryTraits = []sigilMemoryName{
 	{0x807B6684, "转世的战气"},
 	{0xDBA19768, "狼王的战气"},
 	{0x79266456, "刃姬的战气"},
-	{0x1DE14C65, "狼王之觉醒"},
-	{0x26956F25, "狼王的大轮转"},
-	{0xD176D262, "狼王的激昂"},
+	{0x1DE14C65, "狼王的激昂"},
+	{0x26956F25, "狼王的大转轮"},
+	{0xD176D262, "群青的剑光"},
 	{0x30773197, "转世的跃动"},
 	{0x47384248, "转世的恩宠"},
+	{0xBF78FBFC, "可怕的漆黑钳蟹因子"},
+	{0x46EE3116, "漆黑之谊"},
+	{0x89C66ACB, "相扑斗力"},
+	{0xE5E2AD4B, "闪避性能"},
 }
 
 // Third column supplied from game memory: sigil hashes.
@@ -66,16 +70,21 @@ var sigilMemorySigils = []sigilMemoryName{
 	{0x1A359B67, "雷狼的慧眼"},
 	{0xA8A0CBFF, "黑龙之觉醒"},
 	{0x2D70C37D, "转世的战气"},
+	{0x5A360EA8, "转世之觉醒"},
 	{0x41AC1082, "狼王的战气"},
 	{0xEB766D87, "刃姬的战气"},
+	{0x282DBFF0, "狼王的激昂"},
 	{0x895ABBF6, "狼王之觉醒"},
-	{0xF21404B1, "狼王的大轮转"},
-	{0x9EC6C56D, "狼王的激昂"},
+	{0xF21404B1, "狼王的大转轮"},
+	{0x9EC6C56D, "群青的剑光"},
 	{0x23953FD4, "雷狼之觉醒"},
 	{0x95CC3CB8, "群青之觉醒"},
 	{0xD8A464F1, "刃姬之觉醒"},
 	{0xBA28C81C, "转世的跃动"},
 	{0x64301E91, "转世的恩宠"},
+	{0x49434696, "可怕的漆黑钳蟹因子"},
+	{0x65F0420A, "漆黑之谊"},
+	{0xB289A9AD, "相扑斗力"},
 }
 
 func sigilMemoryNameByHash(entries []sigilMemoryName, hash uint32) string {
