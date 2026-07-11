@@ -3,10 +3,11 @@ import { ref } from 'vue'
 const STORAGE_KEY = 'gbfr-pe-patch-tool.language'
 const supported = new Set(['en', 'zh'])
 
-export const language = ref(normalizeLanguage(localStorage.getItem(STORAGE_KEY) || 'en'))
+export const language = ref(normalizeLanguage(localStorage.getItem(STORAGE_KEY) || 'zh'))
+export const hasStoredLanguage = () => localStorage.getItem(STORAGE_KEY) !== null
 
 function normalizeLanguage(value) {
-  return supported.has(value) ? value : 'en'
+  return supported.has(value) ? value : 'zh'
 }
 
 const translations = {

@@ -12,7 +12,7 @@ import MonsterEnhance from './MonsterEnhance.vue'
 import OverLimit from './OverLimit.vue'
 import SummonEditor from './SummonEditor.vue'
 import LanguageSettings from './LanguageSettings.vue'
-import { translateText } from '../i18n'
+import { hasStoredLanguage, language, translateText } from '../i18n'
 
 const state = reactive({
   exePath: '',
@@ -23,7 +23,7 @@ const state = reactive({
   patches: [],
 })
 
-const activeTab = ref('patch')
+const activeTab = ref(hasStoredLanguage() ? 'patch' : 'language')
 const manualPath = ref('')
 const patchValues = reactive({}) // { patchID: 'value' }
 const isLoaded = ref(false)
@@ -183,7 +183,7 @@ function showStatus(msg, type) {
         怪物增强（未修复）
       </button>
       <button class="tab-btn language-tab" :class="{ active: activeTab === 'language' }" @click="activeTab = 'language'">
-        语言
+        {{ language === 'zh' ? '语言/LANG' : 'Language' }}
       </button>
     </div>
 
