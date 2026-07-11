@@ -10,6 +10,7 @@ import CharaStats from './CharaStats.vue'
 import MiscTools from './MiscTools.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
 import OverLimit from './OverLimit.vue'
+import SummonEditor from './SummonEditor.vue'
 
 const state = reactive({
   exePath: '',
@@ -170,6 +171,9 @@ function showStatus(msg, type) {
       <button class="tab-btn" :class="{ active: activeTab === 'misc' }" @click="activeTab = 'misc'">
         杂项
       </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'summon' }" @click="activeTab = 'summon'">
+        召唤石
+      </button>
       <button class="tab-btn" :class="{ active: activeTab === 'overlimit' }" @click="activeTab = 'overlimit'">
         上限突破
       </button>
@@ -269,6 +273,10 @@ function showStatus(msg, type) {
       <MiscTools @status="showStatus" />
     </main>
 
+    <main v-else-if="activeTab === 'summon'" class="container summon-container" style="--wails-draggable:no-drag">
+      <SummonEditor @status="showStatus" />
+    </main>
+
     <main v-else-if="activeTab === 'overlimit'" class="container" style="--wails-draggable:no-drag">
       <OverLimit @status="showStatus" />
     </main>
@@ -326,6 +334,7 @@ function showStatus(msg, type) {
 .titlebar-status.error { color:#f87171; background:rgba(239,68,68,0.15); }
 
 .container { flex:1; overflow-y:auto; max-width:720px; width:100%; margin:0 auto; padding:20px 20px 40px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; gap:14px; scrollbar-width:none; }
+.summon-container { max-width:none; align-items:stretch; padding-left:28px; padding-right:28px; }
 .container::-webkit-scrollbar { display:none; }
 
 .path-section { width:100%; }

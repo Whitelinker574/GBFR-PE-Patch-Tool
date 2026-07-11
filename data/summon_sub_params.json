@@ -1,0 +1,15 @@
+{
+  "subParams": [
+    { "hash": "0x5A39D81B", "displayName": "奥义连锁伤害" },
+    { "hash": "0x2270BC40", "displayName": "HP回复上限" },
+    { "hash": "0xF7B0316F", "displayName": "昏厥" },
+    { "hash": "0x75138D21", "displayName": "奥义伤害" },
+    { "hash": "0xA8900C80", "displayName": "攻击力" },
+    { "hash": "0x00D171E0", "displayName": "暴击率" },
+    { "hash": "0x664E8E32", "displayName": "能力伤害" },
+    { "hash": "0x2FFB509F", "displayName": "能力伤害上限" },
+    { "hash": "0xA3539FBB", "displayName": "奥义伤害上限" },
+    { "hash": "0xA66241C9", "displayName": "普通攻击伤害上限" },
+    { "hash": "0xBC4E92CB", "displayName": "HP" }
+  ]
+}
