@@ -29,7 +29,7 @@ func main() {
 	wrightstoneGen := NewWrightstoneGen()
 
 	err := wails.Run(&options.App{
-		Title:     "GBFR 存档修改工具",
+		Title:     "GBFR PE Patch Tool",
 		Width:     800,
 		Height:    600,
 		Frameless: true,

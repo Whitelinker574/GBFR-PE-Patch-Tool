@@ -11,6 +11,8 @@ import MiscTools from './MiscTools.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
 import OverLimit from './OverLimit.vue'
 import SummonEditor from './SummonEditor.vue'
+import LanguageSettings from './LanguageSettings.vue'
+import { translateText } from '../i18n'
 
 const state = reactive({
   exePath: '',
@@ -117,7 +119,7 @@ const CARD_HINTS = {
 }
 
 function showStatus(msg, type) {
-  saveStatus.value = msg; statusType.value = type
+  saveStatus.value = translateText(String(msg)); statusType.value = type
   setTimeout(() => { saveStatus.value = '' }, 3000)
 }
 
@@ -179,6 +181,9 @@ function showStatus(msg, type) {
       </button>
       <button class="tab-btn" :class="{ active: activeTab === 'monster' }" @click="activeTab = 'monster'">
         怪物增强（未修复）
+      </button>
+      <button class="tab-btn language-tab" :class="{ active: activeTab === 'language' }" @click="activeTab = 'language'">
+        语言
       </button>
     </div>
 
@@ -284,6 +289,10 @@ function showStatus(msg, type) {
     <main v-else-if="activeTab === 'monster'" class="container" style="--wails-draggable:no-drag">
       <MonsterEnhance @status="showStatus" />
     </main>
+
+    <main v-else-if="activeTab === 'language'" class="container" style="--wails-draggable:no-drag">
+      <LanguageSettings />
+    </main>
   </div>
 </template>
 
@@ -308,6 +317,9 @@ function showStatus(msg, type) {
   background: rgba(18,26,38,0.95);
   border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 .tab-btn {
   padding: 4px 14px;
@@ -319,9 +331,12 @@ function showStatus(msg, type) {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tab-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
 .tab-btn.active { color: #67e8f9; background: rgba(103,232,249,0.12); }
+.language-tab { margin-left: auto; }
 .titlebar { display:flex; align-items:center; justify-content:space-between; height:38px; padding:0 6px 0 14px; background:rgba(18,26,38,0.95); border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0; user-select:none; }
 .titlebar-left { display:flex; align-items:center; gap:8px; }
 .titlebar-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.55); letter-spacing:0.5px; }

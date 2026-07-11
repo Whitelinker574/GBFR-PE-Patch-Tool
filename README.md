@@ -4,6 +4,8 @@
 
 # GBFR 存档修改工具
 
+[English README](README_EN.md)
+
 Granblue Fantasy: Relink (碧蓝幻想：Relink) 存档与运行时修改工具，包含 PE 补丁、因子/祝福生成、副本次数查看、角色使用次数统计、杂项内存修改和怪物增强等功能。
 <img src="https://img.shields.io/github/downloads/BitterG/GBFR-PE-Patch-Tool/total"/>
 

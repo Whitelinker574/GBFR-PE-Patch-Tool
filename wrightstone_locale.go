@@ -8,6 +8,9 @@ var wrightstoneCN = map[string]string{
 }
 
 func cnWrightstone(en string) string {
+	if !useChinese() {
+		return en
+	}
 	if v, ok := wrightstoneCN[en]; ok {
 		return v
 	}

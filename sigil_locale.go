@@ -407,6 +407,9 @@ var traitCN = map[string]string{
 }
 
 func cnName(en string) string {
+	if !useChinese() {
+		return en
+	}
 	if s, ok := sigilCN[en]; ok {
 		return s
 	}
@@ -414,6 +417,9 @@ func cnName(en string) string {
 }
 
 func cnTrait(en string) string {
+	if !useChinese() {
+		return en
+	}
 	if s, ok := traitCN[en]; ok {
 		return s
 	}

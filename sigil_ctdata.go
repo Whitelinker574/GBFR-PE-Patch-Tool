@@ -866,6 +866,11 @@ var ctHashToName = map[uint32]string{
 }
 
 func ctName(hash uint32) string {
+	if !useChinese() {
+		if name, ok := ctHashToNameEN[hash]; ok {
+			return name
+		}
+	}
 	if name, ok := ctHashToName[hash]; ok {
 		return name
 	}
