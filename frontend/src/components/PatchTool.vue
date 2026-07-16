@@ -1460,7 +1460,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-switcher { background:#eddfc0!important }
 .guide-rail { background:#f4e6c7!important }
 .tool-page-heading { background:#f7ebcf!important }
-.tool-center-scroll { background:#f2e3c2!important }
+.tool-center-scroll { background:transparent!important }
 .art-caption { background:#f4e6c7!important;backdrop-filter:none!important }
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),
 .tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),
@@ -1821,4 +1821,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   .tool-switcher button { padding:0 6px!important; gap:4px!important; }
   .switcher-tag { padding:1px 4px!important; font-size:7px!important; }
 }
+
+/* 立绘呈现：整体放大 + 抬高 + 左移，减少“贴在最右侧、与模块割裂”的观感。
+   通过放大定位参考框来同比例放大所有立绘（保留每图既有的光学校准比例）。 */
+.tool-stage { grid-template-columns:170px minmax(0,600px) minmax(300px,1fr)!important; }
+.art-rail .function-character { top:-70px!important; bottom:-6px!important; left:24px!important; right:-16px!important; }
+@media(max-width:1000px){ .tool-stage{ grid-template-columns:70px minmax(0,1fr) minmax(270px,.9fr)!important; } .art-rail .function-character{ left:0!important; right:-10px!important; } }
 </style>
