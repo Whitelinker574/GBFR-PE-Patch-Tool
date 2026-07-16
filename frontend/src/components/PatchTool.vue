@@ -79,6 +79,7 @@ const state = reactive({
 
 const activeTab = ref('home')
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
+const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const manualPath = ref('')
 const patchValues = reactive({})
 const isLoaded = ref(false)
@@ -308,6 +309,10 @@ function selectTool(id) {
   if (toolMeta[id]?.group === 'compatibility') ensureGameDetection()
 }
 
+function toggleArt() {
+  artCollapsed.value = !artCollapsed.value
+  window.localStorage.setItem('gbfr.artCollapsed', artCollapsed.value ? '1' : '0')
+}
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   window.localStorage.setItem('gbfr.sidebarCollapsed', sidebarCollapsed.value ? '1' : '0')
@@ -503,7 +508,7 @@ function showStatus(message, type) {
           <div class="workspace-scene">
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
 
-          <section v-else :key="activeTab" class="tool-stage" :data-tool="activeTab">
+          <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed }" :data-tool="activeTab">
             <aside class="guide-rail">
               <div class="guide-heading"><span>操作指南</span><small>始终显示</small></div>
               <ol class="guide-steps">
@@ -601,6 +606,7 @@ function showStatus(message, type) {
               </main>
             </section>
 
+            <button class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
             <aside class="art-rail" aria-hidden="true">
               <figure class="function-character" :key="`art-${activeTab}`">
                 <img class="character-blend" :src="currentArt" alt="" loading="eager" decoding="async">
@@ -1686,4 +1692,73 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 @media(max-width:1120px){.app-body{grid-template-columns:170px minmax(0,1fr)}.tool-stage{grid-template-columns:145px minmax(0,530px) minmax(230px,1fr);gap:8px}.art-rail .function-character{left:-100px;right:0;top:0;bottom:0}.guide-character-note{height:205px}.guide-sticker{width:120px;height:128px}.workspace-scroll.tool-workspace{padding-left:12px}.guide-heading span{font-size:13px}.guide-caution{padding:8px}.note-bubble{padding:8px 9px}.tool-page-heading h1{font-size:20px}.tool-switcher{gap:8px}.tool-switcher button{padding:0 7px!important;font-size:11px!important}}
 @media(max-width:1000px){.app-body{grid-template-columns:70px minmax(0,1fr)}.sidebar{padding:13px 8px}.sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot{display:none!important}.sidebar-collapse{display:none!important}.primary-nav{align-items:center;padding-top:45px;gap:9px}.nav-item{width:48px;min-height:48px;display:grid;grid-template-columns:1fr;place-items:center;padding:5px!important}.nav-mark{width:30px;height:30px}.tool-stage{grid-template-columns:130px minmax(0,500px) minmax(235px,1fr);gap:8px}.art-rail .function-character{left:-90px}.tool-page-heading{padding:14px 16px 13px}.tool-page-heading h1{font-size:20px}.tool-page-heading p{font-size:10.5px}.tool-switcher{gap:5px;padding-left:8px!important;padding-right:8px!important}.tool-switcher button{padding:0 5px!important;font-size:10.5px!important}.tool-panel[data-tool="progression"] :deep(.workspace){grid-template-columns:1fr!important}.tool-panel[data-tool="chara"] :deep(.batch-row){grid-template-columns:auto 1fr auto auto!important}.tool-panel[data-tool="chara"] :deep(.selection),.tool-panel[data-tool="chara"] :deep(.save-btn){grid-column:span 2}.backup-card{grid-template-columns:1fr 1fr!important}.backup-policy{grid-column:1/-1!important;min-width:0!important}}
 @media(prefers-reduced-motion:reduce){.app-window *,.app-window *::before,.app-window *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-delay:0ms!important;transition-duration:.001ms!important;transition-delay:0ms!important}}
+</style>
+
+<style scoped>
+/* ═══════════ UI Polish · 布局优化 & 史诗感（追加覆盖，后写生效） ═══════════ */
+
+/* 1. 拓宽操作区：中间内容 1fr（取消固定上限），立绘有界且可折叠 */
+.tool-stage { grid-template-columns: clamp(150px,15vw,186px) minmax(0,1fr) var(--art-col, clamp(176px,18vw,276px)); }
+.tool-stage.art-collapsed { grid-template-columns: clamp(150px,15vw,186px) minmax(0,1fr) 0; }
+.tool-stage.art-collapsed .art-rail { display:none; }
+
+/* 立绘折叠开关：贴右上角 */
+.art-toggle { position:absolute; z-index:9; top:5px; right:4px; width:26px; height:26px; display:grid; place-items:center;
+  border:1px solid rgba(143,106,51,.36); border-radius:8px 4px 8px 4px; background:rgba(255,250,232,.92);
+  color:#7d6440; font:900 15px/1 "Microsoft YaHei UI",sans-serif; cursor:pointer;
+  box-shadow:0 3px 9px rgba(85,61,27,.12); transition:.16s ease; }
+.art-toggle:hover { border-color:var(--gold); color:#57400f; background:#fffdf5; box-shadow:0 4px 14px rgba(167,125,61,.28); }
+
+/* 2. 顶部子导航：两端渐隐，暗示可横向滑动 */
+.tool-switcher { -webkit-mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent); }
+
+/* 3. 史诗感：页面标题——金质渐变字 + 顶部烫金线 + 角落光晕 */
+.tool-page-heading { overflow:hidden; box-shadow:0 11px 26px rgba(84,61,28,.13), inset 0 0 0 1px rgba(255,255,255,.42), inset 0 2px 0 rgba(214,182,111,.44); }
+.tool-page-heading::before { content:""; position:absolute; left:0; right:0; top:0; height:3px;
+  background:linear-gradient(90deg,transparent,var(--gold-soft),var(--gold),var(--gold-soft),transparent); opacity:.9; }
+.tool-page-heading::after { content:""; position:absolute; right:-46px; top:-46px; width:160px; height:160px; pointer-events:none;
+  background:radial-gradient(circle at center,rgba(215,182,111,.18),transparent 65%); }
+.tool-page-heading .eyebrow { letter-spacing:.2em; }
+.tool-page-heading .eyebrow::before { content:"◆ "; color:var(--gold-soft); font-size:9px; }
+.tool-page-heading h1 { font-size:29px; letter-spacing:.045em;
+  background:linear-gradient(176deg,#4c4031 10%,#7a5a29 94%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+
+/* 4. 面板景深 + 金质内边（更干脆的可操作区边界）*/
+.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card) {
+  box-shadow:0 9px 22px rgba(77,54,25,.12), inset 0 0 0 1px rgba(255,255,255,.34), inset 0 1px 0 rgba(214,182,111,.32)!important; }
+.calibration-card,.compat-section { box-shadow:0 9px 22px rgba(77,54,25,.12), inset 0 0 0 1px rgba(255,255,255,.34), inset 0 1px 0 rgba(214,182,111,.32)!important; }
+
+/* 5. 主/高危按钮：hover 金光，强化主次层级 */
+.tool-panel :deep(.primary-btn),.tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),.tool-panel :deep(.save-btn),.tool-panel :deep(.add-btn),.tool-panel :deep(.language-button) {
+  box-shadow:0 4px 13px rgba(35,100,107,.26)!important; }
+.tool-panel :deep(.primary-btn:hover:not(:disabled)),.tool-panel :deep(.apply-btn:hover:not(:disabled)),.tool-panel :deep(.write-btn:hover:not(:disabled)),.tool-panel :deep(.ed-apply-btn:hover:not(:disabled)),.tool-panel :deep(.save-btn:hover:not(:disabled)),.tool-panel :deep(.add-btn:hover:not(:disabled)) {
+  box-shadow:0 6px 20px rgba(52,157,166,.42), 0 0 0 1px rgba(214,182,111,.5)!important; }
+
+/* 6. 版本适配矩阵：状态语义色胶囊 */
+.matrix-row b.ok,.matrix-row b.flow,.matrix-row b.wait { padding:2px 10px; border-radius:999px; font-weight:800; }
+.matrix-row b.ok { color:#2f6a4c!important; background:rgba(76,156,118,.18); }
+.matrix-row b.flow { color:#256e74!important; background:rgba(58,169,179,.18); }
+.matrix-row b.wait { color:#8a5f1e!important; background:rgba(183,130,55,.2); }
+
+/* 7. 大段说明行高提升，改善可读性 */
+.tool-panel :deep(p),.tool-panel :deep(.hint),.tool-panel :deep(.feature-help),.tool-panel :deep(.memory-hint),.tool-panel :deep(.memory-info),.tool-panel :deep(.custom-note-text),.tool-panel :deep(.compatibility-note),.tool-panel :deep(.save-hint) { line-height:1.62!important; }
+
+/* 8. 侧栏选中态更明确（左侧金边）*/
+.nav-item.active { box-shadow:inset 3px 0 0 var(--gold)!important; }
+</style>
+
+<style scoped>
+/* ═══════════ UI Polish · 第二轮微调（据 Gemini 复审）═══════════ */
+/* 输入框/下拉框：羊皮纸底 + 暗金细边 + 内阴影，融入复古面板 */
+.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(select),.tool-panel :deep(textarea) {
+  background:linear-gradient(180deg,rgba(247,238,214,.92),rgba(239,227,198,.88))!important;
+  border-color:rgba(150,112,52,.44)!important; box-shadow:inset 0 1px 2px rgba(96,68,28,.1)!important; }
+.tool-panel :deep(input:not([type=checkbox]):not([type=radio]):focus),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:focus) {
+  border-color:var(--gold)!important; box-shadow:inset 0 1px 2px rgba(96,68,28,.1), 0 0 0 2px rgba(214,182,111,.3)!important; }
+/* 次级按钮 hover 金光，提升点击游戏感 */
+.tool-panel :deep(.btn-batch:hover),.tool-panel :deep(.btn-sort:hover),.tool-panel :deep(.btn-max:hover),.tool-panel :deep(.btn-refresh:hover),.tool-panel :deep(.slot-btn:hover),.tool-panel :deep(.plain-btn:hover),.tool-panel :deep(.btn-purple:hover) {
+  border-color:var(--gold-soft)!important; box-shadow:0 3px 12px rgba(167,125,61,.26)!important; }
+/* 子导航当前项加粗，强化定位 */
+.tool-switcher button.active { font-weight:900!important; }
 </style>
