@@ -47,3 +47,12 @@
 
 #Git Bash/MSYS
 *.stackdump
+
+# msbuild 中间产物(嵌套路径)
+/src_dll/build/
+/src_dll/patch_core/patch_core/
+*.pch
+*.ipdb
+*.iobj
+*.tlog
+FileListAbsolute.txt
