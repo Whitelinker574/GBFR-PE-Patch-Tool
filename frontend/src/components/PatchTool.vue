@@ -1699,10 +1699,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="chara"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="save"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="compatibility"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="legacyRuntime"]{--ah:160%;--ay:-71%;--ax:-250px}
+.tool-stage[data-tool="legacyRuntime"]{--ah:182%;--ay:-52%;--ax:-250px}
 .tool-stage[data-tool="monster"]{--ah:160%;--ay:-63%;--ax:-165px}
 .tool-stage[data-tool="patch"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="language"]{--ah:160%;--ay:-71%;--ax:-250px}
+.tool-stage[data-tool="language"]{--ah:182%;--ay:-52%;--ax:-250px}
 /* Quantity is a compact form row, not a raised card. */
 .tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .tool-panel :deep(.quantity-combo button){min-width:50px!important;border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#edddba!important;box-shadow:none!important;opacity:1!important}
