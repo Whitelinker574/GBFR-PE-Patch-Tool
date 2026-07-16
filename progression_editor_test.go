@@ -147,7 +147,7 @@ func TestProgressionNamesUseOnlySelectedLanguage(t *testing.T) {
 	if got := progressionWeaponName(weapon); got != "启程之剑" {
 		t.Fatalf("Chinese weapon name = %q", got)
 	}
-	if got := cnName("Alpha+"); got != "阿尔法+" {
+	if got := cnName("Alpha+"); got != "α秘纹+" {
 		t.Fatalf("Chinese sigil name = %q", got)
 	}
 
