@@ -1699,10 +1699,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="chara"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="save"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="compatibility"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="legacyRuntime"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="monster"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="legacyRuntime"]{--ah:160%;--ay:-71%;--ax:-250px}
+.tool-stage[data-tool="monster"]{--ah:160%;--ay:-63%;--ax:-165px}
 .tool-stage[data-tool="patch"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="language"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="language"]{--ah:160%;--ay:-71%;--ax:-250px}
 /* Quantity is a compact form row, not a raised card. */
 .tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .tool-panel :deep(.quantity-combo button){min-width:50px!important;border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#edddba!important;box-shadow:none!important;opacity:1!important}
@@ -1829,7 +1829,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
    贴右下角、半身(截到大腿)、脸在上不被截、够大、右缘抵右不留空。
    每页三个旋钮：--ah 大小(高度%)、--ay 上下(bottom%，越负越往上顶且越裁下方)、--ax 左右(px，负=更靠右)。 */
 .tool-stage { grid-template-columns:150px minmax(0,1fr) clamp(360px,32vw,560px)!important; }
-.art-rail { overflow:hidden!important; }
+/* 立绘列不裁剪：道具/手臂自然向左延伸，被上层不透明卡片盖住即可，不再在内容边界硬切一刀。
+   （整体由 .tool-stage 的 overflow:hidden 兜底裁在工作区范围内） */
+.art-rail { overflow:visible!important; }
 .art-rail .function-character { position:absolute!important; inset:0!important; left:0!important; right:0!important; top:0!important; bottom:0!important; }
 .art-rail .function-character img,
 .art-rail .function-character .character-main,
