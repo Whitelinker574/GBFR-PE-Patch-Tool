@@ -1,10 +1,10 @@
 package main
 
 var wrightstoneCN = map[string]string{
-	"Dread Wrightstone":         "恐惧祝福",
-	"Vitality Wrightstone":      "生命祝福",
-	"Fortification Wrightstone": "坚守祝福",
-	"Sequestration Wrightstone": "隔绝祝福",
+	"Dread Wrightstone":         "畏惧之祝福",
+	"Vitality Wrightstone":      "生机之祝福",
+	"Fortification Wrightstone": "镇守之祝福",
+	"Sequestration Wrightstone": "隔绝之祝福",
 }
 
 func cnWrightstone(en string) string {
