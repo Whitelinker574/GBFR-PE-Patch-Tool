@@ -571,7 +571,7 @@ var ctHashToName = map[uint32]string{
 	0xAA83F548: "老兵的智慧",
 	0xAA941053: "奋不顾身II",
 	0xAAC7A219: "追击IV",
-	0xAB835493: "屠龙之觉醒+",
+	0xAB835493: "屠龙者之觉醒+",
 	0xABC07972: "暴君III+",
 	0xABFA79F2: "强健甘露",
 	0xAC7822A4: "灼热抗性V",
