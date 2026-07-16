@@ -504,7 +504,7 @@ function showStatus(message, type) {
               @focus="warmTool(id)"
               @click="selectTool(id)"
             >
-              {{ toolMeta[id].title }}
+              {{ toolMeta[id].title.replace(/（[^）]*）/g, '') }}
               <span v-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
               <span v-else-if="toolMeta[id].tone === 'stable'" class="switcher-tag offline">离线</span>
               <span v-if="toolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
@@ -1690,14 +1690,14 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="loadout"]{--art-height:140%;--art-right:-302px;--art-bottom:-382px}
 .tool-stage[data-tool="summon"]{--art-height:148%;--art-right:-302px;--art-bottom:-398px}
 .tool-stage[data-tool="overlimit"]{--art-height:150%;--art-right:-306px;--art-bottom:-402px}
-.tool-stage[data-tool="runtime"]{--art-height:120%;--art-right:-440px;--art-bottom:-165px}
+.tool-stage[data-tool="runtime"]{--art-height:146%;--art-right:-298px;--art-bottom:-392px}
 .tool-stage[data-tool="sigil"]{--art-height:143%;--art-right:-292px;--art-bottom:-388px}
 .tool-stage[data-tool="wrightstone"]{--art-height:148%;--art-right:-300px;--art-bottom:-398px}
 .tool-stage[data-tool="chara"]{--art-height:152%;--art-right:-306px;--art-bottom:-405px}
 .tool-stage[data-tool="save"]{--art-height:145%;--art-right:-288px;--art-bottom:-390px}
 .tool-stage[data-tool="compatibility"]{--art-height:142%;--art-right:-288px;--art-bottom:-382px}
 .tool-stage[data-tool="legacyRuntime"]{--art-height:160%;--art-right:-330px;--art-bottom:-332px}
-.tool-stage[data-tool="monster"]{--art-height:140%;--art-right:-212px;--art-bottom:-218px}
+.tool-stage[data-tool="monster"]{--art-height:146%;--art-right:-286px;--art-bottom:-372px}
 .tool-stage[data-tool="patch"]{--art-height:145%;--art-right:-286px;--art-bottom:-392px}
 .tool-stage[data-tool="language"]{--art-height:152%;--art-right:-342px;--art-bottom:-340px}
 /* Quantity is a compact form row, not a raised card. */
@@ -1715,9 +1715,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 <style scoped>
 /* ═══════════ UI Polish · 布局优化 & 史诗感（追加覆盖，后写生效） ═══════════ */
 
-/* 1. 拓宽操作区：中间内容 1fr（取消固定上限），立绘有界且可折叠 */
-.tool-stage { grid-template-columns: clamp(150px,15vw,186px) minmax(0,1fr) var(--art-col, clamp(176px,18vw,276px)); }
-.tool-stage.art-collapsed { grid-template-columns: clamp(150px,15vw,186px) minmax(0,1fr) 0; }
+/* 1. 立绘可折叠：折叠态收起立绘列，展开态沿用原响应式网格（见 1651 及媒体查询），
+   不再钳死立绘列宽——否则各页按“宽列”手调的立绘偏移会被推出屏幕外裁断。 */
+.tool-stage.art-collapsed { grid-template-columns: 180px minmax(0,1fr) 0 !important; }
 .tool-stage.art-collapsed .art-rail { display:none; }
 
 /* 立绘折叠开关：贴右上角 */
@@ -1727,9 +1727,12 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   box-shadow:0 3px 9px rgba(85,61,27,.12); transition:.16s ease; }
 .art-toggle:hover { border-color:var(--gold); color:#57400f; background:#fffdf5; box-shadow:0 4px 14px rgba(167,125,61,.28); }
 
-/* 2. 顶部子导航：两端渐隐，暗示可横向滑动 */
-.tool-switcher { -webkit-mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent);
+/* 2. 顶部子导航：两端渐隐 + 真正开启横向滚动（标签多时可滑动到，不再被裁掉够不到） */
+.tool-switcher { overflow-x:auto; overflow-y:hidden; scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent);
   mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent); }
+.tool-switcher::-webkit-scrollbar { height:0; }
+.tool-switcher button { flex:0 0 auto; }
 
 /* 3. 史诗感：页面标题——金质渐变字 + 顶部烫金线 + 角落光晕 */
 .tool-page-heading { overflow:hidden; box-shadow:0 11px 26px rgba(84,61,28,.13), inset 0 0 0 1px rgba(255,255,255,.42), inset 0 2px 0 rgba(214,182,111,.44); }
@@ -1804,12 +1807,18 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(input.lv-over) { border-color:#c0574c!important;
   background:linear-gradient(180deg,rgba(214,120,110,.18),rgba(214,120,110,.08))!important;
   color:#9c3f34!important; box-shadow:inset 0 1px 2px rgba(150,50,40,.14),0 0 0 2px rgba(192,87,76,.2)!important; }
-/* 大窗口下内容封顶，避免输入框被拉得过长 */
-.tool-page-heading,.tool-panel { max-width:1180px; }
 /* 下拉列表：斑马纹对比更清晰 + hover 金边高亮 + 搜索区分割线与悬浮阴影 */
 .tool-panel :deep(.catalog-option:nth-child(even)) { background:#ecd8ac!important; }
 .tool-panel :deep(.catalog-option:hover),.tool-panel :deep(.catalog-option.highlight),.tool-panel :deep(.catalog-option.selected) { background:#e2cd97!important; box-shadow:inset 3px 0 var(--gold)!important; }
 .tool-panel :deep(.catalog-search) { border-bottom:1px solid rgba(126,91,42,.36)!important; box-shadow:0 3px 7px rgba(77,52,21,.13); position:relative; z-index:1; }
 /* 成功提示更贴合暖色主题（柔和青绿，去亮绿）*/
 .titlebar-status.success { color:#7fd0b0!important; }
+
+/* 第五轮修正：默认 1120 窗口下 8 个子标签 + 离线/实时徽标要能不横滑地整排展示。
+   1040–1200 这个区间侧栏满宽又未触发紧凑样式，收紧标签间距/内边距/徽标尺寸补足 56px 缺口。 */
+@media(max-width:1240px){
+  .tool-switcher { gap:2px!important; }
+  .tool-switcher button { padding:0 6px!important; gap:4px!important; }
+  .switcher-tag { padding:1px 4px!important; font-size:7px!important; }
+}
 </style>
