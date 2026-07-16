@@ -1647,7 +1647,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* Final flat-control cleanup for generated editors. */
 .tool-panel :deep(.capacity){display:inline!important;min-height:0!important;padding:0!important;border:0!important;border-radius:0!important;color:#75654d!important;background:transparent!important;box-shadow:none!important;font-size:9px!important;font-weight:650!important}
 .tool-panel :deep(.weapon-kind){border-color:rgba(133,96,44,.26)!important;border-left:3px solid #8b6737!important;border-radius:0!important;background:#edddba!important;box-shadow:none!important}.tool-panel :deep(.weapon-kind b){color:#6d4f27!important}.tool-panel :deep(.weapon-kind span){color:#6d604e!important}
-.tool-panel :deep(input:hover),.tool-panel :deep(input:focus),.tool-panel :deep(select:hover),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:hover),.tool-panel :deep(textarea:focus){background-color:#fff9e8!important}
+.tool-panel :deep(input:hover),.tool-panel :deep(input:focus),.tool-panel :deep(select:hover),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:hover),.tool-panel :deep(textarea:focus){background-color:#fdf6e4!important}
 .tool-panel :deep(input[type=number]::-webkit-inner-spin-button),.tool-panel :deep(input[type=number]::-webkit-outer-spin-button){-webkit-appearance:none!important;margin:0!important}.tool-panel :deep(input[type=number]){-moz-appearance:textfield!important}
 .tool-panel :deep(.btn-purple),.tool-panel :deep(.add-btn),.tool-panel :deep(.add-btn:disabled){border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#ead8b2!important;box-shadow:none!important;text-shadow:none!important;opacity:1!important}.tool-panel :deep(.btn-purple:hover:not(:disabled)),.tool-panel :deep(.add-btn:hover:not(:disabled)){color:#fff9e9!important;background:#8b6737!important}.tool-panel :deep(.add-btn:disabled){color:#8f7a5c!important;border-color:rgba(154,116,64,.38)!important;background:#e7d8b6!important}
 /* Wide reading column: the default 1120px window must not collapse editors to 460px. */
@@ -1811,9 +1811,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   background:linear-gradient(180deg,rgba(214,120,110,.18),rgba(214,120,110,.08))!important;
   color:#9c3f34!important; box-shadow:inset 0 1px 2px rgba(150,50,40,.14),0 0 0 2px rgba(192,87,76,.2)!important; }
 /* 下拉列表：斑马纹对比更清晰 + hover 金边高亮 + 搜索区分割线与悬浮阴影 */
-.tool-panel :deep(.catalog-option:nth-child(even)) { background:#ecd8ac!important; }
-.tool-panel :deep(.catalog-option:hover),.tool-panel :deep(.catalog-option.highlight),.tool-panel :deep(.catalog-option.selected) { background:#e2cd97!important; box-shadow:inset 3px 0 var(--gold)!important; }
-.tool-panel :deep(.catalog-search) { border-bottom:1px solid rgba(126,91,42,.36)!important; box-shadow:0 3px 7px rgba(77,52,21,.13); position:relative; z-index:1; }
+/* 下拉框统一到 CatalogSelect 组件内的重设计配色（见 CatalogSelect.vue），此处不再用杂色覆盖 */
+.tool-panel :deep(.catalog-option:nth-child(even)) { background:rgba(154,116,64,.035)!important; }
+.tool-panel :deep(.catalog-option:hover),.tool-panel :deep(.catalog-option.highlight),.tool-panel :deep(.catalog-option.selected) { background:#efe1c0!important; box-shadow:inset 3px 0 #9a7440!important; }
+.tool-panel :deep(.catalog-search) { border-bottom:1px solid rgba(154,116,64,.15)!important; }
 /* 成功提示更贴合暖色主题（柔和青绿，去亮绿）*/
 .titlebar-status.success { color:#7fd0b0!important; }
 
@@ -1828,7 +1829,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* ═══ 立绘呈现（逐页校准框架）═══
    贴右下角、半身(截到大腿)、脸在上不被截、够大、右缘抵右不留空。
    每页三个旋钮：--ah 大小(高度%)、--ay 上下(bottom%，越负越往上顶且越裁下方)、--ax 左右(px，负=更靠右)。 */
-.tool-stage { grid-template-columns:150px minmax(0,1fr) clamp(360px,32vw,560px)!important; }
+/* 立绘列改窄，把宽度还给中间内容（立绘尺寸按高度算不受此影响，右缘仍贴窗口右边、可向左渗）。
+   这样内容列有足够宽度，下拉框/备份按钮不再被挤到竖排单字或重叠。 */
+.tool-stage { grid-template-columns:150px minmax(0,1fr) clamp(200px,17vw,320px)!important; }
 /* 立绘列不裁剪：道具/手臂自然向左延伸，被上层不透明卡片盖住即可，不再在内容边界硬切一刀。
    （整体由 .tool-stage 的 overflow:hidden 兜底裁在工作区范围内） */
 .art-rail { overflow:visible!important; }
@@ -1839,6 +1842,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   position:absolute!important; right:var(--ax,0px)!important; bottom:var(--ay,-40%)!important; top:auto!important; left:auto!important;
   height:var(--ah,175%)!important; width:auto!important; max-width:none!important; max-height:none!important;
   object-fit:contain!important; object-position:right bottom!important; transform:none!important;
+  /* 左侧渐隐：向左渗入内容的部分柔和淡出，不再硬盖住卡片，右侧主体清晰 */
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 40%)!important;
+  mask-image:linear-gradient(90deg,transparent 0%,#000 40%)!important;
 }
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
