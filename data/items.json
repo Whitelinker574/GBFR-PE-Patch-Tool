@@ -40,7 +40,7 @@
     {
       "hash": "1C67E865",
       "nameEn": "Damaged Tail Fin",
-      "nameCn": "破损的尾鳍",
+      "nameCn": "残缺的尾翼",
       "category": "基础素材与采集物 / Gathering & Basic Materials",
       "dangerous": false
     },
@@ -103,7 +103,7 @@
     {
       "hash": "EB0A1DC8",
       "nameEn": "Fornax Stone",
-      "nameCn": "锻造石",
+      "nameCn": "锻炉石",
       "category": "基础素材与采集物 / Gathering & Basic Materials",
       "dangerous": false
     },
@@ -124,7 +124,7 @@
     {
       "hash": "759850CA",
       "nameEn": "Salamander Egg",
-      "nameCn": "火蜥蜴的蛋",
+      "nameCn": "火蜥蜴蛋",
       "category": "基础素材与采集物 / Gathering & Basic Materials",
       "dangerous": false
     },
@@ -159,7 +159,7 @@
     {
       "hash": "79C247F6",
       "nameEn": "Patalena Glass",
-      "nameCn": "帕塔莱纳的晶",
+      "nameCn": "帕塔莱纳之晶",
       "category": "基础素材与采集物 / Gathering & Basic Materials",
       "dangerous": false
     },
@@ -215,7 +215,7 @@
     {
       "hash": "5CEADFBC",
       "nameEn": "Cyclone Orb",
-      "nameCn": "裂空宝珠",
+      "nameCn": "烈空宝珠",
       "category": "元素碎片与宝珠 / Elemental Shards & Orbs",
       "dangerous": false
     },
@@ -327,7 +327,7 @@
     {
       "hash": "D15091D9",
       "nameEn": "Furycane Anima",
-      "nameCn": "胡力坎之魂",
+      "nameCn": "胡拉坎之魂",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -432,14 +432,14 @@
     {
       "hash": "434C567F",
       "nameEn": "Angra Mainyu Anima",
-      "nameCn": "安哥拉·曼纽之魂",
+      "nameCn": "安格拉·曼纽之魂",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
     {
       "hash": "ED3B872D",
       "nameEn": "Angra Mainyu Omega Anima",
-      "nameCn": "安哥拉·曼纽玛格纳之魂",
+      "nameCn": "安格拉·曼纽玛格纳之魂",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -467,21 +467,21 @@
     {
       "hash": "E35076B2",
       "nameEn": "Destrudo",
-      "nameCn": "决死冲动",
+      "nameCn": "决死本能",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
     {
       "hash": "456D2BB3",
       "nameEn": "Mortido",
-      "nameCn": "自毁冲动",
+      "nameCn": "自毁本能",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
     {
       "hash": "C783F39D",
       "nameEn": "Alpha Wolf's Valor",
-      "nameCn": "狼王的武勇",
+      "nameCn": "狼王的勇武",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -495,7 +495,7 @@
     {
       "hash": "0F6B4A1F",
       "nameEn": "Silver Wolf Clovis",
-      "nameCn": "白狼的枪尖",
+      "nameCn": "白狼枪尖",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -516,7 +516,7 @@
     {
       "hash": "B4693222",
       "nameEn": "Maglielle Anamnesis",
-      "nameCn": "玛姬拉菲菈的记忆",
+      "nameCn": "玛琪拉菲菈的记忆",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -537,7 +537,7 @@
     {
       "hash": "54FC643A",
       "nameEn": "Furycane Nihilla Core",
-      "nameCn": "胡力坎·虚无之核",
+      "nameCn": "胡拉坎·虚无之核",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -607,14 +607,14 @@
     {
       "hash": "6F38AFE1",
       "nameEn": "World Idean",
-      "nameCn": "世界理念",
+      "nameCn": "世界意念",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
     {
       "hash": "85F40D79",
       "nameEn": "Chaotic Signum",
-      "nameCn": "世界意念",
+      "nameCn": "混沌之印",
       "category": "星晶兽与首领素材 / Primal Beast & Boss Drops",
       "dangerous": false
     },
@@ -831,7 +831,7 @@
     {
       "hash": "64473A6A",
       "nameEn": "White Dragon Scale",
-      "nameCn": "白龙之鳞",
+      "nameCn": "白龙鳞",
       "category": "龙系素材 / Dragon Materials",
       "dangerous": false
     },
@@ -985,14 +985,14 @@
     {
       "hash": "D5AF421A",
       "nameEn": "Golem Finger",
-      "nameCn": "巨像石指",
+      "nameCn": "魔像石指",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
     {
       "hash": "99F44080",
       "nameEn": "Golem Rockjaw",
-      "nameCn": "魔像巨顎",
+      "nameCn": "魔像巨颚",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
@@ -1069,7 +1069,7 @@
     {
       "hash": "E4070E98",
       "nameEn": "Chilling Demon Eye",
-      "nameCn": "冰冷魔眼",
+      "nameCn": "冰冻魔眼",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
@@ -1132,7 +1132,7 @@
     {
       "hash": "19871BF3",
       "nameEn": "Excoriation War Axe",
-      "nameCn": "极惨炼獄战斧",
+      "nameCn": "极惨炼狱战斧",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
@@ -1174,14 +1174,14 @@
     {
       "hash": "23C59C51",
       "nameEn": "Judgment Prongs",
-      "nameCn": "审判型机枝",
+      "nameCn": "审判型机杖",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
     {
       "hash": "04C18EEC",
       "nameEn": "Carnage Pulse Unit",
-      "nameCn": "杀戮脉冲单元(空白物品)",
+      "nameCn": "杀戮型脉冲组件",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": true
     },
@@ -1223,7 +1223,7 @@
     {
       "hash": "3048DAA9",
       "nameEn": "Broken Savage Sword",
-      "nameCn": "破碎的蛮剑",
+      "nameCn": "断裂的蛮剑",
       "category": "怪物部位与器官 / Monster Parts",
       "dangerous": false
     },
@@ -1328,21 +1328,21 @@
     {
       "hash": "8816ADC5",
       "nameEn": "Prism Chip",
-      "nameCn": "星晶碎块",
+      "nameCn": "星晶碎片",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "4325AB79",
       "nameEn": "Flawed Prism",
-      "nameCn": "星星碎块",
+      "nameCn": "星晶碎块",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "7CFA41FC",
       "nameEn": "Flawless Prism",
-      "nameCn": "星星块",
+      "nameCn": "星晶块",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
@@ -1363,21 +1363,21 @@
     {
       "hash": "644536DF",
       "nameEn": "Fortitude Crystal (S)",
-      "nameCn": "锻武碎片·小",
+      "nameCn": "锻武结晶·小",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "7948DE7D",
       "nameEn": "Fortitude Crystal (M)",
-      "nameCn": "锻武碎片·中",
+      "nameCn": "锻武结晶·中",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "24DF54EE",
       "nameEn": "Fortitude Crystal (L)",
-      "nameCn": "锻武碎片·大",
+      "nameCn": "锻武结晶·大",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
@@ -1412,21 +1412,21 @@
     {
       "hash": "0EB683CD",
       "nameEn": "Grand Refinium I",
-      "nameCn": "华贵精炼材",
+      "nameCn": "华贵精炼材I",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "98CDB46F",
       "nameEn": "Grand Refinium II",
-      "nameCn": "华贵精炼材 II",
+      "nameCn": "华贵精炼材II",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "64A63FBC",
       "nameEn": "Grand Refinium III",
-      "nameCn": "华贵精炼材 III",
+      "nameCn": "华贵精炼材III",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
@@ -1447,42 +1447,42 @@
     {
       "hash": "537CB6D9",
       "nameEn": "Ragnite (Defender)",
-      "nameCn": "终焉钢锭(防御)",
+      "nameCn": "终焉钢锭【防御】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "86FB2EE1",
       "nameEn": "Ragnite (Stunner)",
-      "nameCn": "终焉钢锭 (昏厥)",
+      "nameCn": "终焉钢锭【昏厥】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "654FA095",
       "nameEn": "Ragnite (Ascension)",
-      "nameCn": "终焉钢锭 (觉醒)",
+      "nameCn": "终焉钢锭【觉醒】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "1F4BAE8C",
       "nameEn": "Ragnite (Stinger)",
-      "nameCn": "终焉钢锭 (暴击)",
+      "nameCn": "终焉钢锭【暴击】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "54732298",
       "nameEn": "Ragnite (Executioner)",
-      "nameCn": "终焉钢锭 (弱点)",
+      "nameCn": "终焉钢锭【弱点】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
     {
       "hash": "1C195D33",
       "nameEn": "Ragnite (Terminus)",
-      "nameCn": "终焉钢锭 (究极)",
+      "nameCn": "终焉钢锭【究极】",
       "category": "养成与强化材料 / Upgrade & Uncap Materials",
       "dangerous": false
     },
@@ -1524,14 +1524,14 @@
     {
       "hash": "3916849C",
       "nameEn": "Green Potion",
-      "nameCn": "恢复药水(小药瓶)",
+      "nameCn": "治疗药水",
       "category": "经验书与药水 / Spellbooks & Potions",
       "dangerous": false
     },
     {
       "hash": "94132AE1",
       "nameEn": "Mega Potion",
-      "nameCn": "巨型药水(大药瓶)",
+      "nameCn": "强效药水",
       "category": "经验书与药水 / Spellbooks & Potions",
       "dangerous": false
     },
@@ -1622,7 +1622,7 @@
     {
       "hash": "58FC9B99",
       "nameEn": "Transmarvel Voucher",
-      "nameCn": "高级炼成卷",
+      "nameCn": "高级炼成券",
       "category": "凭证、奖章与票券 / Merits, Badges & Vouchers",
       "dangerous": false
     },
@@ -1636,7 +1636,7 @@
     {
       "hash": "DE302978",
       "nameEn": "Rafale Coin",
-      "nameCn": "拉法尔硬币",
+      "nameCn": "拉法尔纪念币",
       "category": "凭证、奖章与票券 / Merits, Badges & Vouchers",
       "dangerous": false
     },
@@ -1650,49 +1650,49 @@
     {
       "hash": "8572B2CE",
       "nameEn": "Crewmate Card: Seofon",
-      "nameCn": "角色解锁券：希耶提",
+      "nameCn": "希耶提专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "FE52F7CB",
       "nameEn": "Crewmate Card: Tweyen",
-      "nameCn": "角色解锁券：索恩",
+      "nameCn": "索恩专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "5B5B8603",
       "nameEn": "Crewmate Card: Sandalphon",
-      "nameCn": "角色解锁券：圣德芬",
+      "nameCn": "圣德芬专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "EB707EA7",
       "nameEn": "Crewmate Card: Gallanza",
-      "nameCn": "角色解锁券：伽兰查",
+      "nameCn": "伽兰查专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "E8926145",
       "nameEn": "Crewmate Card: Maglielle",
-      "nameCn": "角色解锁券：玛琪拉菲菈",
+      "nameCn": "玛琪拉菲菈专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "41E4C8CE",
       "nameEn": "Crewmate Card: Fraux",
-      "nameCn": "角色解锁券：芙劳",
+      "nameCn": "芙劳专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
     {
       "hash": "06E5185F",
       "nameEn": "Crewmate Card: Fediel",
-      "nameCn": "角色解锁券：菲迪埃尔",
+      "nameCn": "菲迪埃尔专用解锁券",
       "category": "角色解锁券 / Crewmate Cards",
       "dangerous": false
     },
@@ -1734,7 +1734,7 @@
     {
       "hash": "778897F4",
       "nameEn": "Sky Map Piece",
-      "nameCn": "空图地图残片",
+      "nameCn": "空图碎片",
       "category": "核心与关键物品 / Cores & Key Items",
       "dangerous": false
     },
@@ -1748,21 +1748,21 @@
     {
       "hash": "F147229B",
       "nameEn": "Lyria's Journal",
-      "nameCn": "露莉亚的笔记",
+      "nameCn": "露莉亚笔记",
       "category": "核心与关键物品 / Cores & Key Items",
       "dangerous": false
     },
     {
       "hash": "771D9272",
       "nameEn": "Avia Research Logs",
-      "nameCn": "阿维亚研究日志",
+      "nameCn": "阿维亚研究记录",
       "category": "核心与关键物品 / Cores & Key Items",
       "dangerous": false
     },
     {
       "hash": "F58676D3",
       "nameEn": "Rolan's Notes",
-      "nameCn": "罗兰的笔记",
+      "nameCn": "罗兰的手记",
       "category": "核心与关键物品 / Cores & Key Items",
       "dangerous": false
     },
@@ -1825,105 +1825,105 @@
     {
       "hash": "41E92F0A",
       "nameEn": "Reality Thorn",
-      "nameCn": "神之辣",
+      "nameCn": "神之棘",
       "category": "核心与关键物品 / Cores & Key Items",
       "dangerous": false
     },
     {
       "hash": "EEDFA4E4",
       "nameEn": "Color Pack 1",
-      "nameCn": "角色颜色包 1",
+      "nameCn": "角色颜色包1",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "C48004DD",
       "nameEn": "Color Pack 2",
-      "nameCn": "角色颜色包 2",
+      "nameCn": "角色颜色包2",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "79E48056",
       "nameEn": "Color Pack 3",
-      "nameCn": "角色颜色包 3",
+      "nameCn": "角色颜色包3",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "32DC23F3",
       "nameEn": "Color Pack 4",
-      "nameCn": "角色颜色包 4",
+      "nameCn": "角色颜色包4",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "5AF14960",
       "nameEn": "Color Pack 5",
-      "nameCn": "角色颜色包 5",
+      "nameCn": "角色颜色包5",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "D11BAAFC",
       "nameEn": "Concept Art Color Pack",
-      "nameCn": "印象色颜色包",
+      "nameCn": "印象色礼包",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
     {
       "hash": "6C375D99",
       "nameEn": "Sky Memory: Infinitesimal and Infinite",
-      "nameCn": "天空的记忆：极小与无限 (空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“亿万生灵”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "2C0B5A82",
       "nameEn": "Sky Memory: Manifestation",
-      "nameCn": "天空的记忆：显现(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“降世”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "96A00C42",
       "nameEn": "Sky Memory: Love's Legacy",
-      "nameCn": "天空的记忆：爱的遗产(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“爱的传承”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "E3ABC397",
       "nameEn": "Sky Memory: The War",
-      "nameCn": "天空的记忆：战争(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“霸空战争”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "0943913B",
       "nameEn": "Sky Memory: The Girl in Blue",
-      "nameCn": "天空的记忆：苍的少女(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“苍之少女”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "C57A5FE9",
       "nameEn": "Sky Memory: Divided Skies",
-      "nameCn": "天空的记忆：分裂的天空(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“天空断隔”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "4249436E",
       "nameEn": "Sky Memory: Sundered God",
-      "nameCn": "天空的记忆：被撕裂的神明(空白物品,谨慎添加可能坏档)",
+      "nameCn": "空之记忆“二分之神”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": true
     },
     {
       "hash": "74201317",
       "nameEn": "Sky Memory: Rebirthed Genesis",
-      "nameCn": "天空的记忆：重生创世记",
+      "nameCn": "空之记忆“创世之再生”",
       "category": "外观、颜色与记忆 / Cosmetics, Colors & Memories",
       "dangerous": false
     },
@@ -1958,14 +1958,14 @@
     {
       "hash": "0657F403",
       "nameEn": "Mastery Point",
-      "nameCn": "历练点数MSP",
+      "nameCn": "历练点数",
       "category": "货币与点数 / Currencies & Points",
       "dangerous": false
     },
     {
       "hash": "68EADAA9",
       "nameEn": "Conflux Point",
-      "nameCn": "混沌点数CP点",
+      "nameCn": "混融点数",
       "category": "货币与点数 / Currencies & Points",
       "dangerous": false
     },
@@ -2007,21 +2007,21 @@
     {
       "hash": "78FE6E2C",
       "nameEn": "Silver Key",
-      "nameCn": "白银钥匙",
+      "nameCn": "苍银之钥",
       "category": "其他杂项与特殊道具 / Other Special Items",
       "dangerous": false
     },
     {
       "hash": "8682C2AC",
       "nameEn": "Gold Key",
-      "nameCn": "黄金钥匙",
+      "nameCn": "黄金宝钥",
       "category": "其他杂项与特殊道具 / Other Special Items",
       "dangerous": false
     },
     {
       "hash": "86B12ABC",
       "nameEn": "Whitewing Key",
-      "nameCn": "白翼钥匙",
+      "nameCn": "白翼之钥",
       "category": "其他杂项与特殊道具 / Other Special Items",
       "dangerous": false
     },
