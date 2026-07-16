@@ -1829,11 +1829,12 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* ═══ 立绘呈现（逐页校准框架）═══
    贴右下角、半身(截到大腿)、脸在上不被截、够大、右缘抵右不留空。
    每页三个旋钮：--ah 大小(高度%)、--ay 上下(bottom%，越负越往上顶且越裁下方)、--ax 左右(px，负=更靠右)。 */
-/* 立绘列改窄，把宽度还给中间内容（立绘尺寸按高度算不受此影响，右缘仍贴窗口右边、可向左渗）。
-   这样内容列有足够宽度，下拉框/备份按钮不再被挤到竖排单字或重叠。 */
-.tool-stage { grid-template-columns:150px minmax(0,1fr) clamp(200px,17vw,320px)!important; }
-/* 立绘列不裁剪：道具/手臂自然向左延伸，被上层不透明卡片盖住即可，不再在内容边界硬切一刀。
-   （整体由 .tool-stage 的 overflow:hidden 兜底裁在工作区范围内） */
+/* 立绘列 = 固定的右侧保留区(足够容下角色的头/脸，不被内容卡片盖住)；中间内容自适应剩余空间。
+   立绘尺寸恒定、靠右；内容 UI 随窗口自适应，窄时靠各组件自身重排（见下方自适应规则）。 */
+.tool-stage { grid-template-columns:146px minmax(0,1fr) clamp(300px,25vw,450px)!important; }
+/* 立绘在内容之下(背景层)，被不透明卡片盖住的左半身没关系；立绘列给足宽度让"头/脸"
+   落在立绘列内(不被卡片盖住)，只有身体左侧渗入内容被盖。立绘列不裁剪，整体由
+   .tool-stage overflow:hidden 兜底裁在工作区内。 */
 .art-rail { overflow:visible!important; }
 .art-rail .function-character { position:absolute!important; inset:0!important; left:0!important; right:0!important; top:0!important; bottom:0!important; }
 .art-rail .function-character img,
