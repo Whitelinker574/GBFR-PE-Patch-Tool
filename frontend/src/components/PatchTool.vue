@@ -1848,6 +1848,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   mask-image:linear-gradient(90deg,transparent 0%,#000 40%)!important;
 }
 
+/* 祝福页特性行去掉深色嵌套框，改成和因子页一致的浅色扁平行（透明底、无边框，仅靠间距分隔） */
+.tool-panel :deep(.trait-card) { background:transparent!important; border-color:transparent!important; box-shadow:none!important; padding:6px 0!important; }
+
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section) {

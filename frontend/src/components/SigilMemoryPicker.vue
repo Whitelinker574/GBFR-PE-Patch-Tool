@@ -123,29 +123,28 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 </template>
 
 <style scoped>
+/* 样式统一到 CatalogSelect(Gemini 重设计)：羊皮纸色阶#fdf6e4→#efe1c0 + 金棕#9a7440，
+   去掉原来的青色强调与双色渐变；选项名单行不换行。 */
 .picker { position: relative; flex: 1; font-family:inherit; }
-.picker-selected { display:flex; align-items:center; gap:6px; width:100%; min-height:34px; padding:6px 9px; border:1px solid rgba(132,95,43,.36); border-radius:2px; background:rgba(255,249,229,.62); color:#514638; box-shadow:none; cursor:pointer; font-family:inherit; font-size:.75rem; line-height:1.35; text-align:left; }
-.picker-selected:hover { border-color:rgba(65,137,151,.48); box-shadow:inset 3px 0 #4ba8b6,inset 0 1px rgba(255,255,255,.74); }
-.picker-selected:disabled { opacity:.45; cursor:not-allowed; }
-.picker-open .picker-selected { border-color:rgba(106,75,33,.5); border-bottom-left-radius:0; border-bottom-right-radius:0; box-shadow:inset 0 -3px #4ba8b6; }
-.picker-label, .picker-placeholder { flex:1; min-width:0; overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
-.picker-placeholder { color:#9a876c; }
-.picker-inline-clear { flex-shrink:0; background:transparent; border:0; padding:2px 6px; color:#9a7c5d; font:inherit; font-size:.8rem; line-height:1; cursor:pointer; border-radius:2px 5px 2px 5px; font-family:inherit; }
-.picker-inline-clear:hover,.picker-inline-clear:focus-visible { color:#9a4d43; background:rgba(162,86,69,.1); outline:none; }
-.cheveron { color:#8b6d43; font-size:.7rem; flex-shrink:0; }
-.picker-dropdown { position:absolute; top:100%; left:0; right:0; z-index:20; overflow:hidden; background:linear-gradient(145deg,#fff9e8,#ead6aa); border:1px solid rgba(108,76,33,.5); border-top:none; border-radius:0 0 3px 8px; box-shadow:0 9px 22px rgba(77,52,21,.22),inset 0 0 0 1px rgba(255,255,255,.45); }
-.picker-search { display:flex; align-items:center; gap:6px; padding:7px 10px; border-bottom:1px solid rgba(124,88,40,.24); background:rgba(255,249,229,.64); }
-.picker-search input { flex:1; background:transparent; border:none; color:#514638; outline:none; font-family:inherit; font-size:.78rem; padding:2px 0; }
-.clear-btn { background:transparent; border:1px solid rgba(255,255,255,.15); border-radius:4px; padding:2px 8px; font-size:.68rem; color:rgba(255,255,255,.55); cursor:pointer; font-family:inherit; }
-.clear-btn:hover { color:#67e8f9; border-color:rgba(103,232,249,.35); }
-.picker-list { max-height:220px; overflow-y:auto; padding:4px; }
-.opt { min-height:36px;display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin:2px 0; padding:7px 10px; border:1px solid transparent; border-bottom-color:rgba(123,88,43,.2); font-size:.72rem; line-height:1.35; color:#5b4d3c; background:rgba(255,251,235,.5); cursor:pointer; font-family:inherit; }
-.opt:last-child { border-bottom:0; }
-.opt:nth-child(even) { background:rgba(226,207,166,.4); }
-.opt:hover, .opt.hi, .opt.selected { color:#493e31; border-color:rgba(108,76,34,.38); background:linear-gradient(90deg,#fff9e5,#e7d3a8); box-shadow:inset 4px 0 #4ba8b6; }
-.opt.selected::before { content:"✓ "; color:#397d88; }
-.opt-name { display:inline-flex; align-items:flex-start; gap:6px; min-width:0; overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
-.opt-tag { padding:1px 5px; border:1px solid rgba(63,128,136,.3); border-radius:2px 5px 2px 5px; color:#39727a; background:#f4efd9; font-size:.6rem; letter-spacing:.5px; font-family:inherit; }
-.opt-max { color:#907a5d; font-size:.7rem; font-weight:700; flex-shrink:0; }
-.picker-none { padding:14px; text-align:center; color:#9b876d; font-size:.72rem; }
+.picker-selected { display:flex; align-items:center; gap:8px; width:100%; min-height:34px; padding:7px 11px; border:1px solid rgba(154,116,64,.4); border-radius:6px; background:#fdf6e4; color:#4e4438; cursor:pointer; font-family:inherit; font-size:.75rem; line-height:1.35; text-align:left; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
+.picker-selected:hover,.picker-open .picker-selected { border-color:#9a7440; background:#fffdf6; box-shadow:0 0 0 1px rgba(154,116,64,.12); }
+.picker-selected:disabled { opacity:.48; cursor:not-allowed; }
+.picker-label, .picker-placeholder { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.picker-placeholder { color:#9c8a73; }
+.picker-inline-clear { flex-shrink:0; background:transparent; border:0; padding:0 4px; color:#a6473d; font:inherit; font-size:.8rem; line-height:1; cursor:pointer; font-weight:800; font-family:inherit; }
+.picker-inline-clear:hover,.picker-inline-clear:focus-visible { color:#8a3a30; outline:none; }
+.cheveron { color:#9a7440; font-size:.7rem; flex-shrink:0; }
+.picker-dropdown { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; overflow:hidden; background:#fdf6e4; border:1px solid rgba(154,116,64,.32); border-radius:6px; box-shadow:0 8px 24px rgba(78,68,56,.14),0 2px 8px rgba(78,68,56,.05); }
+.picker-search { display:flex; align-items:center; gap:6px; padding:8px; border-bottom:1px solid rgba(154,116,64,.15); background:#f6ebd4; }
+.picker-search input { flex:1; min-height:30px; padding:5px 9px; border:1px solid rgba(154,116,64,.3); border-radius:4px; background:#fffdf6; color:#4e4438; outline:none; font-family:inherit; font-size:.78rem; }
+.picker-search input:focus { border-color:#9a7440; }
+.picker-list { max-height:236px; overflow-y:auto; }
+.opt { min-height:36px;display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 12px; border:0; border-bottom:1px solid rgba(154,116,64,.09); font-size:.72rem; line-height:1.35; color:#6f6152; background:transparent; cursor:pointer; font-family:inherit; transition:background-color .14s ease,color .14s ease; }
+.opt:nth-child(even) { background:rgba(154,116,64,.035); }
+.opt:hover, .opt.hi, .opt.selected { color:#4e4438; background:#efe1c0; box-shadow:inset 3px 0 #9a7440; }
+.opt-name { flex:1; min-width:0; display:inline-flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.opt-tag { flex:0 0 auto; padding:1px 5px; border:1px solid rgba(154,116,64,.4); border-radius:20px; color:#8a6a34; background:rgba(154,116,64,.1); font-size:.6rem; letter-spacing:.5px; font-family:inherit; }
+.opt-max { flex:0 0 auto; color:#9c8a73; font-size:.82em; font-weight:600; }
+.opt:hover .opt-max,.opt.hi .opt-max,.opt.selected .opt-max { color:#7a664d; }
+.picker-none { padding:14px; text-align:center; color:#9c8a73; font-size:.72rem; }
 </style>
