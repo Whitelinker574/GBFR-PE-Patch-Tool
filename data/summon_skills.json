@@ -1,0 +1,1154 @@
+{
+  "skills": [
+    {
+      "hash": "0x50079A1C",
+      "displayName": "攻击力",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0xF372F096",
+      "displayName": "体力",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0x8D78A19B",
+      "displayName": "暴击率",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0xCEB700EE",
+      "displayName": "昏厥",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x3F488339",
+      "displayName": "背水",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x2FC8FBFF",
+      "displayName": "热血",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x1C360C63",
+      "displayName": "蓄力攻击",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x3FEC5F80",
+      "displayName": "协同攻击",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x8D078597",
+      "displayName": "投掷",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xC0979A17",
+      "displayName": "暴击伤害",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x6B694D6D",
+      "displayName": "弱点攻击",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0xA7A45F28",
+      "displayName": "连击收招",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xB360801D",
+      "displayName": "集中炮火",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xDC584F60",
+      "displayName": "伤害上限",
+      "maxLevel": 65
+    },
+    {
+      "hash": "0xF17850B9",
+      "displayName": "连击加成",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x71F11A9B",
+      "displayName": "暴君",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xC35B111B",
+      "displayName": "蓄力会心",
+      "maxLevel": 20
+    },
+    {
+      "hash": "0x4F1A3683",
+      "displayName": "弱化状态特效",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xA9D17F55",
+      "displayName": "Overdrive特效",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xAC9674C1",
+      "displayName": "破防特效",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xE6CDBA9C",
+      "displayName": "坚守",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0xA1A8E39D",
+      "displayName": "霸体",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xE69A4694",
+      "displayName": "豪胆",
+      "maxLevel": 20
+    },
+    {
+      "hash": "0x973B49AF",
+      "displayName": "中毒抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7C84A6B3",
+      "displayName": "灼热抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD54F8CA7",
+      "displayName": "泥沙抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xFB572681",
+      "displayName": "冰冻抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3759A5B9",
+      "displayName": "昏迷抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x2242921F",
+      "displayName": "麻痹抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x50B453DD",
+      "displayName": "能力封印抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xCFB48782",
+      "displayName": "奥义封印抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0AA20846",
+      "displayName": "格挡性能",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x3C2B57B0",
+      "displayName": "格挡仇火",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x8B3BF60C",
+      "displayName": "躲避性能",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7C2E4D64",
+      "displayName": "闪避仇火",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x9389CC06",
+      "displayName": "回复性能",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x6085DA25",
+      "displayName": "自愈",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x7CCFF74F",
+      "displayName": "HP吸收",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x95F3FA86",
+      "displayName": "自动复活",
+      "maxLevel": 20
+    },
+    {
+      "hash": "0x318D12E9",
+      "displayName": "迅捷能力",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x05F2ECDC",
+      "displayName": "怒涛",
+      "maxLevel": 20
+    },
+    {
+      "hash": "0xB5FF9FD3",
+      "displayName": "激昂",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x24883AF3",
+      "displayName": "药水携带数",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDC607D75",
+      "displayName": "匿踪",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x6018372B",
+      "displayName": "挑衅",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF687C5EF",
+      "displayName": "获得经验值",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xC86F3082",
+      "displayName": "获得金币",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEAE321EB",
+      "displayName": "能力伤害",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xE0ABFDFE",
+      "displayName": "守护",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0xA2FA9685",
+      "displayName": "缓速抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB6E31F76",
+      "displayName": "不动",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9702860F",
+      "displayName": "灾祸抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0053599E",
+      "displayName": "蓄力强化",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x1470F860",
+      "displayName": "坚持",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3F2C482E",
+      "displayName": "弱化效果延长",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0EAD65E0",
+      "displayName": "全弱化效果抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x09AA7DB5",
+      "displayName": "凝神",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xD2C8E10A",
+      "displayName": "明镜止水",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x29B292A8",
+      "displayName": "抗争",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x7EDD69D0",
+      "displayName": "怒发冲冠",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x8F502F0D",
+      "displayName": "奋不顾身",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x84078CB0",
+      "displayName": "快速蓄力",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xD0A1C6E5",
+      "displayName": "攻击机会",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x57E8A93F",
+      "displayName": "因子强化",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xCD030268",
+      "displayName": "英勇神速",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA38510E2",
+      "displayName": "英勇灵气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDADE14DC",
+      "displayName": "英勇之心",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3BFED918",
+      "displayName": "守护者的决心",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF8496336",
+      "displayName": "守护者的骄傲",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9AFDFA9E",
+      "displayName": "守护者的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x151E4674",
+      "displayName": "舵手的指引",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA374FDF0",
+      "displayName": "舵手的坚持",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD76F4D24",
+      "displayName": "舵手的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB48EEF48",
+      "displayName": "魔法师的心愿",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x11AAE5F5",
+      "displayName": "魔法师的伶俐",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xC00163B3",
+      "displayName": "魔法师的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xAA83F548",
+      "displayName": "老兵的智慧",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x921B6B0C",
+      "displayName": "老兵的天眼",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0E42BE1B",
+      "displayName": "老兵的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x23D0F67F",
+      "displayName": "玫瑰早绽",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xC2A4C7A9",
+      "displayName": "玫瑰缤纷",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x8519AD4A",
+      "displayName": "玫瑰的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD908223D",
+      "displayName": "幽幻之应",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7351D602",
+      "displayName": "幽幻之谊",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA339D642",
+      "displayName": "幽幻的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x8CDF9382",
+      "displayName": "白龙的誓约",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD1012D8C",
+      "displayName": "白龙的荣耀",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x6316CBEB",
+      "displayName": "白龙的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x2E65A774",
+      "displayName": "勇士的信念",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x16EFF868",
+      "displayName": "勇士的意志",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD8F66C1C",
+      "displayName": "勇士的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xE60A735C",
+      "displayName": "王者行进",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x6FF05223",
+      "displayName": "王者一心",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xBA504607",
+      "displayName": "王者的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x86CBCDC4",
+      "displayName": "屠龙者的威猛",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x05FA4599",
+      "displayName": "屠龙者的才智",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xC7D379F1",
+      "displayName": "屠龙者的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9A9DC170",
+      "displayName": "圣骑士的剑辉",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x522E2388",
+      "displayName": "圣骑士的威光",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB85202BC",
+      "displayName": "圣骑士的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0CD6C625",
+      "displayName": "变换自如的迅刃",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA3B49220",
+      "displayName": "变换自如的妖剑士",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDAEFBB27",
+      "displayName": "变换自如的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x29B07BEB",
+      "displayName": "斩姬梦幻",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA63B89CD",
+      "displayName": "斩姬武艺",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xFDD1AD24",
+      "displayName": "斩姬的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x5463232F",
+      "displayName": "古今无双的气概",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x451D814C",
+      "displayName": "古今无双的强者",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0F026CF0",
+      "displayName": "古今无双的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEC3CF174",
+      "displayName": "极致的谋略",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xAF513A9D",
+      "displayName": "极致真理",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xE6B92E34",
+      "displayName": "极致的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x93A2093C",
+      "displayName": "异能增长",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7AD0C010",
+      "displayName": "异能战意",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB064A634",
+      "displayName": "异能之心",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x6EBFA176",
+      "displayName": "真红烈焰",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF1D5DBD0",
+      "displayName": "真红翔舞",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x4F135217",
+      "displayName": "真红的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7440E869",
+      "displayName": "冥暗钢刃",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xCD124165",
+      "displayName": "冥暗自若",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD7F9BB88",
+      "displayName": "冥暗的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0FBA47E8",
+      "displayName": "幸运甘露",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0xA4D6B880",
+      "displayName": "强健甘露",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0xCDEB73F6",
+      "displayName": "修炼甘露",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0x1DC9D7E7",
+      "displayName": "水牢抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDD4A701E",
+      "displayName": "异能耐受",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x4BF2E191",
+      "displayName": "攻击DOWN抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x66DE60B1",
+      "displayName": "防御DOWN抗性",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x082033CB",
+      "displayName": "螃蟹共鸣",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x1B0D9897",
+      "displayName": "蟹钳的报恩",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9AD8B5E6",
+      "displayName": "Seven Net",
+      "maxLevel": 6
+    },
+    {
+      "hash": "0x74AA75D6",
+      "displayName": "刚健",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xDC225C96",
+      "displayName": "修罗",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x4C588C27",
+      "displayName": "属性转换克制",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x5E422AE5",
+      "displayName": "获得MSP",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xAF794A87",
+      "displayName": "闪避距离",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x57AB5B10",
+      "displayName": "追击",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x82CE278D",
+      "displayName": "身无长技",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x1568E0E4",
+      "displayName": "先发制人",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x70395731",
+      "displayName": "穷寇心",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xCD18A77D",
+      "displayName": "万能药",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x333E5862",
+      "displayName": "骰子剑",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA8A3163B",
+      "displayName": "刀上舞",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEC1C6779",
+      "displayName": "摇曳步",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDBE1D775",
+      "displayName": "a α 阿尔法",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x8D2ADB6E",
+      "displayName": "b β 贝塔",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x5C862E13",
+      "displayName": "y γ 伽马",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xD3B8C21F",
+      "displayName": "终极蟹钳因子",
+      "maxLevel": 45
+    },
+    {
+      "hash": "0x48A95B8D",
+      "displayName": "金刚",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0x40223C28",
+      "displayName": "浩劫",
+      "maxLevel": 30
+    },
+    {
+      "hash": "0xF71F8997",
+      "displayName": "自动药水",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x77C809F5",
+      "displayName": "剑圣的练气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9230E3F5",
+      "displayName": "剑圣的闪刃",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7B4FC47A",
+      "displayName": "剑圣的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEF05EC4D",
+      "displayName": "涯之七星",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xE85FF8E0",
+      "displayName": "魔眼的万箭",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x8572B8AF",
+      "displayName": "魔眼的凛翔",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x81B293D9",
+      "displayName": "魔眼的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x281214AB",
+      "displayName": "王之二涯",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD40D1E9B",
+      "displayName": "天司长的灵威",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x15806DFC",
+      "displayName": "天司长的风雅",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x4E5F6706",
+      "displayName": "天司长的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x1A2EF59E",
+      "displayName": "无态",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEE85CD1F",
+      "displayName": "狂战士",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3D8153A1",
+      "displayName": "斯巴达",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x51C115D2",
+      "displayName": "超终极精准闪避",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x73220725",
+      "displayName": "天星之止息",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9232DC17",
+      "displayName": "天星之界",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3EB345D7",
+      "displayName": "雷狼的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0DE887A0",
+      "displayName": "天星之炼",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA898E283",
+      "displayName": "天星之雪",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF26BAEA5",
+      "displayName": "分歧",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x36E3848D",
+      "displayName": "天星之焰",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD029FE08",
+      "displayName": "浪迹天涯",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA7726190",
+      "displayName": "天星之煌",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x06719232",
+      "displayName": "黑龙的咒印",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x461A8E07",
+      "displayName": "群青的逆境",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9ACE140B",
+      "displayName": "刃姬的圆舞曲",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7D75D904",
+      "displayName": "雷狼的弹匣",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x5559232F",
+      "displayName": "黑龙的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xED8D8AD8",
+      "displayName": "黑龙的折跃",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB953CC1E",
+      "displayName": "群青的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7B5B081D",
+      "displayName": "刃姬的小夜曲",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xBE3404B9",
+      "displayName": "雷狼的慧眼",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x807B6684",
+      "displayName": "转世的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xDBA19768",
+      "displayName": "狼王的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x79266456",
+      "displayName": "刃姬的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x1DE14C65",
+      "displayName": "狼王之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x26956F25",
+      "displayName": "狼王的大轮转",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD176D262",
+      "displayName": "狼王的激昂",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x30773197",
+      "displayName": "转世的跃动",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x47384248",
+      "displayName": "转世的恩宠",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9300FADB",
+      "displayName": "天星之止息",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD29CD8E0",
+      "displayName": "天星之界",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD8C61507",
+      "displayName": "雷狼的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3BA37635",
+      "displayName": "HP吸收",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x2679A4F0",
+      "displayName": "明镜止水",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x08DA7279",
+      "displayName": "攻击力",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x837B3D64",
+      "displayName": "自愈",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x04AC2281",
+      "displayName": "激昂",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xB5B23F02",
+      "displayName": "体力",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x3ED16FB2",
+      "displayName": "药水携带数",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD340651C",
+      "displayName": "自动复活",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x8B8085C0",
+      "displayName": "天星之炼",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xE14E1598",
+      "displayName": "天星之雪",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x7B4AAB30",
+      "displayName": "分歧",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x74061B0C",
+      "displayName": "天星之焰",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x5BF84FD1",
+      "displayName": "浪迹天涯",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x20492635",
+      "displayName": "天星之煌",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0523A202",
+      "displayName": "黑龙的咒印",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD4117FF3",
+      "displayName": "群青的逆境",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x96D6FE5E",
+      "displayName": "刃姬的圆舞曲",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF964A4CA",
+      "displayName": "雷狼的弹匣",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9ABD2DA5",
+      "displayName": "黑龙的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x0723F7EC",
+      "displayName": "黑龙的折跃",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x51E98A7C",
+      "displayName": "群青的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEC9FFE77",
+      "displayName": "刃姬的小夜曲",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x1A359B67",
+      "displayName": "雷狼的慧眼",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xA8A0CBFF",
+      "displayName": "黑龙之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x2D70C37D",
+      "displayName": "转世的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x41AC1082",
+      "displayName": "狼王的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xEB766D87",
+      "displayName": "刃姬的战气",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x895ABBF6",
+      "displayName": "狼王之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xF21404B1",
+      "displayName": "狼王的大轮转",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x9EC6C56D",
+      "displayName": "狼王的激昂",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x23953FD4",
+      "displayName": "雷狼之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x95CC3CB8",
+      "displayName": "群青之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xD8A464F1",
+      "displayName": "刃姬之觉醒",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0xBA28C81C",
+      "displayName": "转世的跃动",
+      "maxLevel": 15
+    },
+    {
+      "hash": "0x64301E91",
+      "displayName": "转世的恩宠",
+      "maxLevel": 15
+    }
+  ]
+}

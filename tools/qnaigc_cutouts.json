@@ -1,0 +1,95 @@
+{
+  "defaults": {
+    "model": "openai/gpt-image-2",
+    "size": "2160x3840",
+    "quality": "high",
+    "background": "opaque",
+    "chroma_key": true
+  },
+  "jobs": [
+    {
+      "name": "progression",
+      "images": ["../frontend/src/assets/gbfr/functions/progression.webp"],
+      "output": "qnaigc-output/progression.png",
+      "prompt": "以参考图中的卡莉奥斯特罗为唯一角色，保留身份、发型、服装主色和炼金术师气质，重绘为适合桌面工具界面的透明背景三分之二身角色插画。角色一手拿炼金药水，另一手展示一把精致武器，动作清楚地表达物品与武器养成。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想动作 RPG 宣传插画、天蓝与暖金配色、珊瑚红点缀、优雅金属花纹、清晰赛璐璐轮廓、柔和水彩渐变、干净明亮的边缘光。真实透明 PNG 背景，只保留角色和两件主要道具，不要方框、地面、布景、文字、图标、标志、棋盘格、粒子、碎片和细碎装饰。整体画面必须干净、平滑、统一，强调大色块与整体轮廓，边缘清晰利落，画面呼吸感强。"
+    },
+    {
+      "name": "sigil",
+      "images": ["../frontend/src/assets/gbfr/functions/sigil.webp"],
+      "output": "qnaigc-output/sigil.png",
+      "prompt": "以参考图中的娜露梅亚为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。她优雅地托起一枚大型紫色因子水晶，动作表达因子批量修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想动作 RPG 宣传插画、天蓝暖金与少量紫色、优雅金属花纹、清晰赛璐璐轮廓、柔和水彩渐变、明亮边缘光。真实透明 PNG 背景，只保留角色与一枚主水晶，不要方框、地面、布景、文字、标志、棋盘格、粒子、碎片和密集小装饰。整体干净平滑统一，强调大色块与清楚轮廓。"
+    },
+    {
+      "name": "sigil-memory",
+      "images": ["../frontend/src/assets/gbfr/functions/sigil-memory.webp"],
+      "output": "qnaigc-output/sigil-memory.png",
+      "prompt": "以参考图中的萝赛塔为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。她指向一页悬浮的因子记录纸与一枚玫瑰形符文，表达游戏内即时因子编辑。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白、暖金和玫瑰红，大色块、清晰赛璐璐轮廓、柔和水彩渐变与优雅幻想装饰。真实透明 PNG 背景，只保留角色、单页记录纸和一个主符文，不要场景、文字、标志、棋盘格、碎粒和细碎噪点。"
+    },
+    {
+      "name": "wrightstone",
+      "images": ["../frontend/src/assets/gbfr/functions/wrightstone.webp"],
+      "output": "qnaigc-output/wrightstone.png",
+      "prompt": "以参考图中的菲莉为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。她手中展示三颗大型祝福石，动作直观表达祝福修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想 RPG 宣传插画、天蓝暖金与青绿色、清晰赛璐璐轮廓、柔和水彩渐变、优雅金属细节。真实透明 PNG 背景，只保留角色和三颗结构清楚的祝福石，不要方框、场景、文字、标志、棋盘格、粒子和碎片。"
+    },
+    {
+      "name": "summon",
+      "images": ["../frontend/src/assets/gbfr/functions/summon.webp"],
+      "output": "qnaigc-output/summon.png",
+      "prompt": "以参考图中的露莉亚为唯一角色，保留身份、蓝色长发、白色服装与胸前宝石，重绘为透明背景三分之二身角色插画。她双手托起一颗大型蓝色召唤石，动作直接表达召唤石修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：清澈天空色、象牙白、暖金、珊瑚红微点缀，大色块、清晰赛璐璐轮廓、柔和水彩渐变和明亮边缘光。真实透明 PNG 背景，只保留角色与一颗主召唤石，不要祭坛、场景、文字、标志、棋盘格、粒子、碎片。"
+    },
+    {
+      "name": "overlimit",
+      "images": ["../frontend/src/assets/gbfr/functions/overlimit.webp"],
+      "output": "qnaigc-output/overlimit.png",
+      "prompt": "以参考图中的希耶提为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。他身旁整齐悬浮四枚大型金色能力徽记，动作表达角色上限突破。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想动作 RPG 宣传插画、天蓝与暖金主色、清晰赛璐璐轮廓、柔和水彩渐变、优雅金属花纹。真实透明 PNG 背景，只保留角色与四枚清楚的大徽记，不要场景、文字、标志、棋盘格、密集粒子和碎片。"
+    },
+    {
+      "name": "runtime",
+      "images": ["../frontend/src/assets/gbfr/functions/runtime.webp"],
+      "output": "qnaigc-output/runtime.png",
+      "prompt": "以参考图中的碧为唯一角色，保留红色飞龙伙伴的可爱身份特征，重绘为透明背景全身角色插画。碧抱着一袋金币和两瓶药水，动作直接表达游戏内金币、MSP、药水和素材实时修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白、暖金、珊瑚红，大色块、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留碧、金币袋和两瓶药水，不要宝箱场景、文字、标志、棋盘格、粒子与碎片。"
+    },
+    {
+      "name": "chara",
+      "images": ["../frontend/src/assets/gbfr/functions/chara.webp"],
+      "output": "qnaigc-output/chara.png",
+      "prompt": "以参考图中的姬塔为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。她拿着一本角色统计册并指向四张无文字的大型角色卡片，动作表达角色使用次数修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想 RPG 宣传插画、天蓝暖金和珊瑚红、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留角色、一本册子和四张简洁卡片，不要可读文字、场景、标志、棋盘格、碎片。"
+    },
+    {
+      "name": "save",
+      "images": ["../frontend/src/assets/gbfr/functions/save.webp"],
+      "output": "qnaigc-output/save.png",
+      "prompt": "以参考图中的拉卡姆为唯一角色，保留身份、发型与服装特征，重绘为透明背景三分之二身角色插画。他翻开一本大型任务记录册并盖下一个清楚的完成印章，动作表达任务完成次数修改。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白、暖金与木色，大色块、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留角色、记录册和印章，不要桌面场景、可读文字、标志、棋盘格、碎片。"
+    },
+    {
+      "name": "compatibility",
+      "images": ["../frontend/src/assets/gbfr/functions/compatibility.webp"],
+      "output": "qnaigc-output/compatibility.png",
+      "prompt": "以参考图中的罗兰为唯一角色，保留身份、眼镜、发型与服装特征，重绘为透明背景三分之二身角色插画。他检查一只大型金色罗盘和一圈清晰校准刻度，动作表达版本检测与适配校准。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白和暖金，大色块、清晰赛璐璐轮廓、柔和水彩渐变、优雅机械花纹。真实透明 PNG 背景，只保留角色、罗盘和一圈刻度，不要地图场景、文字、标志、棋盘格、碎片。"
+    },
+    {
+      "name": "legacy-runtime",
+      "images": ["../frontend/src/assets/gbfr/functions/legacy-runtime.webp"],
+      "output": "qnaigc-output/legacy-runtime.png",
+      "prompt": "以参考图中的泽塔为唯一角色，保留身份、发型、红色铠甲与长枪特征，重绘为透明背景三分之二身角色插画。她谨慎检查一块断裂并发生偏移的蓝色魔法符文板，动作表达旧版功能尚待适配。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、暖金、红色和少量警示蓝，大色块、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留角色、长枪和一块主符文板，不要地面、碎石、文字、标志、棋盘格、密集碎片。"
+    },
+    {
+      "name": "monster",
+      "images": ["../frontend/src/assets/gbfr/functions/monster.webp"],
+      "output": "qnaigc-output/monster.png",
+      "prompt": "以参考图中的伊德为唯一角色，保留身份、白发、黑色服装与巨剑特征，重绘为透明背景三分之二身角色插画。他面向一个简洁的大型怪物轮廓，并拿着只有三段大色块的强度刻度，动作表达怪物倍率与伤害记录。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白、暖金、深蓝，大色块、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留角色、巨剑、一个怪物轮廓与三段刻度，不要文字、标志、棋盘格、粒子和碎片。"
+    },
+    {
+      "name": "patch",
+      "images": ["../frontend/src/assets/gbfr/functions/patch.webp"],
+      "output": "qnaigc-output/patch.png",
+      "prompt": "以参考图中的欧根为唯一角色，保留身份、眼罩、发型与服装特征，重绘为透明背景三分之二身角色插画。他用扳手修复一枚大型蓝金齿轮，动作表达旧版文件补丁与恢复。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：日式幻想动作 RPG 宣传插画、天蓝与暖金、清晰赛璐璐轮廓、柔和水彩渐变、优雅机械花纹。真实透明 PNG 背景，只保留角色、扳手和一个主齿轮，不要工作台场景、文字、标志、棋盘格、零件碎屑。"
+    },
+    {
+      "name": "language",
+      "images": ["../frontend/src/assets/gbfr/functions/language.webp"],
+      "output": "qnaigc-output/language.png",
+      "prompt": "以参考图中的伊欧为唯一角色，保留身份、双马尾、服装与法杖特征，重绘为透明背景三分之二身角色插画。她引导三个大型对话卷轴，每个卷轴只含简单几何符号且没有任何文字，动作表达语言与显示设置。使用 Granblue Fantasy: Relink 式明亮空之幻想视觉语言：天蓝、象牙白、暖金与少量绿色，大色块、清晰赛璐璐轮廓、柔和水彩渐变。真实透明 PNG 背景，只保留角色、法杖和三个卷轴，不要可读文字、场景、标志、棋盘格、粒子和碎片。"
+    }
+  ]
+}

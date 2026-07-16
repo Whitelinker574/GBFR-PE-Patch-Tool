@@ -1,0 +1,107 @@
+{
+  "output_dir": "qnaigc-output/stickers-official-style-v2",
+  "defaults": {
+    "model": "openai/gpt-image-2",
+    "size": "2048x2048",
+    "quality": "high",
+    "background": "opaque",
+    "chroma_key": true,
+    "prompt_suffix": "第一张图是该角色的 Cygames 官方《Granblue Fantasy: Relink》立绘，是身份、发色、发型、种族特征、服装、配色与标志性装备的唯一权威参考。第二、第三张图是 Cygames《Granblue Fantasy》官方 LINE 贴纸合集，只用于学习统一的表情包视觉语法：2 至 3 头身的漫画化比例，粗而圆润的深灰外轮廓，极简内部线条，明快平涂大色块，少量硬边阴影，夸张但可爱的表情和清楚的动作剪影。禁止复刻官方贴纸中的任何具体角色、姿势、文字、拟声词、背景图案或构图。不要画成精致缩小立绘，不要半写实，不要厚涂，不要高频发丝，不要复杂布料纹理，不要摄影光影，不要 3D 玩偶感，不要文字、字母、水印或标志。每张都是独立新动作，服务于指定工具功能。主体占画面 68% 至 76%，中央略偏下，四周保留至少 12% 纯背景安全区，头发、兽耳、武器、手脚和功能道具不得接触边缘。人物必须只有两条手臂、两只手，每只手五指结构简洁正确；非人形角色保持正确肢体数量。功能道具数量必须严格符合任务描述，透视和握持关系自然。整体干净、平滑、统一，适合缩小到 150×160 像素仍能一眼看清。",
+    "images": [
+      "qnaigc-references/official/rosetta.png",
+      "qnaigc-references/official-stickers/vol3-2.png",
+      "qnaigc-references/official-stickers/vol3-3.png"
+    ]
+  },
+  "jobs": [
+    {
+      "name": "sigil-memory",
+      "output": "sigil-memory.png",
+      "prompt": "生成萝赛塔的独立 Q 版功能贴纸。她保留官方深棕长发、紫玫瑰发饰、紫黑服装与成熟从容气质，画到腰部。她微微眯眼露出温柔又带一点调侃的提醒表情，左手只托着一枚清楚完整的蓝紫色因子徽章，右手食指指向徽章，旁边只有一个小型金色感叹符号作为提醒。动作表达‘重新进档后要再选一次目标’。禁止额外玫瑰枝、额外手掌、第二枚徽章、文字或对话框。"
+    },
+    {
+      "name": "progression",
+      "output": "progression.png",
+      "images": ["qnaigc-references/official/cagliostro.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成卡莉奥斯特罗的独立 Q 版功能贴纸。保留官方浅金双马尾、发饰、炼金术服装和自信可爱气质，画到腰部。她得意地打开一只小型炼金收纳箱，箱内只放一块素材晶体和一把迷你武器模型；左手托箱底，右手竖起拇指，动作表达物品与武器整理完成。禁止额外手、额外箱子、文字或漂浮不明道具。"
+    },
+    {
+      "name": "sigil",
+      "output": "sigil.png",
+      "images": ["qnaigc-references/official/narmaya.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成娜露梅亚的独立 Q 版功能贴纸。保留官方紫色长发、角、和风服装与温柔气质，画到腰部，不拔刀。她认真对照两枚且仅两枚完整因子徽章，一枚主词条、一枚副词条；左手托住两枚徽章的小托盘，右手轻点其中一枚，表情专注又安心。禁止第三枚徽章、额外手、文字或大面积特效。"
+    },
+    {
+      "name": "wrightstone",
+      "output": "wrightstone.png",
+      "images": ["qnaigc-references/official/ferry.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成菲莉的独立 Q 版功能贴纸。保留官方浅蓝长发、耳朵、蓝白服装与温柔表情，画到腰部。她双手自然托着一只小托盘，托盘上恰好三颗彼此分开的祝福石，颜色依次为蓝、金、绿，她开心地点头确认。只能两只手，禁止额外手、第四颗石头、长鞭、文字或幽灵。"
+    },
+    {
+      "name": "summon",
+      "output": "summon.png",
+      "images": ["qnaigc-references/official/lyria.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成露莉亚的独立 Q 版功能贴纸。保留官方蓝色长发、白蓝服装与纯真气质，画到腰部。她用双手小心抱住一颗且仅一颗完整的粉金色召唤石，睁大眼睛露出惊喜又谨慎的表情，旁边只有两颗小星光。禁止第二颗召唤石、额外手、文字或大型光效。"
+    },
+    {
+      "name": "overlimit",
+      "output": "overlimit.png",
+      "images": ["qnaigc-references/official/seofon.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成希耶提的独立 Q 版功能贴纸。保留官方金发、黑金服装与爽朗自信气质，画到腰部，不拿剑。他左手托着一张矩形突破结果板，板上恰好四个金色圆形能力槽，排列为 2×2；右手竖起拇指，露出可靠笑容。禁止第五个槽位、额外手、文字、长剑或漂浮徽章。"
+    },
+    {
+      "name": "runtime",
+      "output": "runtime.png",
+      "images": ["qnaigc-references/official/vyrn.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成碧的独立 Q 版功能贴纸。严格保留官方红色小飞龙伙伴的头型、耳翼、翅膀、尾巴和可爱身份特征，完整画出身体。他用两只前爪抱着一只敞口金币袋和一瓶红色药水，兴奋地挥动翅膀。禁止剑、枪、盾牌、第二瓶药水、额外爪子、文字或人类身体。"
+    },
+    {
+      "name": "chara",
+      "output": "chara.png",
+      "images": ["qnaigc-references/official/djeeta.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成姬塔的独立 Q 版功能贴纸。保留官方金发、发带、团长服装与明朗可靠气质，画到腰部，不拿剑。她左手拿一张简洁统计表，表上只有四排短横线与圆点，不含文字；右手握铅笔打勾，表情认真自信。禁止额外手、额外纸张、文字或武器。"
+    },
+    {
+      "name": "save",
+      "output": "save.png",
+      "images": ["qnaigc-references/official/rackam.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成拉卡姆的独立 Q 版功能贴纸。保留官方棕红短发、护目镜、红棕服装与豪爽气质，画到腰部。左手摊开一本任务记录册，书页上只有三行清楚的勾选框，不含文字；右手拿铅笔完成最后一个勾，露出满意笑容。禁止枪械、额外手、额外书本或文字。"
+    },
+    {
+      "name": "compatibility",
+      "output": "compatibility.png",
+      "images": ["qnaigc-references/official/rolan.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成罗兰的独立 Q 版功能贴纸。保留官方棕发、眼镜、黄色披肩和白色服装，画到腰部。他左手稳稳托住一个小齿轮，右手用一只结构简单完整的放大镜检查齿轮，表情冷静专注。禁止罗盘、天球仪、第二个齿轮、额外手、文字或漂浮机械。"
+    },
+    {
+      "name": "legacy-runtime-blonde",
+      "output": "legacy-runtime-blonde.png",
+      "images": ["qnaigc-references/official/zeta.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成泽塔的独立 Q 版功能贴纸。严格保留官方金色双马尾、蓝眼睛、红色铠甲与服装，画到大腿。她左手向前做清楚的停止手势，右手握住一根且仅一根遵循官方轮廓的长枪中段；枪杆连续笔直，只有一个正确枪尖和一个圆钝尾帽，整体斜放并完整留在画布内。表情勇敢但严肃，表达地址不匹配就停手。禁止红发、第二根枪、双头刃、额外手、文字或符文板。"
+    },
+    {
+      "name": "monster",
+      "output": "monster.png",
+      "images": ["qnaigc-references/official/id.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成伊德的独立 Q 版功能贴纸。保留官方白发、深色铠甲和蓝色飘带，画到腰部，不拔剑。他左手托着一块三段式强度刻度板，三段由浅到深但没有数字文字；右手指向最安全的第一段，表情严肃克制。禁止黑发、额外手、怪物、巨剑、文字或第四段刻度。"
+    },
+    {
+      "name": "patch",
+      "output": "patch.png",
+      "images": ["qnaigc-references/official/eugen.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成欧根的独立 Q 版功能贴纸。保留官方灰发、胡须、护目镜与工装气质，画到腰部，不拿枪。他左手扶着一只小工具箱，右手只拿一把结构完整的扳手，露出经验丰富的可靠表情。工具箱上只有一个简洁盾牌形备份标志，不含文字。禁止额外工具、额外手、枪械或文字。"
+    },
+    {
+      "name": "language",
+      "output": "language.png",
+      "images": ["qnaigc-references/official/io.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成伊欧的独立 Q 版功能贴纸。保留官方金色头发、蓝色发饰、法师服装与活泼气质，画到腰部，不拿法杖。她双手分别托着两个不同颜色的空白对话气泡，一个暖金、一个天蓝，中间只有一枚双向切换箭头，不含任何文字或字母；她露出清楚好用的开心表情。禁止白发、额外手、第三个气泡、法杖或文字。"
+    },
+    {
+      "name": "loadout",
+      "output": "loadout.png",
+      "images": ["qnaigc-references/official/fraux.png", "qnaigc-references/official-stickers/vol3-2.png", "qnaigc-references/official-stickers/vol3-3.png"],
+      "prompt": "生成芙劳的独立 Q 版功能贴纸。保留官方银灰长发、兽耳、金橙眼睛、深蓝金边服装与温柔聪慧气质，画到大腿。她左手托住一本翻开的红金配装书，左右两页各有恰好六个圆形空槽，按每页 2×3 排列，总计必须恰好十二个且仅十二个槽位；右手竖起食指提醒按顺序操作。禁止额外槽位、额外手、文字或首饰盒结构。"
+    }
+  ]
+}
