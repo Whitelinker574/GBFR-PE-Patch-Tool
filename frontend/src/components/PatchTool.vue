@@ -1687,22 +1687,22 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
  * every image the same CSS height; this keeps heads aligned and crops near the
  * thigh at both the default and compact window sizes.
  */
-.art-rail .function-character img{width:auto!important;max-width:none!important;height:var(--art-height,145%)!important;max-height:none!important;right:var(--art-right,-290px)!important;bottom:var(--art-bottom,-390px)!important}
-.tool-stage[data-tool="progression"]{--art-height:145%;--art-right:-292px;--art-bottom:-390px}
-.tool-stage[data-tool="sigilMemory"]{--art-height:148%;--art-right:-300px;--art-bottom:-398px}
-.tool-stage[data-tool="loadout"]{--art-height:140%;--art-right:-302px;--art-bottom:-382px}
-.tool-stage[data-tool="summon"]{--art-height:148%;--art-right:-302px;--art-bottom:-398px}
-.tool-stage[data-tool="overlimit"]{--art-height:150%;--art-right:-306px;--art-bottom:-402px}
-.tool-stage[data-tool="runtime"]{--art-height:146%;--art-right:-298px;--art-bottom:-392px}
-.tool-stage[data-tool="sigil"]{--art-height:143%;--art-right:-292px;--art-bottom:-388px}
-.tool-stage[data-tool="wrightstone"]{--art-height:148%;--art-right:-300px;--art-bottom:-398px}
-.tool-stage[data-tool="chara"]{--art-height:152%;--art-right:-306px;--art-bottom:-405px}
-.tool-stage[data-tool="save"]{--art-height:145%;--art-right:-288px;--art-bottom:-390px}
-.tool-stage[data-tool="compatibility"]{--art-height:142%;--art-right:-288px;--art-bottom:-382px}
-.tool-stage[data-tool="legacyRuntime"]{--art-height:160%;--art-right:-330px;--art-bottom:-332px}
-.tool-stage[data-tool="monster"]{--art-height:146%;--art-right:-286px;--art-bottom:-372px}
-.tool-stage[data-tool="patch"]{--art-height:145%;--art-right:-286px;--art-bottom:-392px}
-.tool-stage[data-tool="language"]{--art-height:152%;--art-right:-342px;--art-bottom:-340px}
+/* 每页立绘旋钮（--ah 大小 / --ay 上下:越负越往上顶且越裁下方 / --ax 左右:越负越靠右），逐页在真实尺寸下校准： */
+.tool-stage[data-tool="progression"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="sigilMemory"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="loadout"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="summon"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="overlimit"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="runtime"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="sigil"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="wrightstone"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="chara"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="save"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="compatibility"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="legacyRuntime"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="monster"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="patch"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="language"]{--ah:160%;--ay:-63%;--ax:-250px}
 /* Quantity is a compact form row, not a raised card. */
 .tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .tool-panel :deep(.quantity-combo button){min-width:50px!important;border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#edddba!important;box-shadow:none!important;opacity:1!important}
@@ -1825,9 +1825,32 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   .switcher-tag { padding:1px 4px!important; font-size:7px!important; }
 }
 
-/* 立绘呈现：整体放大 + 抬高 + 左移，减少“贴在最右侧、与模块割裂”的观感。
-   通过放大定位参考框来同比例放大所有立绘（保留每图既有的光学校准比例）。 */
-.tool-stage { grid-template-columns:170px minmax(0,600px) minmax(300px,1fr)!important; }
-.art-rail .function-character { top:-70px!important; bottom:-6px!important; left:24px!important; right:-16px!important; }
-@media(max-width:1000px){ .tool-stage{ grid-template-columns:70px minmax(0,1fr) minmax(270px,.9fr)!important; } .art-rail .function-character{ left:0!important; right:-10px!important; } }
+/* ═══ 立绘呈现（逐页校准框架）═══
+   贴右下角、半身(截到大腿)、脸在上不被截、够大、右缘抵右不留空。
+   每页三个旋钮：--ah 大小(高度%)、--ay 上下(bottom%，越负越往上顶且越裁下方)、--ax 左右(px，负=更靠右)。 */
+.tool-stage { grid-template-columns:150px minmax(0,1fr) clamp(360px,32vw,560px)!important; }
+.art-rail { overflow:hidden!important; }
+.art-rail .function-character { position:absolute!important; inset:0!important; left:0!important; right:0!important; top:0!important; bottom:0!important; }
+.art-rail .function-character img,
+.art-rail .function-character .character-main,
+.art-rail .function-character .character-blend {
+  position:absolute!important; right:var(--ax,0px)!important; bottom:var(--ay,-40%)!important; top:auto!important; left:auto!important;
+  height:var(--ah,175%)!important; width:auto!important; max-width:none!important; max-height:none!important;
+  object-fit:contain!important; object-position:right bottom!important; transform:none!important;
+}
+
+/* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊 */
+.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section) {
+  background:linear-gradient(135deg,#fdf6e4,#efe1c0)!important; backdrop-filter:none!important;
+}
+
+/* ═══ 响应式：窄到放不下时，立绘让位，保证“教程 + 内容”可读（教程列给足宽度，不再被压成竖排单字）═══ */
+@media(max-width:1040px){
+  .tool-stage { grid-template-columns:168px minmax(0,1fr)!important; }
+  .art-rail,.art-toggle { display:none!important; }
+}
+@media(max-width:780px){
+  .tool-stage { grid-template-columns:minmax(0,1fr)!important; }
+  .guide-rail { display:none!important; }
+}
 </style>
