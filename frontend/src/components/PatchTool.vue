@@ -1862,11 +1862,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.picker-selected:hover),.tool-panel :deep(.picker-open .picker-selected) { border-color:#9a7440!important; background:#fffdf6!important; box-shadow:0 0 0 1px rgba(154,116,64,.12)!important; }
 .tool-panel :deep(.picker-dropdown) { border:1px solid rgba(154,116,64,.32)!important; border-radius:6px!important; background:#fdf6e4!important; box-shadow:0 8px 24px rgba(78,68,56,.14),0 2px 8px rgba(78,68,56,.05)!important; }
 .tool-panel :deep(.picker-search) { background:#f6ebd4!important; border-bottom:1px solid rgba(154,116,64,.15)!important; }
-.tool-panel :deep(.picker-list) { padding:0!important; }
+.tool-panel :deep(.picker-list) { padding:0!important; background:transparent!important; }
 .tool-panel :deep(.opt) { border-bottom:1px solid rgba(154,116,64,.09)!important; background:transparent!important; box-shadow:none!important; }
 .tool-panel :deep(.opt:nth-child(even)) { background:rgba(154,116,64,.035)!important; }
 .tool-panel :deep(.opt:hover),.tool-panel :deep(.opt.hi),.tool-panel :deep(.opt.selected) { color:#4e4438!important; background:#efe1c0!important; box-shadow:inset 3px 0 #9a7440!important; }
 .tool-panel :deep(.cheveron) { color:#9a7440!important; }
+/* 选项字重与 catalog 一致(650)，不再加粗到 800 */
+.tool-panel :deep(.opt),.tool-panel :deep(.opt-name) { font-weight:650!important; }
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
