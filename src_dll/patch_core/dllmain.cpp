@@ -62,6 +62,7 @@ static const lm_byte_t kStunExpected[] = { 0xC4, 0xC1, 0x4A, 0x58, 0x85, 0x20, 0
 static const lm_byte_t kMonsterDamageExpected[] = { 0x29, 0xF1, 0x31, 0xD2, 0x85, 0xC9 };
 static const lm_byte_t kCrocodileDamageExpected[] = { 0x01, 0xBE, 0xB8, 0x15, 0x00, 0x00, 0x48, 0x8D, 0x8E, 0xB0, 0xFE, 0xFF, 0xFF, 0x8B, 0x46, 0x10 };
 static const lm_byte_t kCrocodileNo1HpExpected[] = { 0x83, 0xF8, 0x02, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x4D, 0xD0 };
+static const lm_byte_t kInventorySet45Expected[] = { 0x41, 0x01, 0x76, 0x04, 0x4C, 0x89, 0xE1 };
 
 static const lm_byte_t kPurpleExpected[] = { 0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x10, 0x0A, 0x00, 0x00 };
 static const lm_byte_t kBlueGrowExpected[] = { 0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x20, 0x07, 0x00, 0x00 };
@@ -77,6 +78,7 @@ static const PatchPoint kMonsterPatches[] = {
     { "crocodile_damage", L"crocodile damage", 0x23FD449, kCrocodileDamageExpected, sizeof(kCrocodileDamageExpected), nullptr, true },
     { "monster_stun", L"monster stun", 0xA09ADF, kStunExpected, sizeof(kStunExpected), nullptr, true },
     { "overdrive_state", L"overdrive state", 0x1F7123F, kOverdriveExpected, sizeof(kOverdriveExpected), nullptr, true },
+    { "inventory_set_45", L"inventory set 45", 0x356621, kInventorySet45Expected, sizeof(kInventorySet45Expected), nullptr, true },
     { "purple_drain", L"purple bar drain", 0xA0379A, kPurpleExpected, sizeof(kPurpleExpected), kNop9, false },
     { "blue_grow", L"blue bar grow", 0xA09AF1, kBlueGrowExpected, sizeof(kBlueGrowExpected), kNop9, false },
     { "blue_drain", L"blue bar drain", 0xA03F38, kBlueDrainExpected, sizeof(kBlueDrainExpected), kNop9, false },
@@ -600,6 +602,59 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     return true;
 }
 
+static bool PatchInventorySetQuantityHook(lm_address_t target, wchar_t* message, size_t messageSize)
+{
+    int quantity = ReadIntValue(45);
+    if (quantity < 1 || quantity > 9999) quantity = 45;
+
+    lm_address_t cave = AllocNear(target, 32);
+    if (cave == LM_ADDRESS_BAD)
+    {
+        swprintf_s(message, messageSize, L"alloc near failed: inventory quantity");
+        return false;
+    }
+
+    lm_byte_t code[24]{};
+    size_t i = 0;
+    code[i++] = 0x41; code[i++] = 0xC7; code[i++] = 0x46; code[i++] = 0x04;                         // mov dword ptr [r14+04],quantity
+    memcpy(code + i, &quantity, sizeof(quantity)); i += sizeof(quantity);
+    code[i++] = 0x4C; code[i++] = 0x89; code[i++] = 0xE1;                                           // mov rcx,r12
+    code[i++] = 0xE9;
+    size_t jmpBackDisp = i; i += 4;
+
+    int64_t backDelta = static_cast<int64_t>(target + 7) - static_cast<int64_t>(cave + jmpBackDisp + 4);
+    if (backDelta < INT32_MIN || backDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"return jump out of range: inventory quantity");
+        return false;
+    }
+    int32_t relBack = static_cast<int32_t>(backDelta);
+    memcpy(code + jmpBackDisp, &relBack, sizeof(relBack));
+
+    if (LM_WriteMemory(cave, code, i) != i)
+    {
+        swprintf_s(message, messageSize, L"cave write failed: inventory quantity");
+        return false;
+    }
+
+    lm_byte_t jmp[7]{ 0xE9 };
+    memset(jmp + 5, 0x90, sizeof(jmp) - 5);
+    int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
+    if (hookDelta < INT32_MIN || hookDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"hook jump out of range: inventory quantity");
+        return false;
+    }
+    int32_t relHook = static_cast<int32_t>(hookDelta);
+    memcpy(jmp + 1, &relHook, sizeof(relHook));
+    if (!PatchBytes(target, jmp, sizeof(jmp)))
+    {
+        swprintf_s(message, messageSize, L"hook write failed: inventory quantity");
+        return false;
+    }
+    return true;
+}
+
 static bool PatchStunHook(lm_address_t target, wchar_t* message, size_t messageSize)
 {
     float scale = ReadScale();
@@ -735,6 +790,10 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             else if (strcmp(point.id, "overdrive_state") == 0)
             {
                 if (!PatchOverdriveHook(target, message, messageSize)) return false;
+            }
+            else if (strcmp(point.id, "inventory_set_45") == 0)
+            {
+                if (!PatchInventorySetQuantityHook(target, message, messageSize)) return false;
             }
             else if (!PatchDamageHook(target, message, messageSize)) return false;
         }

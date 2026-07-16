@@ -131,6 +131,7 @@ type App struct {
 	unlockAllTrophyAddr uintptr
 	terminusDropAddr    uintptr
 	terminusDropOrig    []byte
+	collectibleTaskBase uintptr
 	sigilMemoryHookAddr uintptr
 	sigilMemoryCaveAddr uintptr
 	sigilMemoryOriginal []byte
@@ -1073,6 +1074,116 @@ func (a *App) charaManager() (uintptr, error) {
 	return 0, fmt.Errorf("未定位角色场次列表，请先进入游戏存档")
 }
 
+type CollectibleTaskStatus struct {
+	Found     bool   `json:"found"`
+	Address   uint64 `json:"address"`
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+}
+
+const (
+	collectibleTaskEntries = 45
+	collectibleTaskStride  = uintptr(0xC)
+	collectibleTaskFlag    = uintptr(0x8)
+)
+
+func (a *App) CollectibleTaskComplete() (CollectibleTaskStatus, error) {
+	if err := a.ensureGameProcess(); err != nil {
+		return CollectibleTaskStatus{}, err
+	}
+	base, err := a.collectibleTaskAddress()
+	if err != nil {
+		return CollectibleTaskStatus{}, err
+	}
+
+	flags := make([]byte, collectibleTaskEntries*int(collectibleTaskStride))
+	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&flags[0]), uintptr(len(flags))); err != nil {
+		return CollectibleTaskStatus{}, fmt.Errorf("读取收集任务列表失败: %w", err)
+	}
+	for i := 0; i < collectibleTaskEntries; i++ {
+		flags[i*int(collectibleTaskStride)+int(collectibleTaskFlag)] = 1
+	}
+	if err := writeProcessMemory(a.hProcess, base, unsafe.Pointer(&flags[0]), uintptr(len(flags))); err != nil {
+		return CollectibleTaskStatus{}, fmt.Errorf("写入收集任务完成标记失败: %w", err)
+	}
+	return CollectibleTaskStatus{Found: true, Address: uint64(base), Completed: collectibleTaskEntries, Total: collectibleTaskEntries}, nil
+}
+
+func (a *App) collectibleTaskAddress() (uintptr, error) {
+	if a.collectibleTaskBase != 0 && a.isCollectibleTaskAddress(a.collectibleTaskBase) {
+		return a.collectibleTaskBase, nil
+	}
+	a.collectibleTaskBase = 0
+
+	const (
+		memCommit  = 0x1000
+		memPrivate = 0x20000
+		chunkSize  = uintptr(0x100000)
+	)
+	var matches []uintptr
+	for addr := uintptr(0); ; {
+		var mbi memoryBasicInformation
+		ret, _, _ := procVirtualQueryEx.Call(uintptr(a.hProcess), addr, uintptr(unsafe.Pointer(&mbi)), unsafe.Sizeof(mbi))
+		if ret == 0 {
+			break
+		}
+		next := mbi.BaseAddress + mbi.RegionSize
+		if mbi.State == memCommit && mbi.Type == memPrivate && mbi.RegionSize >= 16 {
+			for off := uintptr(0); off < mbi.RegionSize; off += chunkSize {
+				size := chunkSize
+				if off+size > mbi.RegionSize {
+					size = mbi.RegionSize - off
+				}
+				if size < 16 {
+					continue
+				}
+				buf := make([]byte, size)
+				chunkBase := mbi.BaseAddress + off
+				if err := readProcessMemory(a.hProcess, chunkBase, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+					continue
+				}
+				for i := 0; i+16 <= len(buf); i += 8 {
+					base := uintptr(binary.LittleEndian.Uint64(buf[i:]))
+					end := uintptr(binary.LittleEndian.Uint64(buf[i+8:]))
+					if end-base != collectibleTaskEntries*collectibleTaskStride || !a.isCollectibleTaskAddress(base) {
+						continue
+					}
+					matches = append(matches, base)
+					if len(matches) > 1 {
+						return 0, fmt.Errorf("收集任务列表命中多个位置，请重进存档后重试")
+					}
+				}
+			}
+		}
+		if next <= addr {
+			break
+		}
+		addr = next
+	}
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("未定位收集任务列表，请先进入包含该任务的存档")
+	}
+	a.collectibleTaskBase = matches[0]
+	return matches[0], nil
+}
+
+func (a *App) isCollectibleTaskAddress(base uintptr) bool {
+	if base == 0 {
+		return false
+	}
+	data := make([]byte, collectibleTaskEntries*int(collectibleTaskStride))
+	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&data[0]), uintptr(len(data))); err != nil {
+		return false
+	}
+	for i := 0; i < collectibleTaskEntries; i++ {
+		entry := i * int(collectibleTaskStride)
+		if binary.LittleEndian.Uint32(data[entry:]) == 0 || data[entry+int(collectibleTaskFlag)] > 1 {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *App) isCharaListAddress(base uintptr) bool {
 	var data [maxCharacters * 8]byte
 	for i := 0; i < maxCharacters; i++ {
@@ -1135,6 +1246,7 @@ func (a *App) charaDetachLocked() {
 	a.unlockAllTrophyAddr = 0
 	a.terminusDropAddr = 0
 	a.terminusDropOrig = nil
+	a.collectibleTaskBase = 0
 	a.sigilMemoryHookAddr = 0
 	a.sigilMemoryCaveAddr = 0
 	a.sigilMemoryOriginal = nil
@@ -2156,6 +2268,13 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Hook:     true,
 	},
 	{
+		ID:       "inventory_set_45",
+		Name:     "设置背包物品数量为 45",
+		RVA:      0x356621,
+		Original: []byte{0x41, 0x01, 0x76, 0x04, 0x4C, 0x89, 0xE1},
+		Hook:     true,
+	},
+	{
 		ID:       "sba_chain_timer",
 		Name:     "奥义接续计时",
 		RVA:      0x677B45,
@@ -2304,7 +2423,12 @@ func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMult
 			return a.readMonsterEnhanceStatus("")
 		}
 		command := pointID
-		if point != nil && needsMonsterValue(point.ID) {
+		if point != nil && point.ID == "inventory_set_45" {
+			if math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier < 1 || hpMultiplier > 9999 || math.Trunc(hpMultiplier) != hpMultiplier {
+				return MonsterEnhanceResult{}, fmt.Errorf("背包物品数量请输入 1 到 9999 之间的整数")
+			}
+			command = fmt.Sprintf("%s %d", pointID, int(hpMultiplier))
+		} else if point != nil && needsMonsterValue(point.ID) {
 			commandValue := hpMultiplier
 			if point.ID == "monster_hp" || point.ID == "monster_stun" || point.ID == "crocodile_damage" {
 				commandValue = 1 / hpMultiplier

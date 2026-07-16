@@ -7,6 +7,7 @@ import { CharaAttach, CharaDetach,
          FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
          InfiniteChallengeGetStatus, InfiniteChallengeSetEnabled,
          MaterialConsumeGetStatus, MaterialConsumeSetEnabled,
+         CollectibleTaskComplete,
          TerminusDropGetStatus, TerminusDropScan, TerminusDropSetEnabled,
          UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
          OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
@@ -32,6 +33,11 @@ const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, currentBytes:
 const infiniteChallengeLoading = ref(false)
 const materialConsumeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const materialConsumeLoading = ref(false)
+const collectibleTaskLoading = ref(false)
+const inventorySet45Enabled = ref(false)
+const inventorySet45Loading = ref(false)
+const inventorySet45Seconds = ref(0)
+const inventorySetQuantity = ref(45)
 const terminusDropStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
 const terminusDropLoading = ref(false)
 const unlockAllTrophyStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
@@ -79,6 +85,7 @@ const runtimeCatalog = computed(() => {
   return catalogs[activeRuntimeGroup.value] || []
 })
 let damageMeterTimer = 0
+let inventorySet45Timer = 0
 
 function getMonsterEnhanceMultiplier(id) {
   const saved = window.gbfrMonsterEnhanceMultipliers || {}
@@ -254,6 +261,49 @@ function setMaterialConsumeEnabled(enabled) {
     .then((status) => { applyMaterialConsumeStatus(status); emit('status', enabled ? '已开启升级/强化不材料消耗' : '已恢复升级/强化材料变化', 'success') })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { materialConsumeLoading.value = false })
+}
+
+function completeCollectibleTask() {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  collectibleTaskLoading.value = true
+  CollectibleTaskComplete()
+    .then((status) => emit('status', `收集任务已完成 ${status.completed}/${status.total}`, 'success'))
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { collectibleTaskLoading.value = false })
+}
+
+function stopInventorySet45Timer() {
+  if (inventorySet45Timer) window.clearInterval(inventorySet45Timer)
+  inventorySet45Timer = 0
+  inventorySet45Seconds.value = 0
+}
+
+function startInventorySet45Timer() {
+  stopInventorySet45Timer()
+  inventorySet45Seconds.value = 10
+  inventorySet45Timer = window.setInterval(() => {
+    inventorySet45Seconds.value -= 1
+    if (inventorySet45Seconds.value > 0) return
+    stopInventorySet45Timer()
+    setInventorySet45Enabled(false, 0, true)
+  }, 1000)
+}
+
+function setInventorySet45Enabled(enabled, quantity = inventorySetQuantity.value, automatic = false) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  if (!enabled) stopInventorySet45Timer()
+  inventorySet45Loading.value = true
+  MonsterEnhanceSetPatchValueEnabled('inventory_set_45', enabled, quantity)
+    .then(() => {
+      inventorySet45Enabled.value = enabled
+      if (enabled) {
+        inventorySetQuantity.value = quantity
+        startInventorySet45Timer()
+      }
+      emit('status', enabled ? `已开启背包物品数量设为 ${quantity}，10 秒后自动恢复` : (automatic ? '背包物品数量已自动恢复正常' : '已恢复背包物品正常添加'), 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { inventorySet45Loading.value = false })
 }
 
 function applyTerminusDropStatus(status) {
@@ -526,6 +576,7 @@ function toggleDamageOverlay() {
 
 onBeforeUnmount(() => {
   stopDamageMeterTimer()
+  stopInventorySet45Timer()
   if (damageOverlayEnabled.value) disableDamageOverlay()
 })
 
@@ -710,6 +761,20 @@ onBeforeUnmount(() => {
             <button class="btn-refresh" @click="loadMaterialConsumeStatus" :disabled="materialConsumeLoading">刷新</button>
           </div>
           <div class="memory-bytes">{{ materialConsumeStatus.currentBytes || '未读取' }}</div>
+        </div>
+
+        <div v-if="showStableFeatures && activeRuntimeGroup === 'resources'" class="memory-card" :class="{ active: inventorySet45Enabled }">
+          <div class="memory-header">
+            <span class="memory-title">小钳蟹相关</span>
+            <span class="info-dot" title="使用后需要拾取一次对应种类螃蟹，不要提前开，拾取之前开，记得用完关闭">!</span>
+            <span class="memory-hint">{{ inventorySet45Enabled ? `${inventorySet45Seconds} 秒后自动恢复` : '使用后需要拾取一次对应种类螃蟹，不要提前开，拾取之前开，记得用完关闭' }}</span>
+          </div>
+          <div class="memory-row">
+            <button class="btn-batch" @click="setInventorySet45Enabled(true, 45)" :disabled="inventorySet45Loading || inventorySet45Enabled">小钳蟹</button>
+            <button class="btn-batch" @click="setInventorySet45Enabled(true, 20)" :disabled="inventorySet45Loading || inventorySet45Enabled">漆黑小钳蟹</button>
+            <button class="btn-refresh" @click="setInventorySet45Enabled(false)" :disabled="inventorySet45Loading || !inventorySet45Enabled">恢复正常</button>
+            <button class="btn-batch" @click="completeCollectibleTask" :disabled="collectibleTaskLoading">{{ collectibleTaskLoading ? '收集任务处理中...' : '小钳蟹成就' }}</button>
+          </div>
         </div>
 
         <div v-if="showStableFeatures && activeRuntimeGroup === 'mission'" class="memory-card" :class="{ active: terminusDropStatus.enabled }">

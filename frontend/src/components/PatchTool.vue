@@ -1888,6 +1888,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.btn-disconnect) { color:#a6473d!important; border:1px solid rgba(166,71,61,.42)!important; background:rgba(166,71,61,.12)!important; }
 .tool-panel :deep(.btn-disconnect:hover) { background:rgba(166,71,61,.2)!important; }
 
+/* 主/写入按钮去掉"凸起斜面"(inset 白顶+暗底高光)，改扁平——只保留渐变底，与整体扁平风一致 */
+.tool-panel :deep(.btn-cyan),.tool-panel :deep(.btn-green),.tool-panel :deep(.primary),.tool-panel :deep(.primary-btn),.tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),.tool-panel :deep(.save-btn),.tool-panel :deep(.language-button),.tool-panel :deep(.btn-connect),.tool-panel :deep(.btn-batch),.tool-panel :deep(.memory-card.active .btn-batch),.tool-panel :deep(.add-btn) { box-shadow:none!important; text-shadow:none!important; }
+
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section),

@@ -20,7 +20,7 @@ function applyResult(res) {
   result.injected = !!(res && res.injected)
   result.enabled = !!(res && res.enabled)
   result.currentBytes = (res && res.currentBytes) || ''
-  result.items = incoming.map((item) => Object.assign(previous.get(item.id) || {}, item))
+  result.items = incoming.filter(item => item.id !== 'inventory_set_45').map((item) => Object.assign(previous.get(item.id) || {}, item))
 }
 
 function refreshStatus() {
