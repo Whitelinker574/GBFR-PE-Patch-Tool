@@ -1664,7 +1664,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.level-field>label){display:flex!important;align-items:baseline!important;gap:7px!important;white-space:nowrap!important}
 .tool-panel :deep(.level-field>label small){white-space:nowrap!important}
 .tool-panel :deep(.ed-edit-line){grid-template-columns:minmax(0,1.35fr) 118px 74px!important;gap:9px!important}
-.tool-panel :deep(.ed-level-control){grid-template-columns:30px minmax(0,1fr)!important;grid-template-rows:25px 15px!important}
+.tool-panel :deep(.ed-level-control){grid-template-columns:30px minmax(0,1fr)!important;grid-template-rows:38px 14px!important;align-items:center!important}
 .tool-panel :deep(.ed-level-control small){font-size:8.5px!important;white-space:nowrap!important;text-align:left!important}
 .tool-panel[data-tool="progression"] :deep(.workspace){grid-template-columns:minmax(230px,1fr) minmax(300px,.95fr)!important}
 .tool-panel[data-tool="progression"] :deep(.weapon-name-line strong){overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
@@ -1871,6 +1871,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.cheveron) { color:#9a7440!important; }
 /* 选项字重与 catalog 一致(650)，不再加粗到 800 */
 .tool-panel :deep(.opt),.tool-panel :deep(.opt-name) { font-weight:650!important; }
+/* 因子即时编辑行内的"设为上限"按钮高度与下拉框/等级框对齐(38px) */
+.tool-panel :deep(.ed-max-btn) { min-height:38px!important; height:38px!important; align-self:start!important; }
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
