@@ -1841,9 +1841,11 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   object-fit:contain!important; object-position:right bottom!important; transform:none!important;
 }
 
-/* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊 */
+/* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
+   去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section) {
   background:linear-gradient(135deg,#fdf6e4,#efe1c0)!important; backdrop-filter:none!important;
+  box-shadow:0 4px 12px rgba(77,54,25,.07)!important;
 }
 
 /* ═══ 响应式：窄到放不下时，立绘让位，保证“教程 + 内容”可读（教程列给足宽度，不再被压成竖排单字）═══ */
