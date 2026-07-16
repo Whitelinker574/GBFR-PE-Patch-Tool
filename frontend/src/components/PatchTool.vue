@@ -817,9 +817,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.field label),.tool-panel :deep(.ed-label),.tool-panel :deep(.picker-selected),.tool-panel :deep(.ed-current-name),.tool-panel :deep(.row-name-text),.tool-panel :deep(.row-chip-name),.tool-panel :deep(.opt),.tool-panel :deep(.opt-name),.tool-panel :deep(.catalog-row),.tool-panel :deep(.queue-name),.tool-panel :deep(.tab),.tool-panel :deep(.preflight-grid strong) { font-size:12px!important }
 .tool-panel :deep(.section-title small),.tool-panel :deep(.empty),.tool-panel :deep(.empty-hint),.tool-panel :deep(.tpl-empty),.tool-panel :deep(.picker-none),.tool-panel :deep(.picker-placeholder),.tool-panel :deep(.ed-current-lv),.tool-panel :deep(.ed-level-hint),.tool-panel :deep(.row-meta),.tool-panel :deep(.row-name-lv),.tool-panel :deep(.row-chip-tag),.tool-panel :deep(.row-chip-lv),.tool-panel :deep(.queue-detail),.tool-panel :deep(.opt-max),.tool-panel :deep(.feature-help),.tool-panel :deep(.memory-hint),.tool-panel :deep(.memory-info),.tool-panel :deep(.memory-bytes),.tool-panel :deep(.currency-meta),.tool-panel :deep(.damage-meter-raw),.tool-panel :deep(.result-count),.tool-panel :deep(.save-info),.tool-panel :deep(.warning-hint),.tool-panel :deep(.danger-hint),.tool-panel :deep(.data-error),.tool-panel :deep(.selected-save),.tool-panel :deep(.mode-choice small),.tool-panel :deep(.preflight-grid p),.tool-panel :deep(.preflight-grid article>span) { font-size:11px!important }
 .tool-panel :deep(.picker-selected),.tool-panel :deep(.ed-level) { border-color:rgba(139,105,52,.34)!important;background:rgba(246,234,207,.86)!important }
-.tool-panel :deep(.picker-dropdown) { border-color:rgba(42,145,154,.55)!important;background:#f3e6c8!important;box-shadow:0 8px 18px rgba(78,55,25,.2)!important }
-.tool-panel :deep(.picker-search) { border-bottom-color:rgba(139,105,52,.22)!important }.tool-panel :deep(.picker-search input) { color:#51483e!important;background:transparent!important }
-.tool-panel :deep(.opt:hover),.tool-panel :deep(.opt.hi) { color:#244f52!important;background:rgba(78,186,194,.18)!important }
+/* 旧的青色/深底 picker 样式已移除，统一由文件末尾的下拉框规则接管 */
+.tool-panel :deep(.picker-search input) { color:#4e4438!important;background:#fffdf6!important }
 .tool-panel :deep(.ed-arrow),.tool-panel :deep(.info-dot),.tool-panel :deep(.ed-max-all),.tool-panel :deep(.ed-max-btn) { color:#246a70!important }
 .tool-panel :deep(.data-error),.tool-panel :deep(.empty.error) { color:#9b3333!important;font-weight:900!important }
 .tool-panel :deep(.custom-note-text),.tool-panel :deep(.feature-help),.tool-panel :deep(.compatibility-note) { color:#5e5141!important }.tool-panel :deep(.custom-note-text .note-warn) { color:#246a70!important }
@@ -841,7 +840,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(select[size] option) { min-height:36px;padding:7px 10px!important;border-bottom:1px solid rgba(103,71,31,.3)!important;background:#f7ecd3!important;color:#51483e!important;box-shadow:none!important;font-size:12px!important;font-weight:750!important }
 .tool-panel :deep(select[size] option:nth-child(even)) { background:#efe0bd!important }
 .tool-panel :deep(select[size] option:checked) { color:#184f54!important;background:linear-gradient(90deg,rgba(90,190,198,.34),rgba(224,235,205,.8))!important;box-shadow:inset 3px 0 #2c7a81!important;font-weight:900!important }
-.tool-panel :deep(.picker-list) { padding:3px 0!important }.tool-panel :deep(.opt) { min-height:36px;padding:7px 10px!important;border-bottom:1px solid rgba(103,71,31,.3)!important;box-shadow:none!important;font-size:12px!important }.tool-panel :deep(.opt:nth-child(even)) { background:rgba(231,214,176,.35)!important }.tool-panel :deep(.opt:last-child) { border-bottom:0!important;box-shadow:none!important }.tool-panel :deep(.opt:hover),.tool-panel :deep(.opt.hi),.tool-panel :deep(.opt.selected) { background:linear-gradient(90deg,rgba(90,190,198,.24),rgba(247,236,208,.72))!important;box-shadow:inset 3px 0 #2c7a81!important }
+/* 旧的青色 opt/picker-list 样式已移除，统一由文件末尾的下拉框规则接管 */
+.tool-panel :deep(.opt:last-child) { border-bottom:0!important; }
 /* Unified feedback language: pale journal slips with one restrained state accent. */
 .titlebar-status { min-height:29px;padding:5px 14px 5px 11px;border-width:1px 1px 1px 3px;border-color:rgba(113,81,39,.34);border-left-color:#347d84;border-radius:2px 9px 2px 9px;color:#51463a;background:linear-gradient(120deg,#fff9e8,#ead8ad);box-shadow:0 5px 17px rgba(54,38,18,.22),inset 0 0 0 1px rgba(255,255,255,.32);font-weight:900 }
 .titlebar-status.success { color:#285d46;border-color:rgba(56,112,79,.33);border-left-color:#377d5b;background:linear-gradient(120deg,#f6f4d9,#dce9c8) }.titlebar-status.error { color:#843b35;border-color:rgba(145,69,56,.34);border-left-color:#a04f42;background:linear-gradient(120deg,#fff1dc,#eccdb8) }.titlebar-status .status-light { width:7px;height:7px;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 13%,transparent) }
@@ -1335,14 +1335,16 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 }
 .tool-panel :deep(.ed-level-control input),.tool-panel :deep(.ed-level-control input:focus) {
   width:100%!important;
-  min-height:24px!important;
-  height:24px!important;
-  padding:0!important;
-  border:1px solid rgba(139,105,52,.34)!important;
-  color:#51483e!important;
-  background:rgba(255,251,237,.62)!important;
+  min-height:38px!important;
+  height:38px!important;
+  padding:0 8px!important;
+  border:1px solid rgba(154,116,64,.4)!important;
+  border-radius:6px!important;
+  color:#4e4438!important;
+  background:#fbf3dd!important;
   box-shadow:none!important;
   text-align:center!important;
+  font-size:13px!important;
 }
 .tool-panel :deep(.ed-level-control),.tool-panel :deep(.ed-level-control>span),.tool-panel :deep(.ed-level-control small),
 .tool-panel :deep(.ed-current-prefix),.tool-panel :deep(.ed-level-empty) { color:#776650!important }
@@ -1425,7 +1427,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   background:rgba(237,224,192,.55)!important;
   box-shadow:inset 2px 0 #9a7440!important;
 }
-.tool-panel :deep(.picker-dropdown) { border-color:rgba(126,91,42,.34)!important;border-radius:2px!important;background:#f3e6c8!important;box-shadow:0 6px 14px rgba(78,55,25,.14)!important }
+/* 旧的深底/尖角 picker-dropdown 已移除，统一由文件末尾的下拉框规则接管 */
 .guide-steps li b { border-color:rgba(119,84,38,.42)!important;color:#fff9e8!important;background:#9a7440!important;box-shadow:none!important }
 .tool-panel :deep(.ed-arrow),.tool-panel :deep(.info-dot),.tool-panel :deep(.ed-max-all),.tool-panel :deep(.ed-max-btn) { color:#765528!important }
 .tool-panel :deep(.chip.state),.tool-panel :deep(.state.on),.tool-panel :deep(.save-info),.tool-panel :deep(.capacity),
@@ -1854,6 +1856,17 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* 两个下拉组件(CatalogSelect / SigilMemoryPicker)的文字统一放大到 13px，更醒目且彼此一致 */
 .tool-panel :deep(.catalog-trigger),.tool-panel :deep(.catalog-value),.tool-panel :deep(.catalog-placeholder),.tool-panel :deep(.catalog-option),.tool-panel :deep(.picker-selected),.tool-panel :deep(.picker-label),.tool-panel :deep(.picker-placeholder),.tool-panel :deep(.opt),.tool-panel :deep(.opt-name) { font-size:13px!important; }
 .tool-panel :deep(.catalog-option small),.tool-panel :deep(.opt-max) { font-size:11px!important; }
+
+/* 强制 SigilMemoryPicker 与 CatalogSelect 完全一致：覆盖前面残留的深底(#f3e6c8)+青色hover+尖角 :deep 旧规则 */
+.tool-panel :deep(.picker-selected) { border:1px solid rgba(154,116,64,.4)!important; border-radius:6px!important; background:#fdf6e4!important; }
+.tool-panel :deep(.picker-selected:hover),.tool-panel :deep(.picker-open .picker-selected) { border-color:#9a7440!important; background:#fffdf6!important; box-shadow:0 0 0 1px rgba(154,116,64,.12)!important; }
+.tool-panel :deep(.picker-dropdown) { border:1px solid rgba(154,116,64,.32)!important; border-radius:6px!important; background:#fdf6e4!important; box-shadow:0 8px 24px rgba(78,68,56,.14),0 2px 8px rgba(78,68,56,.05)!important; }
+.tool-panel :deep(.picker-search) { background:#f6ebd4!important; border-bottom:1px solid rgba(154,116,64,.15)!important; }
+.tool-panel :deep(.picker-list) { padding:0!important; }
+.tool-panel :deep(.opt) { border-bottom:1px solid rgba(154,116,64,.09)!important; background:transparent!important; box-shadow:none!important; }
+.tool-panel :deep(.opt:nth-child(even)) { background:rgba(154,116,64,.035)!important; }
+.tool-panel :deep(.opt:hover),.tool-panel :deep(.opt.hi),.tool-panel :deep(.opt.selected) { color:#4e4438!important; background:#efe1c0!important; box-shadow:inset 3px 0 #9a7440!important; }
+.tool-panel :deep(.cheveron) { color:#9a7440!important; }
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
