@@ -1874,6 +1874,20 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* 因子即时编辑行内的"设为上限"按钮高度与下拉框/等级框对齐(38px) */
 .tool-panel :deep(.ed-max-btn) { min-height:38px!important; height:38px!important; align-self:start!important; }
 
+/* ═══ 实时修改"连接态/激活态"配色改暖，贴合羊皮纸主色调（原为青绿/粉，跳出主题）═══ */
+/* 激活卡片：暖羊皮纸底 + 暖绿左条(表示已连接/生效)，去掉青绿 */
+.tool-panel :deep(.memory-card.active) { color:#4e4438!important; background:linear-gradient(135deg,#fdf6e4,#eef0d6)!important; border-color:rgba(74,118,88,.42)!important; box-shadow:inset 4px 0 #4a7658,0 4px 12px rgba(77,54,25,.08)!important; }
+.tool-panel :deep(.memory-card.active .memory-title),.tool-panel :deep(.memory-card.active .memory-hint),.tool-panel :deep(.memory-card.active .memory-info),.tool-panel :deep(.memory-card.active .memory-bytes) { color:#5b5340!important; }
+/* 用途提示框：青绿左条/底 → 暖金（含 .memory-card.active 内更具体的选择器，否则被 #4bc8dc 盖住）*/
+.tool-panel :deep(.feature-help),.tool-panel :deep(.memory-card.active .feature-help) { border-left-color:#9a7440!important; background:rgba(154,116,64,.07)!important; color:#5e5141!important; }
+/* info 圆点：青 → 暖金 */
+.tool-panel :deep(.info-dot) { color:#8a6a34!important; border-color:rgba(154,116,64,.42)!important; background:rgba(154,116,64,.1)!important; }
+/* 运行时分组标签激活态：青绿 → 暖棕 */
+.tool-panel :deep(.runtime-tabs button.active) { color:#fffdf6!important; border-color:#765126!important; background:linear-gradient(135deg,#8b6737,#6d4f27)!important; }
+/* 断开连接按钮：粉 → 暖砖红(危险但暖) */
+.tool-panel :deep(.btn-disconnect) { color:#a6473d!important; border:1px solid rgba(166,71,61,.42)!important; background:rgba(166,71,61,.12)!important; }
+.tool-panel :deep(.btn-disconnect:hover) { background:rgba(166,71,61,.2)!important; }
+
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section),
