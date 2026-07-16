@@ -756,6 +756,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .sidebar-collapse { position:absolute;z-index:8;top:13px;right:-12px;width:24px;height:34px;padding:0;border:1px solid rgba(133,99,48,.34);border-radius:0 10px 10px 0;background:#f1e2bd;color:#6d5b40;font:900 19px/1 Georgia,serif;cursor:pointer;box-shadow:3px 3px 10px rgba(73,53,27,.13);transition:background .18s ease,color .18s ease }
 .sidebar-collapse:hover { color:#267f87;background:#dff2f1 }
 .app-body.sidebar-collapsed { grid-template-columns:70px minmax(0,1fr) }
+/* 首页隐藏侧栏，若同时处于侧栏收起态，两列网格会让 workspace 掉进 70px 列而塌陷；
+   首页恒为单列，特异性(3 类)高于上面两条，收起与否都正确。 */
+.app-body.home-mode.sidebar-collapsed { grid-template-columns:minmax(0,1fr) }
 .sidebar-collapsed .sidebar { padding:13px 8px }
 .sidebar-collapsed .sidebar-heading,.sidebar-collapsed .nav-copy,.sidebar-collapsed .nav-arrow,.sidebar-collapsed .sidebar-foot { display:none }
 .sidebar-collapsed .primary-nav { align-items:center;padding-top:45px;gap:9px }
