@@ -1661,7 +1661,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.level-field){width:180px!important;max-width:100%!important}
 .tool-panel :deep(.level-field>label){display:flex!important;align-items:baseline!important;gap:7px!important;white-space:nowrap!important}
 .tool-panel :deep(.level-field>label small){white-space:nowrap!important}
-.tool-panel :deep(.ed-edit-line){grid-template-columns:minmax(0,1fr) 168px 78px!important;gap:9px!important}
+.tool-panel :deep(.ed-edit-line){grid-template-columns:minmax(0,1.35fr) 118px 74px!important;gap:9px!important}
 .tool-panel :deep(.ed-level-control){grid-template-columns:30px minmax(0,1fr)!important;grid-template-rows:25px 15px!important}
 .tool-panel :deep(.ed-level-control small){font-size:8.5px!important;white-space:nowrap!important;text-align:left!important}
 .tool-panel[data-tool="progression"] :deep(.workspace){grid-template-columns:minmax(230px,1fr) minmax(300px,.95fr)!important}
@@ -1850,6 +1850,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 
 /* 祝福页特性行去掉深色嵌套框，改成和因子页一致的浅色扁平行（透明底、无边框，仅靠间距分隔） */
 .tool-panel :deep(.trait-card) { background:transparent!important; border-color:transparent!important; box-shadow:none!important; padding:6px 0!important; }
+
+/* 两个下拉组件(CatalogSelect / SigilMemoryPicker)的文字统一放大到 13px，更醒目且彼此一致 */
+.tool-panel :deep(.catalog-trigger),.tool-panel :deep(.catalog-value),.tool-panel :deep(.catalog-placeholder),.tool-panel :deep(.catalog-option),.tool-panel :deep(.picker-selected),.tool-panel :deep(.picker-label),.tool-panel :deep(.picker-placeholder),.tool-panel :deep(.opt),.tool-panel :deep(.opt-name) { font-size:13px!important; }
+.tool-panel :deep(.catalog-option small),.tool-panel :deep(.opt-max) { font-size:11px!important; }
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
