@@ -1762,3 +1762,20 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* 子导航当前项加粗，强化定位 */
 .tool-switcher button.active { font-weight:900!important; }
 </style>
+
+<style scoped>
+/* ═══════════ UI Polish · 第三轮（空态柔化 + 按钮材质 + 双列配对）═══════════ */
+/* 空态/错误：暗朱红 + 复古图标 + 柔和底，降低突兀感 */
+.tool-panel :deep(.data-error) { display:inline-flex!important; align-items:center; gap:5px; margin:3px 0 0; padding:5px 11px;
+  font-size:.72rem!important; font-weight:800!important; color:#9c4b3f!important;
+  border-radius:0 7px 7px 0; border-left:3px solid #c06a5f; background:linear-gradient(90deg,rgba(192,106,95,.13),rgba(192,106,95,.03)); }
+.tool-panel :deep(.data-error)::before { content:"⚠"; font-size:.86rem; }
+/* 次级按钮材质渐变，去扁平 */
+.tool-panel :deep(.btn-batch),.tool-panel :deep(.btn-sort),.tool-panel :deep(.btn-max),.tool-panel :deep(.plain-btn),.tool-panel :deep(.btn-refresh),.tool-panel :deep(.slot-btn),.tool-panel :deep(.btn-purple),.tool-panel :deep(.quantity-combo button) {
+  background:linear-gradient(180deg,#f4e7c9,#e8d7b2)!important; }
+/* 特性 + 等级 双列配对行 */
+.tool-panel :deep(.field-row) { display:flex; gap:12px; align-items:flex-end; }
+.tool-panel :deep(.field-row) > .field:first-child { flex:1; min-width:0; }
+.tool-panel :deep(.field-row) > .level-field { flex:0 0 auto; }
+@media(max-width:900px){ .tool-panel :deep(.field-row){ flex-direction:column; gap:13px; align-items:stretch; } .tool-panel :deep(.field-row) > .level-field{ width:100%; } }
+</style>

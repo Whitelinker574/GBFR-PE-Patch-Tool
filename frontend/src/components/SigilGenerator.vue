@@ -432,6 +432,7 @@ async function removeAll() {
     <div class="section">
       <div class="section-title">因子配置</div>
 
+      <div class="field-row">
       <div class="field">
         <label>因子 <small>{{ dataLoading ? '正在加载目录' : dataError ? '目录加载失败' : '点击下拉后可搜索名称' }}</small></label>
         <div v-if="dataError" class="data-error">{{ dataError }}</div>
@@ -443,8 +444,10 @@ async function removeAll() {
         <label>因子等级 <small :class="{ overcap: selectedLevel > 15 }">{{ selectedLevel > 15 ? `超过合规上限 15 / 修改上限 ${sigilWritableMax}` : `合规上限 15 / 修改上限 ${sigilWritableMax}` }}</small></label>
         <input v-model.number="selectedLevel" type="number" min="0" :max="sigilWritableMax" class="text-input compact-number" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, sigilWritableMax)" />
       </div>
+      </div>
 
       <!-- 主特性 -->
+      <div class="field-row">
       <div class="field">
         <label>主特性</label>
         <div class="readonly-field">{{ primaryTraitName || '—' }}</div>
@@ -454,9 +457,11 @@ async function removeAll() {
         <label>主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `超过合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
         <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
       </div>
+      </div>
 
       <!-- 副特性 -->
       <template v-if="supportsSecondary">
+        <div class="field-row">
         <div class="field">
           <label>副特性 <small>非自然组合会提示，但不会阻止写入</small></label>
           <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryTraits.length" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
@@ -464,6 +469,7 @@ async function removeAll() {
         <div class="field level-field">
           <label>副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `超过合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
           <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
+        </div>
         </div>
       </template>
 
