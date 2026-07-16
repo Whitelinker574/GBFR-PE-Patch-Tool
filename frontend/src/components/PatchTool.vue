@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, PatchFile, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
@@ -55,18 +55,21 @@ const componentLoaders = {
   monster: () => import('./MonsterEnhance.vue'),
   language: () => import('./LanguageSettings.vue'),
 }
-const ProgressionEditor = defineAsyncComponent(componentLoaders.progression)
-const SigilGenerator = defineAsyncComponent(componentLoaders.sigil)
-const SigilMemoryGenerator = defineAsyncComponent(componentLoaders.sigilMemory)
-const SigilLoadoutRestore = defineAsyncComponent(componentLoaders.loadout)
-const WrightstoneGenerator = defineAsyncComponent(componentLoaders.wrightstone)
-const SummonEditor = defineAsyncComponent(componentLoaders.summon)
-const OverLimit = defineAsyncComponent(componentLoaders.overlimit)
-const MiscTools = defineAsyncComponent(componentLoaders.runtime)
-const CharaStats = defineAsyncComponent(componentLoaders.chara)
-const SaveEditor = defineAsyncComponent(componentLoaders.save)
-const MonsterEnhance = defineAsyncComponent(componentLoaders.monster)
-const LanguageSettings = defineAsyncComponent(componentLoaders.language)
+// 桌面本地应用无网络加载成本，改用静态直引：全部组件打进主包，
+// 切页时立绘与内容同帧渲染，不再出现“先出图、内容后到”的等待感。
+// componentLoaders / warmTool 仍保留（预热已打包模块，无副作用），便于将来若需分包回退。
+import ProgressionEditor from './ProgressionEditor.vue'
+import SigilGenerator from './SigilGenerator.vue'
+import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
+import SigilLoadoutRestore from './SigilLoadoutRestore.vue'
+import WrightstoneGenerator from './WrightstoneGenerator.vue'
+import SummonEditor from './SummonEditor.vue'
+import OverLimit from './OverLimit.vue'
+import MiscTools from './MiscTools.vue'
+import CharaStats from './CharaStats.vue'
+import SaveEditor from './SaveEditor.vue'
+import MonsterEnhance from './MonsterEnhance.vue'
+import LanguageSettings from './LanguageSettings.vue'
 
 const state = reactive({
   exePath: '',
@@ -466,6 +469,7 @@ function showStatus(message, type) {
             :key="group.id"
             class="nav-item"
             :class="{ active: activeGroup.id === group.id }"
+            :title="`${group.label} · ${group.caption}`"
             @pointerenter="warmGroup(group)"
             @focus="warmGroup(group)"
             @click="selectGroup(group)"
@@ -495,11 +499,14 @@ function showStatus(message, type) {
               v-for="id in activeGroup.items"
               :key="id"
               :class="{ active: activeTab === id, waiting: toolMeta[id].tone === 'waiting' }"
+              :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
               @pointerenter="warmTool(id)"
               @focus="warmTool(id)"
               @click="selectTool(id)"
             >
               {{ toolMeta[id].title }}
+              <span v-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
+              <span v-else-if="toolMeta[id].tone === 'stable'" class="switcher-tag offline">离线</span>
               <span v-if="toolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
         </nav>
@@ -723,7 +730,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .app-body { height:calc(100vh - 42px); grid-template-columns:230px minmax(0,1fr); }
 .app-body.home-mode { grid-template-columns:minmax(0,1fr); }.home-mode .sidebar { display:none }.home-mode .workspace-scroll { padding:0;overflow:auto }.home-mode .workspace { background:#efe1bf }
 .sidebar { padding:20px 13px 14px;border-right:1px solid rgba(130,96,48,.3);background:linear-gradient(180deg,rgba(255,249,230,.96),rgba(235,220,187,.97));box-shadow:8px 0 28px rgba(90,66,31,.12),inset -4px 0 rgba(145,110,57,.04) }
-.sidebar-heading { padding:0 11px 17px;border-bottom:1px solid rgba(143,107,51,.26) }.sidebar-heading .sidebar-kicker { color:#a27b3e;font:800 9px "Microsoft YaHei UI",sans-serif;letter-spacing:.17em }.sidebar-heading strong { color:#51463a;font:800 19px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.04em }.sidebar-heading>span:last-child { color:#8c7d68;font-size:10px;font-weight:700 }
+.sidebar-heading { padding:0 11px 17px;border-bottom:1px solid rgba(143,107,51,.26) }.sidebar-heading .sidebar-kicker { color:#8a6a34;font:800 9px "Microsoft YaHei UI",sans-serif;letter-spacing:.17em }.sidebar-heading strong { color:#51463a;font:800 19px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.04em }.sidebar-heading>span:last-child { color:#8c7d68;font-size:10px;font-weight:700 }
 .primary-nav { gap:8px;padding-top:17px }.nav-item { min-height:58px;grid-template-columns:32px 1fr 13px;padding:8px 13px 8px 11px;border:1px solid rgba(114,92,58,.24);border-radius:0;color:#574c40;background:linear-gradient(90deg,rgba(145,126,89,.65),rgba(186,170,132,.44));box-shadow:0 3px 6px rgba(84,63,32,.1),inset 0 1px rgba(255,255,255,.5);clip-path:none }.nav-item:hover { color:#3f5f5f;background:linear-gradient(90deg,rgba(116,202,207,.7),rgba(177,228,228,.6)) }.nav-item.active { color:#28585c;border-color:rgba(54,158,166,.45);background:linear-gradient(90deg,#62d0d8,#b2e9eb);box-shadow:0 4px 9px rgba(44,130,137,.16),inset 0 1px rgba(255,255,255,.65) }.nav-mark { width:28px;height:28px;border:2px solid rgba(83,66,43,.38);border-radius:50%;color:#4f4438;background:rgba(255,249,229,.36);font-family:"Microsoft YaHei UI",sans-serif;font-weight:900 }.nav-item.active .nav-mark { color:#1f6268;border-color:rgba(31,98,104,.48);background:rgba(255,255,255,.34) }.nav-copy strong { color:inherit;font:800 13px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.02em }.nav-copy small { color:rgba(71,60,46,.72);font-size:9px;font-weight:700 }.nav-arrow { color:#66543c;font-weight:900 }
 .sidebar-foot { border-top-color:rgba(142,106,51,.25) }.target-dot { background:var(--cyan);box-shadow:0 0 8px rgba(58,169,179,.42) }.target-row strong { color:#675a49;font-weight:800 }.target-row small,.sidebar-foot a { color:#927f64;font-weight:700 }.sidebar-foot a:hover { color:#298f98 }
 .workspace { background:linear-gradient(rgba(255,250,236,.68),rgba(242,229,199,.76)),url('../assets/gbfr/journal-scene-4k.webp') center/cover fixed }.workspace-bar { height:40px;flex-basis:40px;padding:0 23px;border-bottom:1px solid rgba(145,108,51,.22);background:rgba(255,249,229,.9) }.breadcrumb { color:#8d7c66;font-size:10px;font-weight:700 }.breadcrumb b { color:#c3a96e }.breadcrumb strong { color:#51473c;font-weight:800 }.workspace-state { color:#776b5c;font-weight:700 }.state-dot { box-shadow:0 0 0 3px rgba(103,84,56,.07) }
@@ -914,6 +921,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   box-shadow:inset 0 1px rgba(255,255,255,.76),inset 0 -1px rgba(139,101,47,.16);
 }
 .tool-switcher button {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
   flex:1 1 0;
   min-width:0;
   height:38px;
@@ -942,6 +953,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 }
 .tool-switcher button.active::after { display:none }
 .switcher-dot { top:7px;right:8px;background:#fff9da;box-shadow:0 0 0 1px rgba(105,80,42,.3) }
+.switcher-tag { flex:0 0 auto;font-size:7.5px;font-weight:900;letter-spacing:.02em;line-height:1;padding:2px 5px;border-radius:20px;opacity:.5;transition:opacity .15s ease }
+.switcher-tag.offline { color:#2f7d5c;background:rgba(47,125,92,.12);border:1px solid rgba(47,125,92,.28) }
+.switcher-tag.live { color:#256e74;background:rgba(37,110,116,.12);border:1px solid rgba(37,110,116,.28) }
+.tool-switcher button:hover .switcher-tag { opacity:.82 }
+.tool-switcher button.active .switcher-tag { opacity:1 }
+.tool-switcher button.active .switcher-tag.offline { background:rgba(47,125,92,.2) }
+.tool-switcher button.active .switcher-tag.live { background:rgba(37,110,116,.2) }
 .nav-item {
   color:#655742;
   border-color:rgba(130,96,45,.28);

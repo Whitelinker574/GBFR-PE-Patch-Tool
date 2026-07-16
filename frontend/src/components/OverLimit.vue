@@ -205,7 +205,7 @@ function writeSaveAll() {
 .slot-grid { display:grid; grid-template-columns:minmax(210px, 1fr) 96px 78px; gap:8px; align-items:end; }
 .slot-grid label, .slot-value { display:flex; flex-direction:column; gap:5px; text-align:left; }
 .slot-grid label span, .slot-value span { font-size:0.68rem; color:rgba(255,255,255,0.32); }
-.slot-value strong, .value-input { min-height:30px; display:flex; align-items:center; color:#67e8f9; font-size:0.82rem; }
+.slot-value strong, .value-input { min-height:30px; display:flex; align-items:center; color:#256e74; font-size:0.82rem; }
 .value-input { box-sizing:border-box; width:100%; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); outline:none; }
 .od-select { width:100%; padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#fff; font-size:0.8rem; outline:none; cursor:pointer; }
 .od-select:focus { border-color:rgba(103,232,249,0.5); }

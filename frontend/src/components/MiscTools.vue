@@ -863,7 +863,7 @@ onBeforeUnmount(() => {
 .feature-help { margin:0; padding:7px 9px; border-left:2px solid rgba(103,232,249,.34); background:rgba(103,232,249,.035); color:rgba(255,255,255,.38); font-size:.67rem; line-height:1.55; }
 .feature-help.waiting { border-left-color:rgba(251,191,36,.42); background:rgba(251,191,36,.035); color:rgba(251,191,36,.55); }
 .damage-meter-info { justify-content:space-between; }
-.damage-meter-value { font-size:1.8rem; font-weight:700; color:#67e8f9; line-height:1; }
+.damage-meter-value { font-size:1.8rem; font-weight:700; color:#256e74; line-height:1; }
 .damage-meter-raw { margin-top:-4px; font-size:0.72rem; color:rgba(255,255,255,0.28); }
 .memory-card.active .damage-meter-value { color:#1f2937; }
 .memory-card.active .damage-meter-raw { color:rgba(31,41,55,0.56); }
@@ -922,16 +922,16 @@ onBeforeUnmount(() => {
   background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.35);
   transition:all 0.3s;
 }
-.od-mode-active { background:rgba(250,204,21,0.15); color:#facc15; border:1px solid rgba(250,204,21,0.25); }
-.od-burst-active { background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.25); animation:od-burst-pulse 1s infinite alternate; }
+.od-mode-active { background:rgba(154,106,36,0.16); color:#9a6a24; border:1px solid rgba(154,106,36,0.3); }
+.od-burst-active { background:rgba(166,71,61,0.14); color:#a6473d; border:1px solid rgba(166,71,61,0.3); animation:od-burst-pulse 1s infinite alternate; }
 @keyframes od-burst-pulse { from { opacity:0.7; } to { opacity:1; } }
 .burst-timer { color:#facc15; font-weight:750; font-family:var(--font-data); }
-.confirm-overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,0.48); }
-.confirm-dialog { width:min(420px, 100%); border-radius:12px; padding:16px; background:linear-gradient(135deg, rgba(251,191,36,0.22) 0%, rgba(239,68,68,0.16) 100%); border:1px solid rgba(251,191,36,0.34); box-shadow:0 12px 40px rgba(0,0,0,0.42); display:flex; flex-direction:column; gap:12px; }
-.confirm-title { font-size:0.9rem; font-weight:700; color:#facc15; }
-.confirm-body { font-size:0.78rem; line-height:1.65; color:rgba(255,255,255,0.72); }
+.confirm-overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(60,42,18,0.4); }
+.confirm-dialog { width:min(420px, 100%); border-radius:12px; padding:18px; background:#f5e7c7; border:1px solid #9f7a45; box-shadow:0 16px 44px rgba(74,52,20,0.34); display:flex; flex-direction:column; gap:12px; }
+.confirm-title { font-size:0.9rem; font-weight:800; color:#4d4236; }
+.confirm-body { font-size:0.78rem; line-height:1.65; color:#55493b; }
 .confirm-actions { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
-.btn-warn { padding:6px 14px; border-radius:6px; border:1px solid rgba(251,191,36,0.45); background:rgba(251,191,36,0.16); color:#facc15; font-size:0.78rem; font-weight:600; cursor:pointer; transition:background 0.2s; white-space:nowrap; }
-.btn-warn:not(:disabled):hover { background:rgba(251,191,36,0.26); }
+.btn-warn { padding:6px 14px; border-radius:6px; border:1px solid #a6473d; background:rgba(166,71,61,0.12); color:#a6473d; font-size:0.78rem; font-weight:800; cursor:pointer; transition:background 0.2s; white-space:nowrap; }
+.btn-warn:not(:disabled):hover { background:rgba(166,71,61,0.2); }
 .btn-warn:disabled { opacity:0.4; cursor:not-allowed; }
 </style>

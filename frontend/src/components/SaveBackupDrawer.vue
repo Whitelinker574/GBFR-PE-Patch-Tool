@@ -18,7 +18,7 @@ const confirmDialog = ref(null)
 const latest = computed(() => snapshots.value[0] || null)
 const triggerDetail = computed(() => {
   if (loading.value) return '读取中'
-  if (!latest.value) return '等待首份备份'
+  if (!latest.value) return '写入前将自动创建恢复点'
   return `${snapshots.value.length} 个恢复点 · ${shortTime(latest.value.displayTime)}`
 })
 
