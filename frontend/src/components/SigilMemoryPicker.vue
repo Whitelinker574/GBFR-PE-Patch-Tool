@@ -126,7 +126,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 /* 样式统一到 CatalogSelect(Gemini 重设计)：羊皮纸色阶#fdf6e4→#efe1c0 + 金棕#9a7440，
    去掉原来的青色强调与双色渐变；选项名单行不换行。 */
 .picker { position: relative; flex: 1; font-family:inherit; }
-.picker-selected { display:flex; align-items:center; gap:8px; width:100%; min-height:34px; padding:7px 11px; border:1px solid rgba(154,116,64,.4); border-radius:6px; background:#fdf6e4; color:#4e4438; cursor:pointer; font-family:inherit; font-size:.75rem; line-height:1.35; text-align:left; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
+.picker-selected { display:flex; align-items:center; gap:8px; width:100%; min-height:38px; padding:9px 12px; border:1px solid rgba(154,116,64,.4); border-radius:6px; background:#fdf6e4; color:#4e4438; cursor:pointer; font-family:inherit; font-size:.86rem; font-weight:600; line-height:1.35; text-align:left; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
 .picker-selected:hover,.picker-open .picker-selected { border-color:#9a7440; background:#fffdf6; box-shadow:0 0 0 1px rgba(154,116,64,.12); }
 .picker-selected:disabled { opacity:.48; cursor:not-allowed; }
 .picker-label, .picker-placeholder { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -139,7 +139,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .picker-search input { flex:1; min-height:30px; padding:5px 9px; border:1px solid rgba(154,116,64,.3); border-radius:4px; background:#fffdf6; color:#4e4438; outline:none; font-family:inherit; font-size:.78rem; }
 .picker-search input:focus { border-color:#9a7440; }
 .picker-list { max-height:236px; overflow-y:auto; }
-.opt { min-height:36px;display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 12px; border:0; border-bottom:1px solid rgba(154,116,64,.09); font-size:.72rem; line-height:1.35; color:#6f6152; background:transparent; cursor:pointer; font-family:inherit; transition:background-color .14s ease,color .14s ease; }
+.opt { min-height:38px;display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 12px; border:0; border-bottom:1px solid rgba(154,116,64,.09); font-size:.84rem; font-weight:600; line-height:1.35; color:#6f6152; background:transparent; cursor:pointer; font-family:inherit; transition:background-color .14s ease,color .14s ease; }
 .opt:nth-child(even) { background:rgba(154,116,64,.035); }
 .opt:hover, .opt.hi, .opt.selected { color:#4e4438; background:#efe1c0; box-shadow:inset 3px 0 #9a7440; }
 .opt-name { flex:1; min-width:0; display:inline-flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

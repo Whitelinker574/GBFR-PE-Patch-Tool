@@ -1702,7 +1702,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="legacyRuntime"]{--ah:182%;--ay:-52%;--ax:-250px}
 .tool-stage[data-tool="monster"]{--ah:160%;--ay:-63%;--ax:-165px}
 .tool-stage[data-tool="patch"]{--ah:160%;--ay:-63%;--ax:-250px}
-.tool-stage[data-tool="language"]{--ah:182%;--ay:-52%;--ax:-250px}
+.tool-stage[data-tool="language"]{--ah:178%;--ay:-61%;--ax:-300px}
 /* Quantity is a compact form row, not a raised card. */
 .tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .tool-panel :deep(.quantity-combo button){min-width:50px!important;border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#edddba!important;box-shadow:none!important;opacity:1!important}
@@ -1853,10 +1853,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 
 /* 内容卡片全不透明，渗入的立绘/背景不会透出来使文字发糊；
    去掉白色内描边(inset 白线在羊皮纸上像奇怪的白边)，只留柔和外阴影 */
-.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section) {
+.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.tool-panel :deep(.calibration-card),.tool-panel :deep(.compat-section),
+.legacy-patch .path-card,.legacy-patch .patch-card,.legacy-patch .backup-card,.legacy-patch .legacy-warning {
   background:linear-gradient(135deg,#fdf6e4,#efe1c0)!important; backdrop-filter:none!important;
   box-shadow:0 4px 12px rgba(77,54,25,.07)!important;
 }
+/* 备份页输入框改为不透明，立绘不再透出 */
+.legacy-patch input,.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(textarea) { background:#fbf3dd!important; }
 
 /* ═══ 响应式：窄到放不下时，立绘让位，保证“教程 + 内容”可读（教程列给足宽度，不再被压成竖排单字）═══ */
 @media(max-width:1040px){
