@@ -1779,3 +1779,19 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.field-row) > .level-field { flex:0 0 auto; }
 @media(max-width:900px){ .tool-panel :deep(.field-row){ flex-direction:column; gap:13px; align-items:stretch; } .tool-panel :deep(.field-row) > .level-field{ width:100%; } }
 </style>
+
+<style scoped>
+/* ═══════════ UI Polish · 第四轮（交互态深审）═══════════ */
+/* 超出上限的等级输入框整体变红，警示更明确 */
+.tool-panel :deep(input.lv-over) { border-color:#c0574c!important;
+  background:linear-gradient(180deg,rgba(214,120,110,.18),rgba(214,120,110,.08))!important;
+  color:#9c3f34!important; box-shadow:inset 0 1px 2px rgba(150,50,40,.14),0 0 0 2px rgba(192,87,76,.2)!important; }
+/* 大窗口下内容封顶，避免输入框被拉得过长 */
+.tool-page-heading,.tool-panel { max-width:1180px; }
+/* 下拉列表：斑马纹对比更清晰 + hover 金边高亮 + 搜索区分割线与悬浮阴影 */
+.tool-panel :deep(.catalog-option:nth-child(even)) { background:#ecd8ac!important; }
+.tool-panel :deep(.catalog-option:hover),.tool-panel :deep(.catalog-option.highlight),.tool-panel :deep(.catalog-option.selected) { background:#e2cd97!important; box-shadow:inset 3px 0 var(--gold)!important; }
+.tool-panel :deep(.catalog-search) { border-bottom:1px solid rgba(126,91,42,.36)!important; box-shadow:0 3px 7px rgba(77,52,21,.13); position:relative; z-index:1; }
+/* 成功提示更贴合暖色主题（柔和青绿，去亮绿）*/
+.titlebar-status.success { color:#7fd0b0!important; }
+</style>

@@ -442,7 +442,7 @@ async function removeAll() {
       <!-- 因子等级 -->
       <div class="field level-field">
         <label>因子等级 <small :class="{ overcap: selectedLevel > 15 }">{{ selectedLevel > 15 ? `超过合规上限 15 / 修改上限 ${sigilWritableMax}` : `合规上限 15 / 修改上限 ${sigilWritableMax}` }}</small></label>
-        <input v-model.number="selectedLevel" type="number" min="0" :max="sigilWritableMax" class="text-input compact-number" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, sigilWritableMax)" />
+        <input v-model.number="selectedLevel" type="number" min="0" :max="sigilWritableMax" class="text-input compact-number" :class="{ 'lv-over': selectedLevel > 15 }" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, sigilWritableMax)" />
       </div>
       </div>
 
@@ -455,7 +455,7 @@ async function removeAll() {
 
       <div class="field level-field">
         <label>主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `超过合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
-        <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
+        <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number" :class="{ 'lv-over': selectedPrimaryLevel > primaryNaturalMax }" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
       </div>
       </div>
 
@@ -468,7 +468,7 @@ async function removeAll() {
         </div>
         <div class="field level-field">
           <label>副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `超过合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
-          <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
+          <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number" :class="{ 'lv-over': selectedSecondaryLevel > secondaryNaturalMax }" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
         </div>
         </div>
       </template>

@@ -302,7 +302,7 @@ async function applyQueueToSave() {
         </div>
         <div class="field level-field">
           <label>等级 <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ selectedTraits[i].level > naturalTraitMax(i) ? `超过合规上限 ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` : `合规上限 ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` }}</small></label>
-          <input v-model.number="selectedTraits[i].level" type="number" min="0" :max="writableTraitMax(i)" class="text-input compact-number" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, writableTraitMax(i))" />
+          <input v-model.number="selectedTraits[i].level" type="number" min="0" :max="writableTraitMax(i)" class="text-input compact-number" :class="{ 'lv-over': selectedTraits[i].level > naturalTraitMax(i) }" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, writableTraitMax(i))" />
         </div>
       </div>
 
