@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutEditContext, LoadoutSimulate } from '../../wailsjs/go/main/App'
+import { LoadoutApply, LoadoutEditContext, LoadoutSimulate, MasteryNodePool } from '../../wailsjs/go/main/App'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps({
@@ -28,6 +28,30 @@ const nameTooLong = computed(() => nameBytes.value > 63)
 const slots = computed(() => ctx.value?.slots || [])
 const occupiedSlots = computed(() => slots.value.filter(s => s.occupied))
 const masterySources = computed(() => ctx.value?.masterySources || [])
+
+// 专精：复制现有 or 自由配置（4 档 10/10/10/20）
+const masteryMode = ref('copy')     // copy | free
+const masteryPool = ref([])         // [{rank,label,cap,nodes}]
+const masteryPick = ref({})         // { R1:[hash...], R2:[], R3:[], EX:[] }
+const masteryRankTab = ref('R1')
+const CAT_ABBR = { SB_ATK: '攻', SB_DEF: '防', SB_LIMIT: '界' }
+function catAbbr(cat) { return CAT_ABBR[cat] || '基' }
+const activeRankPool = computed(() => masteryPool.value.find(p => p.rank === masteryRankTab.value) || null)
+function rankPicked(rank) { return (masteryPick.value[rank] || []).length }
+const masteryTotal = computed(() => Object.values(masteryPick.value).reduce((n, a) => n + a.length, 0))
+function toggleNode(rank, hash, cap) {
+  const arr = masteryPick.value[rank] || (masteryPick.value[rank] = [])
+  const i = arr.indexOf(hash)
+  if (i >= 0) arr.splice(i, 1)
+  else if (arr.length < cap) arr.push(hash)
+}
+async function loadMasteryPool() {
+  masteryPool.value = []
+  masteryPick.value = { R1: [], R2: [], R3: [], EX: [] }
+  if (!ctx.value?.ownerCode) return
+  try { masteryPool.value = (await MasteryNodePool(ctx.value.ownerCode)) || [] }
+  catch (err) { emit('status', String(err), 'error') }
+}
 
 const selectedSlot = computed(() => slots.value.find(s => s.unitId === targetSlot.value) || null)
 
@@ -114,8 +138,12 @@ async function apply() {
     w.weaponSlotId = form.value.weaponSlotId || 0
     w.sigilSlotIds = [...form.value.sigilSlotIds]
     w.skillHashes = [...form.value.skillHashes]
-    const src = masterySources.value.find(m => m.unitId === form.value.masterySource)
-    w.masteryHashes = src ? [...src.nodeHashes] : []
+    if (masteryMode.value === 'free') {
+      w.masteryHashes = ['R1', 'R2', 'R3', 'EX'].flatMap(r => masteryPick.value[r] || [])
+    } else {
+      const src = masterySources.value.find(m => m.unitId === form.value.masterySource)
+      w.masteryHashes = src ? [...src.nodeHashes] : []
+    }
   } else if (op.value === 'clone') {
     w.cloneFromUnitId = cloneFrom.value
   }
@@ -227,14 +255,36 @@ async function apply() {
         </div>
 
         <div class="ed-field">
-          <label>专精</label>
-          <select v-model.number="form.masterySource" class="ed-select">
-            <option :value="0">— 不设置专精 —</option>
-            <option v-for="m in masterySources" :key="m.unitId" :value="m.unitId">
-              复制自 槽{{ String(m.slot).padStart(2, '0') }}「{{ m.name || '未命名' }}」（{{ m.nodeCount }} 节点）
-            </option>
-          </select>
-          <small class="hint">专精只能整套复制自该角色已有配装（保证游戏认可，不会写出非法专精）</small>
+          <label>专精 <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/50</em></label>
+          <div class="op-row">
+            <button class="op-btn" :class="{ on: masteryMode === 'copy' }" @click="masteryMode = 'copy'">复制现有</button>
+            <button class="op-btn" :class="{ on: masteryMode === 'free' }" @click="masteryMode = 'free'; loadMasteryPool()" :disabled="!ctx.ownerCode">自由配置</button>
+          </div>
+
+          <template v-if="masteryMode === 'copy'">
+            <select v-model.number="form.masterySource" class="ed-select">
+              <option :value="0">— 不设置专精 —</option>
+              <option v-for="m in masterySources" :key="m.unitId" :value="m.unitId">
+                复制自 槽{{ String(m.slot).padStart(2, '0') }}「{{ m.name || '未命名' }}」（{{ m.nodeCount }} 节点）
+              </option>
+            </select>
+            <small class="hint">整套复制自该角色已有配装，保证游戏认可</small>
+          </template>
+
+          <template v-else>
+            <div class="rank-tabs">
+              <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" @click="masteryRankTab = p.rank">
+                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= p.cap }">{{ rankPicked(p.rank) }}/{{ p.cap }}</i>
+              </button>
+            </div>
+            <div v-if="activeRankPool" class="node-grid">
+              <button v-for="n in activeRankPool.nodes" :key="n.hash" class="node" :class="['cat-' + catAbbr(n.cat), { on: (masteryPick[activeRankPool.rank] || []).includes(n.hash) }]"
+                @click="toggleNode(activeRankPool.rank, n.hash, activeRankPool.cap)" :title="n.desc">
+                <b>{{ catAbbr(n.cat) }}</b>{{ n.name || n.desc.slice(0, 16) }}
+              </button>
+            </div>
+            <small class="hint">满级需正好点满 10/10/10/20；各档分类（攻/防/界）自由混搭。写入前会校验合法性。</small>
+          </template>
         </div>
       </template>
 
@@ -295,5 +345,18 @@ async function apply() {
 .sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
 .sim-lv small { color:var(--text-muted); }
 .sim-eff { color:var(--text-secondary); white-space:pre-line; line-height:1.4; }
+/* 专精自由配置 */
+.rank-tabs { display:flex; gap:6px; }
+.rank-tab { min-height:28px; padding:0 12px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); font-size:.74rem; cursor:pointer; user-select:none; }
+.rank-tab.on { background:var(--selected-bg); border-color:var(--selected-border); color:var(--selected-fg); }
+.rank-tab i { font-style:normal; margin-left:5px; font-size:.64rem; opacity:.8; }
+.rank-tab i.full { color:var(--success); font-weight:800; }
+.rank-tab.on i.full { color:#bfe6cd; }
+.node-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:5px; max-height:260px; overflow-y:auto; padding:2px; }
+.node { display:flex; align-items:center; gap:5px; padding:4px 8px; border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); font-size:.68rem; text-align:left; cursor:pointer; user-select:none; line-height:1.3; }
+.node b { flex:0 0 auto; width:15px; height:15px; display:grid; place-items:center; border-radius:3px; font-size:.6rem; font-weight:900; color:#fff; }
+.node.cat-攻 b { background:var(--danger); } .node.cat-防 b { background:var(--info); } .node.cat-界 b { background:var(--accent); }
+.node.on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); }
+.node.on b { background:rgba(255,255,255,.3); }
 .ed-field .hint { font-size:.66rem; color:var(--text-muted); }
 </style>
