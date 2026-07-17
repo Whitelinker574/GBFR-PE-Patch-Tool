@@ -2,11 +2,9 @@ package main
 
 import (
 	_ "embed"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"unicode/utf8"
 )
@@ -178,30 +176,31 @@ func vecLen(e *unitEntry) int {
 	return e.ValueCnt
 }
 
-// entryText 把 ValueData 当 UTF-8 C 字符串读（遇 NUL 截断）。
+// entryText 把配装名称字段（3002，Byte 表 ValueCnt=字节数）当 UTF-8 C 字符串读。
+// 名称是**字节向量**：直接按字节读 ValueCnt 个字节、遇首个 NUL 截断。
+// （早先误按 uint32 步长读会越过 64 字节向量末尾多读 192 字节相邻记录，靠 NUL
+// 截断侥幸不出错；现按字节读，语义正确、不越界。）
 func entryText(e *unitEntry) string {
-	n := vecLen(e)
-	if n == 0 {
+	raw := e.Bytes()
+	if len(raw) == 0 {
 		return ""
 	}
-	buf := make([]byte, 0, n*4)
-	for i := 0; i < n; i++ {
-		v, err := e.Uint32At(i)
-		if err != nil {
-			break
+	if i := indexZero(raw); i >= 0 {
+		raw = raw[:i]
+	}
+	if !utf8.Valid(raw) {
+		return ""
+	}
+	return string(raw)
+}
+
+func indexZero(b []byte) int {
+	for i, c := range b {
+		if c == 0 {
+			return i
 		}
-		var b [4]byte
-		binary.LittleEndian.PutUint32(b[:], v)
-		buf = append(buf, b[:]...)
 	}
-	if i := strings.IndexByte(string(buf), 0); i >= 0 {
-		buf = buf[:i]
-	}
-	s := string(buf)
-	if !utf8.ValidString(s) {
-		return ""
-	}
-	return s
+	return -1
 }
 
 // loadoutSlotOf 由 UnitID 推断槽位号，以及它是否是队伍实时配装。

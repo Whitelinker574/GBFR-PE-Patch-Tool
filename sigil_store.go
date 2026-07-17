@@ -85,6 +85,36 @@ func (e *unitEntry) SetInt32At(index int, value int32) error {
 	return e.SetUint32At(index, uint32(value))
 }
 
+// Bytes 返回**字节向量**（如配装名称 3002，Byte 表 ValueCnt=字节数）的原始字节切片。
+// 仅对字节类型条目有效：字节向量里 ValueCnt 就是字节数、元素步长为 1。
+// 绝不可对 uint32 向量调用——那里 ValueCnt 是元素个数、每元素 4 字节，会只取到 1/4 数据。
+// 返回的是底层缓冲的切片（可原地改），越界时返回 nil。
+func (e *unitEntry) Bytes() []byte {
+	if e == nil || e.ValueOff < 0 || e.ValueCnt < 0 || e.ValueOff+e.ValueCnt > len(e.data) {
+		return nil
+	}
+	return e.data[e.ValueOff : e.ValueOff+e.ValueCnt]
+}
+
+// SetBytes 把 buf 写入字节向量：先把整块 ValueCnt 字节清零、再拷贝 buf。
+// len(buf) > ValueCnt 报错（拒绝越界写，否则会冲毁相邻 FlatBuffer 记录）。
+// 用于配装名称等 Byte 表字段——名称短于 64 字节时其余自动补 0x00，
+// 从而覆盖空槽可能残留的旧名尾巴，并让读侧靠首个 NUL 正确截断。
+func (e *unitEntry) SetBytes(buf []byte) error {
+	region := e.Bytes()
+	if region == nil {
+		return fmt.Errorf("字节向量越界: off=%d cnt=%d len=%d", e.ValueOff, e.ValueCnt, len(e.data))
+	}
+	if len(buf) > len(region) {
+		return fmt.Errorf("写入 %d 字节超过向量容量 %d", len(buf), len(region))
+	}
+	for i := range region {
+		region[i] = 0
+	}
+	copy(region, buf)
+	return nil
+}
+
 func (e *unitEntry) Bool() bool {
 	if e.ValueOff < 0 || e.ValueOff >= len(e.data) {
 		return false
