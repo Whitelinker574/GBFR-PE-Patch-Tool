@@ -883,17 +883,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.warning-hint),.tool-panel :deep(.offline-note),.tool-panel :deep(.unlock-risk),.tool-panel :deep(.danger-confirm) { color:#74551f!important;border-color:rgba(155,108,40,.32)!important;border-left:3px solid #b18239!important;background:rgba(241,221,174,.78)!important;font-weight:800!important }.tool-panel :deep(.danger-hint),.tool-panel :deep(.data-error),.tool-panel :deep(.empty.error) { color:#8b3f37!important;border-color:rgba(153,72,58,.32)!important;border-left:3px solid #a65243!important;background:rgba(239,208,184,.7)!important;font-weight:900!important }
 .tool-panel :deep(.queue-warning),.tool-panel :deep(.queue-legality.forced) { color:#74551f!important;border-color:rgba(155,108,40,.34)!important;background:#efdfb9!important }.tool-panel :deep(.queue-legality:not(.forced)) { color:#246a70!important;border-color:rgba(43,126,133,.32)!important;background:#dcebdd!important }
 
-/* Official atlas skin: reproduce the journal's parchment, gilt rules and cyan selection language. */
-.app-window {
-  --cyan:#48c9df;
-  --green:#48c9df;
-  --official-cyan:#48c9df;
-  --official-cyan-deep:#387d92;
-  --official-gold:#a98a50;
-  --official-gold-line:rgba(157,116,54,.38);
-  --official-paper:#fff8df;
-  --official-ink:#554b40;
-}
+/* atlas skin 令牌块已移除：此处曾把 --cyan/--green 双双污染成 #48c9df 青蓝，
+   是「蓝色选中」的架构根因。现让 --cyan/--green 落到上方羊皮纸块的真值
+   (#3aa9b3/#4c9c76)。仅保留唯一被引用的 --official-gold-line，指向语义令牌。 */
+.app-window { --official-gold-line:var(--border-strong); }
 .workspace {
   background:
     linear-gradient(rgba(255,251,235,.42),rgba(241,224,184,.5)),

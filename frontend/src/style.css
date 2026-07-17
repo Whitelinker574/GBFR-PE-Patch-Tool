@@ -1,29 +1,69 @@
+/* ============================================================
+   GBFR Patch Tool — 设计令牌单一事实源（原子化重构）
+   两层：① primitive 原始调色板（仅此处出裸值）② semantic 语义角色（组件只引用这层）。
+   禁止任何组件/后代选择器（.app-window 等）重定义这些变量。
+   浅色羊皮纸单主题，无暗色分支。
+   ============================================================ */
 :root {
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+
   --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
   --font-data: "Noto Sans SC", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  --sky-1000: #e8dcc0;
-  --sky-950: #f3ead3;
-  --sky-900: #f8f1dc;
-  --sky-850: #fffaf0;
-  --sky-700: #45aeb8;
-  --cyan: #3aa9b3;
-  --cyan-bright: #72dce4;
-  --gold: #a77d3d;
-  --gold-soft: #d7b66f;
-  --green: #4c9c76;
-  --amber: #b78237;
-  --red: #bd625e;
-  --text-primary: #51483e;
-  --text-secondary: #766a5d;
-  --text-muted: #998a77;
-  --line: rgba(139, 106, 55, .22);
-  --line-soft: rgba(139, 106, 55, .15);
-  --line-gold: rgba(156, 117, 53, .38);
-  --panel: rgba(255, 251, 236, .9);
-  --panel-solid: #fffaf0;
+
+  /* ── PRIMITIVE 原始调色板 ── */
+  /* 羊皮纸面：浅→深 */
+  --p-paper-100:#fffaf0; --p-paper-200:#fdf6e4; --p-paper-300:#f6eacf;
+  --p-paper-400:#efe1c0; --p-paper-500:#e8dcc0; --p-app-bg:#ede1c5;
+  /* 胡桃木/黄铜：品牌主色阶（选中/主按钮/描边） */
+  --p-brass-050:#f0e2c2; --p-brass-100:#ead8b2; --p-brass-300:#d7b66f;
+  --p-brass-500:#a77d3d; --p-brass-600:#9a7440; --p-brass-650:#8b6737;
+  --p-brass-700:#76552d; --p-brass-800:#765126;
+  /* 墨：文字阶 */
+  --p-ink-900:#51483e; --p-ink-700:#766a5d; --p-ink-500:#998a77; --p-ink-on-brass:#fff9e9;
+  /* 线 */
+  --p-line-22:rgba(139,106,55,.22); --p-line-15:rgba(139,106,55,.15); --p-line-gold:rgba(156,117,53,.38);
+  /* 功能状态（真值，不再被污染） */
+  --p-success:#4c9c76; --p-success-ink:#2b6547; --p-success-bg:#dcebdd; --p-success-bar:#4a7658;
+  --p-warning:#b78237; --p-warning-ink:#8e682d; --p-warning-bg:#efdfb9;
+  --p-danger:#bd625e;  --p-danger-ink:#a24b47;  --p-danger-bg:#f6ded9;
+  --p-info:#2e8f98;    --p-info-ink:#246a70;    --p-info-bg:#dcebed; /* 静音青，仅信息/当前值/合法，永不用于选中 */
+  --p-focus-outline:rgba(154,116,64,.55); --p-focus-ring:rgba(214,182,111,.30);
+
+  /* ── SEMANTIC 语义角色（组件唯一可引用层） ── */
+  --surface-app:var(--p-app-bg); --surface-card:var(--p-paper-200); --surface-card-pop:var(--p-paper-100);
+  --surface-field:var(--p-paper-300); --surface-field-hover:var(--p-paper-100);
+  --surface-row:var(--p-paper-400); --surface-row-hover:#f2e4c5; --surface-sunken:var(--p-paper-500);
+  --text-primary:var(--p-ink-900); --text-secondary:var(--p-ink-700); --text-muted:var(--p-ink-500);
+  --text-on-accent:var(--p-ink-on-brass); --text-link:var(--p-info-ink);
+  --border-default:var(--p-line-22); --border-soft:var(--p-line-15); --border-strong:var(--p-line-gold); --border-accent:var(--p-brass-800);
+  --accent:var(--p-brass-650); --accent-hover:var(--p-brass-700); --accent-border:var(--p-brass-800); --accent-soft:var(--p-brass-100);
+  /* 选中态：全应用唯一画法=棕金实心 */
+  --selected-bg:var(--p-brass-650); --selected-fg:var(--p-ink-on-brass); --selected-border:var(--p-brass-800); --selected-bar:var(--p-brass-600);
+  --state-hover:rgba(139,106,55,.06); --state-active:rgba(139,106,55,.12); --state-disabled-opacity:.45;
+  --focus-outline:2px solid var(--p-focus-outline); --focus-offset:2px; --focus-ring:0 0 0 3px var(--p-focus-ring);
+  --success:var(--p-success); --success-ink:var(--p-success-ink); --success-bg:var(--p-success-bg); --success-bar:var(--p-success-bar);
+  --warning:var(--p-warning); --warning-ink:var(--p-warning-ink); --warning-bg:var(--p-warning-bg);
+  --danger:var(--p-danger); --danger-ink:var(--p-danger-ink); --danger-bg:var(--p-danger-bg);
+  --info:var(--p-info); --info-ink:var(--p-info-ink); --info-bg:var(--p-info-bg);
+
+  /* 间距 / 圆角 / 阴影 / 字号 / 字重 / 层级 / 动效 */
+  --space-1:2px; --space-2:4px; --space-3:6px; --space-4:8px; --space-5:12px; --space-6:16px; --space-7:20px; --space-8:24px; --space-9:32px;
+  --radius-sm:2px; --radius-md:4px; --radius-lg:8px; --radius-pill:999px;
+  --shadow-1:0 4px 12px rgba(90,65,29,.08); --shadow-2:0 9px 22px rgba(77,54,25,.12); --shadow-3:0 18px 48px rgba(60,42,18,.28);
+  --fs-2xs:9px; --fs-xs:10px; --fs-sm:11px; --fs-md:12px; --fs-base:14px; --fs-lg:17px; --fs-xl:20px;
+  --fw-normal:500; --fw-medium:600; --fw-semibold:680; --fw-bold:800;
+  --lh-tight:1.2; --lh-normal:1.5;
+  --z-dropdown:100; --z-drawer:500; --z-dialog:1000; --z-toast:1200;
+  --dur-fast:120ms; --dur-base:160ms; --ease-out:ease;
+
+  /* ── 兼容旧令牌名（迁移期别名；逐步替换后删除）。关键：--cyan/--green 恢复真值，不再是 #48c9df ── */
+  --gold:var(--p-brass-500); --gold-soft:var(--p-brass-300);
+  --cyan:var(--p-info); --cyan-bright:var(--p-info); --green:var(--p-success); --amber:var(--p-warning); --red:var(--p-danger);
+  --line:var(--p-line-22); --line-soft:var(--p-line-15); --line-gold:var(--p-line-gold);
+  --panel:var(--p-paper-100); --panel-solid:var(--p-paper-100);
+  --sky-1000:var(--p-paper-500); --sky-950:#f3ead3; --sky-900:#f8f1dc; --sky-850:var(--p-paper-100); --sky-700:var(--p-info);
 }
 
 * { box-sizing: border-box; }
