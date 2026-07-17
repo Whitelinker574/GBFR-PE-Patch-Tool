@@ -62,6 +62,9 @@ async function load(path) {
   try {
     const result = await LoadoutList(path)
     groups.value = result || []
+    // 展开态按 unitId 记录，而 unitId 在不同存档间会复用，
+    // 换档后必须清空，否则新档的同号卡片会凭空展开。
+    if (savePath.value !== path) expanded.value = new Set()
     savePath.value = path
     if (!groups.value.find(g => g.charaName === selectedChara.value)) {
       selectedChara.value = groups.value[0]?.charaName || ''
@@ -160,35 +163,44 @@ onMounted(async () => {
 
 <style scoped>
 .loadout-viewer { display:flex; flex-direction:column; gap:14px; }
-.section { padding:16px 18px; border:1px solid rgba(255,255,255,.08); border-radius:8px; background:rgba(255,255,255,.04); display:flex; flex-direction:column; gap:11px; }
-.section-title { display:flex; align-items:baseline; gap:9px; font-size:.78rem; font-weight:700; }
-.section-title small { font-weight:600; opacity:.65; }
+.section { padding:16px 18px; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; gap:11px; }
+.section-title { display:flex; align-items:baseline; gap:9px; font-size:.78rem; font-weight:700; color:var(--text-primary); }
+.section-title small { font-weight:600; color:var(--text-muted); }
 .save-row { display:flex; flex-wrap:wrap; gap:7px; }
-.action { min-height:30px; padding:0 12px; border:1px solid rgba(255,255,255,.16); border-radius:6px; background:rgba(255,255,255,.06); cursor:pointer; font-size:.78rem; }
-.action.primary { border-color:rgba(103,232,249,.4); }
+.action { min-height:30px; padding:0 12px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); cursor:pointer; font-size:.78rem; user-select:none; }
+.action:hover:not(:disabled) { background:var(--sky-850); }
+/* 选中态用棕金实心，与备份策略/添加按钮一致——本工具不使用蓝色选中 */
+.action.primary { border-color:#765126; background:#8b6737; color:#fff9e9; }
+.action.primary:hover:not(:disabled) { background:#76552d; }
 .action:disabled { opacity:.45; cursor:not-allowed; }
-.path-line { font-size:.68rem; opacity:.6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.path-line { font-size:.68rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chara-row { display:flex; flex-wrap:wrap; gap:6px; }
-.chara-chip { min-height:29px; padding:0 11px; border:1px solid rgba(255,255,255,.14); border-radius:16px; background:rgba(255,255,255,.05); cursor:pointer; font-size:.76rem; }
-.chara-chip.on { border-color:rgba(103,232,249,.45); }
-.chara-chip i { font-style:normal; margin-left:5px; opacity:.6; font-size:.68rem; }
-.loadout-card { border:1px solid rgba(255,255,255,.1); border-radius:7px; padding:10px 13px; display:flex; flex-direction:column; gap:7px; }
-.loadout-card header { display:flex; align-items:center; gap:9px; cursor:pointer; min-height:24px; }
-.loadout-card header b { font-size:.72rem; opacity:.75; flex:0 0 auto; }
-.loadout-card header b.party-tag { color:#4ade80; }
-.loadout-card header strong { font-size:.82rem; }
-.loadout-card header .wep { font-size:.74rem; opacity:.8; margin-left:auto; }
-.loadout-card header em { font-style:normal; font-size:.68rem; opacity:.55; flex:0 0 auto; }
+.chara-chip { min-height:29px; padding:0 11px; border:1px solid var(--line); border-radius:16px; background:var(--sky-900); color:var(--text-secondary); cursor:pointer; font-size:.76rem; user-select:none; }
+.chara-chip:hover { border-color:var(--line-gold); }
+.chara-chip.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
+.chara-chip i { font-style:normal; margin-left:5px; color:var(--text-muted); font-size:.68rem; }
+.chara-chip.on i { color:#f0e0bc; }
+.loadout-card { border:1px solid var(--line-soft); border-radius:7px; padding:10px 13px; background:var(--sky-900); display:flex; flex-direction:column; gap:7px; }
+.loadout-card.open { border-color:var(--line-gold); }
+.loadout-card header { display:flex; align-items:center; gap:9px; cursor:pointer; min-height:24px; user-select:none; }
+.loadout-card header b { font-size:.72rem; color:var(--gold); flex:0 0 auto; }
+/* 用写死的绿色，不要 var(--green)：PatchTool 的 .app-window「official atlas skin」
+   把 --green 和 --cyan 一并改成了 #48c9df（青蓝），var(--green) 会渲染成蓝色。 */
+.loadout-card header b.party-tag { color:#3f7d5c; }
+.loadout-card header strong { font-size:.82rem; color:var(--text-primary); }
+.loadout-card header .wep { font-size:.74rem; color:var(--text-secondary); margin-left:auto; }
+.loadout-card header em { font-style:normal; font-size:.68rem; color:var(--text-muted); flex:0 0 auto; }
 .skills-line, .mastery-summary { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:.72rem; }
-.skills-line span, .mastery-summary span { opacity:.6; }
-.skills-line i, .mastery-summary i { font-style:normal; padding:1px 8px; border:1px solid rgba(255,255,255,.12); border-radius:12px; }
-.mastery-summary i b { font-weight:800; }
-.mastery-summary i.dim { opacity:.5; border-style:dashed; }
-.detail { display:flex; flex-direction:column; gap:9px; padding-top:5px; border-top:1px dashed rgba(255,255,255,.12); }
-.detail-block h4 { margin:0 0 5px; font-size:.74rem; }
+.skills-line span, .mastery-summary span { color:var(--text-muted); }
+.skills-line i, .mastery-summary i { font-style:normal; padding:1px 8px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel-solid); color:var(--text-secondary); }
+.mastery-summary i b { font-weight:800; color:var(--amber); }
+.mastery-summary i.dim { color:var(--text-muted); border-style:dashed; background:none; }
+.detail { display:flex; flex-direction:column; gap:9px; padding-top:5px; border-top:1px dashed var(--line); }
+.detail-block h4 { margin:0 0 5px; font-size:.74rem; color:var(--gold); }
 .detail-block ul { margin:0; padding-left:17px; display:flex; flex-direction:column; gap:2px; }
-.detail-block li { font-size:.72rem; line-height:1.5; }
-.detail-block li small { opacity:.65; margin-left:5px; }
-.detail-block li small.warn { color:#f0a05a; }
-.empty { margin:0; font-size:.76rem; opacity:.6; }
+.detail-block li { font-size:.72rem; line-height:1.5; color:var(--text-secondary); }
+.detail-block li b { color:var(--text-primary); }
+.detail-block li small { color:var(--text-muted); margin-left:5px; }
+.detail-block li small.warn { color:var(--red); }
+.empty { margin:0; font-size:.76rem; color:var(--text-muted); }
 </style>

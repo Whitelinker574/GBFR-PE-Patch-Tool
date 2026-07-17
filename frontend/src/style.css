@@ -101,3 +101,8 @@ input[type="number"]::-webkit-outer-spin-button { margin:0; -webkit-appearance:n
 
 button, input, select, textarea { transition:border-color .16s ease,background-color .16s ease,color .16s ease,opacity .16s ease; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid rgba(154,116,64,.55); outline-offset:2px; }
+
+/* 文本选中一律走羊皮纸色，不用浏览器默认的蓝底白字 */
+::selection { background:rgba(154,116,64,.28); color:#40382e; }
+/* 按钮/标签这类点击区反复点会拖选出文本高亮，直接禁掉；输入框仍可正常选中 */
+button, .chara-chip, [role="tab"] { user-select:none; -webkit-user-select:none; }

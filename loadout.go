@@ -15,7 +15,7 @@ import (
 //
 // 结构通过存档差分实测确认（改一项 → 存档只变对应字段）：
 //
-//	UnitID = 20000 + (角色序号-1)*15 + 槽位          每角色 15 个槽（游戏 UI 的 Loadout 01..15）
+//	UnitID = 20000 + 角色块*15 + (槽位-1)           每角色 15 个槽（游戏 UI 的 Loadout 01..15）
 //	  3002 (vec)  配装名称，UTF-8 C 字符串
 //	  3003 (1)    角色 hash（= SaveID_CharacterID 的值）；EmptyHash 表示该槽未保存
 //	  1402 (1)    武器 —— 存的是武器的 SlotID（weaponSlotIDType 2802 的值），不是武器 hash
@@ -25,6 +25,10 @@ import (
 //
 // 关键点：1402/1403 是「SlotID 引用」，只能指向存档里真实存在的武器/因子，
 // 这与游戏内手动保存的配装完全同构。
+//
+// 「角色块」不能由角色序号推算：实测 SaveData1 的伊欧块基址是 20060，
+// 而 SaveData2 的 20060 属于欧根（存档有转换存档 / DLC 两套角色布局，
+// 见 save_app.go）。块基址恒对齐 15 边界，故槽位号取模即可，归属角色一律读 3003。
 const (
 	loadoutNameIDType    uint32 = 3002
 	loadoutCharIDType    uint32 = 3003
@@ -35,7 +39,7 @@ const (
 
 	gemSlotIDType uint32 = 2702 // 因子的 SlotID（与武器的 2802 对称）
 
-	loadoutBase          = 20000  // 保存的预设：UnitID = 20000 + (角色序号-1)*15 + 槽位
+	loadoutBase          = 20000  // 保存的预设：UnitID = 20000 + 角色块*15 + (槽位-1)
 	loadoutSlotsPerChara = 15     // 每角色 15 个预设槽（游戏 UI 的 Loadout 01..15）
 	partyLoadoutBase     = 104000 // 当前队伍 4 名成员的实时配装（非玩家保存的预设）
 )
@@ -99,7 +103,7 @@ type LoadoutSkill struct {
 }
 
 var (
-	skillNamesOnce sync.Once
+	skillNamesOnce  sync.Once
 	skillNameByHash map[uint32]string
 )
 
@@ -133,18 +137,18 @@ type LoadoutSigil struct {
 }
 
 type LoadoutEntry struct {
-	UnitID    uint32         `json:"unitId"`
-	Slot      int            `json:"slot"`      // 该角色下的第几个槽（1..15），无法推断时为 0
-	IsParty   bool           `json:"isParty"`   // true = 当前队伍成员的实时配装（UnitID 104000+），不是玩家保存的预设
-	Name      string         `json:"name"`
-	CharaHash string         `json:"charaHash"`
-	CharaName string         `json:"charaName"`
-	WeaponSlotID uint32      `json:"weaponSlotId"`
-	WeaponHash   string      `json:"weaponHash"`
-	WeaponName   string      `json:"weaponName"`
-	Sigils    []LoadoutSigil       `json:"sigils"`
-	Skills    []LoadoutSkill       `json:"skills"`  // 4 个技能（含中文名）
-	Mastery   []LoadoutMasteryNode `json:"mastery"` // 专精（技能盘）节点，含中文效果
+	UnitID       uint32               `json:"unitId"`
+	Slot         int                  `json:"slot"`    // 该角色下的第几个槽（1..15），无法推断时为 0
+	IsParty      bool                 `json:"isParty"` // true = 当前队伍成员的实时配装（UnitID 104000+），不是玩家保存的预设
+	Name         string               `json:"name"`
+	CharaHash    string               `json:"charaHash"`
+	CharaName    string               `json:"charaName"`
+	WeaponSlotID uint32               `json:"weaponSlotId"`
+	WeaponHash   string               `json:"weaponHash"`
+	WeaponName   string               `json:"weaponName"`
+	Sigils       []LoadoutSigil       `json:"sigils"`
+	Skills       []LoadoutSkill       `json:"skills"`  // 4 个技能（含中文名）
+	Mastery      []LoadoutMasteryNode `json:"mastery"` // 专精（技能盘）节点，含中文效果
 }
 
 type CharacterLoadouts struct {
@@ -153,13 +157,29 @@ type CharacterLoadouts struct {
 	Loadouts  []LoadoutEntry `json:"loadouts"`
 }
 
+// maxLoadoutVec 限制单个向量字段的读取长度。tryReadUnitEntry 只校验
+// ValueCnt>0、不校验它与剩余字节的关系，损坏/伪造存档可给出高达 2^31 的
+// ValueCnt——若照此预分配会直接 OOM 崩溃。配装各字段实际最长为 3007 的 50。
+const maxLoadoutVec = 256
+
+func vecLen(e *unitEntry) int {
+	if e == nil || e.ValueCnt <= 0 {
+		return 0
+	}
+	if e.ValueCnt > maxLoadoutVec {
+		return maxLoadoutVec
+	}
+	return e.ValueCnt
+}
+
 // entryText 把 ValueData 当 UTF-8 C 字符串读（遇 NUL 截断）。
 func entryText(e *unitEntry) string {
-	if e == nil || e.ValueCnt == 0 {
+	n := vecLen(e)
+	if n == 0 {
 		return ""
 	}
-	buf := make([]byte, 0, e.ValueCnt*4)
-	for i := 0; i < e.ValueCnt; i++ {
+	buf := make([]byte, 0, n*4)
+	for i := 0; i < n; i++ {
 		v, err := e.Uint32At(i)
 		if err != nil {
 			break
@@ -178,6 +198,26 @@ func entryText(e *unitEntry) string {
 	return s
 }
 
+// loadoutSlotOf 由 UnitID 推断槽位号，以及它是否是队伍实时配装。
+//
+// UnitID 104000+ 是「当前队伍 4 名成员」的实时配装，不是玩家保存的预设槽。
+// 预设槽：每个角色占连续 15 个槽，块基址恒对齐 15 的边界（实测 27 条预设的
+// UnitID-20000 全为 15 的倍数），故槽位号只取块内偏移。
+//
+// 注意：绝不可由角色序号反推块基址。不同存档（转换存档 / DLC 存档，见
+// save_app.go 的两张槽位表）角色→块的映射并不一致——实测 SaveData1 的伊欧
+// 块基址是 20060，而 SaveData2 的 20060 属于欧根。取模也天然覆盖古兰（序号 0）。
+// 归属角色一律读 3003，不做推算。
+func loadoutSlotOf(u uint32) (slot int, isParty bool) {
+	if u >= partyLoadoutBase {
+		return int(u-partyLoadoutBase) + 1, true
+	}
+	if u >= loadoutBase {
+		return int((u-loadoutBase)%loadoutSlotsPerChara) + 1, false
+	}
+	return 0, false
+}
+
 // LoadoutList 读出存档里全部已保存的配装预设，按角色分组。
 func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 	if _, err := loadProgressionCatalog(); err != nil {
@@ -188,24 +228,29 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 		return nil, err
 	}
 
-	// 角色 hash -> 名字 / 序号
+	// 角色 hash -> 名字
 	charName := map[uint32]string{}
-	charIdx := map[uint32]int{}
 	for _, e := range save.findAllUnitsByType(SaveID_CharacterID) {
 		idx := int(e.UnitID) - 10000
 		if idx >= 0 && idx < len(charaNames) && charaNames[idx] != "" {
 			charName[e.Uint32()] = charaNames[idx]
-			charIdx[e.Uint32()] = idx
 		}
 	}
 
-	// 因子 SlotID -> 因子槽 UnitID
-	gemBySlotID := map[uint32]uint32{}
-	for _, e := range save.findAllUnitsByType(gemSlotIDType) {
-		gemBySlotID[e.Uint32()] = e.UnitID
-	}
 	gemHash := entriesByUnitID(save.findAllUnitsByType(GemIDType))
 	gemLevel := entriesByUnitID(save.findAllUnitsByType(GemLevelIDType))
+
+	// 因子 SlotID -> 因子槽 UnitID。
+	// 跳过已清空的因子记录（2703==EmptyHash 但 2702 仍残留旧 SlotID，
+	// 本工具的 RemoveAllSigils/DeleteSelectedSigils 就会留下这种记录）：
+	// 否则悬空引用会「命中」空记录，显示成无名幽灵因子而非 Missing。
+	gemBySlotID := map[uint32]uint32{}
+	for _, e := range save.findAllUnitsByType(gemSlotIDType) {
+		if h := gemHash[e.UnitID]; h == nil || h.Uint32() == EmptyHash || h.Uint32() == 0 {
+			continue
+		}
+		gemBySlotID[e.Uint32()] = e.UnitID
+	}
 
 	// 武器 SlotID -> 武器槽 UnitID
 	wepBySlotID := map[uint32]uint32{}
@@ -235,17 +280,7 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 			CharaHash: fmt.Sprintf("%08X", ch),
 			CharaName: name,
 		}
-		// UnitID 104000+ 是「当前队伍 4 名成员」的实时配装，不是玩家保存的预设槽
-		if u >= partyLoadoutBase {
-			lo.IsParty = true
-			lo.Slot = int(u-partyLoadoutBase) + 1
-		} else if idx, ok := charIdx[ch]; ok && idx >= 1 {
-			// 保存的预设：UnitID = 20000 + (角色序号-1)*15 + 槽位
-			base := uint32(loadoutBase + (idx-1)*loadoutSlotsPerChara)
-			if u >= base && u < base+loadoutSlotsPerChara {
-				lo.Slot = int(u-base) + 1
-			}
-		}
+		lo.Slot, lo.IsParty = loadoutSlotOf(u)
 
 		// 武器：1402 = 武器 SlotID
 		if e := weapons[u]; e != nil {
@@ -264,9 +299,12 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 
 		// 因子：1403 = 因子 SlotID ×12(+1 填充)
 		if e := sigils[u]; e != nil {
-			for i := 0; i < e.ValueCnt; i++ {
+			for i, n := 0, vecLen(e); i < n; i++ {
 				sid, err := e.Uint32At(i)
-				if err != nil || sid == 0 || sid == EmptyHash {
+				if err != nil {
+					break // 越界即整条记录截断，继续读只会空转
+				}
+				if sid == 0 || sid == EmptyHash {
 					continue
 				}
 				s := LoadoutSigil{SlotID: sid}
@@ -291,9 +329,12 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 
 		// 技能：1404 = 4 个技能 hash（经 skill_names.json 翻译）
 		if e := skills[u]; e != nil {
-			for i := 0; i < e.ValueCnt; i++ {
+			for i, n := 0, vecLen(e); i < n; i++ {
 				v, err := e.Uint32At(i)
-				if err != nil || v == EmptyHash || v == 0 {
+				if err != nil {
+					break
+				}
+				if v == EmptyHash || v == 0 {
 					continue
 				}
 				lo.Skills = append(lo.Skills, LoadoutSkill{
@@ -305,9 +346,12 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 
 		// 专精：3007 = 技能盘节点 hash（经 skillboard_nodes.json 翻译成中文效果）
 		if e := mastery[u]; e != nil {
-			for i := 0; i < e.ValueCnt; i++ {
+			for i, n := 0, vecLen(e); i < n; i++ {
 				v, err := e.Uint32At(i)
-				if err != nil || v == EmptyHash || v == 0 {
+				if err != nil {
+					break
+				}
+				if v == EmptyHash || v == 0 {
 					continue
 				}
 				node := LoadoutMasteryNode{Hash: fmt.Sprintf("%08X", v)}
@@ -337,13 +381,10 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 	return result, nil
 }
 
-// sigilDisplayName 尽量给出因子中文名。
+// sigilDisplayName 尽量给出因子名（跟随界面语言，复用 ctName 的中/英表）。
 func sigilDisplayName(hash uint32) string {
 	if hash == EmptyHash {
 		return ""
 	}
-	if n, ok := ctHashToName[hash]; ok {
-		return n
-	}
-	return ""
+	return ctName(hash)
 }

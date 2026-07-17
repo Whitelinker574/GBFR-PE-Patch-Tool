@@ -812,7 +812,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .art-rail .function-character img { position:absolute;right:var(--art-right,-12px);bottom:var(--art-bottom,-12px);display:block;width:auto;max-width:100%;height:100%;max-height:100%;object-fit:contain;object-position:right bottom;transform:none;transform-origin:right bottom }
 .art-rail .function-character .character-blend { z-index:0;opacity:.2;filter:blur(5px) saturate(.82);transform:scale(1.012);transform-origin:right bottom }
 .art-rail .function-character .character-main { z-index:1;filter:drop-shadow(0 7px 7px rgba(66,46,22,.12)) drop-shadow(0 0 1px rgba(255,248,224,.68)) }
+/* ⚠ 以下 --art-right/--art-bottom 全部已失效，改这里不会有任何效果！
+   立绘位置由文件末尾「每页立绘旋钮」的 --ax/--ay/--ah 决定：那条
+   `.art-rail .function-character img` 规则用 !important 接管了 right/bottom/height。
+   要调立绘请搜 `--ah:160%` 那一段。（保留本段仅因 --art-right 尚被 812 行的
+   var() 兜底引用；曾有一轮误改此处以为泽塔不动，勿重蹈。） */
 .tool-stage[data-tool="progression"],.tool-stage[data-tool="sigil"],.tool-stage[data-tool="sigilMemory"],.tool-stage[data-tool="loadout"],
+.tool-stage[data-tool="loadoutPresets"],
 .tool-stage[data-tool="wrightstone"],.tool-stage[data-tool="summon"],.tool-stage[data-tool="overlimit"],
 .tool-stage[data-tool="runtime"],.tool-stage[data-tool="chara"],.tool-stage[data-tool="save"],
 .tool-stage[data-tool="compatibility"],.tool-stage[data-tool="legacyRuntime"],.tool-stage[data-tool="monster"] { --art-right:-34px;--art-bottom:-12px }
@@ -1712,6 +1718,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="progression"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="sigilMemory"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="loadout"]{--ah:160%;--ay:-63%;--ax:-250px}
+.tool-stage[data-tool="loadoutPresets"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="summon"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="overlimit"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="runtime"]{--ah:160%;--ay:-63%;--ax:-250px}
