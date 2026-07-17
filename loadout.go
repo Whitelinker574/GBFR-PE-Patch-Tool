@@ -65,11 +65,13 @@ type SkillboardNode struct {
 }
 
 var (
-	skillboardOnce   sync.Once
-	skillboardByHash map[uint32]SkillboardNode
+	skillboardOnce     sync.Once
+	skillboardByHash   map[uint32]SkillboardNode
+	skillboardAllNodes []SkillboardNode // 全量节点（专精配置器按 char/grp 过滤用）
 )
 
-func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
+// loadSkillboard 确保技能盘节点表已解析（幂等）。
+func loadSkillboard() {
 	skillboardOnce.Do(func() {
 		var payload struct {
 			Nodes []SkillboardNode `json:"nodes"`
@@ -78,12 +80,17 @@ func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
 		if err := json.Unmarshal(skillboardNodesJSON, &payload); err != nil {
 			return
 		}
+		skillboardAllNodes = payload.Nodes
 		for _, n := range payload.Nodes {
 			if h, err := ParseHashHex(n.Hash); err == nil {
 				skillboardByHash[h] = n
 			}
 		}
 	})
+}
+
+func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
+	loadSkillboard()
 	n, ok := skillboardByHash[hash]
 	return n, ok
 }

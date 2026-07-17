@@ -497,6 +497,13 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		}
 		rw.mastery = append(rw.mastery, v)
 	}
+	// 配额校验：每档不超 10/10/10/20（防止写出游戏可能拒绝的非法盘）。
+	// 不强制点满（允许半盘/低级盘）；满级由前端配置器保证正好 50。
+	if len(rw.mastery) > 0 {
+		if _, err := validateMasteryQuota(rw.mastery, ownerCode, false); err != nil {
+			return nil, err
+		}
+	}
 
 	return rw, nil
 }
