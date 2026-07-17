@@ -803,9 +803,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="progression"],.tool-stage[data-tool="sigil"],.tool-stage[data-tool="sigilMemory"],.tool-stage[data-tool="loadout"],
 .tool-stage[data-tool="wrightstone"],.tool-stage[data-tool="summon"],.tool-stage[data-tool="overlimit"],
 .tool-stage[data-tool="runtime"],.tool-stage[data-tool="chara"],.tool-stage[data-tool="save"],
-.tool-stage[data-tool="compatibility"],.tool-stage[data-tool="legacyRuntime"],.tool-stage[data-tool="monster"] { --art-right:-12px;--art-bottom:-12px }
-.tool-stage[data-tool="patch"] { --art-right:-10px;--art-bottom:-11px }
-.tool-stage[data-tool="language"] { --art-right:-13px;--art-bottom:-13px }
+.tool-stage[data-tool="compatibility"],.tool-stage[data-tool="legacyRuntime"],.tool-stage[data-tool="monster"] { --art-right:-34px;--art-bottom:-12px }
+.tool-stage[data-tool="patch"] { --art-right:-32px;--art-bottom:-11px }
+.tool-stage[data-tool="language"] { --art-right:-35px;--art-bottom:-13px }
 .art-caption { position:absolute;z-index:2;right:12px;bottom:14px;display:flex;flex-direction:column;align-items:flex-end;padding:7px 10px;border-right:3px solid rgba(154,116,64,.72);background:rgba(255,249,229,.62);backdrop-filter:blur(3px) }.art-caption span { color:#594d3f;font-size:13px;font-weight:900 }.art-caption small { color:#644f32;font-size:9px;font-weight:900 }
 
 /* Parchment legibility pass: neutralise the remaining dark-theme text inherited by child tools. */
