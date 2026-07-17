@@ -132,11 +132,11 @@ const toolMeta = {
     speaker: '芙劳', note: '把十二个因子的顺序先理清，再一步一步复刻。速度不必太快，准确才最重要。',
   },
   loadoutPresets: {
-    group: 'workshop', title: '配装预设查看（存档）', eyebrow: '离线查看', status: '只读', tone: 'stable',
-    description: '读取游戏配装界面保存的预设：武器、12 因子、4 技能与全部专精节点（含中文效果与数值）。',
-    usage: ['完全退出游戏', '选择存档位或浏览存档文件', '按角色查看各槽配装明细'],
-    caution: '当前为只读查看，不会修改存档。',
-    speaker: '芙劳', note: '每一套配装的因子和专精都记在这里啦，慢慢看，不会弄丢的。',
+    group: 'workshop', title: '配装预设（查看与写入）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
+    description: '查看游戏配装界面保存的预设（武器/12 因子/4 技能/专精），也可把自定义配装写入指定槽位。',
+    usage: ['完全退出游戏', '选择存档位或浏览存档文件', '查看，或切到「编辑写入」自定义配装'],
+    caution: '写入会自动备份并回读验证；只引用你已拥有的资源，建议先在副本存档上试。',
+    speaker: '芙劳', note: '想改配装也可以啦——先备份，写完我再帮你核对一遍，不会弄丢的。',
   },
   wrightstone: {
     group: 'workshop', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',

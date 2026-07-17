@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { FindSaveFiles, LoadoutList, SelectProgressionSave } from '../../wailsjs/go/main/App'
+import LoadoutEditor from './LoadoutEditor.vue'
 
 const emit = defineEmits(['status'])
 
@@ -10,6 +11,7 @@ const loading = ref(false)
 const groups = ref([])
 const selectedChara = ref('')
 const expanded = ref(new Set())
+const mode = ref('view') // view | edit
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
 
@@ -106,7 +108,13 @@ onMounted(async () => {
     </section>
 
     <section v-if="groups.length" class="section">
-      <div class="section-title"><span>角色</span><small>{{ groups.length }} 个角色 · {{ presetCount }} 套预设</small></div>
+      <div class="section-title">
+        <span>角色</span><small>{{ groups.length }} 个角色 · {{ presetCount }} 套预设</small>
+        <div class="mode-toggle">
+          <button class="mode-btn" :class="{ on: mode === 'view' }" @click="mode = 'view'">查看</button>
+          <button class="mode-btn" :class="{ on: mode === 'edit' }" @click="mode = 'edit'">编辑写入</button>
+        </div>
+      </div>
       <div class="chara-row">
         <button v-for="g in groups" :key="g.charaHash" class="chara-chip" :class="{ on: selectedChara === g.charaName }" @click="selectedChara = g.charaName">
           {{ g.charaName }}<i>{{ g.loadouts.filter(l => !l.isParty).length }}</i>
@@ -114,7 +122,13 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section v-if="currentGroup" class="section">
+    <section v-if="mode === 'edit' && currentGroup" class="section">
+      <div class="section-title"><span>{{ currentGroup.charaName }} · 编辑写入</span><small>把自定义配装写入指定槽位（只引用你已拥有的资源）</small></div>
+      <LoadoutEditor :save-path="savePath" :chara-hash="currentGroup.charaHash" :chara-name="currentGroup.charaName"
+        @status="(m, t) => emit('status', m, t)" @reload="load(savePath)" />
+    </section>
+
+    <section v-if="mode === 'view' && currentGroup" class="section">
       <div class="section-title"><span>{{ currentGroup.charaName }} 的配装</span><small>点击卡片展开因子与专精明细</small></div>
       <article v-for="lo in currentGroup.loadouts" :key="lo.unitId" class="loadout-card" :class="{ open: expanded.has(lo.unitId) }">
         <header @click="toggle(lo)">
@@ -155,7 +169,7 @@ onMounted(async () => {
       </article>
     </section>
 
-    <section v-else-if="!loading && savePath" class="section">
+    <section v-else-if="mode === 'view' && !loading && savePath && !groups.length" class="section">
       <p class="empty">该存档中没有已保存的配装预设。</p>
     </section>
   </div>
@@ -166,6 +180,9 @@ onMounted(async () => {
 .section { padding:16px 18px; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; gap:11px; }
 .section-title { display:flex; align-items:baseline; gap:9px; font-size:.78rem; font-weight:700; color:var(--text-primary); }
 .section-title small { font-weight:600; color:var(--text-muted); }
+.mode-toggle { margin-left:auto; display:flex; gap:5px; }
+.mode-btn { min-height:26px; padding:0 12px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-secondary); font-size:.72rem; cursor:pointer; user-select:none; }
+.mode-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
 .save-row { display:flex; flex-wrap:wrap; gap:7px; }
 .action { min-height:30px; padding:0 12px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); cursor:pointer; font-size:.78rem; user-select:none; }
 .action:hover:not(:disabled) { background:var(--sky-850); }
