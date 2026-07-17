@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import './style.css'
+import './ui.css'
 import App from './App.vue'
 import './backendLanguage'
 import { installI18nObserver } from './i18n'

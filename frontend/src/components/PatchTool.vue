@@ -495,6 +495,11 @@ function showStatus(message, type) {
           </button>
         </nav>
         <div class="sidebar-foot">
+          <!-- Q版角色作常驻吉祥物：随当前功能切换，鼠标悬停显示该角色的一句建议 -->
+          <div class="sidebar-mascot" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
+            <img class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="lazy" decoding="async">
+            <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
+          </div>
           <div class="target-row"><span class="target-dot"></span><div><strong>当前游戏版本</strong><small>Relink DLC 2.0.2</small></div></div>
           <a href="https://github.com/BitterG/GBFR-PE-Patch-Tool" target="_blank">项目仓库 ↗</a>
         </div>
@@ -531,22 +536,6 @@ function showStatus(message, type) {
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
 
           <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed }" :data-tool="activeTab">
-            <aside class="guide-rail" :class="{ collapsed: !guideOpen }">
-              <button class="guide-heading" type="button" @click="guideOpen = !guideOpen" v-if="currentMeta.usage && currentMeta.usage.length">
-                <span>操作指南</span><small>{{ guideOpen ? '收起' : '展开' }}</small>
-              </button>
-              <template v-if="guideOpen">
-                <ol class="guide-steps">
-                  <li v-for="(step, index) in currentMeta.usage" :key="step"><b>{{ index + 1 }}</b><span>{{ step }}</span></li>
-                </ol>
-                <div class="guide-caution" v-if="currentMeta.caution"><span>使用前确认</span><p>{{ currentMeta.caution }}</p></div>
-              </template>
-              <aside class="guide-character-note">
-                <div class="note-bubble"><b>{{ currentMeta.speaker }}的建议</b><p>{{ currentMeta.note }}</p></div>
-                <img class="guide-sticker" :src="currentSticker" :alt="`${currentMeta.speaker}表情贴纸`" loading="eager" decoding="async">
-              </aside>
-            </aside>
-
             <section class="tool-center-scroll">
               <header class="tool-page-heading">
                 <div class="eyebrow">{{ currentMeta.eyebrow }}</div>
@@ -782,7 +771,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .sidebar-collapsed .nav-item { width:48px;min-height:48px;display:grid;grid-template-columns:1fr;place-items:center;padding:5px;clip-path:none;border-radius:5px 13px 5px 13px }
 .sidebar-collapsed .nav-mark { width:30px;height:30px }
 .workspace-scroll.tool-workspace { overflow:hidden;padding:12px 0 0 14px;scrollbar-gutter:auto }
-.tool-stage { position:relative;isolation:isolate;width:100%;height:100%;min-height:0;display:grid;grid-template-columns:190px minmax(0,620px) minmax(220px,1fr);gap:12px;overflow:hidden }
+.tool-stage { position:relative;isolation:isolate;width:100%;height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,300px);gap:12px;overflow:hidden }
 .guide-rail { position:relative;z-index:5;min-height:0;align-self:stretch;margin-bottom:12px;padding:16px 14px;border:1px solid rgba(143,106,51,.31);border-radius:3px 13px 3px 13px;background:linear-gradient(155deg,rgba(255,249,229,.91),rgba(228,208,166,.86));box-shadow:0 8px 18px rgba(85,61,27,.08),inset 0 0 0 1px rgba(255,255,255,.22);overflow:hidden }
 .guide-heading { width:100%;display:flex;align-items:end;justify-content:space-between;padding:0 0 11px;border:0;border-bottom:1px solid rgba(145,108,51,.22);background:transparent;cursor:pointer;font:inherit;text-align:left }.guide-heading span { color:#53473a;font-size:15px;font-weight:900 }.guide-heading small { color:#735b34;font-size:9px;font-weight:900 }.guide-heading:hover small { color:var(--accent) }
 /* 收起态：指南只留可点的标题条，腾出竖向空间给贴纸建议与内容 */
@@ -805,6 +794,17 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-center-scroll::-webkit-scrollbar-corner { display:none;background:transparent }
 .tool-page-heading { position:relative;width:100%;box-sizing:border-box;margin:0 0 13px;padding:19px 21px 18px;border:1px solid rgba(127,88,38,.42);border-radius:3px 14px 3px 14px;background:linear-gradient(120deg,rgba(255,250,232,.98),rgba(235,219,181,.95));box-shadow:0 7px 16px rgba(84,61,28,.08),inset 0 0 0 1px rgba(255,255,255,.36) }
 .tool-page-heading .eyebrow { color:#765428;font-size:10px;font-weight:900 }.tool-page-heading h1 { margin:5px 0 7px;color:#4f4438;font:900 26px/1.25 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.03em }.tool-page-heading p { margin:0;color:#5e5141;font-size:12px;font-weight:800;line-height:1.65 }
+/* 侧栏底部 Q版吉祥物：小巧常驻，随功能切换；气泡在贴纸旁，悬停有 title 提示 */
+.sidebar-mascot { display:flex; align-items:flex-end; gap:7px; margin-bottom:12px; }
+.sidebar-mascot-img { flex:0 0 auto; width:52px; height:56px; object-fit:contain; transform-origin:50% 100%; filter:drop-shadow(0 4px 5px rgba(78,55,25,.16)); animation:chibi-float 4.4s var(--ease-standard,ease-in-out) infinite; }
+.sidebar-mascot-img:hover { animation:chibi-wiggle .5s ease-in-out infinite; }
+.sidebar-mascot-say { min-width:0; padding:6px 8px; border:1px solid var(--border-soft); border-radius:10px 10px 10px 3px; background:var(--surface-card-pop); }
+.sidebar-mascot-say b { display:block; color:var(--text-link); font-size:9px; font-weight:900; }
+.sidebar-mascot-say p { margin:2px 0 0; color:var(--text-secondary); font-size:8.5px; font-weight:700; line-height:1.45; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+@keyframes chibi-float { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-5px) rotate(-1deg)} }
+@keyframes chibi-wiggle { 0%,100%{transform:rotate(-2deg)} 25%{transform:rotate(4deg) scale(1.05)} 75%{transform:rotate(-7deg) scale(1.05)} }
+.sidebar-collapsed .sidebar-mascot-say { display:none; }
+.sidebar-collapsed .sidebar-mascot { justify-content:center; }
 .tool-panel { position:relative;z-index:6;width:100%;max-width:none;margin:0;font-size:12px;box-sizing:border-box }
 .tool-panel :deep(*) { box-sizing:border-box }
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests) { width:100%;border-color:rgba(127,88,38,.4)!important;background:linear-gradient(135deg,rgba(255,249,229,.97),rgba(233,215,176,.94))!important;backdrop-filter:none!important;box-shadow:0 6px 14px rgba(77,54,25,.08),inset 0 0 0 1px rgba(255,255,255,.3)!important }
@@ -1682,7 +1682,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(input[type=number]::-webkit-inner-spin-button),.tool-panel :deep(input[type=number]::-webkit-outer-spin-button){-webkit-appearance:none!important;margin:0!important}.tool-panel :deep(input[type=number]){-moz-appearance:textfield!important}
 .tool-panel :deep(.btn-purple),.tool-panel :deep(.add-btn),.tool-panel :deep(.add-btn:disabled){border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#ead8b2!important;box-shadow:none!important;text-shadow:none!important;opacity:1!important}.tool-panel :deep(.btn-purple:hover:not(:disabled)),.tool-panel :deep(.add-btn:hover:not(:disabled)){color:#fff9e9!important;background:#8b6737!important}.tool-panel :deep(.add-btn:disabled){color:#8f7a5c!important;border-color:rgba(154,116,64,.38)!important;background:#e7d8b6!important}
 /* Wide reading column: the default 1120px window must not collapse editors to 460px. */
-.tool-stage{grid-template-columns:180px minmax(0,700px) minmax(190px,1fr);gap:10px}
+.tool-stage{grid-template-columns:minmax(0,1fr) minmax(190px,300px);gap:10px}
 .tool-switcher{overflow-x:auto;scrollbar-width:none}.tool-switcher::-webkit-scrollbar{display:none}
 .tool-switcher button{flex:0 0 auto;font-size:11.5px!important;font-weight:700!important;white-space:nowrap}
 .guide-rail{border-radius:2px!important;box-shadow:none!important}
@@ -1736,14 +1736,16 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="patch"]{--ah:160%;--ay:-63%;--ax:-250px}
 .tool-stage[data-tool="language"]{--ah:178%;--ay:-61%;--ax:-300px}
 /* Quantity is a compact form row, not a raised card. */
-.tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+/* .qty-add 是布局包裹容器（非按钮），旧皮肤误当按钮给了近白 hover 底（选数量处一悬停整块变白）。
+   这里用与之相同的特异性(:not(:disabled))在更靠后处彻底中和，wrapper 永不着色。 */
+.tool-panel :deep(.qty-add),.tool-panel :deep(.qty-add:hover),.tool-panel :deep(.qty-add:hover:not(:disabled)){padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .tool-panel :deep(.quantity-combo button){min-width:50px!important;border:1px solid #9a7440!important;border-radius:1px!important;color:#5e4c34!important;background:#edddba!important;box-shadow:none!important;opacity:1!important}
 .tool-panel :deep(.quantity-combo button:hover){color:#fff9e9!important;background:#8b6737!important}
 .tool-panel :deep(.add-btn:not(:disabled)){border-color:#765126!important;color:#fff9e9!important;background:#8b6737!important}
 .tool-panel :deep(.add-btn:not(:disabled):hover){background:#76552d!important}
-@media(max-width:1320px){.tool-stage{grid-template-columns:165px minmax(0,640px) minmax(170px,1fr);gap:10px}.art-rail .function-character{left:-105px;right:0;top:0;bottom:0}.guide-rail{padding:15px 12px}.guide-steps li{font-size:10px}.tool-page-heading{padding:14px 17px 13px}.tool-page-heading h1{font-size:21px}.tool-panel :deep(.section){padding:13px 15px!important}}
-@media(max-width:1120px){.app-body{grid-template-columns:170px minmax(0,1fr)}.tool-stage{grid-template-columns:145px minmax(0,530px) minmax(230px,1fr);gap:8px}.art-rail .function-character{left:-100px;right:0;top:0;bottom:0}.guide-character-note{height:205px}.guide-sticker{width:120px;height:128px}.workspace-scroll.tool-workspace{padding-left:12px}.guide-heading span{font-size:13px}.guide-caution{padding:8px}.note-bubble{padding:8px 9px}.tool-page-heading h1{font-size:20px}.tool-switcher{gap:8px}.tool-switcher button{padding:0 7px!important;font-size:11px!important}}
-@media(max-width:1000px){.app-body{grid-template-columns:70px minmax(0,1fr)}.sidebar{padding:13px 8px}.sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot{display:none!important}.sidebar-collapse{display:none!important}.primary-nav{align-items:center;padding-top:45px;gap:9px}.nav-item{width:48px;min-height:48px;display:grid;grid-template-columns:1fr;place-items:center;padding:5px!important}.nav-mark{width:30px;height:30px}.tool-stage{grid-template-columns:130px minmax(0,500px) minmax(235px,1fr);gap:8px}.art-rail .function-character{left:-90px}.tool-page-heading{padding:14px 16px 13px}.tool-page-heading h1{font-size:20px}.tool-page-heading p{font-size:10.5px}.tool-switcher{gap:5px;padding-left:8px!important;padding-right:8px!important}.tool-switcher button{padding:0 5px!important;font-size:10.5px!important}.tool-panel[data-tool="progression"] :deep(.workspace){grid-template-columns:1fr!important}.tool-panel[data-tool="chara"] :deep(.batch-row){grid-template-columns:auto 1fr auto auto!important}.tool-panel[data-tool="chara"] :deep(.selection),.tool-panel[data-tool="chara"] :deep(.save-btn){grid-column:span 2}.backup-card{grid-template-columns:1fr 1fr!important}.backup-policy{grid-column:1/-1!important;min-width:0!important}}
+@media(max-width:1320px){.tool-stage{grid-template-columns:minmax(0,1fr) minmax(170px,280px);gap:10px}.art-rail .function-character{left:-105px;right:0;top:0;bottom:0}.guide-rail{padding:15px 12px}.guide-steps li{font-size:10px}.tool-page-heading{padding:14px 17px 13px}.tool-page-heading h1{font-size:21px}.tool-panel :deep(.section){padding:13px 15px!important}}
+@media(max-width:1120px){.app-body{grid-template-columns:170px minmax(0,1fr)}.tool-stage{grid-template-columns:minmax(0,1fr) minmax(200px,280px);gap:8px}.art-rail .function-character{left:-100px;right:0;top:0;bottom:0}.guide-character-note{height:205px}.guide-sticker{width:120px;height:128px}.workspace-scroll.tool-workspace{padding-left:12px}.guide-heading span{font-size:13px}.guide-caution{padding:8px}.note-bubble{padding:8px 9px}.tool-page-heading h1{font-size:20px}.tool-switcher{gap:8px}.tool-switcher button{padding:0 7px!important;font-size:11px!important}}
+@media(max-width:1000px){.app-body{grid-template-columns:70px minmax(0,1fr)}.sidebar{padding:13px 8px}.sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot{display:none!important}.sidebar-collapse{display:none!important}.primary-nav{align-items:center;padding-top:45px;gap:9px}.nav-item{width:48px;min-height:48px;display:grid;grid-template-columns:1fr;place-items:center;padding:5px!important}.nav-mark{width:30px;height:30px}.tool-stage{grid-template-columns:minmax(0,1fr) minmax(200px,260px);gap:8px}.art-rail .function-character{left:-90px}.tool-page-heading{padding:14px 16px 13px}.tool-page-heading h1{font-size:20px}.tool-page-heading p{font-size:10.5px}.tool-switcher{gap:5px;padding-left:8px!important;padding-right:8px!important}.tool-switcher button{padding:0 5px!important;font-size:10.5px!important}.tool-panel[data-tool="progression"] :deep(.workspace){grid-template-columns:1fr!important}.tool-panel[data-tool="chara"] :deep(.batch-row){grid-template-columns:auto 1fr auto auto!important}.tool-panel[data-tool="chara"] :deep(.selection),.tool-panel[data-tool="chara"] :deep(.save-btn){grid-column:span 2}.backup-card{grid-template-columns:1fr 1fr!important}.backup-policy{grid-column:1/-1!important;min-width:0!important}}
 @media(prefers-reduced-motion:reduce){.app-window *,.app-window *::before,.app-window *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-delay:0ms!important;transition-duration:.001ms!important;transition-delay:0ms!important}}
 </style>
 
@@ -1866,7 +1868,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* 三列全部按比例(fr)分配，不用 vw/固定px 混排。这样在全局 zoom 放大画布时
    立绘列与内容列始终保持同一比例(立绘绝不会因画布变大而变宽压到卡片上)，
    实现真正等比缩放，立绘框架一次调好后不再随缩放漂移。 */
-.tool-stage { grid-template-columns:minmax(120px,150fr) minmax(0,470fr) minmax(300px,330fr)!important; }
+.tool-stage { grid-template-columns:minmax(0,680fr) minmax(240px,300fr)!important; }
 /* 立绘在内容之下(背景层)，被不透明卡片盖住的左半身没关系；立绘列给足宽度让"头/脸"
    落在立绘列内(不被卡片盖住)，只有身体左侧渗入内容被盖。立绘列不裁剪，整体由
    .tool-stage overflow:hidden 兜底裁在工作区内。 */

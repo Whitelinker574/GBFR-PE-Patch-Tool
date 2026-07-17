@@ -1,0 +1,126 @@
+/* ============================================================
+   GBFR Patch Tool — 原子组件层 (composer)
+   一套自渲染的浅色羊皮纸原子类。组件直接用这些类，不再依赖
+   PatchTool 的 :deep !important 皮肤覆盖。全部引用 style.css 的语义令牌，
+   零硬编码色、零 !important。类名前缀 ui- 避免与旧类冲突。
+   ============================================================
+   目录（供文档汇总）：
+   容器  .ui-card  .ui-panel  .ui-section-title
+   按钮  .ui-btn  (+ .is-primary / .is-danger / .is-ghost / .is-subtle / .is-sm)
+   输入  .ui-input  .ui-select  .ui-field  .ui-field-label
+   选择  .ui-chip  (+ .is-on)   .ui-tab  (+ .is-on)   .ui-seg / .ui-seg-btn
+   标签  .ui-tag  (+ .is-ok / .is-warn / .is-danger / .is-info)
+   行    .ui-row  (+ .is-on)   .ui-list
+   工具  .ui-hint  .ui-empty  .ui-divider  .ui-grid
+   ============================================================ */
+
+/* ── 容器 ── */
+.ui-card {
+  border:1px solid var(--border-default);
+  border-radius:var(--radius-md);
+  background:var(--surface-card);
+  box-shadow:var(--shadow-1);
+}
+.ui-panel { padding:var(--space-6); display:flex; flex-direction:column; gap:var(--space-5); }
+.ui-section-title {
+  display:flex; align-items:baseline; gap:var(--space-3);
+  font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text-primary);
+}
+.ui-section-title small { font-weight:var(--fw-medium); color:var(--text-muted); font-size:var(--fs-sm); }
+
+/* ── 按钮 ── */
+.ui-btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2);
+  min-height:32px; padding:0 var(--space-5);
+  border:1px solid var(--border-strong); border-radius:var(--radius-sm);
+  background:var(--surface-card-pop); color:var(--text-primary);
+  font:inherit; font-size:var(--fs-md); font-weight:var(--fw-semibold); line-height:1;
+  cursor:pointer; user-select:none; white-space:nowrap;
+  transition:var(--transition-control);
+}
+.ui-btn:hover:not(:disabled) { background:var(--surface-field-hover); border-color:var(--accent-border); }
+.ui-btn:active:not(:disabled) { background:var(--state-active); }
+.ui-btn:disabled { opacity:var(--state-disabled-opacity); cursor:not-allowed; }
+.ui-btn.is-primary { background:var(--accent); border-color:var(--accent-border); color:var(--text-on-accent); }
+.ui-btn.is-primary:hover:not(:disabled) { background:var(--accent-hover); }
+.ui-btn.is-danger { background:var(--danger); border-color:var(--danger-ink); color:var(--text-on-accent); }
+.ui-btn.is-danger:hover:not(:disabled) { background:var(--danger-ink); }
+.ui-btn.is-ghost { background:transparent; border-color:var(--border-default); color:var(--text-secondary); }
+.ui-btn.is-ghost:hover:not(:disabled) { background:var(--state-hover); color:var(--text-primary); }
+.ui-btn.is-subtle { border-color:transparent; background:transparent; color:var(--text-link); padding:0 var(--space-2); min-height:auto; }
+.ui-btn.is-subtle:hover:not(:disabled) { text-decoration:underline; background:transparent; }
+.ui-btn.is-sm { min-height:26px; padding:0 var(--space-3); font-size:var(--fs-sm); }
+
+/* ── 输入 / 下拉 ── */
+.ui-input, .ui-select {
+  min-height:32px; padding:0 var(--space-4);
+  border:1px solid var(--border-strong); border-radius:var(--radius-sm);
+  background:var(--surface-field); color:var(--text-primary);
+  font:inherit; font-size:var(--fs-md);
+  transition:var(--transition-control);
+}
+.ui-input:hover, .ui-select:hover { background:var(--surface-field-hover); }
+.ui-input:focus-visible, .ui-select:focus-visible { outline:var(--focus-outline); outline-offset:var(--focus-offset); background:var(--surface-field-hover); }
+.ui-input::placeholder { color:var(--text-muted); }
+.ui-select { cursor:pointer; }
+.ui-field { display:flex; flex-direction:column; gap:var(--space-3); }
+.ui-field-label { font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text-secondary); }
+.ui-field-label em { font-style:normal; font-weight:var(--fw-medium); color:var(--text-muted); margin-left:var(--space-3); }
+
+/* ── 选择态：chip / tab / segmented（全应用唯一选中画法=棕金实心）── */
+.ui-chip {
+  min-height:28px; padding:0 var(--space-4);
+  border:1px solid var(--border-default); border-radius:var(--radius-pill);
+  background:var(--surface-card-pop); color:var(--text-secondary);
+  font:inherit; font-size:var(--fs-sm); cursor:pointer; user-select:none;
+  transition:var(--transition-control);
+}
+.ui-chip:hover { border-color:var(--border-strong); }
+.ui-chip.is-on { background:var(--selected-bg); border-color:var(--selected-border); color:var(--selected-fg); }
+.ui-tab {
+  padding:var(--space-3) var(--space-4); border:0; border-bottom:2px solid transparent;
+  background:transparent; color:var(--text-secondary);
+  font:inherit; font-size:var(--fs-md); font-weight:var(--fw-semibold); cursor:pointer; user-select:none;
+  transition:color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+.ui-tab:hover { color:var(--text-primary); }
+.ui-tab.is-on { color:var(--accent); border-bottom-color:var(--selected-bar); }
+.ui-seg { display:inline-flex; gap:var(--space-2); }
+.ui-seg-btn {
+  min-height:28px; padding:0 var(--space-4);
+  border:1px solid var(--border-strong); border-radius:var(--radius-sm);
+  background:var(--surface-card-pop); color:var(--text-secondary);
+  font:inherit; font-size:var(--fs-sm); cursor:pointer; user-select:none;
+  transition:var(--transition-control);
+}
+.ui-seg-btn.is-on { background:var(--selected-bg); border-color:var(--selected-border); color:var(--selected-fg); }
+
+/* ── 状态标签 ── */
+.ui-tag {
+  display:inline-flex; align-items:center; gap:var(--space-2);
+  padding:1px var(--space-3); border-radius:var(--radius-pill);
+  font-size:var(--fs-xs); font-weight:var(--fw-bold);
+  background:var(--surface-row); color:var(--text-secondary);
+}
+.ui-tag.is-ok { background:var(--success-bg); color:var(--success-ink); }
+.ui-tag.is-warn { background:var(--warning-bg); color:var(--warning-ink); }
+.ui-tag.is-danger { background:var(--danger-bg); color:var(--danger-ink); }
+.ui-tag.is-info { background:var(--info-bg); color:var(--info-ink); }
+
+/* ── 行 / 列表 ── */
+.ui-list { display:flex; flex-direction:column; gap:var(--space-2); }
+.ui-row {
+  display:flex; align-items:center; gap:var(--space-4);
+  padding:var(--space-3) var(--space-4);
+  border:1px solid var(--border-soft); border-radius:var(--radius-sm);
+  background:var(--surface-card-pop);
+  transition:var(--transition-control);
+}
+.ui-row:hover { background:var(--surface-row-hover); }
+.ui-row.is-on { border-left:3px solid var(--selected-bar); background:var(--surface-row); }
+
+/* ── 工具类 ── */
+.ui-hint { font-size:var(--fs-sm); color:var(--text-muted); line-height:var(--lh-normal); }
+.ui-empty { padding:var(--space-8) var(--space-6); text-align:center; color:var(--text-muted); font-size:var(--fs-md); }
+.ui-divider { height:1px; background:var(--border-soft); border:0; margin:var(--space-2) 0; }
+.ui-grid { display:grid; gap:var(--space-4); }
