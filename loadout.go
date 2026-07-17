@@ -1,10 +1,13 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -37,6 +40,89 @@ const (
 	partyLoadoutBase     = 104000 // 当前队伍 4 名成员的实时配装（非玩家保存的预设）
 )
 
+// ── 技能盘节点表（专精翻译）────────────────────────────────────────────
+// data/skillboard_nodes.json 由游戏表提取：skillboard_layout/effect/action_parts
+// + 简中文本；说明里的 {n} 占位符已按 Value(n+1) 顺序映射填入实际数值。
+
+//go:embed data/skillboard_nodes.json
+var skillboardNodesJSON []byte
+
+type SkillboardNode struct {
+	Hash string `json:"hash"`
+	Char string `json:"char"` // PL0400 等
+	Cat  string `json:"cat"`  // SB_ATK / SB_DEF / SB_LIMIT / 基础盘
+	Grp  string `json:"grp"`
+	Name string `json:"name"` // 具名大节点（真谛/觉醒/秘义），多数节点为空
+	Desc string `json:"desc"` // 效果说明（数值已填充）
+}
+
+var (
+	skillboardOnce   sync.Once
+	skillboardByHash map[uint32]SkillboardNode
+)
+
+func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
+	skillboardOnce.Do(func() {
+		var payload struct {
+			Nodes []SkillboardNode `json:"nodes"`
+		}
+		skillboardByHash = map[uint32]SkillboardNode{}
+		if err := json.Unmarshal(skillboardNodesJSON, &payload); err != nil {
+			return
+		}
+		for _, n := range payload.Nodes {
+			if h, err := ParseHashHex(n.Hash); err == nil {
+				skillboardByHash[h] = n
+			}
+		}
+	})
+	n, ok := skillboardByHash[hash]
+	return n, ok
+}
+
+type LoadoutMasteryNode struct {
+	Hash string `json:"hash"`
+	Cat  string `json:"cat"`
+	Name string `json:"name"` // 具名节点名（可为空）
+	Desc string `json:"desc"` // 效果说明
+}
+
+// ── 技能名表 ──────────────────────────────────────────────────────────
+// data/skill_names.json：ability.Key 经 XXHash32Custom 求 hash + 简中名。
+
+//go:embed data/skill_names.json
+var skillNamesJSON []byte
+
+type LoadoutSkill struct {
+	Hash string `json:"hash"`
+	Name string `json:"name"`
+}
+
+var (
+	skillNamesOnce sync.Once
+	skillNameByHash map[uint32]string
+)
+
+func skillNameForHash(hash uint32) string {
+	skillNamesOnce.Do(func() {
+		var payload struct {
+			Skills map[string]struct {
+				Name string `json:"name"`
+			} `json:"skills"`
+		}
+		skillNameByHash = map[uint32]string{}
+		if err := json.Unmarshal(skillNamesJSON, &payload); err != nil {
+			return
+		}
+		for hex, s := range payload.Skills {
+			if h, err := ParseHashHex(hex); err == nil {
+				skillNameByHash[h] = s.Name
+			}
+		}
+	})
+	return skillNameByHash[hash]
+}
+
 type LoadoutSigil struct {
 	SlotID  uint32 `json:"slotId"`  // 1403 里存的值
 	UnitID  uint32 `json:"unitId"`  // 对应的因子槽 UnitID（30000+）
@@ -56,9 +142,9 @@ type LoadoutEntry struct {
 	WeaponSlotID uint32      `json:"weaponSlotId"`
 	WeaponHash   string      `json:"weaponHash"`
 	WeaponName   string      `json:"weaponName"`
-	Sigils    []LoadoutSigil `json:"sigils"`
-	Skills    []string       `json:"skills"`  // 4 个技能 hash
-	Mastery   []string       `json:"mastery"` // 专精节点 hash（技能盘）
+	Sigils    []LoadoutSigil       `json:"sigils"`
+	Skills    []LoadoutSkill       `json:"skills"`  // 4 个技能（含中文名）
+	Mastery   []LoadoutMasteryNode `json:"mastery"` // 专精（技能盘）节点，含中文效果
 }
 
 type CharacterLoadouts struct {
@@ -203,25 +289,34 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 			}
 		}
 
-		// 技能：1404 = 4 个技能 hash
+		// 技能：1404 = 4 个技能 hash（经 skill_names.json 翻译）
 		if e := skills[u]; e != nil {
 			for i := 0; i < e.ValueCnt; i++ {
 				v, err := e.Uint32At(i)
 				if err != nil || v == EmptyHash || v == 0 {
 					continue
 				}
-				lo.Skills = append(lo.Skills, fmt.Sprintf("%08X", v))
+				lo.Skills = append(lo.Skills, LoadoutSkill{
+					Hash: fmt.Sprintf("%08X", v),
+					Name: skillNameForHash(v),
+				})
 			}
 		}
 
-		// 专精：3007 = 技能盘节点 hash
+		// 专精：3007 = 技能盘节点 hash（经 skillboard_nodes.json 翻译成中文效果）
 		if e := mastery[u]; e != nil {
 			for i := 0; i < e.ValueCnt; i++ {
 				v, err := e.Uint32At(i)
 				if err != nil || v == EmptyHash || v == 0 {
 					continue
 				}
-				lo.Mastery = append(lo.Mastery, fmt.Sprintf("%08X", v))
+				node := LoadoutMasteryNode{Hash: fmt.Sprintf("%08X", v)}
+				if n, ok := skillboardNodeForHash(v); ok {
+					node.Cat = n.Cat
+					node.Name = n.Name
+					node.Desc = n.Desc
+				}
+				lo.Mastery = append(lo.Mastery, node)
 			}
 		}
 
