@@ -130,6 +130,7 @@ onMounted(async () => {
 
     <section v-if="mode === 'view' && currentGroup" class="section">
       <div class="section-title"><span>{{ currentGroup.charaName }} 的配装</span><small>点击卡片展开因子与专精明细</small></div>
+      <div class="card-grid">
       <article v-for="lo in currentGroup.loadouts" :key="lo.unitId" class="loadout-card" :class="{ open: expanded.has(lo.unitId) }">
         <header @click="toggle(lo)">
           <b v-if="!lo.isParty">槽{{ String(lo.slot).padStart(2, '0') }}</b>
@@ -167,6 +168,7 @@ onMounted(async () => {
           </div>
         </div>
       </article>
+      </div>
     </section>
 
     <section v-else-if="mode === 'view' && !loading && savePath && !groups.length" class="section">
@@ -197,8 +199,10 @@ onMounted(async () => {
 .chara-chip.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
 .chara-chip i { font-style:normal; margin-left:5px; color:var(--text-muted); font-size:.68rem; }
 .chara-chip.on i { color:#f0e0bc; }
+/* 配装卡横向自适应网格：图标缩小、从左往右排；展开的卡占满整行显示明细 */
+.card-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:9px; align-items:start; }
 .loadout-card { border:1px solid var(--line-soft); border-radius:7px; padding:10px 13px; background:var(--sky-900); display:flex; flex-direction:column; gap:7px; }
-.loadout-card.open { border-color:var(--line-gold); }
+.loadout-card.open { border-color:var(--line-gold); grid-column:1/-1; }
 .loadout-card header { display:flex; align-items:center; gap:9px; cursor:pointer; min-height:24px; user-select:none; }
 .loadout-card header b { font-size:.72rem; color:var(--gold); flex:0 0 auto; }
 /* 用写死的绿色，不要 var(--green)：PatchTool 的 .app-window「official atlas skin」
