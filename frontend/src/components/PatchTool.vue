@@ -45,6 +45,7 @@ const componentLoaders = {
   sigil: () => import('./SigilGenerator.vue'),
   sigilMemory: () => import('./SigilMemoryGenerator.vue'),
   loadout: () => import('./SigilLoadoutRestore.vue'),
+  loadoutPresets: () => import('./LoadoutViewer.vue'),
   wrightstone: () => import('./WrightstoneGenerator.vue'),
   summon: () => import('./SummonEditor.vue'),
   overlimit: () => import('./OverLimit.vue'),
@@ -62,6 +63,7 @@ import ProgressionEditor from './ProgressionEditor.vue'
 import SigilGenerator from './SigilGenerator.vue'
 import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
 import SigilLoadoutRestore from './SigilLoadoutRestore.vue'
+import LoadoutViewer from './LoadoutViewer.vue'
 import WrightstoneGenerator from './WrightstoneGenerator.vue'
 import SummonEditor from './SummonEditor.vue'
 import OverLimit from './OverLimit.vue'
@@ -128,6 +130,13 @@ const toolMeta = {
     usage: ['启动游戏并按角色筛选因子', '从第一项开始记录或复刻', '逐项向下移动，不要快速滚动'],
     caution: '复刻会改写当前选中的备用因子；不要使用已经装备或需要保留的因子。',
     speaker: '芙劳', note: '把十二个因子的顺序先理清，再一步一步复刻。速度不必太快，准确才最重要。',
+  },
+  loadoutPresets: {
+    group: 'workshop', title: '配装预设查看（存档）', eyebrow: '离线查看', status: '只读', tone: 'stable',
+    description: '读取游戏配装界面保存的预设：武器、12 因子、4 技能与全部专精节点（含中文效果与数值）。',
+    usage: ['完全退出游戏', '选择存档位或浏览存档文件', '按角色查看各槽配装明细'],
+    caution: '当前为只读查看，不会修改存档。',
+    speaker: '芙劳', note: '每一套配装的因子和专精都记在这里啦，慢慢看，不会弄丢的。',
   },
   wrightstone: {
     group: 'workshop', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
@@ -209,7 +218,7 @@ const toolMeta = {
 }
 
 const navigation = computed(() => [
-  { id: 'workshop', mark: '改', label: '养成与实时修改', caption: '物品、因子、召唤石、资源', items: ['progression', 'sigilMemory', 'loadout', 'summon', 'overlimit', 'runtime', 'sigil', 'wrightstone'] },
+  { id: 'workshop', mark: '改', label: '养成与实时修改', caption: '物品、因子、召唤石、资源', items: ['progression', 'sigilMemory', 'loadout', 'loadoutPresets', 'summon', 'overlimit', 'runtime', 'sigil', 'wrightstone'] },
   { id: 'records', mark: '数', label: '次数统计', caption: '角色与任务次数', items: ['chara', 'save'] },
   { id: 'compatibility', mark: '版', label: '版本适配', caption: '检测与未适配功能', items: ['compatibility', 'legacyRuntime', 'monster', 'patch'] },
   { id: 'settings', mark: '设', label: language.value === 'zh' ? '设置' : 'Settings', caption: language.value === 'zh' ? '语言与应用偏好' : 'Language and preferences', items: ['language'] },
@@ -221,6 +230,7 @@ const functionArt = {
   sigil: sigilArt,
   sigilMemory: sigilMemoryArt,
   loadout: loadoutArt,
+  loadoutPresets: loadoutArt,
   wrightstone: wrightstoneArt,
   summon: summonArt,
   overlimit: overlimitArt,
@@ -239,6 +249,7 @@ const functionStickers = {
   sigil: sigilSticker,
   sigilMemory: sigilMemorySticker,
   loadout: loadoutSticker,
+  loadoutPresets: loadoutSticker,
   wrightstone: wrightstoneSticker,
   summon: summonSticker,
   overlimit: overlimitSticker,
@@ -540,6 +551,7 @@ function showStatus(message, type) {
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
             <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
             <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
+            <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" @status="showStatus" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
