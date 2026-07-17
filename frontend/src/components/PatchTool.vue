@@ -104,112 +104,112 @@ const toolMeta = {
     usage: [], caution: '',
   },
   progression: {
-    group: 'workshop', title: '物品与武器（存档修改）', eyebrow: '离线养成', status: '已适配 2.0.2', tone: 'stable',
+    group: 'save', title: '物品与武器（存档修改）', eyebrow: '离线养成', status: '已适配 2.0.2', tone: 'stable',
     description: '统一处理物品、素材、武器等级与养成资源，适合大批量、可回滚的存档修改。',
     usage: ['完全退出游戏', '选择存档并确认空位', '写入后使用自动备份验证'],
     caution: '不要在游戏运行时编辑同一份存档。',
     speaker: '卡莉奥斯特罗', note: '先留好备份，再把素材和武器整理得漂漂亮亮——这才像完美的炼金术嘛。',
   },
   sigil: {
-    group: 'workshop', title: '因子修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
+    group: 'save', title: '因子修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
     description: '生成、批量管理和删除存档内因子，适合一次性整理较多因子。',
     usage: ['退出游戏并加载存档', '配置因子与词条', '先检查合法性再写入'],
     caution: '不合法组合会提醒，但不会替你改变选择。',
     speaker: '娜露梅亚', note: '先检验组合，再写入存档。稳稳完成每一步，理想的因子就不会跑掉。',
   },
   sigilMemory: {
-    group: 'workshop', title: '因子即时编辑', eyebrow: '游戏内养成', status: '实时', tone: 'live',
+    group: 'memory', title: '因子即时编辑', eyebrow: '游戏内养成', status: '实时', tone: 'live',
     description: '直接修改游戏中当前选中的因子，适合少量精确调整和反复试配。',
     usage: ['启动游戏并启用读取', '在游戏中选中目标因子', '刷新、核对后写入'],
     caution: '重新进档或因子列表刷新后，请重新选择目标。',
     speaker: '萝赛塔', note: '游戏重新载入后，记得再选一次目标。旧的指针可不会一直等你哦。',
   },
   loadout: {
-    group: 'workshop', title: '因子配装导入/导出', eyebrow: '游戏内配装', status: '实时', tone: 'live',
-    description: '记录角色当前的 12 个因子并导出分享，也可把配装文件逐项复刻到备用因子。',
+    group: 'memory', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
+    description: '记录角色当前的 12 个因子并导出分享，也可把配装文件逐项复刻到备用因子。（改的是游戏内因子；写存档配装预设请用「配装预设」。）',
     usage: ['启动游戏并按角色筛选因子', '从第一项开始记录或复刻', '逐项向下移动，不要快速滚动'],
     caution: '复刻会改写当前选中的备用因子；不要使用已经装备或需要保留的因子。',
     speaker: '芙劳', note: '把十二个因子的顺序先理清，再一步一步复刻。速度不必太快，准确才最重要。',
   },
   loadoutPresets: {
-    group: 'workshop', title: '配装预设（查看与写入）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
+    group: 'save', title: '配装预设（查看与写入）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
     description: '查看游戏配装界面保存的预设（武器/12 因子/4 技能/专精），也可把自定义配装写入指定槽位。',
     usage: ['完全退出游戏', '选择存档位或浏览存档文件', '查看，或切到「编辑写入」自定义配装'],
     caution: '写入会自动备份并回读验证；只引用你已拥有的资源，建议先在副本存档上试。',
     speaker: '芙劳', note: '想改配装也可以啦——先备份，写完我再帮你核对一遍，不会弄丢的。',
   },
   wrightstone: {
-    group: 'workshop', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
+    group: 'save', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
     description: '集中生成祝福与三条词条，使用与因子批量修改一致的存档工作流。',
     usage: ['退出游戏并加载存档', '选择祝福和三条词条', '校验队列并应用'],
     caution: '等级上限与组合合法性会在写入前提示。',
     speaker: '菲莉', note: '三条词条都确认好再应用，幽灵朋友们也会替你看着。',
   },
   summon: {
-    group: 'workshop', title: '召唤石修改', eyebrow: '游戏内修改', status: '实时保存', tone: 'live',
+    group: 'memory', title: '召唤石修改', eyebrow: '游戏内修改', status: '实时保存', tone: 'live',
     description: '读取召唤石背包并修改因子、副参数和等级，写入时调用游戏保存流程。',
     usage: ['打开游戏内召唤石背包', '连接并选择一颗召唤石', '核对稀有度与合法性后写入'],
     caution: '当前不支持安全更换召唤石种类。',
     speaker: '露莉亚', note: '先在背包里选中目标召唤石，再核对稀有度和等级，我们一起慢慢来。',
   },
   overlimit: {
-    group: 'workshop', title: '角色上限突破', eyebrow: '游戏内修改', status: '流程型', tone: 'live',
+    group: 'memory', title: '角色上限突破', eyebrow: '游戏内修改', status: '流程型', tone: 'live',
     description: '读取角色突破界面的四个能力槽，按游戏原流程保存结果。',
     usage: ['先完成一次 3 级突破', '停在结果界面后刷新', '修改四项并按说明保存'],
     caution: '必须按页面步骤完成，不能跳过游戏内确认流程。',
     speaker: '希耶提', note: '四个能力槽一个都别漏。真正的剑王，可不会跳过确认步骤。',
   },
   runtime: {
-    group: 'workshop', title: '游戏内实时修改', eyebrow: '金币、素材与掉落', status: '需连接游戏', tone: 'live',
+    group: 'memory', title: '游戏内实时修改', eyebrow: '金币、素材与掉落', status: '需连接游戏', tone: 'live',
     description: '集中管理货币、药水、素材消耗和任务掉落等运行时功能。',
     usage: ['先启动并进入游戏存档', '连接游戏进程', '按资源或任务分类切换功能'],
     caution: '重启游戏后运行时设置会失效，需要重新连接。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   chara: {
-    group: 'records', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
+    group: 'save', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
     description: '查看所有角色的使用次数，可任意选择多个角色批量修改。',
     usage: ['完全退出游戏', '选择存档和目标角色', '填入次数后保存已选'],
     caution: '只修改勾选角色，保存前请检查选择数量。',
     speaker: '姬塔', note: '只会保存你勾选的角色。动手前再数一遍，团长的记录要清清楚楚。',
   },
   save: {
-    group: 'records', title: '任务完成次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
+    group: 'save', title: '任务完成次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
     description: '搜索任务并批量修改完成次数，保留未选任务的原始数据。',
     usage: ['完全退出游戏', '搜索并勾选任务', '批量填入后保存已选'],
     caution: '每次保存都会创建时间戳备份并回读。',
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
   compatibility: {
-    group: 'compatibility', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
-    description: '在一个位置查看工具版本、游戏文件和功能适配状态，避免把兼容问题混进日常操作。',
-    usage: ['检查工具更新', '确认游戏文件已识别', '按适配状态选择功能'],
-    caution: '标记为“等待适配”的功能不会自动启用。',
+    group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
+    description: '在一个位置查看工具版本、游戏文件和功能适配状态。',
+    usage: ['检查工具更新', '确认游戏文件已识别', '查看适配状态'],
+    caution: '',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
   legacyRuntime: {
-    group: 'compatibility', title: '未适配的实时功能', eyebrow: '暂不建议使用', status: '等待作者更新', tone: 'waiting',
-    description: '保留旧版运行时功能和诊断入口，便于后续校准，不再与稳定功能混排。',
-    usage: ['先阅读每项兼容说明', '连接后仅执行扫描或刷新', '字节不匹配时立即停止'],
-    caution: '这些功能未完成 DLC 2.0.2 全流程验证，默认不建议写入。',
-    speaker: '泽塔', note: '地址或字节对不上就立刻停手。勇敢可不等于拿存档去冒险。',
+    group: 'memory', title: '实验性实时功能', eyebrow: '实验', status: '实验', tone: 'stable',
+    description: '一批仍在打磨的运行时功能与诊断入口。',
+    usage: ['先阅读每项说明', '连接后先扫描或刷新', '字节不匹配时停止'],
+    caution: '',
+    speaker: '泽塔', note: '地址或字节对不上就立刻停手。稳一点，准一点。',
   },
   monster: {
-    group: 'compatibility', title: '怪物倍率与伤害记录', eyebrow: '未适配功能', status: '等待适配', tone: 'waiting',
-    description: '保留怪物倍率、霸体和伤害记录相关实现，等待新版偏移与联机流程复核。',
-    usage: ['仅在主机端测试', '先刷新并检查地址状态', '告知队友后再启用'],
-    caution: '当前版本不保证可用，异常时不要反复开启。',
+    group: 'memory', title: '怪物倍率与伤害记录', eyebrow: '实验', status: '实验', tone: 'stable',
+    description: '怪物倍率、霸体和伤害记录相关功能。',
+    usage: ['仅在主机端测试', '先刷新并检查状态', '告知队友后再启用'],
+    caution: '',
     speaker: '伊德', note: '先确认主机端和倍率，再动手。力量失控的话，记录也会失去意义。',
   },
   patch: {
-    group: 'compatibility', title: '游戏文件维护', eyebrow: '备份、恢复与兼容诊断', status: '恢复可用', tone: 'waiting',
-    description: '识别游戏 EXE、创建原始文件备份并一键恢复；旧二进制修改仅保留为兼容诊断。',
-    usage: ['定位游戏 EXE', '先创建原始备份', '只在字节状态明确时应用'],
-    caution: 'DLC 2.0.2 未重新标定，不建议应用写入。',
+    group: 'tools', title: '游戏文件维护', eyebrow: 'EXE 备份与恢复', status: '可用', tone: 'calibrate',
+    description: '识别游戏 EXE、创建原始文件备份并一键恢复。',
+    usage: ['定位游戏 EXE', '先创建原始备份', '需要时一键恢复'],
+    caution: '',
     speaker: '欧根', note: '原始文件先备份，字节状态看清楚再修。老手从不省这一步。',
   },
   language: {
-    group: 'settings', title: '语言与显示', eyebrow: '应用设置', status: '本机设置', tone: 'neutral',
+    group: 'tools', title: '语言与显示', eyebrow: '应用设置', status: '本机设置', tone: 'neutral',
     description: '选择界面语言。切换后会刷新应用，让所有功能使用同一语言。',
     usage: ['选择语言', '等待应用刷新', '返回上次使用的功能'],
     caution: '语言设置只保存在本机。',
@@ -217,11 +217,13 @@ const toolMeta = {
   },
 }
 
+// 顶层按「存档修改 / 内存注入 / 工具」三分（内存注入=运行时改进程内存，退游戏即失效；
+// 存档修改=离线改存档文件，可批量可回滚）。items 顺序即台前优先级。
+// legacyRuntime/monster 属实验性运行时，暂不进 nav（功能与后端保留，日后作 memory 内折叠子区加回）。
 const navigation = computed(() => [
-  { id: 'workshop', mark: '改', label: '养成与实时修改', caption: '物品、因子、召唤石、资源', items: ['progression', 'sigilMemory', 'loadout', 'loadoutPresets', 'summon', 'overlimit', 'runtime', 'sigil', 'wrightstone'] },
-  { id: 'records', mark: '数', label: '次数统计', caption: '角色与任务次数', items: ['chara', 'save'] },
-  { id: 'compatibility', mark: '版', label: '版本适配', caption: '检测与未适配功能', items: ['compatibility', 'legacyRuntime', 'monster', 'patch'] },
-  { id: 'settings', mark: '设', label: language.value === 'zh' ? '设置' : 'Settings', caption: language.value === 'zh' ? '语言与应用偏好' : 'Language and preferences', items: ['language'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['progression', 'sigil', 'wrightstone', 'loadoutPresets', 'chara', 'save'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['sigilMemory', 'loadout', 'summon', 'overlimit', 'runtime'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'patch', 'language'] },
 ])
 
 const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
@@ -314,13 +316,13 @@ const activeGroup = computed(() => navigation.value.find(group => group.id === c
 function selectGroup(group) {
   warmGroup(group)
   if (!group.items.includes(activeTab.value)) activeTab.value = group.items[0]
-  if (group.id === 'compatibility') ensureGameDetection()
+  if (group.id === 'tools') ensureGameDetection()
 }
 
 function selectTool(id) {
   warmTool(id)
   activeTab.value = id
-  if (toolMeta[id]?.group === 'compatibility') ensureGameDetection()
+  if (toolMeta[id]?.group === 'tools') ensureGameDetection()
 }
 
 function toggleArt() {
@@ -588,26 +590,23 @@ function showStatus(message, type) {
               </section>
 
               <section class="compat-section">
-                <div class="compat-heading"><div><span>功能状态</span><h2>按验证程度分层</h2></div><p>已适配功能可以日常使用；旧实现集中放在未适配区域。</p></div>
+                <div class="compat-heading"><div><span>功能状态</span><h2>当前版本 DLC 2.0.2</h2></div><p>核心功能已按当前版本校验。</p></div>
                 <div class="matrix">
                   <div class="matrix-row head"><span>范围</span><span>状态</span><span>说明</span></div>
-                  <div class="matrix-row"><span>物品、武器、因子、祝福</span><b class="ok">已适配</b><span>离线存档路径，自动备份与回读</span></div>
-                  <div class="matrix-row"><span>货币、药水、素材消耗、巴武掉落</span><b class="ok">已适配</b><span>运行时连接，地址或字节不符即停止</span></div>
-                  <div class="matrix-row"><span>召唤石、上限突破、即时因子</span><b class="flow">流程验证</b><span>需停留在指定游戏界面后操作</span></div>
-                  <div class="matrix-row"><span>怪物增强与旧版运行时补丁</span><b class="wait">等待适配</b><span>保留实现和诊断，不进入稳定工具区</span></div>
+                  <div class="matrix-row"><span>物品、武器、因子、祝福、配装</span><b class="ok">存档修改</b><span>离线存档路径，自动备份与回读</span></div>
+                  <div class="matrix-row"><span>货币、药水、素材消耗、巴武掉落</span><b class="ok">内存注入</b><span>运行时连接，地址或字节不符即停止</span></div>
+                  <div class="matrix-row"><span>召唤石、上限突破、即时因子</span><b class="flow">内存注入</b><span>需停留在指定游戏界面后操作</span></div>
                 </div>
               </section>
 
               <section class="compat-section legacy-links">
-                <div class="compat-heading"><div><span>未适配功能</span><h2>保留入口，避免误操作</h2></div></div>
-                <button @click="selectTool('legacyRuntime')"><strong>待适配运行时功能</strong><small>倒计时、无限挑战、称号、皮肤符文等</small><span>查看 ›</span></button>
-                <button @click="selectTool('monster')"><strong>怪物增强</strong><small>倍率、霸体、OD 与团队伤害记录</small><span>查看 ›</span></button>
-                <button @click="selectTool('patch')"><strong>游戏文件维护</strong><small>EXE 识别、原始备份、恢复与兼容诊断</small><span>查看 ›</span></button>
+                <div class="compat-heading"><div><span>实验性功能</span><h2>仍在打磨</h2></div></div>
+                <button @click="selectTool('legacyRuntime')"><strong>实验性实时功能</strong><small>倒计时、无限挑战、称号、皮肤符文等</small><span>查看 ›</span></button>
+                <button @click="selectTool('monster')"><strong>怪物倍率与伤害记录</strong><small>倍率、霸体、OD 与团队伤害记录</small><span>查看 ›</span></button>
               </section>
             </div>
 
             <div v-else-if="activeTab === 'patch'" class="legacy-patch">
-              <div class="legacy-warning"><strong>等待 DLC 2.0.2 重新标定</strong><span>入口被保留用于诊断和恢复；当前不要应用未知状态的补丁。</span></div>
               <section class="path-card">
                 <label>{{ isDetecting ? '正在扫描 Steam 安装路径…' : isLoaded ? '已定位游戏文件' : '游戏 EXE 路径' }}</label>
                 <div class="path-input-row"><input v-model="manualPath" placeholder="粘贴 granblue_fantasy_relink.exe 完整路径" @keyup.enter="applyManualPath"><button class="action primary" @click="applyManualPath" :disabled="!manualPath.trim()">识别文件</button></div>
@@ -615,7 +614,7 @@ function showStatus(message, type) {
               </section>
               <section v-if="isLoaded" class="patch-grid">
                 <article v-for="patch in state.patches" :key="patch.id" class="patch-card">
-                  <header><div><strong>{{ patch.name }}</strong><small>旧版二进制补丁</small></div><span :class="['patch-state', patch.state]">{{ patch.state === 'original' ? '原始' : patch.state === 'patched' ? '已补丁' : '未知' }}</span></header>
+                  <header><div><strong>{{ patch.name }}</strong><small>二进制补丁</small></div><span :class="['patch-state', patch.state]">{{ patch.state === 'original' ? '原始' : patch.state === 'patched' ? '已补丁' : '未知' }}</span></header>
                   <p v-if="patch.state === 'patched'">当前值 {{ patch.currentValue }} · 0x{{ patch.currentValue.toString(16).toUpperCase() }}</p>
                   <div class="patch-edit"><input v-model="patchValues[patch.id]" type="number" min="0" placeholder="输入数值"><button class="action" @click="applyPatch(patch.id)" :disabled="patchingID === patch.id || patch.state === 'unknown'">{{ patchingID === patch.id ? '写入中…' : '应用' }}</button></div>
                 </article>

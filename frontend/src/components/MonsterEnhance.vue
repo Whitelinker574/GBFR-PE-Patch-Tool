@@ -101,7 +101,7 @@ refreshStatus()
   <div class="root">
     <div class="section">
       <div class="header">
-        <span class="title">怪物增强（未修复）</span>
+        <span class="title">怪物倍率与伤害记录</span>
         <span class="info-dot" title="开启时释放内置 patch_core.dll 到临时目录并注入；关闭时 Go 侧恢复原始字节。">!</span>
         <span class="hint">DLL 注入开启 · Go 恢复关闭</span>
       </div>
@@ -150,13 +150,11 @@ refreshStatus()
         </div>
         <div class="memory-card custom-note-card">
           <div class="memory-header">
-            <span class="memory-title">作者说明</span>
+            <span class="memory-title">使用说明</span>
           </div>
           <div class="custom-note-text">
-            <strong class="note-warn">本页功能需要在主机下使用生效,开启也请告知队友</strong>，
-            做这个功能是因为我感觉原版的打多了很多无聊每次都差不多&发现了libmem库想来试试&我之前每次都是用自己写的ce脚本打开修改都要点好多下很烦，遂做了这个页面的功能。
-            我逆向水平一般也并非熟练的c++开发者，作这页功能最失败的决定就是之前用纯go来内存hook，没啥好用的库。
-            最后能来仓库点个star⭐就更好了。
+            <strong class="note-warn">本页功能需要在主机端使用才生效，开启前也请告知队友。</strong>
+            倍率、霸体、OD 与团队伤害记录属实验性功能，改动较大时请先在安全环境测试。
           </div>
         </div>
       </div>
