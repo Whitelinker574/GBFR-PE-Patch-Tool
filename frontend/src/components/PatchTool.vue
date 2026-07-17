@@ -806,6 +806,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-stage[data-tool="compatibility"],.tool-stage[data-tool="legacyRuntime"],.tool-stage[data-tool="monster"] { --art-right:-34px;--art-bottom:-12px }
 .tool-stage[data-tool="patch"] { --art-right:-32px;--art-bottom:-11px }
 .tool-stage[data-tool="language"] { --art-right:-35px;--art-bottom:-13px }
+/* 碧(Vyrn) 立绘是居中小构图(脸在画面约54%处、四周大量透明边)，右下锚点会把脸甩到
+   卡片区。需大幅右推，保证任何窗口下脸都在立绘列内不被卡片盖。 */
+.tool-stage[data-tool="runtime"] { --art-right:-130px;--art-bottom:-12px }
+/* 泽塔：用 transform 平移(right/bottom 因 object-fit:contain 对她这张图不灵)。
+   +X=右移(躲开卡片)，+Y=下移(头离顶部留更大空白)。 */
+.tool-stage[data-tool="legacyRuntime"] { --art-right:-34px;--art-bottom:-12px }
+.tool-stage[data-tool="legacyRuntime"] .art-rail .function-character img { transform:translate(95px,78px)!important }
 .art-caption { position:absolute;z-index:2;right:12px;bottom:14px;display:flex;flex-direction:column;align-items:flex-end;padding:7px 10px;border-right:3px solid rgba(154,116,64,.72);background:rgba(255,249,229,.62);backdrop-filter:blur(3px) }.art-caption span { color:#594d3f;font-size:13px;font-weight:900 }.art-caption small { color:#644f32;font-size:9px;font-weight:900 }
 
 /* Parchment legibility pass: neutralise the remaining dark-theme text inherited by child tools. */
@@ -1905,7 +1912,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .legacy-patch input,.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(textarea) { background:#fbf3dd!important; }
 
 /* ═══ 响应式：窄到放不下时，立绘让位，保证“教程 + 内容”可读（教程列给足宽度，不再被压成竖排单字）═══ */
-@media(max-width:1040px){
+/* 全局 zoom 下，即使真实窗口只有 960，画布也被补偿到 ~1450px，立绘有充足空间。
+   原来 1040px 就隐藏立绘是按"真实视口=画布"设计的，现在会误伤(碧在小窗直接消失)。
+   阈值降到 App 最小窗口(960)以下，让支持范围内立绘始终显示。 */
+@media(max-width:900px){
   .tool-stage { grid-template-columns:168px minmax(0,1fr)!important; }
   .art-rail,.art-toggle { display:none!important; }
 }
