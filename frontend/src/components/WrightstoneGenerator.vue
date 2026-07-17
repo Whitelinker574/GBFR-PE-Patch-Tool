@@ -371,7 +371,7 @@ async function applyQueueToSave() {
 .qty-add { flex:0 0 auto; display:flex; align-items:flex-end; gap:8px; }
 .quantity-field { width:108px; }
 .quantity-field{width:150px}.quantity-combo{display:grid;grid-template-columns:minmax(0,1fr) 45px;gap:5px}.quantity-combo button{border:1px solid rgba(218,187,115,.28);background:rgba(218,187,115,.07);color:#d9bd7c;font-size:10px;cursor:pointer}
-.queue-legality { margin-left:5px; padding:1px 5px; border:1px solid rgba(103,232,249,.25); border-radius:4px; color:#67e8f9; background:rgba(103,232,249,.06); font-size:.58rem; font-style:normal; font-weight:700; }
+.queue-legality { margin-left:5px; padding:1px 5px; border:1px solid rgba(154,116,64,.25); border-radius:4px; color:#9a7440; background:rgba(154,116,64,.06); font-size:.58rem; font-style:normal; font-weight:700; }
 .queue-legality.forced { border-color:rgba(251,191,36,.28); color:#fbbf24; background:rgba(245,158,11,.08); }
 @media (max-width:720px) { .config-footer { align-items:stretch; flex-direction:column; } .qty-add { width:100%; } .quantity-field { flex:1; width:auto; } }
 @container (max-width:500px) { .config-footer { align-items:stretch; flex-direction:column; } .qty-add { width:100%; } .quantity-field { flex:1; width:auto; } .input-row { flex-wrap:wrap; } .input-row>.flex-1 { min-width:0; flex-basis:220px; } .output-target>.flex-1 { flex-basis:100%; } .trait-card { flex-wrap:wrap; } }
@@ -388,7 +388,7 @@ async function applyQueueToSave() {
 .apply-section.apply-flash .warning-hint,
 .apply-section.apply-flash .danger-hint { border-color: rgba(31,41,55,0.18); background: rgba(255,255,255,0.18); color: rgba(31,41,55,0.78); }
 .section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.35); letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
-.info-dot { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(103,232,249,0.35); color: #67e8f9; background: rgba(103,232,249,0.08); font-size: 0.68rem; font-weight: 700; cursor: help; letter-spacing: 0; }
+.info-dot { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(154,116,64,0.35); color: #9a7440; background: rgba(154,116,64,0.08); font-size: 0.68rem; font-weight: 700; cursor: help; letter-spacing: 0; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 0.7rem; color: rgba(255,255,255,0.3); }
 .field label small { margin-left:6px;color:#8b795f;font-size:.9em;font-weight:550; }
@@ -403,9 +403,9 @@ async function applyQueueToSave() {
 .select-input::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 .select-input option { min-height:38px;padding:9px 12px;border-bottom:1px solid rgba(123,88,43,.25);background:#1b2636;color:#fff; }
 .select-input[size] option:nth-child(even) { background:rgba(255,255,255,.035); }
-.select-input[size] option:checked { box-shadow:inset 4px 0 #67e8f9; }
-.text-input:focus { border-color: rgba(103,232,249,0.4); background: rgba(255,255,255,0.1); }
-.select-input:focus { border-color: rgba(103,232,249,0.4); background: transparent; }
+.select-input[size] option:checked { box-shadow:inset 4px 0 #9a7440; }
+.text-input:focus { border-color: rgba(154,116,64,0.4); background: rgba(255,255,255,0.1); }
+.select-input:focus { border-color: rgba(154,116,64,0.4); background: transparent; }
 .select-input:disabled { opacity: 0.4; cursor: not-allowed; }
 .input-row { display: flex; gap: 8px; align-items: flex-end; }
 .flex-1 { flex: 1; }
@@ -416,7 +416,7 @@ async function applyQueueToSave() {
 .btn-action:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn-green { background: rgba(34,197,94,0.18); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
 .btn-purple { background: rgba(165,180,252,0.15); color: #a5b4fc; border: 1px solid rgba(165,180,252,0.3); }
-.btn-cyan { background: rgba(103,232,249,0.15); color: #67e8f9; border: 1px solid rgba(103,232,249,0.3); }
+.btn-cyan { background: rgba(154,116,64,0.15); color: #9a7440; border: 1px solid rgba(154,116,64,0.3); }
 .add-btn { padding-top: 8px; padding-bottom: 8px; align-self: flex-end; }
 .btn-link { background: none; border: none; color: rgba(255,255,255,0.3); font-size: 0.72rem; cursor: pointer; padding: 0 4px; }
 .btn-link:hover { color: rgba(239,68,68,0.7); }

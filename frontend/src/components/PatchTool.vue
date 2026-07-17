@@ -746,13 +746,13 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .primary-nav { gap:8px;padding-top:17px }.nav-item { min-height:58px;grid-template-columns:32px 1fr 13px;padding:8px 13px 8px 11px;border:1px solid rgba(114,92,58,.24);border-radius:0;color:#574c40;background:linear-gradient(90deg,rgba(145,126,89,.65),rgba(186,170,132,.44));box-shadow:0 3px 6px rgba(84,63,32,.1),inset 0 1px rgba(255,255,255,.5);clip-path:none }.nav-item:hover { color:#3f5f5f;background:linear-gradient(90deg,rgba(116,202,207,.7),rgba(177,228,228,.6)) }.nav-item.active { color:#28585c;border-color:rgba(54,158,166,.45);background:linear-gradient(90deg,#62d0d8,#b2e9eb);box-shadow:0 4px 9px rgba(44,130,137,.16),inset 0 1px rgba(255,255,255,.65) }.nav-mark { width:28px;height:28px;border:2px solid rgba(83,66,43,.38);border-radius:50%;color:#4f4438;background:rgba(255,249,229,.36);font-family:"Microsoft YaHei UI",sans-serif;font-weight:900 }.nav-item.active .nav-mark { color:#1f6268;border-color:rgba(31,98,104,.48);background:rgba(255,255,255,.34) }.nav-copy strong { color:inherit;font:800 13px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.02em }.nav-copy small { color:rgba(71,60,46,.72);font-size:9px;font-weight:700 }.nav-arrow { color:#66543c;font-weight:900 }
 .sidebar-foot { border-top-color:rgba(142,106,51,.25) }.target-dot { background:var(--cyan);box-shadow:0 0 8px rgba(58,169,179,.42) }.target-row strong { color:#675a49;font-weight:800 }.target-row small,.sidebar-foot a { color:#927f64;font-weight:700 }.sidebar-foot a:hover { color:#298f98 }
 .workspace { background:linear-gradient(rgba(255,250,236,.68),rgba(242,229,199,.76)),url('../assets/gbfr/journal-scene-4k.webp') center/cover fixed }.workspace-bar { height:40px;flex-basis:40px;padding:0 23px;border-bottom:1px solid rgba(145,108,51,.22);background:rgba(255,249,229,.9) }.breadcrumb { color:#8d7c66;font-size:10px;font-weight:700 }.breadcrumb b { color:#c3a96e }.breadcrumb strong { color:#51473c;font-weight:800 }.workspace-state { color:#776b5c;font-weight:700 }.state-dot { box-shadow:0 0 0 3px rgba(103,84,56,.07) }
-.tool-switcher { min-height:48px;padding:0 22px;border-bottom:1px solid rgba(140,104,49,.23);background:rgba(239,225,192,.64) }.tool-switcher button { height:48px;padding:0 14px;color:#87765f;font-size:11px;font-weight:800 }.tool-switcher button:hover { color:#2f888f;background:rgba(83,190,197,.08) }.tool-switcher button.active { color:#2c7379;background:rgba(255,255,255,.24) }.tool-switcher button.active::after { left:10px;right:10px;height:3px;background:#45b9c2;box-shadow:none }.workspace-scroll { padding:22px 25px 50px }
+.tool-switcher { min-height:48px;padding:0 22px;border-bottom:1px solid rgba(140,104,49,.23);background:rgba(239,225,192,.64) }.tool-switcher button { height:48px;padding:0 14px;color:#87765f;font-size:11px;font-weight:800 }.tool-switcher button:hover { color:#7a5b2e;background:rgba(154,116,64,.08) }.tool-switcher button.active { color:#7a5b2e;background:rgba(255,255,255,.24) }.tool-switcher button.active::after { left:10px;right:10px;height:3px;background:#9a7440;box-shadow:none }.workspace-scroll { padding:22px 25px 50px }
 .tool-panel { color:#554b40;font-weight:600 }
 .tool-panel :deep(.root),.tool-panel :deep(.sigil-container),.tool-panel :deep(.wrightstone-container),.tool-panel :deep(.memory-sigil) { color:#554b40!important;font-weight:600 }
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.quests) { border-color:rgba(143,106,51,.3)!important;border-radius:2px 7px 2px 7px!important;background:linear-gradient(135deg,rgba(255,248,226,.78),rgba(231,214,176,.68))!important;backdrop-filter:blur(5px);box-shadow:0 7px 16px rgba(90,65,29,.08),inset 0 0 0 1px rgba(255,255,255,.14)!important }
 .tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),.legacy-patch input { border-color:rgba(139,105,52,.34)!important;background:rgba(246,234,207,.78)!important;color:#4d453b!important;font-weight:700!important;color-scheme:light!important }.tool-panel :deep(input::placeholder),.tool-panel :deep(textarea::placeholder) { color:#917e65!important }.tool-panel :deep(select option) { background:#f2e4c4!important;color:#51483e!important }
 .tool-panel :deep(button) { font-weight:900!important;border-radius:2px 5px 2px 5px!important }.tool-panel :deep(.section-title),.tool-panel :deep(.title),.tool-panel :deep(h2),.tool-panel :deep(h3),.tool-panel :deep(.editor-title),.tool-panel :deep(.save-title strong) { color:#54493c!important;font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif!important;font-weight:900!important }.tool-panel :deep(label),.tool-panel :deep(.hint),.tool-panel :deep(.field label),.tool-panel :deep(.section-header p),.tool-panel :deep(.memory-hint),.tool-panel :deep(.memory-info),.tool-panel :deep(.save-hint),.tool-panel :deep(.empty-hint) { color:#8b7c68!important;font-weight:800!important }
-.tool-panel :deep(.row-name-text),.tool-panel :deep(.queue-name),.tool-panel :deep(.catalog-row strong),.tool-panel :deep(.col-name),.tool-panel :deep(.name),.tool-panel :deep(.ex-col-name),.tool-panel :deep(.ed-current-name) { color:#544a3f!important;font-weight:800!important }.tool-panel :deep(.row-chip),.tool-panel :deep(.queue-item),.tool-panel :deep(.trait-card),.tool-panel :deep(.catalog-row),.tool-panel :deep(.batch-row),.tool-panel :deep(.row-head),.tool-panel :deep(.existing-row) { border-color:rgba(142,106,53,.22)!important;background:rgba(239,225,192,.58)!important }.tool-panel :deep(.catalog-row:hover),.tool-panel :deep(.row-item:hover),.tool-panel :deep(.row:hover) { background:rgba(226,237,203,.72)!important }.tool-panel :deep(.catalog-row.on) { border-color:rgba(49,161,170,.42)!important;background:linear-gradient(90deg,rgba(104,210,217,.25),rgba(248,239,217,.64))!important;box-shadow:inset 3px 0 #43aeb7!important }
+.tool-panel :deep(.row-name-text),.tool-panel :deep(.queue-name),.tool-panel :deep(.catalog-row strong),.tool-panel :deep(.col-name),.tool-panel :deep(.name),.tool-panel :deep(.ex-col-name),.tool-panel :deep(.ed-current-name) { color:#544a3f!important;font-weight:800!important }.tool-panel :deep(.row-chip),.tool-panel :deep(.queue-item),.tool-panel :deep(.trait-card),.tool-panel :deep(.catalog-row),.tool-panel :deep(.batch-row),.tool-panel :deep(.row-head),.tool-panel :deep(.existing-row) { border-color:rgba(142,106,53,.22)!important;background:rgba(239,225,192,.58)!important }.tool-panel :deep(.catalog-row:hover),.tool-panel :deep(.row-item:hover),.tool-panel :deep(.row:hover) { background:rgba(226,237,203,.72)!important }.tool-panel :deep(.catalog-row.on) { border-color:rgba(154,116,64,.42)!important;background:linear-gradient(90deg,rgba(154,116,64,.25),rgba(248,239,217,.64))!important;box-shadow:inset 3px 0 #9a7440!important }
 .tool-panel :deep(.btn-cyan),.tool-panel :deep(.primary),.tool-panel :deep(.primary-btn),.tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),.tool-panel :deep(.save-btn),.tool-panel :deep(.language-button) { border-color:rgba(28,91,98,.55)!important;background:linear-gradient(135deg,#348087,#23646b)!important;color:#fffef4!important;text-shadow:0 1px rgba(26,67,71,.45)!important }.tool-panel :deep(.btn-green),.tool-panel :deep(.btn-connect) { border-color:rgba(43,101,71,.48)!important;background:linear-gradient(135deg,#3c805d,#2e684a)!important;color:#fffef5!important }.tool-panel :deep(.btn-purple),.tool-panel :deep(.plain-btn),.tool-panel :deep(.slot-btn),.tool-panel :deep(.btn-refresh) { border-color:rgba(145,108,52,.28)!important;background:#f2e4c5!important;color:#705c3e!important }.tool-panel :deep(.btn-link),.tool-panel :deep(.btn-icon),.tool-panel :deep(.ed-link),.tool-panel :deep(.row-tool) { color:#6b573b!important }
 .tool-panel :deep(.tab),.tool-panel :deep(.chip),.tool-panel :deep(.version-label),.tool-panel :deep(.selection),.tool-panel :deep(.select-all),.tool-panel :deep(.head>span),.tool-panel :deep(.id),.tool-panel :deep(.row-meta),.tool-panel :deep(.row-name-lv),.tool-panel :deep(.row-chip-tag),.tool-panel :deep(.row-chip-lv),.tool-panel :deep(.queue-detail),.tool-panel :deep(.ex-col-level),.tool-panel :deep(.ex-col-trait) { color:#8d7d68!important;font-weight:700!important }.tool-panel :deep(.tab.active) { color:#2f8e96!important;border-bottom-color:#3ba7b0!important }.tool-panel :deep(code),.tool-panel :deep(.count),.tool-panel :deep(.catalog-row em) { color:#2e8f98!important }.tool-panel :deep(input[type=checkbox]) { accent-color:#9a7440 }
 .tool-panel :deep(.section-tabs button),.tool-panel :deep(.mini-tabs button) { color:#846f51!important;border-color:transparent!important;background:transparent!important }.tool-panel :deep(.section-tabs button.on),.tool-panel :deep(.mini-tabs button.on) { color:#2f8e96!important;border-color:rgba(52,157,166,.31)!important;background:rgba(78,186,194,.12)!important;box-shadow:inset 0 -2px #3aa9b3!important }.tool-panel :deep(.offline-note) { color:#8e682d!important;border-color:rgba(177,126,45,.28)!important;background:rgba(229,193,112,.2)!important }.tool-panel :deep(.empty),.tool-panel :deep(.path),.tool-panel :deep(.hint-inline),.tool-panel :deep(.ed-label),.tool-panel :deep(.ed-changed),.tool-panel :deep(.tpl-empty) { color:#94836d!important;font-weight:700!important }.tool-panel :deep(.capacity),.tool-panel :deep(.safety),.tool-panel :deep(.save-info),.tool-panel :deep(.foot) { color:#4b9470!important;font-weight:800!important }
@@ -969,7 +969,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   color:#4f3d25;
   border-color:rgba(128,90,38,.48);
   background:linear-gradient(180deg,#fff8df 0%,#e7d2a4 100%);
-  box-shadow:inset 0 1px rgba(255,255,255,.9),inset 0 -3px #4ba9b7;
+  box-shadow:inset 0 1px rgba(255,255,255,.9),inset 0 -3px #9a7440;
   text-shadow:0 1px rgba(255,255,255,.66);
 }
 .tool-switcher button.active::after { display:none }
@@ -992,7 +992,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   border-color:rgba(117,82,36,.46);
   background:linear-gradient(90deg,#f4e6c4,#fff7dd 72%,#e6d3aa);
 }
-.nav-item.active { box-shadow:inset 4px 0 #4ba8b6,inset 0 0 0 1px rgba(255,255,255,.38),0 3px 8px rgba(84,59,27,.1) }
+.nav-item.active { box-shadow:inset 4px 0 #9a7440,inset 0 0 0 1px rgba(255,255,255,.38),0 3px 8px rgba(84,59,27,.1) }
 .nav-item.active .nav-mark { color:#416f78;border-color:rgba(65,126,139,.42);background:rgba(255,252,235,.72) }
 .guide-rail,.tool-page-heading {
   border-color:var(--official-gold-line);
@@ -1040,9 +1040,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 }
 .tool-panel :deep(input:hover),.tool-panel :deep(select:hover),.tool-panel :deep(textarea:hover) { border-color:rgba(64,157,179,.5)!important }
 .tool-panel :deep(input:focus),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:focus) {
-  border-color:#4bbdd4!important;
+  border-color:#9a7440!important;
   outline:1px solid rgba(75,189,212,.24)!important;
-  box-shadow:inset 3px 0 #55d3e5,0 0 0 2px rgba(74,188,211,.1)!important;
+  box-shadow:inset 3px 0 #9a7440,0 0 0 2px rgba(154,116,64,.1)!important;
 }
 .tool-panel :deep(.btn-cyan),.tool-panel :deep(.btn-green),.tool-panel :deep(.primary),.tool-panel :deep(.primary-btn),
 .tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),
@@ -1081,7 +1081,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   color:#4f3f2b!important;
   border-color:rgba(126,89,39,.48)!important;
   background:linear-gradient(180deg,#fff8df,#e5cfa0)!important;
-  box-shadow:inset 0 1px rgba(255,255,255,.78),inset 0 -3px #4ba9b7!important;
+  box-shadow:inset 0 1px rgba(255,255,255,.78),inset 0 -3px #9a7440!important;
 }
 .tool-panel :deep(.tabs) {
   flex:0 1 auto!important;
@@ -1118,7 +1118,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.row-item),.tool-panel :deep(.catalog-row),.tool-panel :deep(.summon-row),
 .tool-panel :deep(.row),.tool-panel :deep(.existing-row) { border-left-width:3px!important;border-left-color:rgba(155,115,55,.22)!important }
 .tool-panel :deep(.row-item:hover),.tool-panel :deep(.catalog-row:hover),.tool-panel :deep(.catalog-row.on),
-.tool-panel :deep(.summon-row.selected),.tool-panel :deep(.row.on) { border-left-color:#4bc7dc!important }
+.tool-panel :deep(.summon-row.selected),.tool-panel :deep(.row.on) { border-left-color:#9a7440!important }
 .tool-panel :deep(select[size] option:nth-child(even)),.tool-panel :deep(.opt:nth-child(even)),
 .tool-panel :deep(.catalog-row:nth-child(even)),.tool-panel :deep(.row-item:nth-child(even)) {
   background:linear-gradient(90deg,rgba(244,235,211,.94),rgba(222,203,162,.66))!important;
@@ -1128,7 +1128,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   color:#4e412f!important;
   border-color:rgba(117,82,38,.48)!important;
   background:linear-gradient(90deg,#fff9e5,#e8d5aa 80%,#f3e8c9)!important;
-  box-shadow:inset 4px 0 #4ba8b6,inset 0 0 0 1px rgba(255,255,255,.38)!important;
+  box-shadow:inset 4px 0 #9a7440,inset 0 0 0 1px rgba(255,255,255,.38)!important;
 }
 .tool-panel :deep(.row-chip),.tool-panel :deep(.queue-item),.tool-panel :deep(.trait-card),.tool-panel :deep(.batch-row),
 .tool-panel :deep(.row-head),.tool-panel :deep(.existing-row),.tool-panel :deep(.update-body),.tool-panel :deep(.od-indicator) {
@@ -1139,7 +1139,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   color:#4f493e!important;
   border-color:rgba(67,152,174,.54)!important;
   background:linear-gradient(120deg,rgba(245,249,225,.98),rgba(207,237,235,.94))!important;
-  box-shadow:inset 4px 0 #4bc8dc,0 7px 17px rgba(55,112,127,.11),inset 0 0 0 1px rgba(255,255,255,.48)!important;
+  box-shadow:inset 4px 0 #9a7440,0 7px 17px rgba(154,116,64,.11),inset 0 0 0 1px rgba(255,255,255,.48)!important;
 }
 .tool-panel :deep(.memory-card.active .memory-title),.tool-panel :deep(.memory-card.active .currency-name),
 .tool-panel :deep(.memory-card.active .damage-meter-value),.tool-panel :deep(.apply-section.apply-flash .section-title),
@@ -1147,14 +1147,14 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.memory-card.active .memory-hint),.tool-panel :deep(.memory-card.active .memory-info),
 .tool-panel :deep(.memory-card.active .memory-bytes),.tool-panel :deep(.memory-card.active .currency-meta),
 .tool-panel :deep(.memory-card.active .damage-meter-raw),.tool-panel :deep(.memory-card.active .custom-note-text) { color:#58685f!important }
-.tool-panel :deep(.memory-card.active .feature-help) { color:#4c6264!important;border-left-color:#4bc8dc!important }
+.tool-panel :deep(.memory-card.active .feature-help) { color:#7a5b2e!important;border-left-color:#9a7440!important }
 .tool-panel :deep(.memory-card.active input),.tool-panel :deep(.memory-card.active select),
 .tool-panel :deep(.apply-section.apply-flash input),.tool-panel :deep(.apply-section.apply-flash select) { border-color:rgba(64,150,171,.38)!important }
 .tool-panel :deep(.memory-card.active .btn-batch) { color:#fffdf0!important;border-color:#43849a!important;background:linear-gradient(180deg,#65d5e6,#3ca6bf)!important }
 .tool-panel :deep(.chip.state),.tool-panel :deep(.state.on),.tool-panel :deep(.save-info),.tool-panel :deep(.capacity),.tool-panel :deep(.safety),.tool-panel :deep(.foot),.tool-panel :deep(.legality.legal),
 .tool-panel :deep(.queue-legality:not(.forced)) { color:#2e6878!important;border-color:rgba(59,143,164,.34)!important;background:rgba(207,237,236,.78)!important }
 .titlebar-status.success { color:#4d5e57;border-color:rgba(124,88,39,.34);border-left:3px solid #47a8b6;background:linear-gradient(120deg,#fff7df,#ead8b3) }
-.state-dot.stable,.target-dot { background:#4dcce0;box-shadow:0 0 8px rgba(77,204,224,.5) }
+.state-dot.stable,.target-dot { background:#9a7440;box-shadow:0 0 8px rgba(154,116,64,.5) }
 .tool-center-scroll {
   scrollbar-gutter:auto;
   scrollbar-color:rgba(67,190,214,.78) rgba(164,125,67,.09);
@@ -1170,7 +1170,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   min-height:54px;
   border:2px solid transparent;
   border-radius:0;
-  background:linear-gradient(#8ce5ed,#43bad2) padding-box;
+  background:linear-gradient(#9a7440,#9a7440) padding-box;
   box-shadow:inset 0 0 0 1px rgba(57,119,137,.2);
 }
 .tool-center-scroll::-webkit-scrollbar-thumb:hover { background:linear-gradient(#a7edf2,#3eb2cb) padding-box }
@@ -1197,14 +1197,14 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   color:#4d3d28!important;
   border-color:rgba(74,137,151,.52)!important;
   background:linear-gradient(180deg,#fffbed,#e6d6b2)!important;
-  box-shadow:inset 3px 0 #4ba8b6,inset 0 1px rgba(255,255,255,.78)!important;
+  box-shadow:inset 3px 0 #9a7440,inset 0 1px rgba(255,255,255,.78)!important;
 }
 .tool-panel :deep(.slot-btn.on),.tool-panel :deep(.slot-choice.on),.tool-panel :deep(.mode-choice.on),
 .tool-panel :deep(.language-card.active .language-button) {
   color:#4d3d28!important;
   border-color:rgba(115,81,36,.5)!important;
   background:linear-gradient(180deg,#fff9e2,#e4cca0)!important;
-  box-shadow:inset 0 -3px #4ba8b6,inset 0 1px rgba(255,255,255,.78)!important;
+  box-shadow:inset 0 -3px #9a7440,inset 0 1px rgba(255,255,255,.78)!important;
 }
 .tool-panel :deep(.memory-card.active .btn-batch),.tool-panel :deep(.apply-section.apply-flash .btn-cyan) {
   color:#fff9e9!important;
@@ -1222,7 +1222,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.safety),.tool-panel :deep(.foot),.tool-panel :deep(.legality.legal),.tool-panel :deep(.queue-legality:not(.forced)) {
   color:#376b70!important;
   border-color:rgba(63,128,136,.32)!important;
-  border-left:3px solid #4ba8b6!important;
+  border-left:3px solid #9a7440!important;
   background:linear-gradient(90deg,#fbf4da,#e4dbc0)!important;
 }
 /* Flat journal pass: controls belong to the page instead of sitting on it as raised tiles. */
@@ -1900,7 +1900,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 /* 激活卡片：暖羊皮纸底 + 暖绿左条(表示已连接/生效)，去掉青绿 */
 .tool-panel :deep(.memory-card.active) { color:#4e4438!important; background:linear-gradient(135deg,#fdf6e4,#eef0d6)!important; border-color:rgba(74,118,88,.42)!important; box-shadow:inset 4px 0 #4a7658,0 4px 12px rgba(77,54,25,.08)!important; }
 .tool-panel :deep(.memory-card.active .memory-title),.tool-panel :deep(.memory-card.active .memory-hint),.tool-panel :deep(.memory-card.active .memory-info),.tool-panel :deep(.memory-card.active .memory-bytes) { color:#5b5340!important; }
-/* 用途提示框：青绿左条/底 → 暖金（含 .memory-card.active 内更具体的选择器，否则被 #4bc8dc 盖住）*/
+/* 用途提示框：青绿左条/底 → 暖金（含 .memory-card.active 内更具体的选择器，否则被 #9a7440 盖住）*/
 .tool-panel :deep(.feature-help),.tool-panel :deep(.memory-card.active .feature-help) { border-left-color:#9a7440!important; background:rgba(154,116,64,.07)!important; color:#5e5141!important; }
 /* info 圆点：青 → 暖金 */
 .tool-panel :deep(.info-dot) { color:#8a6a34!important; border-color:rgba(154,116,64,.42)!important; background:rgba(154,116,64,.1)!important; }

@@ -122,16 +122,16 @@ scanSaves()
 .slots { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
 .slot-btn,.plain-btn,.save-btn { padding:7px 13px; border-radius:7px; border:1px solid rgba(255,255,255,.11); background:rgba(255,255,255,.045); color:rgba(255,255,255,.5); font:inherit; font-size:.74rem; cursor:pointer; }
 .slot-btn { padding:9px 17px; }
-.slot-btn.on { border-color:rgba(103,232,249,.42); background:rgba(103,232,249,.1); color:#67e8f9; }
+.slot-btn.on { border-color:rgba(154,116,64,.42); background:rgba(154,116,64,.1); color:#9a7440; }
 button:hover:not(:disabled) { color:rgba(255,255,255,.78); background:rgba(255,255,255,.08); }
 button:disabled { opacity:.35; cursor:not-allowed; }
-.loading { text-align:center; color:#67e8f9; font-size:.82rem; padding:16px; }
+.loading { text-align:center; color:#9a7440; font-size:.82rem; padding:16px; }
 .quests { border-radius:12px; border:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.025); overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
 .head,.batch { display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.055); }
 .head>span { flex:1; font-size:.72rem; color:rgba(255,255,255,.38); }
 .search,.number-input { box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.055); color:#d8f6fb; outline:none; font:inherit; font-size:.73rem; }
 .search { width:180px; }
-.search:focus,.number-input:focus { border-color:rgba(103,232,249,.45); }
+.search:focus,.number-input:focus { border-color:rgba(154,116,64,.45); }
 .batch { background:rgba(255,255,255,.018); font-size:.7rem; color:rgba(255,255,255,.35); }
 .batch .number-input { width:100px; margin-left:auto; }
 .save-btn { border-color:rgba(74,222,128,.28); background:rgba(34,197,94,.11); color:#4ade80; }

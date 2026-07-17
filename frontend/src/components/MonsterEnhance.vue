@@ -170,17 +170,17 @@ refreshStatus()
 .root { display:flex; flex-direction:column; gap:10px; width:100%; max-width:720px; margin:0 auto; padding-bottom:40px; container-type:inline-size; }
 .section {
   border-radius:16px; padding:16px 18px;
-  background:linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(103,232,249,0.06) 100%);
-  border:1px solid rgba(103,232,249,0.15);
+  background:linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(154,116,64,0.06) 100%);
+  border:1px solid rgba(154,116,64,0.15);
   display:flex; flex-direction:column; gap:10px;
 }
 .header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .title { font-size:0.88rem; font-weight:600; color:rgba(255,255,255,0.65); letter-spacing:1px; }
-.info-dot { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid rgba(103,232,249,0.35); color:#67e8f9; background:rgba(103,232,249,0.08); font-size:0.68rem; font-weight:700; cursor:help; flex-shrink:0; }
+.info-dot { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid rgba(154,116,64,0.35); color:#9a7440; background:rgba(154,116,64,0.08); font-size:0.68rem; font-weight:700; cursor:help; flex-shrink:0; }
 .hint { font-size:0.68rem; color:rgba(255,255,255,0.25); margin-left:auto; }
 .process-card {
   border-radius:10px; padding:8px 10px;
-  background:rgba(255,255,255,0.035); border:1px solid rgba(103,232,249,0.12);
+  background:rgba(255,255,255,0.035); border:1px solid rgba(154,116,64,0.12);
 }
 .card-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
 .memory-card {
@@ -234,5 +234,5 @@ refreshStatus()
 .empty { font-size:0.78rem; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
 @media (max-width: 640px) { .card-grid { grid-template-columns:1fr; } }
 @container (max-width:520px) { .card-grid { grid-template-columns:1fr; } }
-.note-warn { color:#67e8f9; }
+.note-warn { color:#9a7440; }
 </style>

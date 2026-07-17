@@ -132,7 +132,7 @@ onMounted(scanSaves)
 .slots,.version-row,.batch-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .version-label,.selection,.select-all { font-size:.74rem; color:rgba(255,255,255,.4); }
 .slot-btn,.plain-btn,.save-btn { padding:7px 13px; border-radius:7px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:rgba(255,255,255,.55); font:inherit; font-size:.75rem; cursor:pointer; }
-.slot-btn.on { border-color:rgba(103,232,249,.45); background:rgba(103,232,249,.11); color:#67e8f9; }
+.slot-btn.on { border-color:rgba(154,116,64,.45); background:rgba(154,116,64,.11); color:#9a7440; }
 .plain-btn:hover:not(:disabled),.slot-btn:hover { color:rgba(255,255,255,.8); background:rgba(255,255,255,.09); }
 button:disabled { opacity:.35; cursor:not-allowed; }
 .batch-row { padding:10px; border-radius:9px; background:rgba(255,255,255,.025); }
@@ -147,7 +147,7 @@ button:disabled { opacity:.35; cursor:not-allowed; }
 .col-name { flex:1; font-size:.79rem; color:rgba(255,255,255,.62); }
 .col-name small { color:rgba(255,255,255,.2); font-size:.64rem; }
 .number-input { box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.055); color:#8be9f7; outline:none; font-family:var(--font-data); }
-.number-input:focus { border-color:rgba(103,232,249,.45); }
+.number-input:focus { border-color:rgba(154,116,64,.45); }
 .col-count { width:100px; text-align:right; }
 .batch-input { width:110px; }
 input[type=checkbox] { accent-color:#9a7440; }

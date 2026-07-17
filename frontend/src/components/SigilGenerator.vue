@@ -643,7 +643,7 @@ async function removeAll() {
 }
 
 .text-input:focus, .select-input:focus {
-  border-color: rgba(103,232,249,0.4);
+  border-color: rgba(154,116,64,0.4);
   background: transparent;
 }
 
@@ -708,11 +708,11 @@ async function removeAll() {
 .btn-purple:not(:disabled):hover { background: rgba(165,180,252,0.25); }
 
 .btn-cyan {
-  background: rgba(103,232,249,0.15);
-  color: #67e8f9;
-  border: 1px solid rgba(103,232,249,0.3);
+  background: rgba(154,116,64,0.15);
+  color: #9a7440;
+  border: 1px solid rgba(154,116,64,0.3);
 }
-.btn-cyan:not(:disabled):hover { background: rgba(103,232,249,0.25); }
+.btn-cyan:not(:disabled):hover { background: rgba(154,116,64,0.25); }
 
 .btn-red {
   background: rgba(239,68,68,0.15);
@@ -759,7 +759,7 @@ async function removeAll() {
 
 .loading-hint {
   font-size: 0.78rem;
-  color: #67e8f9;
+  color: #9a7440;
   text-align: center;
   padding: 12px 0;
 }
@@ -820,9 +820,9 @@ async function removeAll() {
 }
 .sigil-select option:nth-child(even) { background:rgba(255,255,255,.035); }
 .sigil-select option:checked {
-  background: rgba(103,232,249,0.25);
-  color: #67e8f9;
-  box-shadow:inset 4px 0 #67e8f9;
+  background: rgba(154,116,64,0.25);
+  color: #9a7440;
+  box-shadow:inset 4px 0 #9a7440;
 }
 
 /* 暗色滚动条 */
@@ -885,7 +885,7 @@ async function removeAll() {
   font-weight: 600;
   padding: 4px 10px;
 }
-.existing-row input[type="checkbox"] { accent-color: #67e8f9; cursor: pointer; }
+.existing-row input[type="checkbox"] { accent-color: #9a7440; cursor: pointer; }
 .ex-col-cb { width: 20px; flex-shrink: 0; text-align: center; }
 .ex-col-name { flex: 1; color: rgba(255,255,255,0.6); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-col-level { width: 40px; text-align: right; color: rgba(255,255,255,0.58); flex-shrink: 0; }
