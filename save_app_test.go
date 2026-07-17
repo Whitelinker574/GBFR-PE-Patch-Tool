@@ -46,7 +46,10 @@ func TestQuestCodesPreserveDLCAlphanumericIDs(t *testing.T) {
 	if got := storedToQuestID(0x40A301); got != 0x40A301 {
 		t.Fatalf("alphanumeric quest id must retain packed value, got %X", got)
 	}
-	if got := questIDToNameCN(0x40A301); got != "未收录任务 · 40A301" {
+	// 0x406367 is a base-game quest with no entry in any available text table,
+	// so it should still fall back to the uncatalogued format. (0x40A301 now
+	// resolves to a real name, "新世界秩序", after the quest table was expanded.)
+	if got := questIDToNameCN(0x406367); got != "未收录任务 · 406367" {
 		t.Fatalf("DLC fallback name = %q", got)
 	}
 }

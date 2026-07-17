@@ -270,8 +270,20 @@ func progressionWeaponDefForHash(hash uint32) (ProgressionWeaponDef, bool) {
 }
 
 func progressionWeaponVisibleInInventory(hash uint32) bool {
-	def, ok := progressionWeaponDefForHash(hash)
-	return !ok || !def.CatalogHidden || def.AliasOf == ""
+	// Only explicit compatibility mirrors (catalogued directly in
+	// progressionWeaponByHash with CatalogHidden, e.g. 小女巫权杖（兼容副本）)
+	// must be hidden — they duplicate a base weapon that is also present.
+	//
+	// An awakened-variant hash is NOT in progressionWeaponByHash; it only
+	// resolves through awakeningWeaponAliases, and progressionWeaponDefForHash
+	// synthesizes CatalogHidden=true for it. That variant is the player's real,
+	// upgraded weapon and must stay visible — otherwise the owned list drops it,
+	// the catalog offers its base as "可添加", yet findWeaponAddSlot rejects the
+	// add as a duplicate (via weaponBaseHash). See slot 40255 / [黑榫]幽冥华冠.
+	if def, ok := progressionWeaponByHash[hash]; ok {
+		return !def.CatalogHidden
+	}
+	return true
 }
 
 func loadProgressionCatalog() (*ProgressionCatalog, error) {

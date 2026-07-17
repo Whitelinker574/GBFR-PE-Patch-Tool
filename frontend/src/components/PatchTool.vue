@@ -633,7 +633,7 @@ function showStatus(message, type) {
 .app-window {
   --bg:#071019; --panel:#0c1722; --panel-2:#101e2b; --line:rgba(174,204,224,.12);
   --text:#e7edf2; --muted:#7f929f; --cyan:#62d5e7; --green:#63d6a0; --amber:#e6b96b; --red:#ec7f78;
-  position:relative; height:100vh; overflow:hidden; color:var(--text); background:var(--bg);
+  position:relative; height:100%; overflow:hidden; color:var(--text); background:var(--bg);
   font-family:"Microsoft YaHei UI","Noto Sans SC",sans-serif;
 }
 .app-window::before { content:""; position:absolute; inset:38px 0 0; pointer-events:none; opacity:.16; background-image:linear-gradient(rgba(99,213,231,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(99,213,231,.06) 1px,transparent 1px); background-size:40px 40px; mask-image:linear-gradient(to bottom,black,transparent 75%); }
@@ -652,7 +652,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .win-btn { width:42px; height:100%; display:grid; place-items:center; border:0; color:#7e909b; background:transparent; cursor:pointer; }
 .win-btn:hover { color:#e7edf2; background:rgba(255,255,255,.07); }.win-btn.close:hover { background:#b84646; color:#fff; }
 .minimize-line { width:11px; height:1px; background:currentColor; }.close-lines { width:12px; height:12px; position:relative; }.close-lines::before,.close-lines::after { content:""; position:absolute; top:5px; left:0; width:12px; height:1px; background:currentColor; transform:rotate(45deg); }.close-lines::after { transform:rotate(-45deg); }
-.app-body { position:relative; z-index:1; height:calc(100vh - 38px); display:grid; grid-template-columns:200px minmax(0,1fr); }
+.app-body { position:relative; z-index:1; height:calc(100% - 38px); display:grid; grid-template-columns:200px minmax(0,1fr); }
 .sidebar { display:flex; flex-direction:column; min-height:0; padding:20px 12px 14px; border-right:1px solid var(--line); background:rgba(8,18,27,.94); }
 .sidebar-heading { padding:0 10px 16px; border-bottom:1px solid var(--line); }.sidebar-heading strong { display:block; font:600 14px Bahnschrift,"Microsoft YaHei UI",sans-serif; letter-spacing:.05em; }.sidebar-heading span { display:block; margin-top:5px; color:#607580; font-size:10px; line-height:1.5; }
 .primary-nav { display:flex; flex-direction:column; gap:5px; padding-top:15px; }
@@ -698,7 +698,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .titlebar-title { color:#e8e3d6; font:600 10px Georgia,"Times New Roman",serif; letter-spacing:.21em; }.build-chip { color:#90d8ec;border-color:rgba(139,221,243,.22);background:rgba(139,221,243,.06);font-size:8px }
 .titlebar-status { position:absolute; left:50%; top:8px; transform:translateX(-50%); justify-self:auto; z-index:1; background:rgba(7,27,46,.96); border-color:rgba(218,187,115,.2); }
 .titlebar-controls { position:absolute; top:0; right:0; height:44px; margin-left:auto; justify-self:auto; z-index:3; }.win-btn { width:46px; }.win-btn.close:hover { background:#a7484c; }
-.app-body { height:calc(100vh - 44px); grid-template-columns:220px minmax(0,1fr); }
+.app-body { height:calc(100% - 44px); grid-template-columns:220px minmax(0,1fr); }
 .sidebar { padding:23px 12px 14px; border-right-color:rgba(218,187,115,.15); background:linear-gradient(180deg,rgba(5,22,39,.93),rgba(4,17,31,.97)); box-shadow:10px 0 42px rgba(0,6,16,.2); }
 .sidebar-heading { padding:0 11px 19px; border-bottom-color:rgba(218,187,115,.14); }.sidebar-heading .sidebar-kicker { margin:0 0 7px;color:var(--gold);font:600 8px Georgia,serif;letter-spacing:.23em }.sidebar-heading strong { color:#eee8da;font:500 17px Georgia,"Noto Serif SC","STSong",serif;letter-spacing:.08em }.sidebar-heading>span:last-child { color:#607d8e;font-size:9px }
 .primary-nav { gap:6px;padding-top:17px }.nav-item { min-height:57px;grid-template-columns:30px 1fr 12px;padding:8px 9px;border-radius:3px 10px 3px 10px }.nav-item:hover { background:rgba(84,166,201,.07) }.nav-item.active { border-color:rgba(218,187,115,.2);background:linear-gradient(90deg,rgba(36,112,150,.18),rgba(14,47,74,.07));box-shadow:inset 2px 0 var(--gold) }.nav-mark { border-radius:50%;color:#718fa0;border-color:rgba(141,197,220,.16);font-family:Georgia,serif }.nav-item.active .nav-mark { color:var(--gold);border-color:rgba(218,187,115,.4);background:rgba(218,187,115,.06) }.nav-copy strong { font:500 12px Georgia,"Noto Serif SC","STSong",serif;letter-spacing:.04em }.nav-copy small { color:#587486 }.nav-arrow { color:#597789 }
@@ -727,7 +727,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .titlebar-brand { padding-left:14px; }.brand-glyph { width:23px;height:23px;border:2px solid rgba(255,229,169,.7);color:#ffe5a9;background:rgba(255,255,255,.06);font-size:11px }.titlebar-title { color:#fff4d8;font:800 11px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.15em }.build-chip { color:#d9fbfb;border-color:rgba(121,221,225,.5);background:rgba(76,187,194,.18);font-size:9px;font-weight:800 }
 .titlebar-status { top:7px; color:#55493c; border-color:rgba(133,100,49,.35); background:#fff5d9; box-shadow:0 3px 12px rgba(75,54,25,.16); font-weight:800; }
 .titlebar-controls { height:42px; }.win-btn { width:46px;color:#e5d7bc }.win-btn:hover { color:#fff;background:rgba(255,255,255,.12) }.win-btn.close:hover { background:#b85957 }
-.app-body { height:calc(100vh - 42px); grid-template-columns:230px minmax(0,1fr); }
+.app-body { height:calc(100% - 42px); grid-template-columns:230px minmax(0,1fr); }
 .app-body.home-mode { grid-template-columns:minmax(0,1fr); }.home-mode .sidebar { display:none }.home-mode .workspace-scroll { padding:0;overflow:auto }.home-mode .workspace { background:#efe1bf }
 .sidebar { padding:20px 13px 14px;border-right:1px solid rgba(130,96,48,.3);background:linear-gradient(180deg,rgba(255,249,230,.96),rgba(235,220,187,.97));box-shadow:8px 0 28px rgba(90,66,31,.12),inset -4px 0 rgba(145,110,57,.04) }
 .sidebar-heading { padding:0 11px 17px;border-bottom:1px solid rgba(143,107,51,.26) }.sidebar-heading .sidebar-kicker { color:#8a6a34;font:800 9px "Microsoft YaHei UI",sans-serif;letter-spacing:.17em }.sidebar-heading strong { color:#51463a;font:800 19px "Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.04em }.sidebar-heading>span:last-child { color:#8c7d68;font-size:10px;font-weight:700 }
