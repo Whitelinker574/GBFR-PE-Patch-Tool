@@ -680,8 +680,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel[data-tool="runtime"] :deep(.root > .section > .header),.tool-panel[data-tool="legacyRuntime"] :deep(.root > .section > .header),.tool-panel[data-tool="chara"] :deep(.root > .section > .header),.tool-panel[data-tool="overlimit"] :deep(.root > .section > .header),.tool-panel[data-tool="monster"] :deep(.root > .section > .header),.tool-panel[data-tool="summon"] :deep(.root > .section > .header) { display:none; }
 .tool-panel[data-tool="progression"] :deep(.save-title > div:first-child),.tool-panel[data-tool="language"] :deep(.section-header) { display:none; }
 .tool-panel[data-tool="progression"] :deep(.save-title) { min-height:0; justify-content:flex-end; }
-.tool-panel :deep(input),.tool-panel :deep(select),.legacy-patch input { border-radius:5px!important; border-color:rgba(174,204,224,.15)!important; background:#101f2c!important; color:#dce7ec!important; box-shadow:none!important; }
-.tool-panel :deep(button) { border-radius:5px!important; box-shadow:none!important; transform:none!important; }
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.legacy-patch input { border-radius:5px!important; border-color:rgba(174,204,224,.15)!important; background:#101f2c!important; color:#dce7ec!important; box-shadow:none!important; }
+.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)) { border-radius:5px!important; box-shadow:none!important; transform:none!important; }
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel) { border-radius:7px!important; border-color:var(--line)!important; box-shadow:none!important; }
 .tool-panel :deep(.memory-card.active) { background:rgba(99,214,160,.08)!important; border-color:rgba(99,214,160,.26)!important; }
 .tool-panel :deep(.memory-card::after) { display:none!important; }
@@ -712,7 +712,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .workspace-bar { height:39px;flex-basis:39px;padding:0 23px;border-bottom-color:rgba(154,202,224,.11);background:rgba(6,24,42,.7) }.breadcrumb strong { color:#b8c9d1 }.workspace-state { color:#758f9c }
 .tool-switcher { min-height:47px;padding:0 22px;border-bottom-color:rgba(218,187,115,.13);background:rgba(7,28,48,.67) }.tool-switcher button { height:47px;padding:0 13px;color:#6c8796 }.tool-switcher button.active { color:#f2ead9 }.tool-switcher button.active::after { left:12px;right:12px;height:1px;background:var(--gold);box-shadow:0 -3px 10px rgba(218,187,115,.28) }
 .workspace-scroll { padding:23px 26px 52px }
-.tool-panel :deep(input),.tool-panel :deep(select),.legacy-patch input { border-radius:4px!important;border-color:rgba(151,202,224,.18)!important;background:rgba(12,43,68,.78)!important;color:#edf4f6!important }.tool-panel :deep(input:focus),.tool-panel :deep(select:focus) { border-color:rgba(139,221,243,.52)!important }.tool-panel :deep(button) { border-radius:3px 8px 3px 8px!important }.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel) { border-radius:4px 12px 4px 12px!important;border-color:rgba(154,202,224,.14)!important;background-color:rgba(8,31,53,.7)!important;box-shadow:0 10px 32px rgba(0,7,16,.12)!important }
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.legacy-patch input { border-radius:4px!important;border-color:rgba(151,202,224,.18)!important;background:rgba(12,43,68,.78)!important;color:#edf4f6!important }.tool-panel :deep(input:focus),.tool-panel :deep(select:focus) { border-color:rgba(139,221,243,.52)!important }.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)) { border-radius:3px 8px 3px 8px!important }.tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel) { border-radius:4px 12px 4px 12px!important;border-color:rgba(154,202,224,.14)!important;background-color:rgba(8,31,53,.7)!important;box-shadow:0 10px 32px rgba(0,7,16,.12)!important }
 .tool-panel :deep(.primary-btn),.tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn) { border-color:rgba(218,187,115,.38)!important;background:linear-gradient(135deg,rgba(184,142,61,.24),rgba(91,65,24,.15))!important;color:#f0d99d!important }
 .tool-panel :deep(.primary-btn:hover:not(:disabled)),.tool-panel :deep(.apply-btn:hover:not(:disabled)) { border-color:var(--gold)!important;background:rgba(218,187,115,.19)!important }
 .calibration-card,.compat-section,.path-card,.patch-card,.backup-card { border-color:rgba(154,202,224,.14);border-radius:4px 12px 4px 12px;background:rgba(8,31,53,.76) }.calibration-card.primary-card { border-top-color:var(--gold) }.card-kicker,.compat-heading span { color:var(--gold);font-family:Georgia,serif }.calibration-card>strong,.compat-heading h2 { font-family:Georgia,"Noto Serif SC","STSong",serif;color:#eee7d8 }.action.primary { color:var(--gold);border-color:rgba(218,187,115,.3);background:rgba(218,187,115,.07) }.legacy-links button { border-radius:3px 9px 3px 9px }
@@ -744,8 +744,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel { color:#554b40;font-weight:600 }
 .tool-panel :deep(.root),.tool-panel :deep(.sigil-container),.tool-panel :deep(.wrightstone-container),.tool-panel :deep(.memory-sigil) { color:#554b40!important;font-weight:600 }
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.quests) { border-color:rgba(143,106,51,.3)!important;border-radius:2px 7px 2px 7px!important;background:linear-gradient(135deg,rgba(255,248,226,.78),rgba(231,214,176,.68))!important;backdrop-filter:blur(5px);box-shadow:0 7px 16px rgba(90,65,29,.08),inset 0 0 0 1px rgba(255,255,255,.14)!important }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),.legacy-patch input { border-color:rgba(139,105,52,.34)!important;background:rgba(246,234,207,.78)!important;color:#4d453b!important;font-weight:700!important;color-scheme:light!important }.tool-panel :deep(input::placeholder),.tool-panel :deep(textarea::placeholder) { color:#917e65!important }.tool-panel :deep(select option) { background:#f2e4c4!important;color:#51483e!important }
-.tool-panel :deep(button) { font-weight:900!important;border-radius:2px 5px 2px 5px!important }.tool-panel :deep(.section-title),.tool-panel :deep(.title),.tool-panel :deep(h2),.tool-panel :deep(h3),.tool-panel :deep(.editor-title),.tool-panel :deep(.save-title strong) { color:#54493c!important;font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif!important;font-weight:900!important }.tool-panel :deep(label),.tool-panel :deep(.hint),.tool-panel :deep(.field label),.tool-panel :deep(.section-header p),.tool-panel :deep(.memory-hint),.tool-panel :deep(.memory-info),.tool-panel :deep(.save-hint),.tool-panel :deep(.empty-hint) { color:#8b7c68!important;font-weight:800!important }
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)),.legacy-patch input { border-color:rgba(139,105,52,.34)!important;background:rgba(246,234,207,.78)!important;color:#4d453b!important;font-weight:700!important;color-scheme:light!important }.tool-panel :deep(input::placeholder),.tool-panel :deep(textarea::placeholder) { color:#917e65!important }.tool-panel :deep(select option) { background:#f2e4c4!important;color:#51483e!important }
+.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)) { font-weight:900!important;border-radius:2px 5px 2px 5px!important }.tool-panel :deep(.section-title),.tool-panel :deep(.title),.tool-panel :deep(h2),.tool-panel :deep(h3),.tool-panel :deep(.editor-title),.tool-panel :deep(.save-title strong) { color:#54493c!important;font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif!important;font-weight:900!important }.tool-panel :deep(label),.tool-panel :deep(.hint),.tool-panel :deep(.field label),.tool-panel :deep(.section-header p),.tool-panel :deep(.memory-hint),.tool-panel :deep(.memory-info),.tool-panel :deep(.save-hint),.tool-panel :deep(.empty-hint) { color:#8b7c68!important;font-weight:800!important }
 .tool-panel :deep(.row-name-text),.tool-panel :deep(.queue-name),.tool-panel :deep(.catalog-row strong),.tool-panel :deep(.col-name),.tool-panel :deep(.name),.tool-panel :deep(.ex-col-name),.tool-panel :deep(.ed-current-name) { color:#544a3f!important;font-weight:800!important }.tool-panel :deep(.row-chip),.tool-panel :deep(.queue-item),.tool-panel :deep(.trait-card),.tool-panel :deep(.catalog-row),.tool-panel :deep(.batch-row),.tool-panel :deep(.row-head),.tool-panel :deep(.existing-row) { border-color:rgba(142,106,53,.22)!important;background:rgba(239,225,192,.58)!important }.tool-panel :deep(.catalog-row:hover),.tool-panel :deep(.row-item:hover),.tool-panel :deep(.row:hover) { background:rgba(226,237,203,.72)!important }.tool-panel :deep(.catalog-row.on) { border-color:rgba(154,116,64,.42)!important;background:linear-gradient(90deg,rgba(154,116,64,.25),rgba(248,239,217,.64))!important;box-shadow:inset 3px 0 #9a7440!important }
 .tool-panel :deep(.btn-cyan),.tool-panel :deep(.primary),.tool-panel :deep(.primary-btn),.tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),.tool-panel :deep(.save-btn),.tool-panel :deep(.language-button) { border-color:rgba(28,91,98,.55)!important;background:linear-gradient(135deg,#348087,#23646b)!important;color:#fffef4!important;text-shadow:0 1px rgba(26,67,71,.45)!important }.tool-panel :deep(.btn-green),.tool-panel :deep(.btn-connect) { border-color:rgba(43,101,71,.48)!important;background:linear-gradient(135deg,#3c805d,#2e684a)!important;color:#fffef5!important }.tool-panel :deep(.btn-purple),.tool-panel :deep(.plain-btn),.tool-panel :deep(.slot-btn),.tool-panel :deep(.btn-refresh) { border-color:rgba(145,108,52,.28)!important;background:#f2e4c5!important;color:#705c3e!important }.tool-panel :deep(.btn-link),.tool-panel :deep(.btn-icon),.tool-panel :deep(.ed-link),.tool-panel :deep(.row-tool) { color:#6b573b!important }
 .tool-panel :deep(.tab),.tool-panel :deep(.chip),.tool-panel :deep(.version-label),.tool-panel :deep(.selection),.tool-panel :deep(.select-all),.tool-panel :deep(.head>span),.tool-panel :deep(.id),.tool-panel :deep(.row-meta),.tool-panel :deep(.row-name-lv),.tool-panel :deep(.row-chip-tag),.tool-panel :deep(.row-chip-lv),.tool-panel :deep(.queue-detail),.tool-panel :deep(.ex-col-level),.tool-panel :deep(.ex-col-trait) { color:#8d7d68!important;font-weight:700!important }.tool-panel :deep(.tab.active) { color:#2f8e96!important;border-bottom-color:#3ba7b0!important }.tool-panel :deep(code),.tool-panel :deep(.count),.tool-panel :deep(.catalog-row em) { color:#2e8f98!important }.tool-panel :deep(input[type=checkbox]) { accent-color:#9a7440 }
@@ -810,8 +810,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.section),.tool-panel :deep(.save-card),.tool-panel :deep(.editor-card),.tool-panel :deep(.memory-card),.tool-panel :deep(.language-panel),.tool-panel :deep(.library-card),.tool-panel :deep(.detail-panel),.tool-panel :deep(.catalog-list),.tool-panel :deep(.quests) { width:100%;border-color:rgba(127,88,38,.4)!important;background:linear-gradient(135deg,rgba(255,249,229,.97),rgba(233,215,176,.94))!important;backdrop-filter:none!important;box-shadow:0 6px 14px rgba(77,54,25,.08),inset 0 0 0 1px rgba(255,255,255,.3)!important }
 .tool-panel :deep(.section) { padding:16px 18px!important }
 .tool-panel :deep(.root),.tool-panel :deep(.sigil-container),.tool-panel :deep(.wrightstone-container),.tool-panel :deep(.memory-sigil) { gap:13px!important }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea) { min-height:36px;font-size:12px!important }
-.tool-panel :deep(button) { min-height:36px;font-size:12px!important }
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)) { min-height:36px;font-size:12px!important }
+.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)) { min-height:36px;font-size:12px!important }
 .tool-panel :deep(.btn-icon),.tool-panel :deep(.btn-link),.tool-panel :deep(.ed-link),.tool-panel :deep(.row-tool),.tool-panel :deep(.picker-inline-clear),.tool-panel :deep(.clear-btn),.tool-panel :deep(.rename-confirm),.tool-panel :deep(.rename-cancel),.tool-panel :deep(.ed-max-all) { min-height:28px!important }
 .tool-panel :deep(.ed-level input) { width:26px!important;min-height:24px!important;font-size:12px!important }
 .tool-panel :deep(.picker-search input),.tool-panel :deep(.rename-input) { min-height:28px!important }
@@ -1042,7 +1042,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   background:none!important;
 }
 .tool-panel :deep(.save-title:empty) { display:none!important }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),.legacy-patch input {
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)),.legacy-patch input {
   border-color:rgba(151,111,53,.4)!important;
   border-radius:1px 5px 1px 5px!important;
   color:#51483e!important;
@@ -1351,7 +1351,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   background:none!important;
   border-bottom:1px solid rgba(143,104,49,.2)!important;
 }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),.legacy-patch input {
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)),.legacy-patch input {
   min-height:32px!important;
   border-radius:2px!important;
   background:rgba(255,251,237,.62)!important;
@@ -1382,7 +1382,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.ed-legality .icon) { background:transparent!important }
 .tool-panel :deep(.ed-legality .text small) { color:#665845!important;font-size:9px!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important }
 .tool-panel :deep(.ed-changed) { color:#796950!important;font-size:9px!important }
-.tool-panel :deep(button) { min-height:32px;font-size:11px!important }
+.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)) { min-height:32px;font-size:11px!important }
 .tool-panel :deep(.btn-cyan),.tool-panel :deep(.btn-green),.tool-panel :deep(.primary),.tool-panel :deep(.primary-btn),
 .tool-panel :deep(.apply-btn),.tool-panel :deep(.ed-apply-btn),.tool-panel :deep(.write-btn),.tool-panel :deep(.ed-write),
 .tool-panel :deep(.save-btn),.tool-panel :deep(.language-button),.tool-panel :deep(.btn-connect),.action.primary {
@@ -1501,7 +1501,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(.catalog-list),.tool-panel :deep(.quests),.calibration-card,.compat-section,.path-card,.patch-card,.backup-card {
   background:#f6e8c9!important;
 }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),.legacy-patch input,
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)),.legacy-patch input,
 .tool-panel :deep(.picker-selected),.tool-panel :deep(.readonly-field),.tool-panel :deep(.value-input),.tool-panel :deep(.od-select) {
   background:#fff9e8!important;
 }
@@ -1617,7 +1617,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(label),.tool-panel :deep(.field label),.guide-caution span { font-weight:600!important;letter-spacing:.02em!important }
 .nav-copy strong,.tool-switcher button,.guide-steps li,.guide-caution p,.note-bubble p,
 .tool-panel :deep(p),.tool-panel :deep(span),.tool-panel :deep(small) { font-weight:560 }
-.tool-panel :deep(button),.action,.legacy-links button { font-weight:650!important }
+.tool-panel :deep(button:not(.ui-btn):not(.ui-seg-btn):not(.ui-tab)),.action,.legacy-links button { font-weight:650!important }
 .build-chip,.matrix-row,.patch-state,.file-meta,.detected-file,
 .tool-panel :deep(input[type="number"]),.tool-panel :deep(input[inputmode="numeric"]),
 .tool-panel :deep(input[inputmode="decimal"]),.tool-panel :deep(code),
@@ -1635,7 +1635,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .guide-caution p { font-size:10.5px!important;line-height:1.6!important }
 .tool-page-heading h1 { font-size:20px!important }
 .tool-page-heading p { width:100%;max-width:none;font-size:11px!important;font-weight:560!important }
-.tool-panel :deep(input),.tool-panel :deep(select),.tool-panel :deep(textarea),
+.tool-panel :deep(input:not(.ui-input)),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)),
 .tool-panel :deep(.picker-selected),.tool-panel :deep(.catalog-trigger) { font-size:12px!important;font-weight:560!important }
 .tool-panel :deep(.field label),.tool-panel :deep(label) { font-size:10.5px!important;line-height:1.45!important }
 .tool-panel :deep(.field label small),.tool-panel :deep(label small) { font-size:9px!important;font-weight:500!important }
@@ -1670,7 +1670,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .tool-panel :deep(input:focus),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:focus),.path-input-row input:focus { border-color:#9b7137!important;outline:1px solid rgba(155,113,55,.2)!important }
 .tool-panel :deep(.catalog-row.on),.tool-panel :deep(.summon-row.selected) { border-color:rgba(139,97,43,.38)!important;background:#ead7ae!important;box-shadow:inset 3px 0 #936934!important }
 .tool-panel :deep(.catalog-row:hover),.tool-panel :deep(.summon-row:hover) { background:#f2e4c5!important }
-.tool-center-scroll,.workspace-scroll,.tool-panel :deep(.catalog-list),.tool-panel :deep(.list),.tool-panel :deep(select) { scrollbar-width:thin;scrollbar-color:rgba(137,96,44,.62) transparent }
+.tool-center-scroll,.workspace-scroll,.tool-panel :deep(.catalog-list),.tool-panel :deep(.list),.tool-panel :deep(select:not(.ui-select)) { scrollbar-width:thin;scrollbar-color:rgba(137,96,44,.62) transparent }
 .tool-center-scroll::-webkit-scrollbar,.workspace-scroll::-webkit-scrollbar,.tool-panel :deep(.catalog-list::-webkit-scrollbar),.tool-panel :deep(.list::-webkit-scrollbar),.tool-panel :deep(select::-webkit-scrollbar) { width:7px;height:7px }
 .tool-center-scroll::-webkit-scrollbar-track,.workspace-scroll::-webkit-scrollbar-track,.tool-panel :deep(.catalog-list::-webkit-scrollbar-track),.tool-panel :deep(.list::-webkit-scrollbar-track),.tool-panel :deep(select::-webkit-scrollbar-track) { background:transparent }
 .tool-center-scroll::-webkit-scrollbar-thumb,.workspace-scroll::-webkit-scrollbar-thumb,.tool-panel :deep(.catalog-list::-webkit-scrollbar-thumb),.tool-panel :deep(.list::-webkit-scrollbar-thumb),.tool-panel :deep(select::-webkit-scrollbar-thumb) { border:2px solid transparent;border-radius:999px;background-clip:padding-box;background-color:rgba(137,96,44,.62) }
@@ -1809,7 +1809,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 <style scoped>
 /* ═══════════ UI Polish · 第二轮微调（据 Gemini 复审）═══════════ */
 /* 输入框/下拉框：羊皮纸底 + 暗金细边 + 内阴影，融入复古面板 */
-.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(select),.tool-panel :deep(textarea) {
+.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(select:not(.ui-select)),.tool-panel :deep(textarea:not(.ui-input)) {
   background:linear-gradient(180deg,rgba(247,238,214,.92),rgba(239,227,198,.88))!important;
   border-color:rgba(150,112,52,.44)!important; box-shadow:inset 0 1px 2px rgba(96,68,28,.1)!important; }
 .tool-panel :deep(input:not([type=checkbox]):not([type=radio]):focus),.tool-panel :deep(select:focus),.tool-panel :deep(textarea:focus) {
@@ -1934,7 +1934,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
   box-shadow:0 4px 12px rgba(77,54,25,.07)!important;
 }
 /* 备份页输入框改为不透明，立绘不再透出 */
-.legacy-patch input,.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(textarea) { background:#fbf3dd!important; }
+.legacy-patch input,.tool-panel :deep(input:not([type=checkbox]):not([type=radio])),.tool-panel :deep(textarea:not(.ui-input)) { background:#fbf3dd!important; }
 
 /* ═══ 响应式：窄到放不下时，立绘让位，保证“教程 + 内容”可读（教程列给足宽度，不再被压成竖排单字）═══ */
 /* 全局 zoom 下，即使真实窗口只有 960，画布也被补偿到 ~1450px，立绘有充足空间。
