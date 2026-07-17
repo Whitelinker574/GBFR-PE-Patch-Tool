@@ -50,8 +50,8 @@ const chapters = [
 </template>
 
 <style scoped>
-.journal-home { min-height:100%; padding:13px; color:#564a3b; font-family:var(--font-ui); font-weight:700; }
-.illustrated-journal { position:relative; width:100%; min-height:650px; aspect-ratio:16/9; overflow:hidden; border:1px solid rgba(154,111,47,.38); border-radius:4px 14px 5px 14px; background:#fbefd5; box-shadow:0 18px 42px rgba(87,62,26,.2),inset 0 0 0 6px rgba(255,250,228,.5); isolation:isolate; }
+.journal-home { height:100%; padding:13px; color:#564a3b; font-family:var(--font-ui); font-weight:700; }
+.illustrated-journal { position:relative; width:100%; height:100%; min-height:520px; overflow:hidden; border:1px solid rgba(154,111,47,.38); border-radius:4px 14px 5px 14px; background:#fbefd5; box-shadow:0 18px 42px rgba(87,62,26,.2),inset 0 0 0 6px rgba(255,250,228,.5); isolation:isolate; }
 .journal-scene { position:absolute; inset:0; z-index:0; width:100%; height:100%; object-fit:cover; object-position:center; }
 .illustrated-journal::after { content:"";position:absolute;inset:9px;z-index:1;border:1px solid rgba(166,120,53,.22);border-radius:2px 9px 3px 9px;pointer-events:none }
 .page-menu { position:relative;z-index:2;width:42%;min-width:430px;height:100%;display:flex;flex-direction:column;justify-content:center;padding:58px 34px 75px 74px }

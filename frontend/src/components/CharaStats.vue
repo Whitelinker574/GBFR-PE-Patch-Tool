@@ -150,7 +150,7 @@ button:disabled { opacity:.35; cursor:not-allowed; }
 .number-input:focus { border-color:rgba(103,232,249,.45); }
 .col-count { width:100px; text-align:right; }
 .batch-input { width:110px; }
-input[type=checkbox] { accent-color:#67e8f9; }
+input[type=checkbox] { accent-color:#9a7440; }
 @container (max-width:460px) { .header { flex-direction:column; } .safety { white-space:normal; } .selection { margin-left:0; flex-basis:100%; } .col-count { width:82px; } }
 .empty { font-size:.78rem; color:rgba(255,255,255,.32); text-align:center; padding:16px 0; }
 .empty.error { color:#f87171; }

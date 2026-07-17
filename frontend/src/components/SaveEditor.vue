@@ -142,6 +142,6 @@ button:disabled { opacity:.35; cursor:not-allowed; }
 .name { flex:1; font-size:.78rem; color:rgba(255,255,255,.58); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .count { width:86px; text-align:right; color:#8be9f7; font-family:var(--font-data); }
 .foot { padding:8px 12px; border-top:1px solid rgba(255,255,255,.05); font-size:.65rem; color:rgba(74,222,128,.58); }
-input[type=checkbox] { accent-color:#67e8f9; }
+input[type=checkbox] { accent-color:#9a7440; }
 @container (max-width:460px) { .head,.batch { flex-wrap:wrap; } .search { width:100%; order:3; } .batch .number-input { margin-left:0; flex:1; min-width:90px; } .batch .save-btn { flex:1; } }
 </style>

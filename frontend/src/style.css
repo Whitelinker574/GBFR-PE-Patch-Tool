@@ -100,4 +100,4 @@ input[type="number"]::-webkit-outer-spin-button { margin:0; -webkit-appearance:n
 #app { text-align: left; }
 
 button, input, select, textarea { transition:border-color .16s ease,background-color .16s ease,color .16s ease,opacity .16s ease; }
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid rgba(58,169,179,.58); outline-offset:2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid rgba(154,116,64,.55); outline-offset:2px; }
