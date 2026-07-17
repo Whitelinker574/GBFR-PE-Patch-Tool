@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutEditContext } from '../../wailsjs/go/main/App'
+import { LoadoutApply, LoadoutEditContext, LoadoutSimulate } from '../../wailsjs/go/main/App'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps({
@@ -30,6 +30,24 @@ const occupiedSlots = computed(() => slots.value.filter(s => s.occupied))
 const masterySources = computed(() => ctx.value?.masterySources || [])
 
 const selectedSlot = computed(() => slots.value.find(s => s.unitId === targetSlot.value) || null)
+
+// ── 配装模拟器：随所选因子实时算「词条加成汇总」 ──
+const bonuses = ref([])
+const simulating = ref(false)
+let simTimer = null
+function refreshSim() {
+  clearTimeout(simTimer)
+  simTimer = setTimeout(async () => {
+    const ids = form.value.sigilSlotIds.filter(Boolean)
+    if (!props.savePath || !ids.length) { bonuses.value = []; return }
+    simulating.value = true
+    try { bonuses.value = (await LoadoutSimulate(props.savePath, ids)) || [] }
+    catch { bonuses.value = [] }
+    finally { simulating.value = false }
+  }, 180)
+}
+watch(() => form.value.sigilSlotIds.slice(), refreshSim, { deep: true })
+const catClass = (label) => ({ '攻击类': 'atk', '基础能力': 'base', '防御类': 'def', '支援类': 'sup' }[label] || 'misc')
 
 async function loadCtx() {
   if (!props.savePath || !props.charaHash) return
@@ -185,6 +203,19 @@ async function apply() {
           </div>
         </div>
 
+        <!-- 配装模拟器：所选因子的词条加成汇总（同名相加→封顶→取游戏原表数值） -->
+        <div class="ed-field" v-if="form.sigilSlotIds.length">
+          <label>加成汇总 <em>{{ simulating ? '计算中…' : bonuses.length + ' 条词条' }}</em></label>
+          <div v-if="bonuses.length" class="sim-list">
+            <div v-for="b in bonuses" :key="b.traitId" class="sim-row" :class="catClass(b.catLabel)">
+              <span class="sim-name">{{ b.name }}<i v-if="b.capped" class="sim-cap" title="已达词条上限">封顶</i></span>
+              <span class="sim-lv">Lv{{ b.level }}<small v-if="b.rawLevel !== b.level">/{{ b.rawLevel }}</small></span>
+              <span class="sim-eff">{{ b.effect }}</span>
+            </div>
+          </div>
+          <small v-else-if="!simulating" class="hint">所选因子暂无可汇总的词条（或词条未收录数值）</small>
+        </div>
+
         <div class="ed-field">
           <label>技能（{{ form.skillHashes.length }}/4 · 池 {{ ctx.skills.length }}）</label>
           <div class="pick-grid">
@@ -251,5 +282,18 @@ async function apply() {
 .apply-btn:hover:not(:disabled) { background:#76552d; }
 .apply-btn:disabled { opacity:.45; cursor:not-allowed; }
 .safety { font-size:.66rem; color:var(--text-muted); }
+/* 模拟器加成汇总表 */
+.sim-list { display:flex; flex-direction:column; gap:2px; max-height:240px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-card-pop); padding:4px; }
+.sim-row { display:grid; grid-template-columns:5.5em 4em 1fr; gap:8px; align-items:baseline; padding:3px 7px; border-radius:var(--radius-sm); font-size:.7rem; border-left:3px solid var(--border-soft); }
+.sim-row.atk { border-left-color:var(--danger); }
+.sim-row.base { border-left-color:var(--accent); }
+.sim-row.def { border-left-color:var(--info); }
+.sim-row.sup { border-left-color:var(--success); }
+.sim-row:nth-child(even) { background:var(--surface-row); }
+.sim-name { font-weight:800; color:var(--text-primary); white-space:nowrap; }
+.sim-cap { font-style:normal; margin-left:4px; font-size:.6rem; color:var(--warning-ink); }
+.sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.sim-lv small { color:var(--text-muted); }
+.sim-eff { color:var(--text-secondary); white-space:pre-line; line-height:1.4; }
 .ed-field .hint { font-size:.66rem; color:var(--text-muted); }
 </style>
