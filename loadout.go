@@ -29,6 +29,12 @@ import (
 // 「角色块」不能由角色序号推算：实测 SaveData1 的伊欧块基址是 20060，
 // 而 SaveData2 的 20060 属于欧根（存档有转换存档 / DLC 两套角色布局，
 // 见 save_app.go）。块基址恒对齐 15 边界，故槽位号取模即可，归属角色一律读 3003。
+//
+// 写入前提（实测 SaveData2(3).dat 与 SaveData1.dat 一致）：
+// 615 个预设槽（UnitID 20000..20614 = 41 个角色块 × 15 槽）在存档里**全部预先分配**，
+// 空槽的六个字段同样存在，只是 3003=EmptyHash。各字段 ValueCnt 恒定：
+// 3003=1 / 3002=64 / 1402=1 / 1403=13 / 1404=4 / 3007=50。
+// 因此写入配装只需原地改值（sigil_store.go 的 patchUint 系列），无需插入 FlatBuffer 条目。
 const (
 	loadoutNameIDType    uint32 = 3002
 	loadoutCharIDType    uint32 = 3003
