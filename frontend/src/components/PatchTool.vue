@@ -83,6 +83,8 @@ const state = reactive({
 })
 
 const activeTab = ref('home')
+// 操作指南默认收起（占空间且用处不大），保留角色贴纸建议常显；点标题展开步骤
+const guideOpen = ref(false)
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const manualPath = ref('')
@@ -529,12 +531,16 @@ function showStatus(message, type) {
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
 
           <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed }" :data-tool="activeTab">
-            <aside class="guide-rail">
-              <div class="guide-heading"><span>操作指南</span><small>始终显示</small></div>
-              <ol class="guide-steps">
-                <li v-for="(step, index) in currentMeta.usage" :key="step"><b>{{ index + 1 }}</b><span>{{ step }}</span></li>
-              </ol>
-              <div class="guide-caution"><span>使用前确认</span><p>{{ currentMeta.caution }}</p></div>
+            <aside class="guide-rail" :class="{ collapsed: !guideOpen }">
+              <button class="guide-heading" type="button" @click="guideOpen = !guideOpen" v-if="currentMeta.usage && currentMeta.usage.length">
+                <span>操作指南</span><small>{{ guideOpen ? '收起' : '展开' }}</small>
+              </button>
+              <template v-if="guideOpen">
+                <ol class="guide-steps">
+                  <li v-for="(step, index) in currentMeta.usage" :key="step"><b>{{ index + 1 }}</b><span>{{ step }}</span></li>
+                </ol>
+                <div class="guide-caution" v-if="currentMeta.caution"><span>使用前确认</span><p>{{ currentMeta.caution }}</p></div>
+              </template>
               <aside class="guide-character-note">
                 <div class="note-bubble"><b>{{ currentMeta.speaker }}的建议</b><p>{{ currentMeta.note }}</p></div>
                 <img class="guide-sticker" :src="currentSticker" :alt="`${currentMeta.speaker}表情贴纸`" loading="eager" decoding="async">
@@ -778,10 +784,16 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .workspace-scroll.tool-workspace { overflow:hidden;padding:12px 0 0 14px;scrollbar-gutter:auto }
 .tool-stage { position:relative;isolation:isolate;width:100%;height:100%;min-height:0;display:grid;grid-template-columns:190px minmax(0,620px) minmax(220px,1fr);gap:12px;overflow:hidden }
 .guide-rail { position:relative;z-index:5;min-height:0;align-self:stretch;margin-bottom:12px;padding:16px 14px;border:1px solid rgba(143,106,51,.31);border-radius:3px 13px 3px 13px;background:linear-gradient(155deg,rgba(255,249,229,.91),rgba(228,208,166,.86));box-shadow:0 8px 18px rgba(85,61,27,.08),inset 0 0 0 1px rgba(255,255,255,.22);overflow:hidden }
-.guide-heading { display:flex;align-items:end;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid rgba(145,108,51,.22) }.guide-heading span { color:#53473a;font-size:15px;font-weight:900 }.guide-heading small { color:#735b34;font-size:9px;font-weight:900 }
+.guide-heading { width:100%;display:flex;align-items:end;justify-content:space-between;padding:0 0 11px;border:0;border-bottom:1px solid rgba(145,108,51,.22);background:transparent;cursor:pointer;font:inherit;text-align:left }.guide-heading span { color:#53473a;font-size:15px;font-weight:900 }.guide-heading small { color:#735b34;font-size:9px;font-weight:900 }.guide-heading:hover small { color:var(--accent) }
+/* 收起态：指南只留可点的标题条，腾出竖向空间给贴纸建议与内容 */
+.guide-rail.collapsed { justify-content:flex-start }
+.guide-rail.collapsed .guide-heading { border-bottom:0;padding-bottom:0 }
 .guide-steps { list-style:none;display:flex;flex-direction:column;gap:9px;margin:15px 0 0;padding:0 }.guide-steps li { display:grid;grid-template-columns:25px 1fr;gap:8px;align-items:center;color:#66533d;font-size:11px;font-weight:800;line-height:1.5 }.guide-steps li b { display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:linear-gradient(135deg,#397f85,#235d63);color:#fffef4;font-size:10px;box-shadow:0 3px 8px rgba(42,139,147,.2) }
 .guide-caution { margin-top:17px;padding:10px 11px;border:1px solid rgba(174,119,49,.25);background:rgba(229,190,106,.16) }.guide-caution span { color:#7d541e;font-size:9px;font-weight:900 }.guide-caution p { margin:5px 0 0;color:#66533d;font-size:10px;font-weight:800;line-height:1.6 }
-.guide-character-note { position:absolute;z-index:3;left:10px;right:10px;bottom:10px;height:250px;pointer-events:none }.note-bubble { position:absolute;z-index:3;left:0;right:0;top:0;padding:10px 11px 11px;border:1px solid rgba(151,109,50,.27);border-radius:12px 5px 12px 5px;background:rgba(255,252,238,.88);box-shadow:0 5px 14px rgba(76,54,25,.09) }.note-bubble::after { content:"";position:absolute;left:30px;bottom:-8px;width:14px;height:14px;border-right:1px solid rgba(151,109,50,.27);border-bottom:1px solid rgba(151,109,50,.27);background:#fffbed;transform:rotate(45deg) }.note-bubble b { color:#246a70;font-size:10px;font-weight:900 }.note-bubble p { margin:5px 0 0;color:#5e5141;font-size:9px;font-weight:800;line-height:1.55 }.guide-sticker { position:absolute;z-index:2;left:50%;bottom:-14px;width:150px;height:160px;object-fit:contain;transform:translateX(-50%) rotate(-2deg);filter:drop-shadow(0 8px 7px rgba(78,55,25,.17)) }
+.guide-character-note { position:absolute;z-index:3;left:10px;right:10px;bottom:10px;height:250px;pointer-events:none }.note-bubble { position:absolute;z-index:3;left:0;right:0;top:0;padding:10px 11px 11px;border:1px solid rgba(151,109,50,.27);border-radius:12px 5px 12px 5px;background:rgba(255,252,238,.88);box-shadow:0 5px 14px rgba(76,54,25,.09) }.note-bubble::after { content:"";position:absolute;left:30px;bottom:-8px;width:14px;height:14px;border-right:1px solid rgba(151,109,50,.27);border-bottom:1px solid rgba(151,109,50,.27);background:#fffbed;transform:rotate(45deg) }.note-bubble b { color:#246a70;font-size:10px;font-weight:900 }.note-bubble p { margin:5px 0 0;color:#5e5141;font-size:9px;font-weight:800;line-height:1.55 }.guide-sticker { position:absolute;z-index:2;left:50%;bottom:-14px;width:150px;height:160px;object-fit:contain;transform-origin:50% 100%;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 8px 7px rgba(78,55,25,.17));animation:chibi-float 4.2s var(--ease-standard,ease-in-out) infinite;will-change:transform }
+.guide-sticker:hover { animation:chibi-wiggle .5s ease-in-out infinite }
+@keyframes chibi-float { 0%,100%{transform:translateX(-50%) rotate(-2deg) translateY(0)} 50%{transform:translateX(-50%) rotate(-1deg) translateY(-6px)} }
+@keyframes chibi-wiggle { 0%,100%{transform:translateX(-50%) rotate(-2deg)} 25%{transform:translateX(-50%) rotate(3deg) scale(1.04)} 75%{transform:translateX(-50%) rotate(-6deg) scale(1.04)} }
 .tool-center-scroll { position:relative;z-index:6;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 32px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:transparent transparent;container-type:inline-size }
 .tool-center-scroll:hover,.tool-center-scroll:focus-within { scrollbar-color:rgba(44,112,118,.34) transparent }
 .tool-center-scroll::-webkit-scrollbar { width:6px;height:6px }
