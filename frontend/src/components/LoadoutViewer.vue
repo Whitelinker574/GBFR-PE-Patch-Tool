@@ -17,14 +17,6 @@ const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御�
 
 function catLabel(cat) { return CAT_LABELS[cat] || '基础盘' }
 
-// 专精激活等级：点满 10 个→1 级；20 个→3 级；30 个→5 级（skillboard_group 阈值）
-function treeLevel(count) {
-  if (count >= 30) return 5
-  if (count >= 20) return 3
-  if (count >= 10) return 1
-  return 0
-}
-
 const currentGroup = computed(() => groups.value.find(g => g.charaName === selectedChara.value) || null)
 const presetCount = computed(() => {
   let n = 0
@@ -33,22 +25,25 @@ const presetCount = computed(() => {
 })
 
 function masterySummary(lo) {
-  const byCat = {}
+  const order = ['R1', 'R2', 'R3', 'EX']
+  const byRank = new Map()
   for (const m of lo.mastery || []) {
-    const c = m.cat || ''
-    byCat[c] = (byCat[c] || 0) + 1
+    const rank = m.rank || 'unknown'
+    const current = byRank.get(rank) || { rank, label: m.rankLabel || rank, count: 0 }
+    current.count += 1
+    byRank.set(rank, current)
   }
-  return Object.entries(byCat).map(([cat, count]) => ({ cat, count, level: treeLevel(count) }))
+  return [...byRank.values()].sort((a, b) => order.indexOf(a.rank) - order.indexOf(b.rank))
 }
 
 function masteryGrouped(lo) {
-  const byCat = new Map()
+  const byRankAndCat = new Map()
   for (const m of lo.mastery || []) {
-    const c = m.cat || ''
-    if (!byCat.has(c)) byCat.set(c, [])
-    byCat.get(c).push(m)
+    const key = `${m.rank || 'unknown'}:${m.cat || ''}`
+    if (!byRankAndCat.has(key)) byRankAndCat.set(key, { key, rankLabel: m.rankLabel || m.rank, cat: m.cat, nodes: [] })
+    byRankAndCat.get(key).nodes.push(m)
   }
-  return [...byCat.entries()].map(([cat, nodes]) => ({ cat, nodes }))
+  return [...byRankAndCat.values()]
 }
 
 function toggle(lo) {
@@ -125,6 +120,7 @@ onMounted(async () => {
     <section v-if="mode === 'edit' && currentGroup" class="section">
       <div class="section-title"><span>{{ currentGroup.charaName }} · 编辑写入</span><small>把自定义配装写入指定槽位（只引用你已拥有的资源）</small></div>
       <LoadoutEditor :save-path="savePath" :chara-hash="currentGroup.charaHash" :chara-name="currentGroup.charaName"
+        :loadouts="currentGroup.loadouts"
         @status="(m, t) => emit('status', m, t)" @reload="load(savePath)" />
     </section>
 
@@ -145,7 +141,7 @@ onMounted(async () => {
         </div>
         <div class="mastery-summary">
           <span>专精：</span>
-          <i v-for="t in masterySummary(lo)" :key="t.cat">{{ catLabel(t.cat) }} {{ t.count }}点<b v-if="t.level"> {{ t.level }}级</b></i>
+          <i v-for="t in masterySummary(lo)" :key="t.rank">{{ t.label }} {{ t.count }}点</i>
           <i v-if="!(lo.mastery || []).length" class="dim">未保存</i>
         </div>
         <div v-if="expanded.has(lo.unitId)" class="detail">
@@ -158,8 +154,8 @@ onMounted(async () => {
               </li>
             </ul>
           </div>
-          <div v-for="grp in masteryGrouped(lo)" :key="grp.cat" class="detail-block">
-            <h4>{{ catLabel(grp.cat) }}（{{ grp.nodes.length }}点 · {{ treeLevel(grp.nodes.length) }}级）</h4>
+          <div v-for="grp in masteryGrouped(lo)" :key="grp.key" class="detail-block">
+            <h4>{{ grp.rankLabel }} · {{ catLabel(grp.cat) }}（{{ grp.nodes.length }}点）</h4>
             <ul>
               <li v-for="m in grp.nodes" :key="m.hash">
                 <b v-if="m.name">★{{ m.name }} — </b>{{ m.desc || ('??? ' + m.hash) }}

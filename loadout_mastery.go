@@ -27,10 +27,10 @@ var masteryRanks = []struct {
 	Label string
 	Cap   int
 }{
-	{masteryGrpR1, "R1", "一级", 10},
-	{masteryGrpR2, "R2", "二级", 10},
-	{masteryGrpR3, "R3", "三级", 10},
-	{masteryGrpEX, "EX", "额外", 20},
+	{masteryGrpR1, "R1", "1阶专精技能", 10},
+	{masteryGrpR2, "R2", "2阶专精技能", 10},
+	{masteryGrpR3, "R3", "3阶专精技能", 10},
+	{masteryGrpEX, "EX", "EX阶专精技能", 20},
 }
 
 func masteryRankOfGrp(grp string) (rank string, cap int, ok bool) {
@@ -57,6 +57,61 @@ type MasteryRankPool struct {
 	Label string        `json:"label"`
 	Cap   int           `json:"cap"`
 	Nodes []MasteryNode `json:"nodes"`
+}
+
+// MasteryCategorySummary 是某一阶、某一专精类型的实际分配与生效状态。
+// 1阶门槛为 3 项；2/3阶门槛为 6 项，且3阶必须沿用2阶方向。
+type MasteryCategorySummary struct {
+	Cat            string `json:"cat"`
+	Label          string `json:"label"`
+	Specialization string `json:"specialization"`
+	Count          int    `json:"count"`
+	Threshold      int    `json:"threshold"`
+	Active         bool   `json:"active"`
+	Reason         string `json:"reason"`
+}
+
+type MasteryRankSummary struct {
+	Rank       string                   `json:"rank"`
+	Label      string                   `json:"label"`
+	Count      int                      `json:"count"`
+	Cap        int                      `json:"cap"`
+	Categories []MasteryCategorySummary `json:"categories"`
+}
+
+type MasteryBuildSummary struct {
+	Total        int                  `json:"total"`
+	PrimaryCat   string               `json:"primaryCat"`
+	PrimaryLabel string               `json:"primaryLabel"`
+	Ranks        []MasteryRankSummary `json:"ranks"`
+}
+
+func (s *MasteryBuildSummary) rank(rank string) *MasteryRankSummary {
+	for i := range s.Ranks {
+		if s.Ranks[i].Rank == rank {
+			return &s.Ranks[i]
+		}
+	}
+	return nil
+}
+
+func (r *MasteryRankSummary) category(cat string) *MasteryCategorySummary {
+	for i := range r.Categories {
+		if r.Categories[i].Cat == cat {
+			return &r.Categories[i]
+		}
+	}
+	return nil
+}
+
+func (r *MasteryRankSummary) activeCategoryCount() int {
+	n := 0
+	for i := range r.Categories {
+		if r.Categories[i].Active {
+			n++
+		}
+	}
+	return n
 }
 
 var masteryCatLabel = map[string]string{
@@ -112,6 +167,121 @@ func catLabelOf(cat string) string {
 		return l
 	}
 	return "基础盘"
+}
+
+func masterySpecializationName(ownerCode, cat string) string {
+	loadSkillboard()
+	for _, node := range skillboardAllNodes {
+		if node.Char == ownerCode && node.Grp == masteryGrpR1 && node.Cat == cat && node.Name != "" {
+			return node.Name
+		}
+	}
+	return catLabelOf(cat)
+}
+
+func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSummary, error) {
+	if ownerCode == "" {
+		return nil, fmt.Errorf("无法确定专精盘归属码")
+	}
+	catOrder := []string{"SB_ATK", "SB_DEF", "SB_LIMIT"}
+	counts := map[string]map[string]int{}
+	for _, rank := range masteryRanks {
+		counts[rank.Rank] = map[string]int{}
+	}
+
+	result := &MasteryBuildSummary{}
+	for _, hash := range hashes {
+		if hash == 0 || hash == EmptyHash {
+			continue
+		}
+		node, ok := skillboardNodeForHash(hash)
+		if !ok {
+			return nil, fmt.Errorf("专精节点 %08X 未收录", hash)
+		}
+		if node.Char != "" && node.Char != ownerCode {
+			return nil, fmt.Errorf("专精节点 %08X 属于 %s，不属于 %s", hash, node.Char, ownerCode)
+		}
+		rank, _, ok := masteryRankOfGrp(node.Grp)
+		if !ok {
+			return nil, fmt.Errorf("专精节点 %08X 阶级未知", hash)
+		}
+		counts[rank][node.Cat]++
+		result.Total++
+	}
+
+	r2Primary := ""
+	for _, cat := range catOrder {
+		if counts["R2"][cat] >= 6 {
+			r2Primary = cat
+			break
+		}
+	}
+	for _, rank := range masteryRanks {
+		rs := MasteryRankSummary{Rank: rank.Rank, Label: rank.Label, Cap: rank.Cap}
+		threshold := 0
+		if rank.Rank == "R1" {
+			threshold = 3
+		}
+		if rank.Rank == "R2" || rank.Rank == "R3" {
+			threshold = 6
+		}
+		for _, cat := range catOrder {
+			count := counts[rank.Rank][cat]
+			cs := MasteryCategorySummary{
+				Cat: cat, Label: catLabelOf(cat), Specialization: masterySpecializationName(ownerCode, cat),
+				Count: count, Threshold: threshold,
+			}
+			switch rank.Rank {
+			case "R1":
+				cs.Active = count >= threshold
+				if !cs.Active {
+					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
+				}
+			case "R2":
+				cs.Active = count >= threshold
+				if !cs.Active {
+					cs.Reason = fmt.Sprintf("未达到2阶方向门槛（%d/%d）", count, threshold)
+				}
+			case "R3":
+				cs.Active = r2Primary == cat && count >= threshold
+				if r2Primary != cat {
+					cs.Reason = "未沿用2阶主方向"
+				} else if !cs.Active {
+					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
+				}
+			case "EX":
+				cs.Reason = "EX阶技能；不构成第四种专精类型"
+			}
+			rs.Count += count
+			rs.Categories = append(rs.Categories, cs)
+		}
+		result.Ranks = append(result.Ranks, rs)
+	}
+	if r3 := result.rank("R3"); r3 != nil {
+		for _, category := range r3.Categories {
+			if category.Active {
+				result.PrimaryCat, result.PrimaryLabel = category.Cat, category.Specialization
+				break
+			}
+		}
+	}
+	if result.PrimaryCat == "" && r2Primary != "" {
+		result.PrimaryCat, result.PrimaryLabel = r2Primary, masterySpecializationName(ownerCode, r2Primary)
+	}
+	return result, nil
+}
+
+// MasterySummarize 给前端返回真实分配下的三方向生效状态与官方 EX 阶信息。
+func (a *App) MasterySummarize(ownerCode string, hexes []string) (*MasteryBuildSummary, error) {
+	hashes := make([]uint32, 0, len(hexes))
+	for _, value := range hexes {
+		hash, err := ParseHashHex(value)
+		if err != nil {
+			return nil, fmt.Errorf("专精节点 hash %q 无效: %w", value, err)
+		}
+		hashes = append(hashes, hash)
+	}
+	return summarizeMasteryHashes(ownerCode, hashes)
 }
 
 // validateMasteryQuota 校验一组专精节点 hash 是否满足配额（每档 ≤ 上限），

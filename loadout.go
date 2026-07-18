@@ -96,10 +96,28 @@ func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
 }
 
 type LoadoutMasteryNode struct {
-	Hash string `json:"hash"`
-	Cat  string `json:"cat"`
-	Name string `json:"name"` // 具名节点名（可为空）
-	Desc string `json:"desc"` // 效果说明
+	Hash      string `json:"hash"`
+	Cat       string `json:"cat"`
+	Grp       string `json:"grp"`
+	Rank      string `json:"rank"`
+	RankLabel string `json:"rankLabel"`
+	Name      string `json:"name"` // 具名节点名（可为空）
+	Desc      string `json:"desc"` // 效果说明
+}
+
+func loadoutMasteryNodeForHash(hash uint32) (LoadoutMasteryNode, bool) {
+	n, ok := skillboardNodeForHash(hash)
+	if !ok {
+		return LoadoutMasteryNode{}, false
+	}
+	rank, _, rankOK := masteryRankOfGrp(n.Grp)
+	if !rankOK {
+		return LoadoutMasteryNode{}, false
+	}
+	return LoadoutMasteryNode{
+		Hash: fmt.Sprintf("%08X", hash), Cat: n.Cat, Grp: n.Grp,
+		Rank: rank, RankLabel: masteryRankLabel(rank), Name: n.Name, Desc: n.Desc,
+	}, true
 }
 
 // ── 技能名表 ──────────────────────────────────────────────────────────
@@ -114,28 +132,58 @@ type LoadoutSkill struct {
 }
 
 var (
-	skillNamesOnce  sync.Once
-	skillNameByHash map[uint32]string
+	skillNamesOnce   sync.Once
+	skillNameByHash  map[uint32]string
+	skillOwnerByHash map[uint32]string
+	skillPoolByOwner map[string][]LoadoutPickSkill
 )
 
-func skillNameForHash(hash uint32) string {
+func loadSkillNameCatalog() {
 	skillNamesOnce.Do(func() {
 		var payload struct {
 			Skills map[string]struct {
+				Key  string `json:"key"`
+				Char string `json:"char"`
 				Name string `json:"name"`
 			} `json:"skills"`
 		}
 		skillNameByHash = map[uint32]string{}
+		skillOwnerByHash = map[uint32]string{}
+		skillPoolByOwner = map[string][]LoadoutPickSkill{}
 		if err := json.Unmarshal(skillNamesJSON, &payload); err != nil {
 			return
 		}
 		for hex, s := range payload.Skills {
 			if h, err := ParseHashHex(hex); err == nil {
 				skillNameByHash[h] = s.Name
+				skillOwnerByHash[h] = s.Char
+				if s.Char != "" {
+					skillPoolByOwner[s.Char] = append(skillPoolByOwner[s.Char], LoadoutPickSkill{Hash: fmt.Sprintf("%08X", h), Name: s.Name, Key: s.Key})
+				}
 			}
 		}
+		for owner := range skillPoolByOwner {
+			sort.Slice(skillPoolByOwner[owner], func(i, j int) bool { return skillPoolByOwner[owner][i].Key < skillPoolByOwner[owner][j].Key })
+		}
 	})
+}
+
+func skillNameForHash(hash uint32) string {
+	loadSkillNameCatalog()
 	return skillNameByHash[hash]
+}
+
+func skillPoolForOwnerCode(ownerCode string) []LoadoutPickSkill {
+	loadSkillNameCatalog()
+	source := skillPoolByOwner[ownerCode]
+	out := make([]LoadoutPickSkill, len(source))
+	copy(out, source)
+	return out
+}
+
+func skillBelongsToOwner(hash uint32, ownerCode string) bool {
+	loadSkillNameCatalog()
+	return ownerCode != "" && skillOwnerByHash[hash] == ownerCode
 }
 
 type LoadoutSigil struct {
@@ -367,10 +415,8 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 					continue
 				}
 				node := LoadoutMasteryNode{Hash: fmt.Sprintf("%08X", v)}
-				if n, ok := skillboardNodeForHash(v); ok {
-					node.Cat = n.Cat
-					node.Name = n.Name
-					node.Desc = n.Desc
+				if resolved, ok := loadoutMasteryNodeForHash(v); ok {
+					node = resolved
 				}
 				lo.Mastery = append(lo.Mastery, node)
 			}

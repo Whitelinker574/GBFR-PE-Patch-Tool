@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"unicode/utf8"
 )
 
@@ -66,16 +67,21 @@ type LoadoutPickWeapon struct {
 }
 
 type LoadoutPickSigil struct {
-	SlotID  uint32 `json:"slotId"`
-	Hash    string `json:"hash"`
-	Name    string `json:"name"`
-	Level   int    `json:"level"`
-	Generic bool   `json:"generic"` // true = 非角色因子（任意角色可装）
+	SlotID              uint32 `json:"slotId"`
+	Hash                string `json:"hash"`
+	Name                string `json:"name"`
+	Level               int    `json:"level"`
+	PrimaryTraitName    string `json:"primaryTraitName"`
+	PrimaryTraitLevel   int    `json:"primaryTraitLevel"`
+	SecondaryTraitName  string `json:"secondaryTraitName"`
+	SecondaryTraitLevel int    `json:"secondaryTraitLevel"`
+	Generic             bool   `json:"generic"` // true = 非角色因子（任意角色可装）
 }
 
 type LoadoutPickSkill struct {
 	Hash string `json:"hash"`
 	Name string `json:"name"`
+	Key  string `json:"key,omitempty"`
 }
 
 type LoadoutMasterySource struct {
@@ -458,7 +464,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		rw.sigilSIDs = append(rw.sigilSIDs, sid)
 	}
 
-	// 技能（1404）：≤4，须来自该角色现有配装的技能池
+	// 技能（1404）：≤4，优先按解包 skill_names 的角色归属校验；旧档未知项再回退 precedent。
 	if len(w.SkillHashes) > loadoutMaxSkills {
 		return nil, fmt.Errorf("技能最多 %d 个，收到 %d", loadoutMaxSkills, len(w.SkillHashes))
 	}
@@ -470,8 +476,8 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if v == EmptyHash || v == 0 {
 			continue
 		}
-		if !precSkills[v] {
-			return nil, fmt.Errorf("技能 %08X 不在该角色现有配装的技能池中（v1 保守拒绝跨角色技能）", v)
+		if !skillBelongsToOwner(v, ownerCode) && !precSkills[v] {
+			return nil, fmt.Errorf("技能 %08X 不属于该角色（%s）", v, ownerCode)
 		}
 		rw.skills = append(rw.skills, v)
 	}
@@ -810,7 +816,33 @@ func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, er
 		})
 	}
 
-	// 因子池：通用因子 + 该角色 precedent 里出现过的角色因子（按 SlotID）
+	// 因子池：通用因子 + 该角色 precedent 里出现过的角色因子（按 SlotID）。
+	// 词条表先按 UnitID 建索引，避免对背包每颗因子反复全表扫描。
+	traitHashByUnit := entriesByUnitID(save.findAllUnitsByType(TraitHashIDType))
+	traitLevelByUnit := entriesByUnitID(save.findAllUnitsByType(TraitLevelIDType))
+	indexedTraits := func(gemUnitID uint32) (uint32, int, uint32, int) {
+		gemIndex := int(gemUnitID) - GemSlotBaseID
+		if gemIndex < 0 {
+			return 0, 0, 0, 0
+		}
+		primaryUnit := uint32(TraitSlotBase + gemIndex*100)
+		secondaryUnit := primaryUnit + 1
+		var primaryHash, secondaryHash uint32
+		var primaryLevel, secondaryLevel int
+		if entry := traitHashByUnit[primaryUnit]; entry != nil {
+			primaryHash = entry.Uint32()
+		}
+		if entry := traitLevelByUnit[primaryUnit]; entry != nil {
+			primaryLevel = int(entry.Int32())
+		}
+		if entry := traitHashByUnit[secondaryUnit]; entry != nil {
+			secondaryHash = entry.Uint32()
+		}
+		if entry := traitLevelByUnit[secondaryUnit]; entry != nil {
+			secondaryLevel = int(entry.Int32())
+		}
+		return primaryHash, primaryLevel, secondaryHash, secondaryLevel
+	}
 	for sid, gu := range ix.gemBySlotID {
 		h := ix.gemHash[gu]
 		if h == nil {
@@ -825,17 +857,44 @@ func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, er
 		if l := ix.gemLevel[gu]; l != nil {
 			lvl = int(l.Int32())
 		}
+		primaryHash, primaryLevel, secondaryHash, secondaryLevel := indexedTraits(gu)
+		traitName := func(hash uint32) string {
+			if hash == 0 || hash == EmptyHash {
+				return ""
+			}
+			if trait := cat.LookupTraitByHash(hash); trait != nil {
+				return cnTrait(trait.DisplayName)
+			}
+			if name := ctName(hash); name != "" {
+				return name
+			}
+			return fmt.Sprintf("%08X", hash)
+		}
 		ctx.Sigils = append(ctx.Sigils, LoadoutPickSigil{
 			SlotID: sid, Hash: fmt.Sprintf("%08X", hv), Name: sigilDisplayNameOr(hv),
-			Level: lvl, Generic: generic,
+			Level: lvl, PrimaryTraitName: traitName(primaryHash), PrimaryTraitLevel: primaryLevel,
+			SecondaryTraitName: traitName(secondaryHash), SecondaryTraitLevel: secondaryLevel, Generic: generic,
 		})
 	}
+	sort.Slice(ctx.Weapons, func(i, j int) bool {
+		if ctx.Weapons[i].Name != ctx.Weapons[j].Name {
+			return ctx.Weapons[i].Name < ctx.Weapons[j].Name
+		}
+		return ctx.Weapons[i].SlotID < ctx.Weapons[j].SlotID
+	})
+	sort.Slice(ctx.Sigils, func(i, j int) bool {
+		if ctx.Sigils[i].Name != ctx.Sigils[j].Name {
+			return ctx.Sigils[i].Name < ctx.Sigils[j].Name
+		}
+		return ctx.Sigils[i].SlotID < ctx.Sigils[j].SlotID
+	})
 
-	// 技能池：该角色现有配装用过的技能
-	for h := range precSkills {
-		ctx.Skills = append(ctx.Skills, LoadoutPickSkill{
-			Hash: fmt.Sprintf("%08X", h), Name: skillNameForHash(h),
-		})
+	// 技能池：使用解包数据中的完整角色技能表；仅在未收录角色上回退已有配装 precedent。
+	ctx.Skills = skillPoolForOwnerCode(ownerCode)
+	if len(ctx.Skills) == 0 {
+		for h := range precSkills {
+			ctx.Skills = append(ctx.Skills, LoadoutPickSkill{Hash: fmt.Sprintf("%08X", h), Name: skillNameForHash(h)})
+		}
 	}
 
 	// 专精来源：该角色每套已存配装（可整段复制）
