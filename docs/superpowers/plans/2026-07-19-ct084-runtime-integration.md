@@ -37,7 +37,7 @@
 func TestCT084ProductionCatalogHasEverySafeDirectPatch(t *testing.T) {
     catalog, err := loadCT084Catalog()
     if err != nil { t.Fatal(err) }
-    if len(catalog.Features) != 60 { t.Fatalf("features=%d, want 60", len(catalog.Features)) }
+    if len(catalog.Features) != 60 { t.Fatalf("initial candidates=%d, want 60", len(catalog.Features)) }
     excluded := map[int]bool{31935:true, 33086:true, 31060:true, 31456:true}
     seen := map[int]bool{}
     for _, feature := range catalog.Features {
@@ -57,7 +57,7 @@ Expected: FAIL because `loadCT084Catalog` is undefined.
 
 - [ ] **Step 3: Implement the deterministic generator**
 
-The script must parse `CheatEntry[AssemblerScript]`, accept AOB scripts with no `alloc(mem...)`, merge `NAME+hexOffset` blocks, expand `nop N`, and exclude exactly `31935,33086,31060,31456`. Its public command is:
+The first-pass script must parse `CheatEntry[AssemblerScript]`, accept AOB scripts with no `alloc(mem...)`, merge `NAME+hexOffset` blocks, expand `nop N`, and apply the four product-level exclusions `31935,33086,31060,31456`. Task 5 then tightens this initial candidate set using the locked real EXE. Its public command is:
 
 ```powershell
 pwsh -NoProfile -File tools/generate_ct084_patches.ps1 `
@@ -77,7 +77,7 @@ $doc.features.Count
 $doc.features | Where-Object ctId -in 31935,33086,31060,31456
 ```
 
-Expected: `60`, then no rows. The earlier static pre-audit count of 59 omitted CT 32556 because its `AssemblerScript` node carries `Async="1"`; the production generator and content-lock tests include it.
+Expected at this first-pass stage: `60`, then no rows. The earlier static pre-audit count of 59 omitted CT 32556 because its `AssemblerScript` node carries `Async="1"`. This is an intermediate candidate count, not the final production count; Task 5 removes two non-unique signatures and locks 58 features.
 
 - [ ] **Step 5: Commit the generator/data/test slice**
 
@@ -227,6 +227,8 @@ git commit -m "feat: add owned atomic CT patch runtime"
 - Create: `ct084_local_exe_test.go`
 - Modify if needed: `data/ct084_patches.json`
 
+The locked game 2.0.2 executable is `123522016` bytes with SHA-256 `63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F`.
+
 - [ ] **Step 1: Write the environment-gated truth test**
 
 Open the PE sections and assert every catalog site matches exactly once in the unmodified executable. Report `feature ID / CT ID / site index` on failure.
@@ -240,11 +242,11 @@ $env:GBFR_GAME_EXE_TEST='D:\gbf\granblue_fantasy_relink.exe'
 go test -count=1 -run TestCT084CatalogMatchesLocalGame202 .
 ```
 
-Expected: PASS for every shipped site.
+Initial expected RED: CT 31066 site 1 / `NBGFR019B` reports 2 matches and CT 31960 site 0 / `NBGFR040` reports 3 matches; the other 82 of 84 sites are unique. Final expected GREEN: 58 features / 81 sites / 79 distinct AOBs, with every shipped site matching exactly once.
 
 - [ ] **Step 3: Remove any non-unique/non-matching feature rather than weakening the scanner**
 
-Regenerate with an explicit `unsafeOrUnverified` exclusion list and update the catalog count test to the proven count. Document every removal in the final report.
+Regenerate with explicit `unsafeOrUnverified` exclusions for CT 31066 and 31960, without guessing a context address, and update the catalog count test to the proven count. Keep the original four product exclusions categorized separately. Document every removal in the final report.
 
 - [ ] **Step 4: Commit local-truth coverage**
 

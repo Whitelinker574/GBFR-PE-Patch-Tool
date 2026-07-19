@@ -14,7 +14,7 @@ const (
 	ct084CatalogSchemaVersion  = 1
 	ct084CatalogSourceVersion  = "0.8.4"
 	ct084CatalogSourceSHA256   = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
-	ct084CatalogFeatureCount   = 60
+	ct084CatalogFeatureCount   = 58
 	ct084DamageCapConflictName = "damage-cap-display"
 )
 

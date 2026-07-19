@@ -247,9 +247,22 @@ catch {
     throw 'Failed to load CT XML safely.'
 }
 
-$excludedCTIDs = [System.Collections.Generic.HashSet[int]]::new()
-foreach ($excludedCTID in 31935, 33086, 31060, 31456) {
-    [void] $excludedCTIDs.Add($excludedCTID)
+$unsafeOrUnverifiedCTIDs = [System.Collections.Generic.HashSet[int]]::new()
+foreach ($excludedCTID in @(
+        31935, # CT warns that disabling Eugen's instant Detonator can crash.
+        33086, # CT marks infinite repeat quest as experimental and potentially buggy.
+        31066, # Game 2.0.2 has two matches for NBGFR019B; the intended site is unproven.
+        31960  # Game 2.0.2 has three matches for NBGFR040; the intended site is unproven.
+    )) {
+    [void] $unsafeOrUnverifiedCTIDs.Add($excludedCTID)
+}
+
+$alreadyImplementedCTIDs = [System.Collections.Generic.HashSet[int]]::new()
+foreach ($excludedCTID in @(
+        31060, # Infinite Link Time already has an independently owned implementation.
+        31456  # Terminus weapon drop already has a safer independently owned implementation.
+    )) {
+    [void] $alreadyImplementedCTIDs.Add($excludedCTID)
 }
 
 [System.Collections.Generic.List[object]] $features = @()
@@ -262,7 +275,9 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     }
 
     $ctID = 0
-    if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID) -or $excludedCTIDs.Contains($ctID)) {
+    if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID) -or
+        $unsafeOrUnverifiedCTIDs.Contains($ctID) -or
+        $alreadyImplementedCTIDs.Contains($ctID)) {
         continue
     }
     $rawScript = $scriptNode.InnerText
@@ -396,5 +411,5 @@ $outputDirectory = [System.IO.Path]::GetDirectoryName($outputPath)
 if (-not [string]::IsNullOrEmpty($outputDirectory)) {
     [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
 }
-$json = $catalog | ConvertTo-Json -Depth 20
+$json = ($catalog | ConvertTo-Json -Depth 20) -replace "`r`n?", "`n"
 [System.IO.File]::WriteAllText($outputPath, $json + "`n", [System.Text.UTF8Encoding]::new($false))

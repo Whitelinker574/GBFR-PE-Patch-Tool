@@ -15,7 +15,7 @@ import (
 )
 
 const ct084SourceSHA256 = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
-const ct084CatalogSHA256 = "F3B940E644CC6CF0B9BDF2EB11B7B7466D3097053DB8900FEFA97229C9EE82A8"
+const ct084CatalogSHA256 = "94236B5AF66B2169B3FDF8249FEE26E733E78F332FA96FB52582F3FEE97B6D96"
 
 func readCT084CatalogFile(t *testing.T) CT084Catalog {
 	t.Helper()
@@ -110,8 +110,22 @@ func TestCT084ProductionCatalogLoadsAndValidates(t *testing.T) {
 	if err := validateCT084Catalog(catalog); err != nil {
 		t.Fatalf("validateCT084Catalog() error = %v", err)
 	}
-	if len(catalog.Features) != 60 {
-		t.Fatalf("features=%d, want 60", len(catalog.Features))
+	if len(catalog.Features) != 58 {
+		t.Fatalf("features=%d, want 58", len(catalog.Features))
+	}
+	siteCount := 0
+	distinctAOBs := make(map[string]struct{})
+	for _, feature := range catalog.Features {
+		siteCount += len(feature.Sites)
+		for _, site := range feature.Sites {
+			distinctAOBs[site.AOB] = struct{}{}
+		}
+	}
+	if siteCount != 81 {
+		t.Fatalf("sites=%d, want 81", siteCount)
+	}
+	if len(distinctAOBs) != 79 {
+		t.Fatalf("distinct AOBs=%d, want 79", len(distinctAOBs))
 	}
 }
 
@@ -316,10 +330,11 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 		t.Fatalf("sourceSha256=%q, want %s", catalog.SourceSHA256, ct084SourceSHA256)
 	}
 	// The source contains 64 direct AOB byte patches. Four product-level
-	// exclusions leave 60; CT 32556 must not be lost merely because its
-	// AssemblerScript element has an Async attribute.
-	if len(catalog.Features) != 60 {
-		t.Fatalf("features=%d, want 60", len(catalog.Features))
+	// exclusions leave 60 initial candidates. The exact game 2.0.2 executable
+	// proves two more features non-unique, so production ships 58. CT 32556
+	// must not be lost merely because its AssemblerScript has an Async attribute.
+	if len(catalog.Features) != 58 {
+		t.Fatalf("features=%d, want 58", len(catalog.Features))
 	}
 
 	seenIDs := make(map[string]bool, len(catalog.Features))
@@ -372,7 +387,7 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 		t.Errorf("features are not deterministically sorted by category and CT ID")
 	}
 
-	for _, excluded := range []int{31935, 33086, 31060, 31456} {
+	for _, excluded := range []int{31935, 33086, 31060, 31456, 31066, 31960} {
 		if _, ok := byCTID[excluded]; ok {
 			t.Errorf("excluded CT %d is present", excluded)
 		}
