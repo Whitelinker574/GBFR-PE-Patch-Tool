@@ -1378,7 +1378,7 @@ button,input,select { font:inherit; }
   filter:drop-shadow(0 8px 8px rgba(72,50,22,.12));
 }
 .tool-stage[data-tool="progression"] { --art-scale:112%; --art-x:-5%; --art-y:1%; }
-.tool-stage[data-tool="sigil"] { --art-scale:110%; --art-x:-3%; --art-y:0%; }
+.tool-stage[data-tool="sigil"] { --art-scale:110%; --art-x:-16%; --art-y:0%; }
 .tool-stage[data-tool="sigilMemory"] { --art-scale:110%; --art-x:-4%; --art-y:0%; }
 .tool-stage[data-tool="loadout"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
 .tool-stage[data-tool="loadoutPresets"] { --art-scale:116%; --art-x:-2%; --art-y:-10%; }

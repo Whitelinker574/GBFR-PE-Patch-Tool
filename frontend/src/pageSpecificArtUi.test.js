@@ -70,5 +70,6 @@ test('every function portrait is sized by rail height so faces and props remain 
   for (const page of portraitPages) {
     assert.match(shell, new RegExp(`\\.tool-stage\\[data-tool="${page}"\\][^\\{]*\\{[^}]*--art-scale:1[0-3][0-9]%`))
   }
+  assert.match(shell, /\.tool-stage\[data-tool="sigil"\] \{ --art-scale:110%; --art-x:-16%; --art-y:0%; \}/)
   assert.match(shell, /\.tool-stage\[data-tool="loadoutPresets"\] \{ --art-scale:116%; --art-x:-2%; --art-y:-10%; \}/)
 })
