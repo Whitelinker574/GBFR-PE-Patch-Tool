@@ -87,7 +87,7 @@ The executable is generated at:
 build\bin\GBFR PE Patch Tool.exe
 ```
 
-When `src_dll/patch_core` is modified, build the DLL as **Release x64** first and ensure the resulting `patch_core.dll` is copied to `build\bin`.
+When `src_dll/patch_core` is modified, build the DLL as **Release x64** first. Its post-build step publishes the result to the Git-tracked stable embed source `resources\patch_core.dll`; `build\bin` contains disposable Wails output only.
 
 ## Translation scope
 

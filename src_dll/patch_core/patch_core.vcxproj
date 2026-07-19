@@ -157,7 +157,8 @@
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
     <PostBuildEvent>
-      <Command>xcopy /y "$(TargetPath)" "$(SolutionDir)..\build\bin\"</Command>
+      <Command>if not exist "$(SolutionDir)..\resources" mkdir "$(SolutionDir)..\resources"
+xcopy /y "$(TargetPath)" "$(SolutionDir)..\resources\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

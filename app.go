@@ -31,7 +31,7 @@ const (
 	repoName    = "GBFR-PE-Patch-Tool"
 )
 
-//go:embed build/bin/patch_core.dll
+//go:embed resources/patch_core.dll
 var patchCoreDLL []byte
 
 // ── 补丁定义 ──

@@ -135,8 +135,10 @@ wails build -s
 如修改 `src_dll/patch_core`，先用 Visual Studio 构建 `Release x64`，确认输出覆盖：
 
 ```text
-build/bin/patch_core.dll
+resources/patch_core.dll
 ```
+
+`resources/patch_core.dll` 是由 Git 跟踪并嵌入程序的稳定发布资源；`build/bin` 只存放可清理的 Wails 构建产物。
 
 ### Windows 一键编译
 
@@ -195,9 +197,9 @@ build/bin/GBFR PE Patch Tool.exe
 ├── wrightstone_store.go           # 祝福槽位读写
 ├── damage_overlay_windows.go      # 伤害统计悬浮窗
 ├── data/                          # 嵌入式 JSON/CSV 数据
-├── build/                         # 图标、manifest、内置 DLL 与构建产物
-│   └── bin/
-│       └── patch_core.dll         # 怪物增强注入 DLL
+├── build/                         # 图标、manifest 与可清理的 Wails 构建产物
+├── resources/
+│   └── patch_core.dll             # Git 跟踪并嵌入的怪物增强注入 DLL
 ├── src_dll/
 │   ├── patch_core.slnx            # patch_core Visual Studio 解决方案
 │   ├── patch_core/                # patch_core DLL 源码
