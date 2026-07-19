@@ -2,14 +2,14 @@
   "schema_version": 1,
   "page": {
     "id": "ct-characters",
-    "title": "角色机制",
+    "title": "角色机制补丁",
     "source_files": [
       "data/ct084_patches.json",
       "tools/generate_ct084_patches.ps1",
       "docs/superpowers/specs/2026-07-19-ct084-runtime-integration-design.md",
       "docs/superpowers/specs/2026-07-19-functional-page-art-refresh-design.md"
     ],
-    "layout": "实施状态：本 brief 依据已批准 CT 设计和当前补丁目录描述目标；真实 CT 页面完成后必须结合应用内截图重新复核，在此之前不得直接进入生成。目标共享工具舞台为左侧约 62% 的离线确认、角色分组搜索与条目详情功能区、右侧约 38% 的独立透明立绘轨；Q 版角色与 sidebar-mascot-say 气泡常驻全局左侧导航栏，右侧立绘轨只承载大幅透明立绘和简短角色标识。立绘不得侵入角色组、冲突标签、开关、参数或回读状态。窗口宽度不超过 900px 时隐藏立绘轨并改为单栏。"
+    "layout": "已用真实 Wails WebView2 的 Page.captureScreenshot 复核 1024×768、1440×900、1920×1080 三种原生应用尺寸；内容面板实测宽度分别为 554、719、1016 px，首张功能卡分别为 532、473、681 px 宽且无横向溢出、裁字或越界控件。共享工具舞台左侧是连接回读、状态、角色分组搜索、冲突与条目详情区，右侧是独立透明立绘轨；1440 实测角色目录与唯一当前组卡片均可读，长角色列表留在自身滚动流中。Q 版角色与 sidebar-mascot-say 气泡常驻全局左侧导航栏；立绘不得侵入角色组、冲突标签、开关、参数或回读状态，紧凑宽度隐藏立绘轨。"
   },
   "functionality": {
     "user_goal": "按真实角色组查找机制补丁，先处理互斥冲突，再切换一项角色机制并等待实际状态回读。",
