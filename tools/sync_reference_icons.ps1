@@ -129,7 +129,7 @@ try {
         return $ordered
     }
 
-    if ($SkillsOnly) {
+    function Build-ExactPlayableSkillMap {
         # Build active-skill mappings only from the exact 2.0.2 ability row.
         # Translated/community filenames are intentionally not used as a
         # fallback because similarly named and alternate-form skills can point
@@ -176,13 +176,24 @@ try {
             throw "Unexpected missing 2.0.2 ability sprites: $($missingSkillKeys -join ',')"
         }
 
+        return [pscustomobject]@{
+            map = $skillMap
+            playable = $playableCount
+            missing = @($missingSkillKeys)
+        }
+    }
+
+    if ($SkillsOnly) {
+        $skillBuild = Build-ExactPlayableSkillMap
+        $skillMap = $skillBuild.map
+
         $skillJSON = (Ordered-Map $skillMap) | ConvertTo-Json -Depth 2
         $skillJSON = $skillJSON -replace '(?m)^    "', '  "' -replace '":  "', '": "'
         [IO.File]::WriteAllText($skillIconTarget, $skillJSON + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
         Write-Output ([ordered]@{
-            playable = $playableCount
+            playable = $skillBuild.playable
             mapped = $skillMap.Count
-            missing = @($missingSkillKeys)
+            missing = @($skillBuild.missing)
         } | ConvertTo-Json -Compress)
         return
     }
@@ -413,56 +424,11 @@ try {
         if ($copied) { $charactersByHash[$pair.Key] = $copied }
     }
 
-    # These seven rows were previously joined by translated skill names, which
-    # is ambiguous for Id's internal alternate form and swapped two Seofon assets. Keep the small
-    # audited correction table-backed: the hash comes from skill_names.json and
-    # the icon ID comes from the exact 2.0.2 ability.tbl row.
-    $auditedAbilityIcons = [ordered]@{
-        'AB_PL2000_01'='2000_01'
-        'AB_PL2000_02'='2000_05'
-        'AB_PL2000_03'='2000_07'
-        'AB_PL2000_04'='2000_08'
-        'AB_PL2000_05'='1900_06'
-        'AB_PL2200_03'='2200_03'
-        'AB_PL2200_06'='2200_06'
-    }
-    $skillCatalog = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\skill_names.json') -Raw -Encoding UTF8 | ConvertFrom-Json).skills
-    $skillHashByKey = @{}
-    foreach ($property in $skillCatalog.PSObject.Properties) {
-        $skillHashByKey[[string]$property.Value.key] = Normalize-Hex $property.Name
-    }
-    $abilityTableBytes = [byte[]](Read-GameTableBytes 'ability.tbl')
-    $abilityTableRowCount = [BitConverter]::ToInt64($abilityTableBytes, 0)
-    $abilityTableRowSize = 96
-    if (8 + ($abilityTableRowCount * $abilityTableRowSize) -ne $abilityTableBytes.Length) {
-        throw "Unexpected 2.0.2 ability.tbl layout: rows=$abilityTableRowCount bytes=$($abilityTableBytes.Length)"
-    }
-    $abilityIconByHash = @{}
-    for ($row = 0; $row -lt $abilityTableRowCount; $row++) {
-        $offset = 8 + ($row * $abilityTableRowSize)
-        $keyHash = '{0:X8}' -f [BitConverter]::ToUInt32($abilityTableBytes, $offset + 48)
-        $abilityIconByHash[$keyHash] = Read-FixedASCII $abilityTableBytes $offset 24
-    }
-
-    $skillMap = @{}
-    $existingSkillMap = Get-Content -LiteralPath $skillIconTarget -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($property in $existingSkillMap.PSObject.Properties) {
-        $skillMap[$property.Name] = [string]$property.Value
-    }
-    foreach ($pair in $auditedAbilityIcons.GetEnumerator()) {
-        $key = [string]$pair.Key
-        if (-not $skillHashByKey.ContainsKey($key)) { throw "Skill catalog has no audited ability $key" }
-        $hash = [string]$skillHashByKey[$key]
-        if (-not $abilityIconByHash.ContainsKey($hash)) { throw "ability.tbl has no exact row for $key / $hash" }
-        $actualIconID = [string]$abilityIconByHash[$hash]
-        if ($actualIconID -ne [string]$pair.Value) {
-            throw "Unexpected ability.tbl icon for $key / ${hash}: expected=$($pair.Value) actual=$actualIconID"
-        }
-
-        $file = Copy-InternalAsset 'skills' "cmn_icablt_pl$actualIconID"
-        if (-not $file) { throw "Reference archive is missing exact ability sprite cmn_icablt_pl$actualIconID" }
-        $skillMap[$key] = $file
-    }
+    # Full and skills-only generation deliberately share one table-exact path.
+    # Generated JSON is output only, never an input, so stale or hand-edited
+    # keys cannot survive a reproducible full sync.
+    $skillBuild = Build-ExactPlayableSkillMap
+    $skillMap = $skillBuild.map
 
     $summonRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\summons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).summons
     $itemRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\items.json') -Raw -Encoding UTF8 | ConvertFrom-Json).items
