@@ -72,30 +72,68 @@ func TestFinalizeRuntimeHookEnablePoisonsAndKeepsUnprovenRollback(t *testing.T) 
 func TestRuntimeHookInstallFailureRetainsLeaseOnlyWhenRollbackIsUnproven(t *testing.T) {
 	cause := errors.New("injected partial entry write")
 	for _, test := range []struct {
-		name    string
-		canFree bool
+		name   string
+		result codeHookInstallResult
 	}{
-		{name: "entry restored", canFree: true},
-		{name: "entry indeterminate", canFree: false},
+		{name: "entry never published", result: codeHookInstallResult{State: codeHookEntryNeverPublished}},
+		{name: "entry restored after publish attempt", result: codeHookInstallResult{State: codeHookEntryRestoredAfterPublishAttempt}},
+		{name: "entry indeterminate", result: codeHookInstallResult{State: codeHookEntryRecoveryRequired}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			freeCalls, retainCalls, poisonCalls := 0, 0, 0
+			freeCalls, retireCalls, retainCalls, poisonCalls := 0, 0, 0, 0
 			err := runtimeHookInstallFailure(
-				"test Hook", test.canFree, cause,
+				"test Hook", test.result, cause,
 				func() { freeCalls++ },
+				func() { retireCalls++ },
 				func() { retainCalls++ },
 				func() { poisonCalls++ },
 			)
 			if !errors.Is(err, cause) {
 				t.Fatalf("install error lost its cause: %v", err)
 			}
-			if test.canFree {
-				if freeCalls != 1 || retainCalls != 0 || poisonCalls != 0 || errors.Is(err, errRuntimeHookRollbackUnproven) {
-					t.Fatalf("proven restore handling: free=%d retain=%d poison=%d err=%v", freeCalls, retainCalls, poisonCalls, err)
+			switch test.result.State {
+			case codeHookEntryNeverPublished:
+				if freeCalls != 1 || retireCalls != 0 || retainCalls != 0 || poisonCalls != 0 || errors.Is(err, errRuntimeHookRollbackUnproven) {
+					t.Fatalf("never-published handling: free=%d retire=%d retain=%d poison=%d err=%v", freeCalls, retireCalls, retainCalls, poisonCalls, err)
 				}
-			} else if freeCalls != 0 || retainCalls != 1 || poisonCalls != 1 || !errors.Is(err, errRuntimeHookRollbackUnproven) {
-				t.Fatalf("unproven restore handling: free=%d retain=%d poison=%d err=%v", freeCalls, retainCalls, poisonCalls, err)
+			case codeHookEntryRestoredAfterPublishAttempt:
+				if freeCalls != 0 || retireCalls != 1 || retainCalls != 0 || poisonCalls != 0 || errors.Is(err, errRuntimeHookRollbackUnproven) {
+					t.Fatalf("retired handling: free=%d retire=%d retain=%d poison=%d err=%v", freeCalls, retireCalls, retainCalls, poisonCalls, err)
+				}
+			case codeHookEntryRecoveryRequired:
+				if freeCalls != 0 || retireCalls != 0 || retainCalls != 1 || poisonCalls != 1 || !errors.Is(err, errRuntimeHookRollbackUnproven) {
+					t.Fatalf("unproven restore handling: free=%d retire=%d retain=%d poison=%d err=%v", freeCalls, retireCalls, retainCalls, poisonCalls, err)
+				}
 			}
 		})
+	}
+}
+
+func TestRuntimeHookInstallFailureRetiresPublishedCaveUntilDetach(t *testing.T) {
+	app := &App{charaPID: 42, charaCreated: 100}
+	const cave = uintptr(0x12345000)
+	freeCalls := 0
+	cause := errors.New("injected post-publish verification failure")
+
+	err := runtimeHookInstallFailure(
+		"test Hook",
+		codeHookInstallResult{State: codeHookEntryRestoredAfterPublishAttempt},
+		cause,
+		func() { freeCalls++ },
+		func() { app.retireRuntimeCaveLocked(cave, "test retired cave") },
+		func() { t.Fatal("restored entry must not retain an active recovery lease") },
+		func() { t.Fatal("restored entry must not poison the process") },
+	)
+	if !errors.Is(err, cause) || freeCalls != 0 {
+		t.Fatalf("error=%v freeCalls=%d, want original error and no cave free", err, freeCalls)
+	}
+	if got := app.retiredRuntimeCaves; len(got) != 1 || got[0].Address != cave || !sameProcessInstance(got[0].Process, processInstanceID{PID: 42, Created: 100}) {
+		t.Fatalf("retired caves=%+v, want cave 0x%X bound to PID/Created", got, cave)
+	}
+	if err := app.charaDetachLocked(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.retiredRuntimeCaves) != 0 {
+		t.Fatalf("detach retained retired-cave metadata: %+v", app.retiredRuntimeCaves)
 	}
 }

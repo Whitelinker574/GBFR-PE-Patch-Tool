@@ -119,17 +119,17 @@ func TestBuildCT084SelectedKeyItemCavePreservesExactDisplacedInstructions(t *tes
 func TestInstallPreparedCT084SelectedHookCanFreeCaveWhenJumpBuildFails(t *testing.T) {
 	want := errors.New("rel32 out of range")
 	installerCalled := false
-	canFree, err := installPreparedCT084SelectedHook(
+	result, err := installPreparedCT084SelectedHook(
 		0,
 		ct084SelectedCaptureLease{HookAddr: 0x1000, CaveAddr: 0x2000, Original: append([]byte(nil), ct084SelectedKeyItemOriginal...)},
 		func(uintptr, uintptr, int) ([]byte, error) { return nil, want },
-		func(windows.Handle, uintptr, []byte, []byte) (bool, error) {
+		func(windows.Handle, uintptr, []byte, []byte) (codeHookInstallResult, error) {
 			installerCalled = true
-			return false, nil
+			return codeHookInstallResult{State: codeHookEntryInstalled}, nil
 		},
 	)
-	if !errors.Is(err, want) || !canFree || installerCalled {
-		t.Fatalf("jump failure=(canFree=%v err=%v installer=%v), want true/%v/false", canFree, err, installerCalled, want)
+	if !errors.Is(err, want) || result.State != codeHookEntryNeverPublished || !result.CanFreePreparedCave() || installerCalled {
+		t.Fatalf("jump failure=(result=%+v err=%v installer=%v), want never-published/%v/false", result, err, installerCalled, want)
 	}
 }
 
@@ -280,6 +280,9 @@ func TestReleaseCT084SelectedCaptureClearsCaveAndRestoresExactEntry(t *testing.T
 	if app.ct084SelectedMaterialHook.active() {
 		t.Fatal("successful release retained material recovery lease")
 	}
+	if got := len(app.retiredRuntimeCaves); got != 1 || app.retiredRuntimeCaves[0].Address != cave {
+		t.Fatalf("retired caves=%+v, want released cave 0x%X retained until process detach", app.retiredRuntimeCaves, cave)
+	}
 }
 
 func TestCharaReleaseRestoresOwnedCT084SelectedCaptureBeforeClosingProcess(t *testing.T) {
@@ -312,6 +315,9 @@ func TestCharaDetachForceRestoresCT084SelectedCapture(t *testing.T) {
 	}
 	if app.hProcess != 0 || app.ct084SelectedMaterialHook.active() {
 		t.Fatalf("force detach retained process or lease: handle=%v lease=%+v", app.hProcess, app.ct084SelectedMaterialHook)
+	}
+	if len(app.retiredRuntimeCaves) != 0 {
+		t.Fatalf("force detach retained retired-cave metadata: %+v", app.retiredRuntimeCaves)
 	}
 }
 

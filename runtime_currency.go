@@ -128,10 +128,12 @@ func (a *App) installCurrencyHook(original []byte) error {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
 	}
-	canFree, err := currencyInstallRemoteCodeHook(a.hProcess, a.currencyHookAddr, original, patch)
+	installResult, err := currencyInstallRemoteCodeHook(a.hProcess, a.currencyHookAddr, original, patch)
 	if err != nil {
-		if canFree {
+		if installResult.CanFreePreparedCave() {
 			_ = virtualFreeRemote(a.hProcess, cave)
+		} else if installResult.OriginalEntryProven() {
+			a.retireRuntimeCaveLocked(cave, "currency install rollback")
 		} else {
 			// The entry write may have reached the process while its rollback
 			// could not be proven. Keep the cave and ownership evidence so a

@@ -218,8 +218,8 @@ func restoreCT084PatchSites(memory ct084Memory, sites []ct084PatchSiteLease) err
 		if err == nil {
 			continue
 		}
-		// installCodeHookAtomic's canFree result proves its "original" input
-		// (the enabled patch), not the restoration target. A fresh read is the
+		// installCodeHookAtomic's result describes its "original" input (the
+		// enabled patch), not the restoration target. A fresh read is the
 		// only way to prove that this site's original bytes were restored.
 		current, proofErr := memory.ReadCode(site.Address, len(site.Original))
 		if proofErr == nil && bytes.Equal(current, site.Original) {

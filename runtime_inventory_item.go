@@ -227,29 +227,28 @@ func (a *App) enableCT084SelectedItemsLocked(token string) (CT084SelectedItemsSt
 		_ = virtualFreeRemote(a.hProcess, keyLease.CaveAddr)
 		return CT084SelectedItemsStatus{}, err
 	}
-	canFree, err := ct084SelectedInstallHook(a.hProcess, materialLease.HookAddr, materialLease.Original, materialPatch)
+	installResult, err := ct084SelectedInstallHook(a.hProcess, materialLease.HookAddr, materialLease.Original, materialPatch)
 	if err != nil {
 		_ = virtualFreeRemote(a.hProcess, keyLease.CaveAddr)
 		return CT084SelectedItemsStatus{}, runtimeHookInstallFailure(
-			ct084MonitorText("选中素材捕获 Hook", "Selected-material capture hook"), canFree, err,
+			ct084MonitorText("选中素材捕获 Hook", "Selected-material capture hook"), installResult, err,
 			func() { _ = virtualFreeRemote(a.hProcess, materialLease.CaveAddr) },
+			func() { a.retireRuntimeCaveLocked(materialLease.CaveAddr, "CT084 selected material install rollback") },
 			func() { a.ct084SelectedMaterialHook = materialLease },
 			a.poisonCurrentLiveMemoryWrites,
 		)
 	}
 	a.ct084SelectedMaterialHook = materialLease
 
-	canFree, err = installPreparedCT084SelectedHook(a.hProcess, keyLease, makeRelJump, ct084SelectedInstallHook)
+	installResult, err = installPreparedCT084SelectedHook(a.hProcess, keyLease, makeRelJump, ct084SelectedInstallHook)
 	if err != nil {
-		var installErr error
-		if canFree {
-			_ = virtualFreeRemote(a.hProcess, keyLease.CaveAddr)
-			installErr = fmt.Errorf("%s: %w", ct084MonitorText("选中关键物品捕获 Hook 安装失败", "Selected-key-item capture hook install failed"), err)
-		} else {
-			a.ct084SelectedKeyItemHook = keyLease
-			a.poisonCurrentLiveMemoryWrites()
-			installErr = errors.Join(fmt.Errorf("%s: %w", ct084MonitorText("选中关键物品捕获 Hook 安装失败", "Selected-key-item capture hook install failed"), err), errRuntimeHookRollbackUnproven)
-		}
+		installErr := runtimeHookInstallFailure(
+			ct084MonitorText("选中关键物品捕获 Hook", "Selected-key-item capture hook"), installResult, err,
+			func() { _ = virtualFreeRemote(a.hProcess, keyLease.CaveAddr) },
+			func() { a.retireRuntimeCaveLocked(keyLease.CaveAddr, "CT084 selected key item install rollback") },
+			func() { a.ct084SelectedKeyItemHook = keyLease },
+			a.poisonCurrentLiveMemoryWrites,
+		)
 		rollbackErr := a.releaseCT084SelectedCaptureHookLocked(&a.ct084SelectedMaterialHook, token, false)
 		if rollbackErr != nil {
 			a.poisonCurrentLiveMemoryWrites()
@@ -277,16 +276,16 @@ func installPreparedCT084SelectedHook(
 	handle windows.Handle,
 	lease ct084SelectedCaptureLease,
 	buildJump func(uintptr, uintptr, int) ([]byte, error),
-	install func(windows.Handle, uintptr, []byte, []byte) (bool, error),
-) (bool, error) {
+	install func(windows.Handle, uintptr, []byte, []byte) (codeHookInstallResult, error),
+) (codeHookInstallResult, error) {
 	if buildJump == nil || install == nil {
-		return true, fmt.Errorf("selected-item hook installer is incomplete")
+		return codeHookInstallResult{State: codeHookEntryNeverPublished}, fmt.Errorf("selected-item hook installer is incomplete")
 	}
 	patch, err := buildJump(lease.HookAddr, lease.CaveAddr, ct084SelectedHookSize)
 	if err != nil {
 		// No entry write was attempted, so the prepared but unreachable cave is
 		// always safe for the caller to free.
-		return true, err
+		return codeHookInstallResult{State: codeHookEntryNeverPublished}, err
 	}
 	return install(handle, lease.HookAddr, lease.Original, patch)
 }
@@ -639,6 +638,7 @@ func (a *App) releaseCT084SelectedCaptureHookLocked(lease *ct084SelectedCaptureL
 	if err := errors.Join(preClearErr, postClearErr); err != nil {
 		return err
 	}
+	a.retireRuntimeCaveLocked(lease.CaveAddr, "CT084 selected-item capture release")
 	*lease = ct084SelectedCaptureLease{}
 	return nil
 }

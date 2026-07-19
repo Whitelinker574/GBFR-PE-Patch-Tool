@@ -167,12 +167,12 @@ func TestInstallCurrencyHookRetainsRecoveryStateAfterPartialEntryWrite(t *testin
 	var allocatedCave uintptr
 	injected := errors.New("injected partial currency hook write")
 	previousInstaller := currencyInstallRemoteCodeHook
-	currencyInstallRemoteCodeHook = func(h windows.Handle, addr uintptr, oldBytes, patch []byte) (bool, error) {
+	currencyInstallRemoteCodeHook = func(h windows.Handle, addr uintptr, oldBytes, patch []byte) (codeHookInstallResult, error) {
 		allocatedCave = relJumpTarget(addr, patch)
 		if err := writeCodeMemory(h, addr, patch[:3]); err != nil {
-			return false, err
+			return codeHookInstallResult{State: codeHookEntryRecoveryRequired}, err
 		}
-		return false, injected
+		return codeHookInstallResult{State: codeHookEntryRecoveryRequired}, injected
 	}
 	t.Cleanup(func() {
 		currencyInstallRemoteCodeHook = previousInstaller

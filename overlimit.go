@@ -463,11 +463,12 @@ func (a *App) overLimitEnableLocked() (OverLimitStatus, error) {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return OverLimitStatus{}, err
 	}
-	canFree, err := installRemoteCodeHook(a.hProcess, a.overLimitHookAddr, overLimitSelectedOrig, patch)
+	installResult, err := installRemoteCodeHook(a.hProcess, a.overLimitHookAddr, overLimitSelectedOrig, patch)
 	if err != nil {
 		return OverLimitStatus{}, runtimeHookInstallFailure(
-			"上限突破读取 Hook", canFree, err,
+			"上限突破读取 Hook", installResult, err,
 			func() { _ = virtualFreeRemote(a.hProcess, cave) },
+			func() { a.retireRuntimeCaveLocked(cave, "over-limit install rollback") },
 			func() { a.overLimitCaveAddr = cave },
 			a.poisonCurrentLiveMemoryWrites,
 		)

@@ -420,11 +420,12 @@ func (a *App) sigilMemoryEnableLocked() (SigilMemoryStatus, error) {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return SigilMemoryStatus{}, err
 	}
-	canFree, err := installRemoteCodeHook(a.hProcess, a.sigilMemoryHookAddr, original, patch)
+	installResult, err := installRemoteCodeHook(a.hProcess, a.sigilMemoryHookAddr, original, patch)
 	if err != nil {
 		return SigilMemoryStatus{}, runtimeHookInstallFailure(
-			"因子读取 Hook", canFree, err,
+			"因子读取 Hook", installResult, err,
 			func() { _ = virtualFreeRemote(a.hProcess, cave) },
+			func() { a.retireRuntimeCaveLocked(cave, "sigil-memory install rollback") },
 			func() {
 				a.sigilMemoryCaveAddr = cave
 				a.sigilMemoryOriginal = append(a.sigilMemoryOriginal[:0], original...)

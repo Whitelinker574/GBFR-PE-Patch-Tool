@@ -215,11 +215,12 @@ func (a *App) wrightstoneMemoryEnableLocked() (WrightstoneMemoryStatus, error) {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return WrightstoneMemoryStatus{}, err
 	}
-	canFree, err := installRemoteCodeHook(a.hProcess, a.wrightstoneMemoryHookAddr, original, patch)
+	installResult, err := installRemoteCodeHook(a.hProcess, a.wrightstoneMemoryHookAddr, original, patch)
 	if err != nil {
 		return WrightstoneMemoryStatus{}, runtimeHookInstallFailure(
-			"祝福读取 Hook", canFree, err,
+			"祝福读取 Hook", installResult, err,
 			func() { _ = virtualFreeRemote(a.hProcess, cave) },
+			func() { a.retireRuntimeCaveLocked(cave, "wrightstone-memory install rollback") },
 			func() {
 				a.wrightstoneMemoryCaveAddr = cave
 				a.wrightstoneMemoryOriginal = append(a.wrightstoneMemoryOriginal[:0], original...)

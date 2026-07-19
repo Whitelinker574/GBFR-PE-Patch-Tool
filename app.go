@@ -173,7 +173,12 @@ type App struct {
 	// tool-owned cave-pointer clearing are proven.
 	ct084SelectedMaterialHook ct084SelectedCaptureLease
 	ct084SelectedKeyItemHook  ct084SelectedCaptureLease
-	materialConsumeAddr       uintptr
+	// retiredRuntimeCaves were reachable from a published entry whose original
+	// bytes are now proven restored. They intentionally remain mapped until the
+	// game exits because entry restoration cannot quiesce an in-flight thread.
+	// The metadata is dropped only when this process connection is detached.
+	retiredRuntimeCaves []retiredRuntimeCave
+	materialConsumeAddr uintptr
 	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
 	// read/validate/write sequence must be atomic or concurrent Wails calls can
 	// both observe the original bytes and then overwrite each other.
@@ -1587,6 +1592,7 @@ func (a *App) charaDetachLocked() error {
 	a.ct084PatchOrder = nil
 	a.ct084SelectedMaterialHook = ct084SelectedCaptureLease{}
 	a.ct084SelectedKeyItemHook = ct084SelectedCaptureLease{}
+	a.retiredRuntimeCaves = nil
 	a.materialConsumeAddr = 0
 	a.charaOwnerToken = ""
 	a.sigilMemoryOwnerToken = ""
@@ -2270,9 +2276,9 @@ func (a *App) materialConsumeSetEnabledLocked(enabled bool) (MaterialConsumeStat
 	}
 	writer := func(data []byte) error { return writeCodeMemory(a.hProcess, addr, data) }
 	reader := func() ([]byte, error) { return a.readSharedRuntimePatch(addr) }
-	canRestore, err := installCodeHookAtomic(current, patch, writer, reader)
+	installResult, err := installCodeHookAtomic(current, patch, writer, reader)
 	if err != nil {
-		if !canRestore {
+		if installResult.RequiresRecoveryLease() {
 			a.poisonCurrentLiveMemoryWrites()
 		}
 		return MaterialConsumeStatus{}, fmt.Errorf("写入升级/强化材料消耗失败: %w", err)
@@ -2618,9 +2624,9 @@ func (a *App) terminusDropSetEnabledLocked(enabled bool) (TerminusDropStatus, er
 		err := readProcessMemory(a.hProcess, a.terminusDropAddr, unsafe.Pointer(&data[0]), uintptr(len(data)))
 		return data, err
 	}
-	canRestore, err := installCodeHookAtomic(current, patch, writer, reader)
+	installResult, err := installCodeHookAtomic(current, patch, writer, reader)
 	if err != nil {
-		if !canRestore {
+		if installResult.RequiresRecoveryLease() {
 			a.poisonCurrentLiveMemoryWrites()
 		}
 		return TerminusDropStatus{}, fmt.Errorf("写入巴武掉落失败: %w", err)
