@@ -46,6 +46,16 @@ import monsterSticker from '../assets/gbfr/stickers/monster.webp'
 import patchSticker from '../assets/gbfr/stickers/patch.webp'
 import languageSticker from '../assets/gbfr/stickers/language.webp'
 
+// These page-specific assets are produced by the approved portrait workflow.
+// URL construction keeps this frontend slice independently buildable while the
+// asset task lands, without silently substituting another page's character.
+const ctCombatArt = new URL('../assets/gbfr/cutouts/ct-combat-official-edge-safe.webp', import.meta.url).href
+const ctCharactersArt = new URL('../assets/gbfr/cutouts/ct-characters-official-edge-safe.webp', import.meta.url).href
+const ctQuestArt = new URL('../assets/gbfr/cutouts/ct-quest-official-edge-safe.webp', import.meta.url).href
+const ctCombatSticker = new URL('../assets/gbfr/stickers/ct-combat.webp', import.meta.url).href
+const ctCharactersSticker = new URL('../assets/gbfr/stickers/ct-characters.webp', import.meta.url).href
+const ctQuestSticker = new URL('../assets/gbfr/stickers/ct-quest.webp', import.meta.url).href
+
 const componentLoaders = {
   progression: () => import('./ProgressionEditor.vue'),
   sigil: () => import('./SigilGenerator.vue'),
@@ -61,6 +71,9 @@ const componentLoaders = {
   chara: () => import('./CharaStats.vue'),
   save: () => import('./SaveEditor.vue'),
   monster: () => import('./MonsterEnhance.vue'),
+  ctCombat: () => import('./CT084Features.vue'),
+  ctCharacters: () => import('./CT084Features.vue'),
+  ctQuest: () => import('./CT084Features.vue'),
   language: () => import('./LanguageSettings.vue'),
 }
 // 桌面本地应用无网络加载成本，改用静态直引：全部组件打进主包，
@@ -79,6 +92,7 @@ import MiscTools from './MiscTools.vue'
 import CharaStats from './CharaStats.vue'
 import SaveEditor from './SaveEditor.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
+import CT084Features from './CT084Features.vue'
 import LanguageSettings from './LanguageSettings.vue'
 
 const state = reactive({
@@ -182,6 +196,27 @@ const toolMeta = {
     caution: '重启游戏后运行时设置会失效，需要重新连接。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
+  ctCombat: {
+    group: 'memory', title: '战斗规则补丁', eyebrow: 'CT 0.8.4 · 战斗', status: '仅离线/单机', tone: 'live',
+    description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
+    usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '离开页面或断开时恢复全部补丁'],
+    caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
+    speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。离开页面时，我会把规则全部恢复。',
+  },
+  ctCharacters: {
+    group: 'memory', title: '角色机制补丁', eyebrow: 'CT 0.8.4 · 角色', status: '仅离线/单机', tone: 'live',
+    description: '按角色整理已验证的专属机制补丁，可搜索角色与功能名称并查看明确冲突。',
+    usage: ['启动游戏并进入单机内容', '选择角色分组后启用机制', '冲突项先恢复当前功能再切换'],
+    caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
+    speaker: '姬塔', note: '角色机制已经按名字分好组。看到冲突提示时，先恢复原来的那一项再继续。',
+  },
+  ctQuest: {
+    group: 'memory', title: '任务与便利补丁', eyebrow: 'CT 0.8.4 · 任务', status: '仅离线/单机', tone: 'live',
+    description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
+    usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
+    caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
+    speaker: '尤达哈拉', note: '任务路线先看清，宝箱和结算各归各位。用完恢复，下一趟才不会乱。',
+  },
   chara: {
     group: 'save', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
     description: '查看所有角色的使用次数，可任意选择多个角色批量修改。',
@@ -237,7 +272,7 @@ const toolMeta = {
 // 存档修改=离线改存档文件，可批量可回滚）。items 顺序即台前优先级。
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['progression', 'sigil', 'wrightstone', 'loadoutPresets', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'runtime', 'legacyRuntime', 'monster'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'ctCombat', 'ctCharacters', 'ctQuest', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'legacyRuntime', 'monster'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'patch', 'language'] },
 ])
 
@@ -254,6 +289,9 @@ const functionArt = {
   summon: summonArt,
   overlimit: overlimitArt,
   runtime: runtimeArt,
+  ctCombat: ctCombatArt,
+  ctCharacters: ctCharactersArt,
+  ctQuest: ctQuestArt,
   chara: charaArt,
   save: saveArt,
   compatibility: compatibilityArt,
@@ -262,7 +300,7 @@ const functionArt = {
   patch: patchArt,
   language: languageArt,
 }
-const currentArt = computed(() => functionArt[activeTab.value] || progressionArt)
+const currentArt = computed(() => functionArt[activeTab.value] || '')
 const functionStickers = {
   progression: progressionSticker,
   sigil: sigilSticker,
@@ -274,6 +312,9 @@ const functionStickers = {
   summon: summonSticker,
   overlimit: overlimitSticker,
   runtime: runtimeSticker,
+  ctCombat: ctCombatSticker,
+  ctCharacters: ctCharactersSticker,
+  ctQuest: ctQuestSticker,
   chara: charaSticker,
   save: saveSticker,
   compatibility: compatibilitySticker,
@@ -282,7 +323,7 @@ const functionStickers = {
   patch: patchSticker,
   language: languageSticker,
 }
-const currentSticker = computed(() => functionStickers[activeTab.value] || progressionSticker)
+const currentSticker = computed(() => functionStickers[activeTab.value] || '')
 const warmedTools = new Set()
 const warmedImages = new Map()
 const warmQueue = []
@@ -589,6 +630,9 @@ async function toggleFullscreen() {
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'runtime'" mode="stable" @status="showStatus" />
+            <CT084Features v-else-if="activeTab === 'ctCombat'" mode="combat" @status="showStatus" />
+            <CT084Features v-else-if="activeTab === 'ctCharacters'" mode="characters" @status="showStatus" />
+            <CT084Features v-else-if="activeTab === 'ctQuest'" mode="quest" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'legacyRuntime'" mode="compatibility" @status="showStatus" />
@@ -1324,6 +1368,9 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="summon"] { --art-scale:188%; --art-x:-8%; --art-y:-24%; }
 .tool-stage[data-tool="overlimit"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="runtime"] { --art-scale:208%; --art-x:-22%; --art-y:-31%; }
+.tool-stage[data-tool="ctCombat"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
+.tool-stage[data-tool="ctCharacters"] { --art-scale:188%; --art-x:-9%; --art-y:-22%; }
+.tool-stage[data-tool="ctQuest"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
 .tool-stage[data-tool="chara"],
 .tool-stage[data-tool="save"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="compatibility"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }

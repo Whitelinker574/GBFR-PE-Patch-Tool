@@ -19,6 +19,9 @@ const groups = [
     id: 'memory', mark: '注', label: '内存注入', hint: '连接运行中的游戏改进程内存，实时生效',
     items: [
       { id: 'runtime', icon: '✧', title: '游戏内实时修改', copy: '金币、MSP、药水、素材与任务掉落' },
+      { id: 'ctCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
+      { id: 'ctCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
+      { id: 'ctQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
       { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
       { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
       { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
@@ -292,12 +295,15 @@ const groups = [
 @media (max-height:620px) and (min-width:761px) {
   .journal-home { padding:var(--space-3); }
   .illustrated-journal { min-height:500px; }
-  .page-menu { padding-block:var(--space-5); }
+  .page-menu { padding-block:var(--space-3); }
   .project-heading { margin-bottom:var(--space-4); padding-bottom:var(--space-3); }
   .project-heading h1 { font-size:22px; }
   .project-heading .mode-guide { margin-top:var(--space-2); padding-block:var(--space-2); }
-  .home-groups { gap:var(--space-3); }
-  .chapter-ribbon { min-height:52px; }
-  .small-tabs { margin-top:var(--space-4); padding-top:var(--space-3); }
+  .home-groups { gap:var(--space-2); }
+  .home-group-head { margin-bottom:var(--space-1); }
+  .home-group-items { gap:var(--space-1); }
+  .chapter-ribbon { min-height:44px; padding-block:var(--space-2); }
+  .chapter-ribbon small { display:none; }
+  .small-tabs { margin-top:var(--space-3); padding-top:var(--space-2); }
 }
 </style>
