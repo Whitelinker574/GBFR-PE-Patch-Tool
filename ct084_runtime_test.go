@@ -181,6 +181,60 @@ func TestCT084PatchPreparationRejectsAlreadyEnabledExternalPatchBeforeLease(t *t
 	}
 }
 
+func TestCT084PatchPreparationRejectsForeignWildcardBytesBeforeLease(t *testing.T) {
+	catalog, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	feature := findCT084CatalogFeature(catalog, "ct084-31985")
+	if feature == nil || len(feature.Sites) != 1 || feature.Sites[0].Symbol != "NBGFR054" {
+		t.Fatalf("catalog fixture for wildcard patch changed: %+v", feature)
+	}
+	definition := feature.Sites[0]
+	if len(definition.EnableBytes) != 1 {
+		t.Fatalf("enable bytes=% X, want a one-byte patch", definition.EnableBytes)
+	}
+
+	foreign := []byte{definition.EnableBytes[0] ^ 0xff}
+	lease, err := prepareCT084PatchSiteLease(
+		0x140000000, 0x141000000, 0x140001000,
+		definition, foreign,
+	)
+	if err == nil {
+		t.Fatalf("prepareCT084PatchSiteLease() = %+v, nil; want unproven-original rejection", lease)
+	}
+	if lease.Address != 0 || lease.RVA != 0 || lease.Original != nil || lease.Patch != nil {
+		t.Fatalf("rejected preparation returned an ownable lease: %+v", lease)
+	}
+}
+
+func TestCT084PatchPreparationOwnsOnlyLockedExpectedOriginal(t *testing.T) {
+	catalog, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	feature := findCT084CatalogFeature(catalog, "ct084-31985")
+	if feature == nil || len(feature.Sites) != 1 {
+		t.Fatalf("catalog fixture changed: %+v", feature)
+	}
+	definition := feature.Sites[0]
+	address := uintptr(0x140001000)
+	lease, err := prepareCT084PatchSiteLease(
+		0x140000000, 0x141000000, address,
+		definition, append([]byte(nil), definition.ExpectedOriginalBytes...),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.Address != address || lease.RVA != 0x1000 || !bytes.Equal(lease.Original, definition.ExpectedOriginalBytes) || !bytes.Equal(lease.Patch, definition.EnableBytes) {
+		t.Fatalf("prepared lease=%+v", lease)
+	}
+	definition.ExpectedOriginalBytes[0] ^= 0xff
+	if bytes.Equal(lease.Original, definition.ExpectedOriginalBytes) {
+		t.Fatal("prepared lease aliases mutable catalog expected-original bytes")
+	}
+}
+
 func TestCT084PatchSecondWriteFailureRollsBackInReverse(t *testing.T) {
 	sites := ct084TestSites()[:2]
 	memory := newCT084FakeMemory(map[uintptr][]byte{

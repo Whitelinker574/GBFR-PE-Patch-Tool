@@ -193,6 +193,11 @@ func TestCT084CatalogMatchesLocalGame202(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	evidence := readCT084OriginalEvidence(t)
+	evidenceByKey := make(map[[2]int]ct084OriginalEvidenceSite, len(evidence.Sites))
+	for _, site := range evidence.Sites {
+		evidenceByKey[[2]int{site.CTID, site.SiteIndex}] = site
+	}
 
 	matchCache := make(map[string][]ct084LocalPatternMatch)
 	siteCount := 0
@@ -212,6 +217,30 @@ func TestCT084CatalogMatchesLocalGame202(t *testing.T) {
 			}
 			if len(matches) != 1 {
 				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: count=%d, want 1; locations=%s", feature.ID, feature.CTID, siteIndex, site.Symbol, len(matches), formatCT084LocalMatchLocations(matches))
+				continue
+			}
+			match := matches[0]
+			var matchedSection *ct084LocalExecutableSection
+			for sectionIndex := range sections {
+				section := &sections[sectionIndex]
+				if section.name == match.section && match.rva >= section.rva && uint64(match.rva-section.rva)+uint64(site.Offset)+uint64(len(site.EnableBytes)) <= uint64(len(section.data)) {
+					matchedSection = section
+					break
+				}
+			}
+			if matchedSection == nil {
+				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: matched patch slice is outside executable section data", feature.ID, feature.CTID, siteIndex, site.Symbol)
+				continue
+			}
+			start := int(match.rva-matchedSection.rva) + site.Offset
+			actualOriginal := matchedSection.data[start : start+len(site.EnableBytes)]
+			if !bytes.Equal(site.ExpectedOriginalBytes, actualOriginal) {
+				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: expectedOriginalBytes=% X, locked EXE has % X at RVA 0x%X", feature.ID, feature.CTID, siteIndex, site.Symbol, site.ExpectedOriginalBytes, actualOriginal, uint64(match.rva)+uint64(site.Offset))
+			}
+			locked, exists := evidenceByKey[[2]int{feature.CTID, siteIndex}]
+			actualPatchRVA := uint64(match.rva) + uint64(site.Offset)
+			if !exists || uint64(locked.PatchRVA) != actualPatchRVA {
+				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: evidence patch RVA=0x%X exists=%t, locked EXE patch RVA=0x%X", feature.ID, feature.CTID, siteIndex, site.Symbol, locked.PatchRVA, exists, actualPatchRVA)
 			}
 		}
 	}

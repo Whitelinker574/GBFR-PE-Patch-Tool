@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $InputCT,
 
+    [string] $OriginalEvidence = '',
+
     [Parameter(Mandatory = $true)]
     [string] $Output
 )
@@ -161,6 +163,40 @@ function ConvertFrom-DirectByteInstruction {
     return $null
 }
 
+function ConvertTo-EvidenceBytes {
+    param(
+        [Parameter(Mandatory = $true)] $Values,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+
+    [System.Collections.Generic.List[byte]] $bytes = @()
+    foreach ($value in @($Values)) {
+        $number = 0
+        if (-not [int]::TryParse([string] $value, [ref] $number) -or $number -lt 0 -or $number -gt 255) {
+            throw "$Label contains an invalid byte value."
+        }
+        $bytes.Add([byte] $number)
+    }
+    return [byte[]] $bytes.ToArray()
+}
+
+function Test-ByteArraysEqual {
+    param(
+        [AllowNull()][byte[]] $Left,
+        [AllowNull()][byte[]] $Right
+    )
+
+    if ($null -eq $Left -or $null -eq $Right -or $Left.Length -ne $Right.Length) {
+        return $false
+    }
+    for ($index = 0; $index -lt $Left.Length; $index++) {
+        if ($Left[$index] -ne $Right[$index]) {
+            return $false
+        }
+    }
+    return $true
+}
+
 function Get-DirectPatchBlocks {
     param(
         [Parameter(Mandatory = $true)][string] $Section,
@@ -245,6 +281,57 @@ try {
 }
 catch {
     throw 'Failed to load CT XML safely.'
+}
+
+$sourceSHA256 = (Get-FileHash -LiteralPath $InputCT -Algorithm SHA256).Hash.ToUpperInvariant()
+$originalEvidenceByKey = @{}
+$usedOriginalEvidence = [System.Collections.Generic.HashSet[string]]::new()
+$hasOriginalEvidence = -not [string]::IsNullOrWhiteSpace($OriginalEvidence)
+if ($hasOriginalEvidence) {
+    try {
+        $evidencePath = (Resolve-Path -LiteralPath $OriginalEvidence).Path
+        $evidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $evidencePath | ConvertFrom-Json
+        if ([int] $evidence.schemaVersion -ne 1) {
+            throw 'unsupported evidence schemaVersion'
+        }
+        if ([string] $evidence.sourceVersion -ne '0.8.4' -or ([string] $evidence.sourceSha256).ToUpperInvariant() -ne $sourceSHA256) {
+            throw 'evidence does not match the input CT source'
+        }
+        if (([string] $evidence.executableSha256).ToUpperInvariant() -ne '63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F' -or [int64] $evidence.executableSize -ne 123522016) {
+            throw 'evidence does not identify the locked game 2.0.2 executable'
+        }
+        foreach ($siteEvidence in @($evidence.sites)) {
+            $ctID = [int] $siteEvidence.ctId
+            $siteIndex = [int] $siteEvidence.siteIndex
+            $key = "$ctID`:$siteIndex"
+            if ($originalEvidenceByKey.ContainsKey($key)) {
+                throw "duplicate original-byte evidence key $key"
+            }
+            $expectedOriginalBytes = [byte[]] @(ConvertTo-EvidenceBytes -Values $siteEvidence.expectedOriginalBytes -Label "original-byte evidence $key")
+            if ($expectedOriginalBytes.Length -eq 0) {
+                throw "original-byte evidence $key is empty"
+            }
+            if ([uint64] $siteEvidence.patchRva -eq 0) {
+                throw "original-byte evidence $key has an invalid patch RVA"
+            }
+            $originalEvidenceByKey[$key] = [pscustomobject]@{
+                FeatureID             = [string] $siteEvidence.featureId
+                CTID                  = $ctID
+                SiteIndex             = $siteIndex
+                Symbol                = [string] $siteEvidence.symbol
+                AOB                   = [string] $siteEvidence.aob
+                Offset                = [int] $siteEvidence.offset
+                PatchRVA              = [uint64] $siteEvidence.patchRva
+                ExpectedOriginalBytes = $expectedOriginalBytes
+            }
+        }
+        if ($originalEvidenceByKey.Count -eq 0) {
+            throw 'original-byte evidence contains no sites'
+        }
+    }
+    catch {
+        throw "Failed to load locked original-byte evidence: $($_.Exception.Message)"
+    }
 }
 
 $knownUnsafeCTIDs = [System.Collections.Generic.HashSet[int]]::new()
@@ -346,6 +433,7 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     $disableBlocks = @(Get-DirectPatchBlocks -Section $disableSection -AOBBySymbol $aobBySymbol)
 
     [System.Collections.Generic.List[object]] $sites = @()
+    $siteIndex = 0
     foreach ($block in $enableBlocks) {
         $disableBytes = $null
         foreach ($disableBlock in $disableBlocks) {
@@ -359,6 +447,34 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
             $disableOutput = [byte[]] $disableBytes
         }
         $aobDefinition = $aobBySymbol[$block.Symbol]
+        $expectedOriginalBytes = $null
+        $evidenceKey = "$ctID`:$siteIndex"
+        if ($hasOriginalEvidence) {
+            if (-not $originalEvidenceByKey.ContainsKey($evidenceKey)) {
+                throw "CT $ctID site $siteIndex has no locked original-byte evidence."
+            }
+            $siteEvidence = $originalEvidenceByKey[$evidenceKey]
+            if ($siteEvidence.FeatureID -ne "ct084-$ctID" -or $siteEvidence.Symbol -ne $block.Symbol -or $siteEvidence.AOB -ne $aobDefinition.Pattern.AOB -or $siteEvidence.Offset -ne $block.Offset) {
+                throw "CT $ctID site $siteIndex original-byte evidence identity does not match the generated patch site."
+            }
+            $expectedOriginalBytes = [byte[]] $siteEvidence.ExpectedOriginalBytes
+            [void] $usedOriginalEvidence.Add($evidenceKey)
+        }
+        elseif ($null -ne $disableBytes) {
+            $expectedOriginalBytes = [byte[]] $disableBytes
+        }
+        else {
+            throw "CT $ctID site $siteIndex original bytes require locked game 2.0.2 evidence (-OriginalEvidence)."
+        }
+        if ($expectedOriginalBytes.Length -ne $block.Bytes.Length) {
+            throw "CT $ctID site $siteIndex original-byte evidence length does not match the enable patch."
+        }
+        if ($null -ne $disableBytes -and -not (Test-ByteArraysEqual -Left $expectedOriginalBytes -Right ([byte[]] $disableBytes))) {
+            throw "CT $ctID site $siteIndex original-byte evidence conflicts with explicit disable bytes."
+        }
+        if (Test-ByteArraysEqual -Left $expectedOriginalBytes -Right ([byte[]] $block.Bytes)) {
+            throw "CT $ctID site $siteIndex locked original bytes already equal the enable patch."
+        }
         $sites.Add([ordered]@{
             symbol                 = $block.Symbol
             module                 = $aobDefinition.Module
@@ -367,9 +483,11 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
             patternValues          = [byte[]] $aobDefinition.Pattern.Values
             patternMasks           = [byte[]] $aobDefinition.Pattern.Masks
             enableBytes            = [byte[]] $block.Bytes
+            expectedOriginalBytes  = [byte[]] $expectedOriginalBytes
             disableBytes           = $disableOutput
             requiresRuntimeCapture = ($null -eq $disableBytes)
         })
+        $siteIndex++
     }
 
     $ancestors = @(Get-AncestorNames $entry)
@@ -415,6 +533,10 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     })
 }
 
+if ($hasOriginalEvidence -and $usedOriginalEvidence.Count -ne $originalEvidenceByKey.Count) {
+    throw "Locked original-byte evidence contains $($originalEvidenceByKey.Count - $usedOriginalEvidence.Count) unused site record(s)."
+}
+
 $features = [object[]] ($features | Sort-Object @{ Expression = { $_.mode } }, @{ Expression = { $_.ctId } })
 $featureByID = @{}
 foreach ($feature in $features) {
@@ -431,9 +553,9 @@ foreach ($conflictID in $conflictIDs) {
 }
 
 $catalog = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     sourceVersion = '0.8.4'
-    sourceSha256  = (Get-FileHash -LiteralPath $InputCT -Algorithm SHA256).Hash.ToUpperInvariant()
+    sourceSha256  = $sourceSHA256
     features      = $features
 }
 

@@ -1,5 +1,5 @@
 {
-    "schemaVersion":  1,
+    "schemaVersion":  2,
     "sourceVersion":  "0.8.4",
     "sourceSha256":  "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659",
     "features":  [
@@ -127,6 +127,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         119
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -191,6 +194,13 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         16,
+                                                                         64,
+                                                                         32
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -307,6 +317,12 @@
                                                                16,
                                                                193
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -443,6 +459,12 @@
                                                                16,
                                                                194
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -539,6 +561,12 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -668,6 +696,11 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         66,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -748,6 +781,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         132,
+                                                                         72,
+                                                                         1,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -826,6 +867,12 @@
                                                                193,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         68,
+                                                                         15,
+                                                                         79,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -932,6 +979,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         16,
+                                                                         134,
+                                                                         140,
+                                                                         0,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1072,6 +1129,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         16,
+                                                                         128,
+                                                                         136,
+                                                                         42,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1181,6 +1248,13 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         196,
+                                                                         193,
+                                                                         114,
+                                                                         92,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1250,6 +1324,11 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         66,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1338,6 +1417,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         139,
+                                                                         134,
+                                                                         188,
+                                                                         202,
+                                                                         1,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1448,6 +1535,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         89,
+                                                                         13,
+                                                                         142,
+                                                                         230,
+                                                                         167,
+                                                                         2
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1503,6 +1600,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         119,
+                                                                         113
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1546,6 +1647,11 @@
                                                                208,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         76,
+                                                                         208
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1601,6 +1707,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         125
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1679,6 +1788,12 @@
                                                                246,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         248,
+                                                                         40,
+                                                                         241
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1811,6 +1926,12 @@
                                                                16,
                                                                194
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         92,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1905,6 +2026,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         3,
+                                                                         158,
+                                                                         136,
+                                                                         202,
+                                                                         1,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -1971,6 +2100,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         119,
+                                                                         113
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2043,6 +2176,11 @@
                                                                207,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         141,
+                                                                         79,
+                                                                         255
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2157,6 +2295,12 @@
                                                                16,
                                                                194
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2252,6 +2396,9 @@
                                            "enableBytes":  [
                                                                95
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         93
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2317,6 +2464,11 @@
                                                                193,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         76,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2437,6 +2589,12 @@
                                                                16,
                                                                193
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2553,6 +2711,12 @@
                                                                16,
                                                                194
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         88,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2639,6 +2803,12 @@
                                                                192,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         93,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2795,6 +2965,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         89,
+                                                                         13,
+                                                                         154,
+                                                                         34,
+                                                                         49,
+                                                                         5
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2857,6 +3037,12 @@
                                                                201,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         89,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2912,6 +3098,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         119,
+                                                                         113
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -2996,6 +3186,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         44,
+                                                                         190,
+                                                                         20,
+                                                                         205,
+                                                                         1,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3122,6 +3322,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         89,
+                                                                         128,
+                                                                         156,
+                                                                         1,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3236,6 +3446,12 @@
                                                                16,
                                                                193
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         92,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3294,6 +3510,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         255,
+                                                                         201
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3384,6 +3604,12 @@
                                                                246,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         248,
+                                                                         40,
+                                                                         240
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3474,6 +3700,16 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         89,
+                                                                         13,
+                                                                         20,
+                                                                         233,
+                                                                         3,
+                                                                         2
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3545,6 +3781,15 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         182,
+                                                                         134,
+                                                                         156,
+                                                                         0,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3623,6 +3868,10 @@
                                                                176,
                                                                4
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         255,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3697,6 +3946,11 @@
                                                                192,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         141,
+                                                                         67,
+                                                                         1
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3796,6 +4050,12 @@
                                                                192,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         89,
+                                                                         198
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3879,6 +4139,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         119,
+                                                                         22
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -3942,6 +4206,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         118
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4015,6 +4282,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         135,
+                                                                         124,
+                                                                         0,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4108,6 +4383,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         65,
+                                                                         184,
+                                                                         255,
+                                                                         255,
+                                                                         255,
+                                                                         255
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4183,6 +4466,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         130,
+                                                                         152,
+                                                                         253,
+                                                                         255,
+                                                                         255
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4240,6 +4531,11 @@
                                                                192,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         78,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4282,6 +4578,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         127,
+                                                                         2
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4419,6 +4719,12 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         242,
+                                                                         88,
+                                                                         202
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4509,6 +4815,15 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         139,
+                                                                         132,
+                                                                         171,
+                                                                         96,
+                                                                         28,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4554,6 +4869,9 @@
                                            "enableBytes":  [
                                                                0
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         1
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4616,6 +4934,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         140,
+                                                                         29,
+                                                                         255,
+                                                                         255,
+                                                                         255
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4679,6 +5005,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         117,
+                                                                         18
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4800,6 +5130,12 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         88,
+                                                                         194
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -4969,6 +5305,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         133,
+                                                                         30,
+                                                                         1,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5062,6 +5406,12 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         250,
+                                                                         88,
+                                                                         194
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5177,6 +5527,18 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         72,
+                                                                         184,
+                                                                         0,
+                                                                         0,
+                                                                         240,
+                                                                         65,
+                                                                         0,
+                                                                         0,
+                                                                         240,
+                                                                         65
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5272,6 +5634,12 @@
                                                                195,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         72,
+                                                                         131,
+                                                                         236,
+                                                                         40
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5344,6 +5712,11 @@
                                                                1,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         159,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5437,6 +5810,12 @@
                                                                192,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         197,
+                                                                         234,
+                                                                         92,
+                                                                         192
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5510,6 +5889,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         127,
+                                                                         121
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5572,6 +5955,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         140,
+                                                                         228,
+                                                                         254,
+                                                                         255,
+                                                                         255
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5615,6 +6006,11 @@
                                                                49,
                                                                201
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         65,
+                                                                         247,
+                                                                         217
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5657,6 +6053,12 @@
                                                                228,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         68,
+                                                                         139,
+                                                                         96,
+                                                                         96
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5692,6 +6094,11 @@
                                                                49,
                                                                237
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         65,
+                                                                         247,
+                                                                         221
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5785,6 +6192,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         115
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5849,6 +6259,12 @@
                                                                237,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         68,
+                                                                         139,
+                                                                         104,
+                                                                         36
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5882,6 +6298,11 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         79,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5923,6 +6344,11 @@
                                                                49,
                                                                228
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         65,
+                                                                         247,
+                                                                         220
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -5989,6 +6415,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         142,
+                                                                         225,
+                                                                         2,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6057,6 +6491,14 @@
                                                                255,
                                                                255
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         139,
+                                                                         128,
+                                                                         152,
+                                                                         0,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6106,6 +6548,11 @@
                                                                49,
                                                                246
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         65,
+                                                                         247,
+                                                                         222
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6163,6 +6610,10 @@
                                                                177,
                                                                1
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         32,
+                                                                         193
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6239,6 +6690,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         126
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6305,6 +6759,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         41,
+                                                                         1
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6348,6 +6806,9 @@
                                            "enableBytes":  [
                                                                235
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         125
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6412,6 +6873,10 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         41,
+                                                                         1
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6499,6 +6964,14 @@
                                                                144,
                                                                144
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         15,
+                                                                         132,
+                                                                         234,
+                                                                         0,
+                                                                         0,
+                                                                         0
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6586,6 +7059,10 @@
                                                                176,
                                                                1
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         48,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6654,6 +7131,10 @@
                                                                176,
                                                                1
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         48,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],
@@ -6700,6 +7181,10 @@
                                                                176,
                                                                1
                                                            ],
+                                           "expectedOriginalBytes":  [
+                                                                         48,
+                                                                         200
+                                                                     ],
                                            "disableBytes":  [
 
                                                             ],

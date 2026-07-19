@@ -478,6 +478,12 @@ func prepareCT084PatchSiteLease(moduleBase, moduleEnd, address uintptr, definiti
 	if len(original) != len(definition.EnableBytes) {
 		return ct084PatchSiteLease{}, fmt.Errorf("CT084 captured original length does not match enable patch")
 	}
+	if len(definition.ExpectedOriginalBytes) != len(definition.EnableBytes) {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 expected original length does not match enable patch")
+	}
+	if !bytes.Equal(original, definition.ExpectedOriginalBytes) {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 runtime bytes do not match locked expected original bytes")
+	}
 	if len(definition.DisableBytes) != 0 && !bytes.Equal(original, definition.DisableBytes) {
 		return ct084PatchSiteLease{}, fmt.Errorf("CT084 explicit disable bytes do not match runtime bytes")
 	}
@@ -487,7 +493,7 @@ func prepareCT084PatchSiteLease(moduleBase, moduleEnd, address uintptr, definiti
 	return ct084PatchSiteLease{
 		Address:  address,
 		RVA:      uint64(address - moduleBase),
-		Original: append([]byte(nil), original...),
+		Original: append([]byte(nil), definition.ExpectedOriginalBytes...),
 		Patch:    append([]byte(nil), definition.EnableBytes...),
 	}, nil
 }

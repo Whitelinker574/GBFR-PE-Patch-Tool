@@ -15,7 +15,7 @@ import (
 )
 
 const ct084SourceSHA256 = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
-const ct084CatalogSHA256 = "94236B5AF66B2169B3FDF8249FEE26E733E78F332FA96FB52582F3FEE97B6D96"
+const ct084CatalogSHA256 = "C6B09186CE1E349DC334B8A1C33659C996B7B09D092A9C05857435E7DCD9FF83"
 
 func readCT084CatalogFile(t *testing.T) CT084Catalog {
 	t.Helper()
@@ -134,8 +134,8 @@ func TestCT084ProductionCatalogStrictJSON(t *testing.T) {
 		name string
 		raw  string
 	}{
-		{name: "unknown field", raw: `{"schemaVersion":1,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[],"unknown":true}`},
-		{name: "trailing value", raw: `{"schemaVersion":1,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[]} {}`},
+		{name: "unknown field", raw: `{"schemaVersion":2,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[],"unknown":true}`},
+		{name: "trailing value", raw: `{"schemaVersion":2,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[]} {}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -192,6 +192,16 @@ func TestCT084ProductionCatalogRejectsInvalidMutations(t *testing.T) {
 		}},
 		{name: "negative offset", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Offset = -1 }},
 		{name: "empty enable", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].EnableBytes = nil }},
+		{name: "empty expected original", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].ExpectedOriginalBytes = nil }},
+		{name: "expected original length mismatch", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].ExpectedOriginalBytes = append(c.Features[0].Sites[0].ExpectedOriginalBytes, 0)
+		}},
+		{name: "expected original equals enable", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].ExpectedOriginalBytes = append([]byte(nil), c.Features[0].Sites[0].EnableBytes...)
+		}},
+		{name: "expected original violates AOB", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].ExpectedOriginalBytes[0] ^= 1
+		}},
 		{name: "patch past pattern", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Offset = len(c.Features[0].Sites[0].PatternValues) }},
 		{name: "runtime capture with disable", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].DisableBytes = []byte{0} }},
 		{name: "static patch missing disable", mutate: func(c *CT084Catalog) {
@@ -201,6 +211,11 @@ func TestCT084ProductionCatalogRejectsInvalidMutations(t *testing.T) {
 		{name: "static disable length mismatch", mutate: func(c *CT084Catalog) {
 			c.Features[0].Sites[0].RequiresRuntimeCapture = false
 			c.Features[0].Sites[0].DisableBytes = make([]byte, len(c.Features[0].Sites[0].EnableBytes)+1)
+		}},
+		{name: "static disable differs from expected original", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].RequiresRuntimeCapture = false
+			c.Features[0].Sites[0].DisableBytes = append([]byte(nil), c.Features[0].Sites[0].ExpectedOriginalBytes...)
+			c.Features[0].Sites[0].DisableBytes[0] ^= 0xff
 		}},
 		{name: "overlapping patch slices", mutate: func(c *CT084Catalog) {
 			site := c.Features[0].Sites[0]
@@ -261,6 +276,7 @@ func TestCT084ProductionCatalogReturnsDeepDefensiveCopies(t *testing.T) {
 	first[0].Sites[0].PatternValues[0] ^= 0xff
 	first[0].Sites[0].PatternMasks[0] ^= 0xff
 	first[0].Sites[0].EnableBytes[0] ^= 0xff
+	first[0].Sites[0].ExpectedOriginalBytes[0] ^= 0xff
 	if len(first[0].Sites[0].DisableBytes) > 0 {
 		first[0].Sites[0].DisableBytes[0] ^= 0xff
 	}
@@ -310,6 +326,7 @@ func TestCT084ProductionCatalogWailsJSONPreservesEmptyArrays(t *testing.T) {
 		"patternValues",
 		"patternMasks",
 		"enableBytes",
+		"expectedOriginalBytes",
 		"disableBytes",
 	} {
 		if bytes.Contains(raw, []byte(`"`+field+`":null`)) {
@@ -320,8 +337,8 @@ func TestCT084ProductionCatalogWailsJSONPreservesEmptyArrays(t *testing.T) {
 
 func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 	catalog := readCT084CatalogFile(t)
-	if catalog.SchemaVersion != 1 {
-		t.Fatalf("schemaVersion=%d, want 1", catalog.SchemaVersion)
+	if catalog.SchemaVersion != 2 {
+		t.Fatalf("schemaVersion=%d, want 2", catalog.SchemaVersion)
 	}
 	if catalog.SourceVersion != "0.8.4" {
 		t.Fatalf("sourceVersion=%q, want 0.8.4", catalog.SourceVersion)
@@ -400,8 +417,12 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 	catalog := readCT084CatalogFile(t)
 	validMask := map[byte]bool{0x00: true, 0x0f: true, 0xf0: true, 0xff: true}
+	siteCount := 0
+	wildcardPatchSlices := 0
+	fullyWildcardPatchSlices := make([]string, 0, 2)
 	for _, feature := range catalog.Features {
 		for siteIndex, site := range feature.Sites {
+			siteCount++
 			label := fmt.Sprintf("%s site %d", feature.ID, siteIndex)
 			if strings.TrimSpace(site.Symbol) == "" || strings.TrimSpace(site.Module) == "" || strings.TrimSpace(site.AOB) == "" {
 				t.Errorf("%s has empty symbol/module/aob", label)
@@ -424,10 +445,29 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 			if len(site.EnableBytes) == 0 {
 				t.Errorf("%s has no enable bytes", label)
 			}
+			if len(site.ExpectedOriginalBytes) != len(site.EnableBytes) {
+				t.Errorf("%s expected original bytes=%d, want enable length %d", label, len(site.ExpectedOriginalBytes), len(site.EnableBytes))
+			}
+			if bytes.Equal(site.ExpectedOriginalBytes, site.EnableBytes) {
+				t.Errorf("%s expected original bytes already equal the enable patch", label)
+			}
 			if site.Offset < 0 {
 				t.Errorf("%s offset=%d, want non-negative", label, site.Offset)
 			} else if site.Offset+len(site.EnableBytes) > len(site.PatternValues) {
 				t.Errorf("%s patch range [%d,%d) exceeds pattern length %d", label, site.Offset, site.Offset+len(site.EnableBytes), len(site.PatternValues))
+			} else {
+				hasWildcard := false
+				allWildcard := true
+				for _, mask := range site.PatternMasks[site.Offset : site.Offset+len(site.EnableBytes)] {
+					hasWildcard = hasWildcard || mask != 0xff
+					allWildcard = allWildcard && mask == 0
+				}
+				if hasWildcard {
+					wildcardPatchSlices++
+				}
+				if allWildcard {
+					fullyWildcardPatchSlices = append(fullyWildcardPatchSlices, feature.ID+"/"+site.Symbol)
+				}
 			}
 			if len(site.DisableBytes) > 0 && len(site.DisableBytes) != len(site.EnableBytes) {
 				t.Errorf("%s disable bytes=%d, want enable length %d", label, len(site.DisableBytes), len(site.EnableBytes))
@@ -440,6 +480,149 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 				t.Errorf("%s has neither disable bytes nor runtime capture", label)
 			}
 		}
+	}
+	if len(catalog.Features) != 58 || siteCount != 81 {
+		t.Fatalf("catalog coverage=%d features/%d sites, want 58/81", len(catalog.Features), siteCount)
+	}
+	if wildcardPatchSlices != 75 {
+		t.Fatalf("wildcard-bearing patch slices=%d, want 75 (all must be guarded by expectedOriginalBytes)", wildcardPatchSlices)
+	}
+	wantFullyWildcard := []string{"ct084-31985/NBGFR054", "ct084-31064/NBGFR016B"}
+	if !reflect.DeepEqual(fullyWildcardPatchSlices, wantFullyWildcard) {
+		t.Fatalf("fully wildcard patch slices=%v, want %v", fullyWildcardPatchSlices, wantFullyWildcard)
+	}
+}
+
+func TestCT084GeneratorRejectsRuntimeCaptureWithoutLockedOriginalEvidence(t *testing.T) {
+	powerShell := ""
+	for _, candidate := range []string{"powershell", "pwsh"} {
+		if path, err := exec.LookPath(candidate); err == nil {
+			powerShell = path
+			break
+		}
+	}
+	if powerShell == "" {
+		t.Skip("PowerShell is not installed")
+	}
+
+	input := `<?xml version="1.0" encoding="utf-8"?>
+<CheatTable><CheatEntries><CheatEntry>
+<ID>900008</ID><Description>unproven wildcard original</Description>
+<AssemblerScript><![CDATA[
+[ENABLE]
+aobscanmodule(UNPROVEN,$process,48 8B ?? 89 54 24 10 90)
+alloc(UNPROVEN_bak,1)
+UNPROVEN_bak:
+  readMem(UNPROVEN+2,1)
+UNPROVEN+2:
+  db 90
+[DISABLE]
+UNPROVEN+2:
+  readMem(UNPROVEN_bak,1)
+]]></AssemblerScript>
+</CheatEntry></CheatEntries></CheatTable>`
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "unproven.ct")
+	outputPath := filepath.Join(tempDir, "catalog.json")
+	if err := os.WriteFile(inputPath, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath, err := filepath.Abs("tools/generate_ct084_patches.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(powerShell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-InputCT", inputPath, "-Output", outputPath)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("generator accepted a runtime-captured wildcard original without locked evidence; output=%s", output)
+	}
+	if !strings.Contains(strings.ToLower(string(output)), "original") {
+		t.Fatalf("generator rejection did not explain missing original-byte evidence: %s", output)
+	}
+}
+
+func TestCT084GeneratorUsesLockedOriginalEvidenceWithoutReclassifyingCTCapture(t *testing.T) {
+	powerShell := ""
+	for _, candidate := range []string{"powershell", "pwsh"} {
+		if path, err := exec.LookPath(candidate); err == nil {
+			powerShell = path
+			break
+		}
+	}
+	if powerShell == "" {
+		t.Skip("PowerShell is not installed")
+	}
+
+	input := `<?xml version="1.0" encoding="utf-8"?>
+<CheatTable><CheatEntries><CheatEntry>
+<ID>900009</ID><Description>proven wildcard original</Description>
+<AssemblerScript><![CDATA[
+[ENABLE]
+aobscanmodule(PROVEN,$process,48 8B ?? 89 54 24 10 90)
+alloc(PROVEN_bak,1)
+PROVEN_bak:
+  readMem(PROVEN+2,1)
+PROVEN+2:
+  db 90
+[DISABLE]
+PROVEN+2:
+  readMem(PROVEN_bak,1)
+]]></AssemblerScript>
+</CheatEntry></CheatEntries></CheatTable>`
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "proven.ct")
+	outputPath := filepath.Join(tempDir, "catalog.json")
+	evidencePath := filepath.Join(tempDir, "originals.json")
+	if err := os.WriteFile(inputPath, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourceHash := fmt.Sprintf("%X", sha256.Sum256([]byte(input)))
+	evidence := fmt.Sprintf(`{
+  "schemaVersion": 1,
+  "sourceVersion": "0.8.4",
+  "sourceSha256": %q,
+  "executableSha256": %q,
+  "executableSize": %d,
+  "sites": [{
+    "featureId": "ct084-900009",
+    "ctId": 900009,
+    "siteIndex": 0,
+    "symbol": "PROVEN",
+    "aob": "48 8B ?? 89 54 24 10 90",
+    "offset": 2,
+    "patchRva": 4098,
+    "expectedOriginalBytes": [204]
+  }]
+}`, sourceHash, ct084LocalGame202SHA256, ct084LocalGame202Size)
+	if err := os.WriteFile(evidencePath, []byte(evidence), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath, err := filepath.Abs("tools/generate_ct084_patches.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(powerShell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-InputCT", inputPath, "-OriginalEvidence", evidencePath, "-Output", outputPath)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generator rejected locked original evidence: %v\n%s", err, output)
+	}
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog CT084Catalog
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Features) != 1 || len(catalog.Features[0].Sites) != 1 {
+		t.Fatalf("generated catalog shape=%+v", catalog.Features)
+	}
+	site := catalog.Features[0].Sites[0]
+	if !reflect.DeepEqual(site.ExpectedOriginalBytes, []byte{0xCC}) {
+		t.Fatalf("expected original bytes=% X, want CC", site.ExpectedOriginalBytes)
+	}
+	if !site.RequiresRuntimeCapture || len(site.DisableBytes) != 0 {
+		t.Fatalf("generator rewrote CT capture provenance: requiresRuntimeCapture=%t disable=% X", site.RequiresRuntimeCapture, site.DisableBytes)
 	}
 }
 

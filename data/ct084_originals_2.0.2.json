@@ -1,0 +1,1223 @@
+{
+  "schemaVersion": 1,
+  "sourceVersion": "0.8.4",
+  "sourceSha256": "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659",
+  "executableSha256": "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F",
+  "executableSize": 123522016,
+  "sites": [
+    {
+      "featureId": "ct084-31446",
+      "ctId": 31446,
+      "siteIndex": 0,
+      "symbol": "NBGFR037",
+      "aob": "77 ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 76 ?? C5 ?? ?? ?? C4 ?? ?? ?? ?? ?? ?? ?? ?? C4 ?? ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 73",
+      "offset": 0,
+      "patchRva": 54512700,
+      "expectedOriginalBytes": [
+        119
+      ]
+    },
+    {
+      "featureId": "ct084-31894",
+      "ctId": 31894,
+      "siteIndex": 0,
+      "symbol": "NBGFR021",
+      "aob": "C5 ?? ?? ?? ?? E9 ?? ?? ?? ?? 41 39",
+      "offset": 0,
+      "patchRva": 41959122,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        16,
+        64,
+        32
+      ]
+    },
+    {
+      "featureId": "ct084-31898",
+      "ctId": 31898,
+      "siteIndex": 0,
+      "symbol": "NBGFR038",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 76 ?? C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 8D ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 8B",
+      "offset": 0,
+      "patchRva": 54127789,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31904",
+      "ctId": 31904,
+      "siteIndex": 0,
+      "symbol": "NBGFR023",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? 48 8D ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85",
+      "offset": 0,
+      "patchRva": 53790658,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31917",
+      "ctId": 31917,
+      "siteIndex": 0,
+      "symbol": "NBGFR027",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 76 ?? C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 0F 83",
+      "offset": 0,
+      "patchRva": 53106998,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31922",
+      "ctId": 31922,
+      "siteIndex": 0,
+      "symbol": "NBGFR029",
+      "aob": "0F 42 ?? 89 ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5",
+      "offset": 0,
+      "patchRva": 53952701,
+      "expectedOriginalBytes": [
+        15,
+        66,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-31923",
+      "ctId": 31923,
+      "siteIndex": 0,
+      "symbol": "NBGFR030",
+      "aob": "0F 84 ?? ?? ?? ?? 8D ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 45 31",
+      "offset": 0,
+      "patchRva": 41580252,
+      "expectedOriginalBytes": [
+        15,
+        132,
+        72,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31924",
+      "ctId": 31924,
+      "siteIndex": 0,
+      "symbol": "NBGFR031",
+      "aob": "44 0F ?? ?? 44 89 ?? ?? ?? ?? ?? C6 ?? ?? ?? ?? ?? ?? C5",
+      "offset": 0,
+      "patchRva": 41580294,
+      "expectedOriginalBytes": [
+        68,
+        15,
+        79,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-31925",
+      "ctId": 31925,
+      "siteIndex": 0,
+      "symbol": "NBGFR032",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 0F 87 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85",
+      "offset": 0,
+      "patchRva": 44516806,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        16,
+        134,
+        140,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31934",
+      "ctId": 31934,
+      "siteIndex": 0,
+      "symbol": "NBGFR033",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 8B ?? 48 89 ?? FF ?? ?? ?? ?? ?? 66 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? B9",
+      "offset": 0,
+      "patchRva": 44447761,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        16,
+        128,
+        136,
+        42,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31954",
+      "ctId": 31954,
+      "siteIndex": 0,
+      "symbol": "NBGFR039",
+      "aob": "C4 ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? E9",
+      "offset": 0,
+      "patchRva": 54358372,
+      "expectedOriginalBytes": [
+        196,
+        193,
+        114,
+        92,
+        200
+      ]
+    },
+    {
+      "featureId": "ct084-31961",
+      "ctId": 31961,
+      "siteIndex": 0,
+      "symbol": "NBGFR041",
+      "aob": "0F 42 ?? 89 ?? ?? ?? ?? ?? 05 ?? ?? ?? ?? E9",
+      "offset": 0,
+      "patchRva": 54423850,
+      "expectedOriginalBytes": [
+        15,
+        66,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-31962",
+      "ctId": 31962,
+      "siteIndex": 0,
+      "symbol": "NBGFR042",
+      "aob": "8B ?? ?? ?? ?? ?? 89 ?? ?? ?? ?? ?? C6 ?? ?? ?? ?? ?? ?? 85 ?? 0F 8E",
+      "offset": 0,
+      "patchRva": 54420646,
+      "expectedOriginalBytes": [
+        139,
+        134,
+        188,
+        202,
+        1,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31966",
+      "ctId": 31966,
+      "siteIndex": 0,
+      "symbol": "NBGFR043",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? 48 89 ?? 48 83 ?? ?? 5E E9 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 56 48 83",
+      "offset": 0,
+      "patchRva": 44194562,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        89,
+        13,
+        142,
+        230,
+        167,
+        2
+      ]
+    },
+    {
+      "featureId": "ct084-31967",
+      "ctId": 31967,
+      "siteIndex": 0,
+      "symbol": "NBGFR044A",
+      "aob": "77 ?? C5 ?? ?? ?? 44 8D",
+      "offset": 0,
+      "patchRva": 33778972,
+      "expectedOriginalBytes": [
+        119,
+        113
+      ]
+    },
+    {
+      "featureId": "ct084-31967",
+      "ctId": 31967,
+      "siteIndex": 1,
+      "symbol": "NBGFR044B",
+      "aob": "0F 4C ?? C5 ?? ?? ?? ?? 89 ?? 48 8B",
+      "offset": 0,
+      "patchRva": 33779015,
+      "expectedOriginalBytes": [
+        15,
+        76,
+        208
+      ]
+    },
+    {
+      "featureId": "ct084-31970",
+      "ctId": 31970,
+      "siteIndex": 0,
+      "symbol": "NBGFR046",
+      "aob": "7D ?? 89 ?? 48 83 ?? ?? 5B",
+      "offset": 0,
+      "patchRva": 54654428,
+      "expectedOriginalBytes": [
+        125
+      ]
+    },
+    {
+      "featureId": "ct084-31973",
+      "ctId": 31973,
+      "siteIndex": 0,
+      "symbol": "NBGFR048",
+      "aob": "C5 ?? ?? ?? 41 81 ?? ?? ?? ?? ?? 0F 85 ?? ?? ?? ?? 48 89",
+      "offset": 0,
+      "patchRva": 54545411,
+      "expectedOriginalBytes": [
+        197,
+        248,
+        40,
+        241
+      ]
+    },
+    {
+      "featureId": "ct084-31974",
+      "ctId": 31974,
+      "siteIndex": 0,
+      "symbol": "NBGFR049",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 76 ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 0F 87",
+      "offset": 0,
+      "patchRva": 54554399,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        92,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31976",
+      "ctId": 31976,
+      "siteIndex": 0,
+      "symbol": "NBGFR047",
+      "aob": "03 ?? ?? ?? ?? ?? 89 ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 8B",
+      "offset": 0,
+      "patchRva": 54575110,
+      "expectedOriginalBytes": [
+        3,
+        158,
+        136,
+        202,
+        1,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31978",
+      "ctId": 31978,
+      "siteIndex": 0,
+      "symbol": "NBGFR050",
+      "aob": "77 ?? C5 ?? ?? ?? 44 8D ?? ?? 31 ?? 45 85",
+      "offset": 0,
+      "patchRva": 33778972,
+      "expectedOriginalBytes": [
+        119,
+        113
+      ]
+    },
+    {
+      "featureId": "ct084-31979",
+      "ctId": 31979,
+      "siteIndex": 0,
+      "symbol": "NBGFR051",
+      "aob": "8D ?? ?? 31 ?? 85 ?? BA ?? ?? ?? ?? 0F 4F ?? C5",
+      "offset": 0,
+      "patchRva": 33778653,
+      "expectedOriginalBytes": [
+        141,
+        79,
+        255
+      ]
+    },
+    {
+      "featureId": "ct084-31984",
+      "ctId": 31984,
+      "siteIndex": 0,
+      "symbol": "NBGFR053",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? CB 01 00 C5 ?? ?? ?? 76 ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 85 ?? 0F",
+      "offset": 0,
+      "patchRva": 11595327,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31985",
+      "ctId": 31985,
+      "siteIndex": 0,
+      "symbol": "NBGFR054",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 89 ?? E8 ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 83",
+      "offset": 2,
+      "patchRva": 11525211,
+      "expectedOriginalBytes": [
+        93
+      ]
+    },
+    {
+      "featureId": "ct084-31986",
+      "ctId": 31986,
+      "siteIndex": 0,
+      "symbol": "NBGFR055",
+      "aob": "0F 4C ?? 89 ?? ?? ?? ?? ?? 39 ?? 0F 8D",
+      "offset": 0,
+      "patchRva": 41529918,
+      "expectedOriginalBytes": [
+        15,
+        76,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-31987",
+      "ctId": 31987,
+      "siteIndex": 0,
+      "symbol": "NBGFR056",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? 48 8D ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 89",
+      "offset": 0,
+      "patchRva": 11462628,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31988",
+      "ctId": 31988,
+      "siteIndex": 0,
+      "symbol": "NBGFR057",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? CB 01 00 C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? E9 ?? ?? ?? ?? 4C",
+      "offset": 0,
+      "patchRva": 11522858,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        88,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31989",
+      "ctId": 31989,
+      "siteIndex": 0,
+      "symbol": "NBGFR058",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 8D ?? ?? E8 ?? ?? ?? ?? 48 B8",
+      "offset": 0,
+      "patchRva": 11619279,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        93,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31992",
+      "ctId": 31992,
+      "siteIndex": 0,
+      "symbol": "NBGFR060B",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? E8 ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 77 ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 76",
+      "offset": 0,
+      "patchRva": 1646326,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        89,
+        13,
+        154,
+        34,
+        49,
+        5
+      ]
+    },
+    {
+      "featureId": "ct084-31992",
+      "ctId": 31992,
+      "siteIndex": 1,
+      "symbol": "NBGFR060C",
+      "aob": "C5 ?? ?? ?? 48 89 ?? E8 ?? ?? ?? ?? 48 83 ?? ?? ?? ?? ?? ?? 74",
+      "offset": 0,
+      "patchRva": 46277754,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        89,
+        200
+      ]
+    },
+    {
+      "featureId": "ct084-31995",
+      "ctId": 31995,
+      "siteIndex": 0,
+      "symbol": "NBGFR062",
+      "aob": "77 ?? C5 ?? ?? ?? 44 8D",
+      "offset": 0,
+      "patchRva": 33778972,
+      "expectedOriginalBytes": [
+        119,
+        113
+      ]
+    },
+    {
+      "featureId": "ct084-32011",
+      "ctId": 32011,
+      "siteIndex": 0,
+      "symbol": "NBGFR064",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? 48 89 ?? E8 ?? ?? ?? ?? 39 ?? 0F 8E",
+      "offset": 0,
+      "patchRva": 54781651,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        44,
+        190,
+        20,
+        205,
+        1,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-32025",
+      "ctId": 32025,
+      "siteIndex": 0,
+      "symbol": "NBGFR067",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 8D ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85 ?? 74 ?? 48 8B ?? ?? 48 8B",
+      "offset": 0,
+      "patchRva": 55126425,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        89,
+        128,
+        156,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-32028",
+      "ctId": 32028,
+      "siteIndex": 0,
+      "symbol": "NBGFR068",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 4C CC 01 00 C5 ?? ?? ?? C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? E9",
+      "offset": 0,
+      "patchRva": 55129934,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        92,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-32031",
+      "ctId": 32031,
+      "siteIndex": 0,
+      "symbol": "NBGFR069",
+      "aob": "FF ?? 41 39 ?? 41 0F ?? ?? 89",
+      "offset": 0,
+      "patchRva": 55268380,
+      "expectedOriginalBytes": [
+        255,
+        201
+      ]
+    },
+    {
+      "featureId": "ct084-32544",
+      "ctId": 32544,
+      "siteIndex": 0,
+      "symbol": "NBGFR072",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 0F 86 ?? ?? ?? ?? 48 89 ?? ?? ?? 48 8B",
+      "offset": 0,
+      "patchRva": 54895434,
+      "expectedOriginalBytes": [
+        197,
+        248,
+        40,
+        240
+      ]
+    },
+    {
+      "featureId": "ct084-32551",
+      "ctId": 32551,
+      "siteIndex": 0,
+      "symbol": "NBGFR074",
+      "aob": "C5 ?? ?? ?? ?? ?? ?? ?? 49 8D ?? ?? ?? ?? ?? ?? E8 ?? ?? ?? ?? 41 80",
+      "offset": 0,
+      "patchRva": 55007884,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        89,
+        13,
+        20,
+        233,
+        3,
+        2
+      ]
+    },
+    {
+      "featureId": "ct084-32700",
+      "ctId": 32700,
+      "siteIndex": 0,
+      "symbol": "NBGFR076",
+      "aob": "0F B6 ?? ?? ?? ?? ?? 03 ?? ?? ?? ?? ?? C5",
+      "offset": 0,
+      "patchRva": 41571979,
+      "expectedOriginalBytes": [
+        15,
+        182,
+        134,
+        156,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-33091",
+      "ctId": 33091,
+      "siteIndex": 0,
+      "symbol": "NBGFR045",
+      "aob": "FF ?? 89 ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? BF ?? ?? ?? ?? 4D",
+      "offset": 0,
+      "patchRva": 54651152,
+      "expectedOriginalBytes": [
+        255,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31050",
+      "ctId": 31050,
+      "siteIndex": 0,
+      "symbol": "NBGFR006",
+      "aob": "8D ?? ?? 89 ?? ?? ?? ?? ?? 48 89 ?? E8 ?? ?? ?? ?? 39",
+      "offset": 0,
+      "patchRva": 40879325,
+      "expectedOriginalBytes": [
+        141,
+        67,
+        1
+      ]
+    },
+    {
+      "featureId": "ct084-31052",
+      "ctId": 31052,
+      "siteIndex": 0,
+      "symbol": "NBGFR008",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? 48 8B ?? 48 89 ?? FF ?? ?? 84",
+      "offset": 0,
+      "patchRva": 32753990,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        89,
+        198
+      ]
+    },
+    {
+      "featureId": "ct084-31053",
+      "ctId": 31053,
+      "siteIndex": 0,
+      "symbol": "NBGFR009",
+      "aob": "77 ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? 76 ?? C5 ?? ?? ?? ?? 76",
+      "offset": 0,
+      "patchRva": 32755792,
+      "expectedOriginalBytes": [
+        119,
+        22
+      ]
+    },
+    {
+      "featureId": "ct084-31053",
+      "ctId": 31053,
+      "siteIndex": 1,
+      "symbol": "NBGFR009",
+      "aob": "77 ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? 76 ?? C5 ?? ?? ?? ?? 76",
+      "offset": 22,
+      "patchRva": 32755814,
+      "expectedOriginalBytes": [
+        118
+      ]
+    },
+    {
+      "featureId": "ct084-31059",
+      "ctId": 31059,
+      "siteIndex": 0,
+      "symbol": "NBGFR011",
+      "aob": "0F 87 ?? ?? ?? ?? 80 ?? ?? ?? ?? ?? ?? 75 ?? C6",
+      "offset": 0,
+      "patchRva": 4946057,
+      "expectedOriginalBytes": [
+        15,
+        135,
+        124,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31061",
+      "ctId": 31061,
+      "siteIndex": 0,
+      "symbol": "NBGFR013",
+      "aob": "41 B8 ?? ?? ?? ?? 41 B1 ?? E8 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 8B ?? ?? 80",
+      "offset": 0,
+      "patchRva": 3568008,
+      "expectedOriginalBytes": [
+        65,
+        184,
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "featureId": "ct084-31062",
+      "ctId": 31062,
+      "siteIndex": 0,
+      "symbol": "NBGFR014A",
+      "aob": "0F 82 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 89 ?? 89",
+      "offset": 0,
+      "patchRva": 43241226,
+      "expectedOriginalBytes": [
+        15,
+        130,
+        152,
+        253,
+        255,
+        255
+      ]
+    },
+    {
+      "featureId": "ct084-31062",
+      "ctId": 31062,
+      "siteIndex": 1,
+      "symbol": "NBGFR014B",
+      "aob": "0F 4E ?? 89 ?? ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 89",
+      "offset": 0,
+      "patchRva": 46747086,
+      "expectedOriginalBytes": [
+        15,
+        78,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-31062",
+      "ctId": 31062,
+      "siteIndex": 2,
+      "symbol": "NBGFR014C",
+      "aob": "7F ?? 31 ?? 89 ?? ?? ?? ?? ?? ?? 8B",
+      "offset": 0,
+      "patchRva": 44996879,
+      "expectedOriginalBytes": [
+        127,
+        2
+      ]
+    },
+    {
+      "featureId": "ct084-31063",
+      "ctId": 31063,
+      "siteIndex": 0,
+      "symbol": "NBGFR015",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 76 ?? C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85 ?? 0F 84 ?? ?? ?? ?? 48 8B ?? 48 8B",
+      "offset": 0,
+      "patchRva": 33508156,
+      "expectedOriginalBytes": [
+        197,
+        242,
+        88,
+        202
+      ]
+    },
+    {
+      "featureId": "ct084-31064",
+      "ctId": 31064,
+      "siteIndex": 0,
+      "symbol": "NBGFR016A",
+      "aob": "8B ?? ?? ?? ?? ?? ?? 89 ?? ?? ?? 48 89 ?? E8 ?? ?? ?? ?? 48 85 ?? 0F 84",
+      "offset": 0,
+      "patchRva": 33194915,
+      "expectedOriginalBytes": [
+        139,
+        132,
+        171,
+        96,
+        28,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31064",
+      "ctId": 31064,
+      "siteIndex": 1,
+      "symbol": "NBGFR016B",
+      "aob": "41 C6 ?? ?? ?? ?? ?? ?? ?? 41 0F ?? ?? B9",
+      "offset": 8,
+      "patchRva": 6677554,
+      "expectedOriginalBytes": [
+        1
+      ]
+    },
+    {
+      "featureId": "ct084-31064",
+      "ctId": 31064,
+      "siteIndex": 2,
+      "symbol": "NBGFR016C",
+      "aob": "0F 8C ?? ?? ?? ?? 89 ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 45 8B",
+      "offset": 0,
+      "patchRva": 33195222,
+      "expectedOriginalBytes": [
+        15,
+        140,
+        29,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "featureId": "ct084-33444",
+      "ctId": 33444,
+      "siteIndex": 0,
+      "symbol": "NBGFR097",
+      "aob": "75 ?? EB ?? 80 ?? ?? ?? 75 ?? EB ?? 80",
+      "offset": 0,
+      "patchRva": 6573248,
+      "expectedOriginalBytes": [
+        117,
+        18
+      ]
+    },
+    {
+      "featureId": "ct084-31106",
+      "ctId": 31106,
+      "siteIndex": 0,
+      "symbol": "NBGFR082",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 76 ?? C5 ?? ?? ?? C5 ?? ?? ?? ?? 09 ?? ?? C5 ?? ?? ?? ?? 09 ?? ?? C5 ?? ?? ?? 0F 83 ?? ?? ?? ?? C5",
+      "offset": 0,
+      "patchRva": 53413345,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        88,
+        194
+      ]
+    },
+    {
+      "featureId": "ct084-31107",
+      "ctId": 31107,
+      "siteIndex": 0,
+      "symbol": "NBGFR083",
+      "aob": "0F 85 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 8D ?? ?? ?? ?? ?? 41 B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85 ?? 74 ?? 48 8B ?? ?? 4C ?? ?? ?? 4C ?? ?? 74 ?? 48 8D ?? ?? ?? ?? ?? 66",
+      "offset": 0,
+      "patchRva": 53435275,
+      "expectedOriginalBytes": [
+        15,
+        133,
+        30,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-31108",
+      "ctId": 31108,
+      "siteIndex": 0,
+      "symbol": "NBGFR085",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? 76 ?? C5 ?? ?? ?? C5 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 80",
+      "offset": 0,
+      "patchRva": 33397736,
+      "expectedOriginalBytes": [
+        197,
+        250,
+        88,
+        194
+      ]
+    },
+    {
+      "featureId": "ct084-31109",
+      "ctId": 31109,
+      "siteIndex": 0,
+      "symbol": "NBGFR086",
+      "aob": "48 B8 ?? ?? ?? ?? ?? ?? ?? ?? 48 89 ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? BA ?? ?? ?? ?? E8 ?? ?? ?? ?? 84",
+      "offset": 0,
+      "patchRva": 33361723,
+      "expectedOriginalBytes": [
+        72,
+        184,
+        0,
+        0,
+        240,
+        65,
+        0,
+        0,
+        240,
+        65
+      ]
+    },
+    {
+      "featureId": "ct084-31132",
+      "ctId": 31132,
+      "siteIndex": 0,
+      "symbol": "NBGFR098",
+      "aob": "48 83 ?? ?? 48 8B ?? ?? ?? ?? ?? 48 8D ?? ?? ?? E8 ?? ?? ?? ?? 8B ?? ?? ?? 89 ?? C1",
+      "offset": 0,
+      "patchRva": 2200208,
+      "expectedOriginalBytes": [
+        72,
+        131,
+        236,
+        40
+      ]
+    },
+    {
+      "featureId": "ct084-31477",
+      "ctId": 31477,
+      "siteIndex": 0,
+      "symbol": "NBGFR089",
+      "aob": "0F 9F ?? EB ?? 31 ?? 48 83 ?? ?? 5F 5E C3 ?? ?? C5",
+      "offset": 0,
+      "patchRva": 52578496,
+      "expectedOriginalBytes": [
+        15,
+        159,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-31488",
+      "ctId": 31488,
+      "siteIndex": 0,
+      "symbol": "NBGFR087",
+      "aob": "C5 ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? 72 ?? 48 8B ?? ?? ?? ?? ?? 48 8B",
+      "offset": 0,
+      "patchRva": 44049401,
+      "expectedOriginalBytes": [
+        197,
+        234,
+        92,
+        192
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 0,
+      "symbol": "NBGFR092A",
+      "aob": "7F ?? 84 ?? 75 ?? 41 C7 ?? ?? ?? ?? ?? ?? ?? ?? ?? 4C",
+      "offset": 0,
+      "patchRva": 61996116,
+      "expectedOriginalBytes": [
+        127,
+        121
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 1,
+      "symbol": "NBGFR092B",
+      "aob": "0F 8C ?? ?? ?? ?? 48 8B ?? ?? ?? 4C ?? ?? E8 ?? ?? ?? ?? 8B",
+      "offset": 0,
+      "patchRva": 42876589,
+      "expectedOriginalBytes": [
+        15,
+        140,
+        228,
+        254,
+        255,
+        255
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 2,
+      "symbol": "NBGFR092C",
+      "aob": "41 F7 ?? 83 ?? ?? ?? ?? ?? ?? 48 89",
+      "offset": 0,
+      "patchRva": 42873677,
+      "expectedOriginalBytes": [
+        65,
+        247,
+        217
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 3,
+      "symbol": "NBGFR092D",
+      "aob": "44 8B ?? ?? EB ?? 45 31 ?? 45 8B",
+      "offset": 0,
+      "patchRva": 68781888,
+      "expectedOriginalBytes": [
+        68,
+        139,
+        96,
+        96
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 4,
+      "symbol": "NBGFR092E",
+      "aob": "41 F7 ?? 48 89 ?? 44 89",
+      "offset": 0,
+      "patchRva": 68780279,
+      "expectedOriginalBytes": [
+        65,
+        247,
+        221
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 5,
+      "symbol": "NBGFR092F",
+      "aob": "73 ?? 48 8D ?? ?? ?? ?? ?? 48 89 ?? ?? ?? 48 89 ?? ?? ?? 4C ?? ?? ?? ?? 4C ?? ?? ?? ?? 48 89 ?? BA ?? ?? ?? ?? E8",
+      "offset": 0,
+      "patchRva": 66326289,
+      "expectedOriginalBytes": [
+        115
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 6,
+      "symbol": "NBGFR092G",
+      "aob": "44 8B ?? ?? E9 ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 85 ?? 74 ?? 31",
+      "offset": 0,
+      "patchRva": 66292831,
+      "expectedOriginalBytes": [
+        68,
+        139,
+        104,
+        36
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 7,
+      "symbol": "NBGFR092H",
+      "aob": "0F 4F ?? 41 89 ?? E9",
+      "offset": 0,
+      "patchRva": 68930647,
+      "expectedOriginalBytes": [
+        15,
+        79,
+        200
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 8,
+      "symbol": "NBGFR092I",
+      "aob": "41 F7 ?? 45 8B ?? ?? ?? ?? ?? 83",
+      "offset": 0,
+      "patchRva": 61994434,
+      "expectedOriginalBytes": [
+        65,
+        247,
+        220
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 9,
+      "symbol": "NBGFR092J",
+      "aob": "0F 8E ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 44 8B ?? ?? ?? ?? ?? 41 B9",
+      "offset": 0,
+      "patchRva": 67187142,
+      "expectedOriginalBytes": [
+        15,
+        142,
+        225,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 10,
+      "symbol": "NBGFR092K",
+      "aob": "8B ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 75",
+      "offset": 0,
+      "patchRva": 67191848,
+      "expectedOriginalBytes": [
+        139,
+        128,
+        152,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-32556",
+      "ctId": 32556,
+      "siteIndex": 11,
+      "symbol": "NBGFR092L",
+      "aob": "41 F7 ?? 44 89 ?? 41 B0 ?? E8 ?? ?? ?? ?? 4C",
+      "offset": 0,
+      "patchRva": 67193718,
+      "expectedOriginalBytes": [
+        65,
+        247,
+        222
+      ]
+    },
+    {
+      "featureId": "ct084-32563",
+      "ctId": 32563,
+      "siteIndex": 0,
+      "symbol": "NBGFR093",
+      "aob": "20 ?? 44 0F ?? ?? EB ?? 45 31",
+      "offset": 0,
+      "patchRva": 30302638,
+      "expectedOriginalBytes": [
+        32,
+        193
+      ]
+    },
+    {
+      "featureId": "ct084-32595",
+      "ctId": 32595,
+      "siteIndex": 0,
+      "symbol": "NBGFR094A",
+      "aob": "7E ?? EB ?? 48 8B ?? ?? ?? ?? ?? 48 8B ?? ?? ?? ?? ?? 48 2B",
+      "offset": 0,
+      "patchRva": 30984400,
+      "expectedOriginalBytes": [
+        126
+      ]
+    },
+    {
+      "featureId": "ct084-32595",
+      "ctId": 32595,
+      "siteIndex": 1,
+      "symbol": "NBGFR094B",
+      "aob": "29 ?? E8 ?? ?? ?? ?? 41 8B ?? ?? 66 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? B8",
+      "offset": 0,
+      "patchRva": 30328697,
+      "expectedOriginalBytes": [
+        41,
+        1
+      ]
+    },
+    {
+      "featureId": "ct084-32595",
+      "ctId": 32595,
+      "siteIndex": 2,
+      "symbol": "NBGFR094C",
+      "aob": "7D ?? 84 ?? 75 ?? 8B ?? ?? ?? ?? ?? 85",
+      "offset": 0,
+      "patchRva": 70074958,
+      "expectedOriginalBytes": [
+        125
+      ]
+    },
+    {
+      "featureId": "ct084-32595",
+      "ctId": 32595,
+      "siteIndex": 3,
+      "symbol": "NBGFR094D",
+      "aob": "29 ?? E8 ?? ?? ?? ?? 41 8B ?? ?? 66 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? B8",
+      "offset": 0,
+      "patchRva": 30329034,
+      "expectedOriginalBytes": [
+        41,
+        1
+      ]
+    },
+    {
+      "featureId": "ct084-32618",
+      "ctId": 32618,
+      "siteIndex": 0,
+      "symbol": "NBGFR096",
+      "aob": "0F 84 ?? ?? ?? ?? 45 8B ?? ?? ?? ?? ?? ?? 45 8B ?? ?? ?? ?? ?? ?? C6",
+      "offset": 0,
+      "patchRva": 69269195,
+      "expectedOriginalBytes": [
+        15,
+        132,
+        234,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "featureId": "ct084-33487",
+      "ctId": 33487,
+      "siteIndex": 0,
+      "symbol": "NBGFR100A",
+      "aob": "30 ?? EB ?? 31 ?? 88 ?? ?8 ?? ?? ?? 48 8B ?? ?? 48 83 ?? ?? ?? ?? ?? ?? 72",
+      "offset": 0,
+      "patchRva": 6589605,
+      "expectedOriginalBytes": [
+        48,
+        200
+      ]
+    },
+    {
+      "featureId": "ct084-33487",
+      "ctId": 33487,
+      "siteIndex": 1,
+      "symbol": "NBGFR100B",
+      "aob": "30 ?? EB ?? 31 ?? 88 ?? ?9 ?? ?? ?? 48 8B ?? ?? 48 83 ?? ?? ?? ?? ?? ?? 72",
+      "offset": 0,
+      "patchRva": 6589660,
+      "expectedOriginalBytes": [
+        48,
+        200
+      ]
+    },
+    {
+      "featureId": "ct084-33487",
+      "ctId": 33487,
+      "siteIndex": 2,
+      "symbol": "NBGFR100C",
+      "aob": "30 ?? EB ?? 31 ?? 88 ?? ?? ?? ?? ?? 48 83",
+      "offset": 0,
+      "patchRva": 6589715,
+      "expectedOriginalBytes": [
+        48,
+        200
+      ]
+    }
+  ]
+}

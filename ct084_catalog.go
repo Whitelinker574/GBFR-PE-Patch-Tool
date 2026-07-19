@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	ct084CatalogSchemaVersion  = 1
+	ct084CatalogSchemaVersion  = 2
 	ct084CatalogSourceVersion  = "0.8.4"
 	ct084CatalogSourceSHA256   = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
 	ct084CatalogFeatureCount   = 58
@@ -54,6 +54,7 @@ type CT084PatchSite struct {
 	PatternValues          []byte `json:"patternValues"`
 	PatternMasks           []byte `json:"patternMasks"`
 	EnableBytes            []byte `json:"enableBytes"`
+	ExpectedOriginalBytes  []byte `json:"expectedOriginalBytes"`
 	DisableBytes           []byte `json:"disableBytes"`
 	RequiresRuntimeCapture bool   `json:"requiresRuntimeCapture"`
 }
@@ -237,8 +238,20 @@ func validateCT084PatchSites(feature *CT084Feature, featureIndex int, featureLab
 		if len(site.EnableBytes) == 0 {
 			return fmt.Errorf("%s: enableBytes are empty", label)
 		}
+		if len(site.ExpectedOriginalBytes) != len(site.EnableBytes) {
+			return fmt.Errorf("%s: expectedOriginalBytes length=%d, want %d", label, len(site.ExpectedOriginalBytes), len(site.EnableBytes))
+		}
+		if bytes.Equal(site.ExpectedOriginalBytes, site.EnableBytes) {
+			return fmt.Errorf("%s: expectedOriginalBytes already equal enableBytes", label)
+		}
 		if site.Offset > len(pattern.Values) || len(site.EnableBytes) > len(pattern.Values)-site.Offset {
 			return fmt.Errorf("%s: patch range [%d,%d) exceeds AOB length %d", label, site.Offset, site.Offset+len(site.EnableBytes), len(pattern.Values))
+		}
+		for byteIndex, expected := range site.ExpectedOriginalBytes {
+			patternIndex := site.Offset + byteIndex
+			if expected&pattern.Mask[patternIndex] != pattern.Values[patternIndex] {
+				return fmt.Errorf("%s: expectedOriginalBytes[%d] contradicts exact AOB bits", label, byteIndex)
+			}
 		}
 		if site.RequiresRuntimeCapture {
 			if len(site.DisableBytes) != 0 {
@@ -246,6 +259,8 @@ func validateCT084PatchSites(feature *CT084Feature, featureIndex int, featureLab
 			}
 		} else if len(site.DisableBytes) != len(site.EnableBytes) {
 			return fmt.Errorf("%s: disableBytes length=%d, want %d", label, len(site.DisableBytes), len(site.EnableBytes))
+		} else if !bytes.Equal(site.DisableBytes, site.ExpectedOriginalBytes) {
+			return fmt.Errorf("%s: disableBytes do not match expectedOriginalBytes", label)
 		}
 
 		key := [3]string{site.Module, site.Symbol, site.AOB}
@@ -330,6 +345,8 @@ func cloneCT084Catalog(source *CT084Catalog) *CT084Catalog {
 			copy(site.PatternMasks, sourceSite.PatternMasks)
 			site.EnableBytes = make([]byte, len(sourceSite.EnableBytes))
 			copy(site.EnableBytes, sourceSite.EnableBytes)
+			site.ExpectedOriginalBytes = make([]byte, len(sourceSite.ExpectedOriginalBytes))
+			copy(site.ExpectedOriginalBytes, sourceSite.ExpectedOriginalBytes)
 			site.DisableBytes = make([]byte, len(sourceSite.DisableBytes))
 			copy(site.DisableBytes, sourceSite.DisableBytes)
 		}
