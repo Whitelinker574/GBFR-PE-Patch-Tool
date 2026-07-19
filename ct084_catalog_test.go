@@ -80,6 +80,7 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 	seenIDs := make(map[string]bool, len(catalog.Features))
 	byCTID := make(map[int]ct084CatalogFeature, len(catalog.Features))
 	seenCategories := make(map[string]bool, 3)
+	validModes := map[string]bool{"combat": true, "characters": true, "quest": true}
 	orderKeys := make([]string, 0, len(catalog.Features))
 	for _, feature := range catalog.Features {
 		wantID := fmt.Sprintf("ct084-%d", feature.CTID)
@@ -99,6 +100,9 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 		}
 		if strings.TrimSpace(feature.Mode) == "" {
 			t.Errorf("feature %q has an empty mode", feature.ID)
+		}
+		if !validModes[feature.Mode] {
+			t.Errorf("feature %q mode=%q, want combat, characters, or quest", feature.ID, feature.Mode)
 		}
 		if feature.Category != feature.Mode {
 			t.Errorf("feature %q category=%q, want alias of mode %q", feature.ID, feature.Category, feature.Mode)
@@ -184,10 +188,12 @@ func TestCT084CatalogKnownMultiSiteAndConflicts(t *testing.T) {
 	const conflictGroup = "damage-cap-display"
 	conflictIDs := []int{31967, 31979, 31995}
 	for _, ctID := range conflictIDs {
-		feature, ok := byCTID[ctID]
-		if !ok {
-			continue
+		if _, ok := byCTID[ctID]; !ok {
+			t.Fatalf("required conflict CT %d is missing", ctID)
 		}
+	}
+	for _, ctID := range conflictIDs {
+		feature := byCTID[ctID]
 		if feature.ConflictGroup != conflictGroup {
 			t.Errorf("CT %d conflictGroup=%q, want %q", ctID, feature.ConflictGroup, conflictGroup)
 		}
