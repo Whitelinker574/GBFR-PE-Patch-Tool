@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -11,6 +14,7 @@ import (
 )
 
 const ct084SourceSHA256 = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
+const ct084CatalogSHA256 = "F3B940E644CC6CF0B9BDF2EB11B7B7466D3097053DB8900FEFA97229C9EE82A8"
 
 type ct084CatalogFile struct {
 	SchemaVersion int                   `json:"schemaVersion"`
@@ -57,6 +61,51 @@ func readCT084CatalogFile(t *testing.T) ct084CatalogFile {
 		t.Fatal(err)
 	}
 	return catalog
+}
+
+func parseCT084AOB(t *testing.T, pattern string) ([]byte, []byte) {
+	t.Helper()
+	compact := strings.Join(strings.Fields(pattern), "")
+	if compact == "" || len(compact)%2 != 0 {
+		t.Fatalf("invalid AOB %q", pattern)
+	}
+	values := make([]byte, len(compact)/2)
+	masks := make([]byte, len(compact)/2)
+	for index := 0; index < len(compact); index++ {
+		character := compact[index]
+		shift := uint(4)
+		if index%2 == 1 {
+			shift = 0
+		}
+		var nibble byte
+		switch {
+		case character >= '0' && character <= '9':
+			nibble = character - '0'
+		case character >= 'a' && character <= 'f':
+			nibble = character - 'a' + 10
+		case character >= 'A' && character <= 'F':
+			nibble = character - 'A' + 10
+		case character == '?' || character == 'x' || character == 'X':
+			continue
+		default:
+			t.Fatalf("invalid AOB nibble %q in %q", character, pattern)
+		}
+		byteIndex := index / 2
+		values[byteIndex] |= nibble << shift
+		masks[byteIndex] |= 0x0f << shift
+	}
+	return values, masks
+}
+
+func TestCT084CatalogContentSHA256(t *testing.T) {
+	raw, err := os.ReadFile("data/ct084_patches.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := fmt.Sprintf("%X", sha256.Sum256(raw))
+	if got != ct084CatalogSHA256 {
+		t.Fatalf("catalog SHA256=%s, want %s", got, ct084CatalogSHA256)
+	}
 }
 
 func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
@@ -149,6 +198,13 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 			if len(site.PatternValues) == 0 || len(site.PatternValues) != len(site.PatternMasks) {
 				t.Errorf("%s pattern lengths values=%d masks=%d", label, len(site.PatternValues), len(site.PatternMasks))
 			}
+			wantValues, wantMasks := parseCT084AOB(t, site.AOB)
+			if !reflect.DeepEqual(site.PatternValues, wantValues) {
+				t.Errorf("%s patternValues=%v, want %v parsed from AOB", label, site.PatternValues, wantValues)
+			}
+			if !reflect.DeepEqual(site.PatternMasks, wantMasks) {
+				t.Errorf("%s patternMasks=%v, want %v parsed from AOB", label, site.PatternMasks, wantMasks)
+			}
 			for _, mask := range site.PatternMasks {
 				if !validMask[mask] {
 					t.Errorf("%s has invalid nibble mask 0x%02X", label, mask)
@@ -156,6 +212,14 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 			}
 			if len(site.EnableBytes) == 0 {
 				t.Errorf("%s has no enable bytes", label)
+			}
+			if site.Offset < 0 {
+				t.Errorf("%s offset=%d, want non-negative", label, site.Offset)
+			} else if site.Offset+len(site.EnableBytes) > len(site.PatternValues) {
+				t.Errorf("%s patch range [%d,%d) exceeds pattern length %d", label, site.Offset, site.Offset+len(site.EnableBytes), len(site.PatternValues))
+			}
+			if len(site.DisableBytes) > 0 && len(site.DisableBytes) != len(site.EnableBytes) {
+				t.Errorf("%s disable bytes=%d, want enable length %d", label, len(site.DisableBytes), len(site.EnableBytes))
 			}
 			if site.RequiresRuntimeCapture {
 				if len(site.DisableBytes) != 0 {
@@ -165,6 +229,84 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 				t.Errorf("%s has neither disable bytes nor runtime capture", label)
 			}
 		}
+	}
+}
+
+func TestCT084GeneratorIgnoresCommentedInstructions(t *testing.T) {
+	powerShell := ""
+	for _, candidate := range []string{"powershell", "pwsh"} {
+		if path, err := exec.LookPath(candidate); err == nil {
+			powerShell = path
+			break
+		}
+	}
+	if powerShell == "" {
+		t.Skip("PowerShell is not installed")
+	}
+
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "comments.ct")
+	outputPath := filepath.Join(tempDir, "catalog.json")
+	input := `<?xml version="1.0" encoding="utf-8"?>
+<CheatTable>
+  <CheatEntries>
+    <CheatEntry>
+      <ID>900001</ID>
+      <Description>comment fixture</Description>
+      <AssemblerScript><![CDATA[
+[ENABLE]
+{
+aobscanmodule(FAKE_BLOCK,$process,11 22 33 44)
+FAKE_BLOCK:
+  db FF
+}
+// aobscanmodule(FAKE_LINE,$process,55 66 77 88)
+// FAKE_LINE:
+//   nop 2
+aobscanmodule(REAL,$process,A? ?B CC DD)
+REAL+1:
+  db 90 90
+[DISABLE]
+{
+REAL+1:
+  db 11 22
+}
+// REAL+1:
+//   db 33 44
+REAL+1:
+  db AB CC
+]]></AssemblerScript>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>`
+	if err := os.WriteFile(inputPath, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath, err := filepath.Abs("tools/generate_ct084_patches.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(powerShell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-InputCT", inputPath, "-Output", outputPath)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("generator failed: %v\n%s", err, output)
+	}
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog ct084CatalogFile
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Features) != 1 {
+		t.Fatalf("features=%d, want 1", len(catalog.Features))
+	}
+	if len(catalog.Features[0].Sites) != 1 {
+		t.Fatalf("sites=%d, want 1; commented instructions were parsed", len(catalog.Features[0].Sites))
+	}
+	site := catalog.Features[0].Sites[0]
+	if site.Symbol != "REAL" || site.Offset != 1 || !reflect.DeepEqual(site.EnableBytes, []byte{0x90, 0x90}) || !reflect.DeepEqual(site.DisableBytes, []byte{0xab, 0xcc}) {
+		t.Fatalf("site=%+v, want only the real patch", site)
 	}
 }
 

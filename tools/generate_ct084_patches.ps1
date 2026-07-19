@@ -10,6 +10,64 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Remove-CEComments {
+    param([Parameter(Mandatory = $true)][string] $Script)
+
+    $builder = [System.Text.StringBuilder]::new($Script.Length)
+    $state = 'normal'
+    $blockDepth = 0
+    for ($index = 0; $index -lt $Script.Length; $index++) {
+        $character = $Script[$index]
+        switch ($state) {
+            'normal' {
+                if ($character -eq '/' -and $index + 1 -lt $Script.Length -and $Script[$index + 1] -eq '/') {
+                    [void] $builder.Append(' ')
+                    [void] $builder.Append(' ')
+                    $index++
+                    $state = 'line-comment'
+                }
+                elseif ($character -eq '{') {
+                    [void] $builder.Append(' ')
+                    $blockDepth = 1
+                    $state = 'block-comment'
+                }
+                else {
+                    [void] $builder.Append($character)
+                }
+            }
+            'line-comment' {
+                if ($character -eq "`r" -or $character -eq "`n") {
+                    [void] $builder.Append($character)
+                    $state = 'normal'
+                }
+                else {
+                    [void] $builder.Append(' ')
+                }
+            }
+            'block-comment' {
+                if ($character -eq "`r" -or $character -eq "`n") {
+                    [void] $builder.Append($character)
+                }
+                elseif ($character -eq '{') {
+                    [void] $builder.Append(' ')
+                    $blockDepth++
+                }
+                elseif ($character -eq '}') {
+                    [void] $builder.Append(' ')
+                    $blockDepth--
+                    if ($blockDepth -eq 0) {
+                        $state = 'normal'
+                    }
+                }
+                else {
+                    [void] $builder.Append(' ')
+                }
+            }
+        }
+    }
+    return $builder.ToString()
+}
+
 function ConvertTo-CleanDescription {
     param([AllowEmptyString()][string] $Value)
 
@@ -207,7 +265,11 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID) -or $excludedCTIDs.Contains($ctID)) {
         continue
     }
-    $script = $scriptNode.InnerText
+    $rawScript = $scriptNode.InnerText
+    if ($rawScript -match '(?i)\{\s*\$lua\b|\[\s*lua\s*\]') {
+        continue
+    }
+    $script = Remove-CEComments $rawScript
     if ($script -match '(?i)\bnewmem\b|\balloc\s*\(\s*mem|\blua\b|\bNBLib\b|\bcreateForm\b|\bshowMessage\b|\bdecodeFunction\b') {
         continue
     }
