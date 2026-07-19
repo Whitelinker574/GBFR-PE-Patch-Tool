@@ -11,6 +11,59 @@ const uiI18n = read('./i18n-ui.js')
 const ctCatalogBackend = read('../../ct084_catalog.go')
 const ctRuntimeBackend = read('../../ct084_runtime.go')
 
+test('one CT operation gate blocks writes and disconnects during a delayed refresh, then invalidates stale publication on reset', async () => {
+  const { createCT084OperationGate } = await import(`./ct084OperationGate.js?gate=${Date.now()}`)
+  const observed = []
+  const gate = createCT084OperationGate(current => observed.push(current))
+  const refreshToken = gate.begin('refresh')
+  assert.ok(refreshToken)
+  assert.equal(gate.current?.kind, 'refresh')
+
+  let resolveRefresh
+  const delayedRefresh = new Promise(resolve => { resolveRefresh = resolve })
+  let published = 'last-verified'
+  const pending = (async () => {
+    const result = await delayedRefresh
+    if (gate.isCurrent(refreshToken)) published = result
+    gate.finish(refreshToken)
+  })()
+
+  assert.equal(gate.begin('feature', 'ct084-1'), null)
+  assert.equal(gate.begin('disconnect'), null)
+  gate.reset()
+  assert.equal(gate.busy, false)
+  assert.equal(observed.at(-1), null)
+
+  resolveRefresh('stale-refresh')
+  await pending
+  assert.equal(published, 'last-verified')
+
+  const writeToken = gate.begin('feature', 'ct084-1')
+  assert.ok(writeToken)
+  assert.equal(gate.current?.featureID, 'ct084-1')
+  gate.finish(writeToken)
+  assert.equal(gate.busy, false)
+})
+
+test('the CT page routes refresh, writes, connect and disconnect through the same reactive gate', () => {
+  assert.match(ctPage, /createCT084OperationGate/)
+  assert.match(ctPage, /const operationGate = createCT084OperationGate\(\(operation\) => \{\s*activeOperation\.value = operation\s*\}\)/)
+  assert.match(ctPage, /const operationBusy = computed\(\(\) => activeOperation\.value !== null\)/)
+  assert.match(ctPage, /function clearConnectionState\(\) \{[\s\S]*?operationGate\.reset\(\)/)
+
+  for (const [name, kind, featureArgument = ''] of [
+    ['connect', 'connect'],
+    ['disconnect', 'disconnect'],
+    ['refreshStatuses', 'refresh'],
+    ['setFeatureEnabled', 'feature', ', feature.id'],
+  ]) {
+    assert.match(ctPage, new RegExp(`async function ${name}\\([^)]*\\) \\{[\\s\\S]*?beginOperation\\('${kind}'${featureArgument.replace('.', '\\.') }\\)`), `${name} shared gate`)
+  }
+
+  assert.match(ctPage, /function featureDisabled\([^)]*\) \{[\s\S]*?operationBusy\.value/)
+  assert.match(ctPage, /:disabled="operationBusy"[^>]*@click="connected \? disconnect\(\) : connect\(\)"/)
+})
+
 test('the three CT 0.8.4 routes share one categorized component and unique planned art', () => {
   for (const [id, mode] of [
     ['ctCombat', 'combat'],
@@ -69,6 +122,20 @@ test('catalog presentation filters by mode and search while naming the active co
   assert.equal(findActiveCT084Conflict(features[0], statuses, features)?.name, '无限打击层数')
 })
 
+test('verified CT statuses form an exact one-to-one set with the catalog', async () => {
+  const { validateCT084StatusSet } = await import(`./ct084FeatureView.js?status-set=${Date.now()}`)
+  const catalog = [{ id: 'ct084-1' }, { id: 'ct084-2' }]
+  const valid = [{ id: 'ct084-2' }, { id: 'ct084-1' }]
+  assert.equal(validateCT084StatusSet(catalog, valid), valid, 'status order may differ when IDs still match exactly')
+
+  assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }]), /数量.*目录/)
+  assert.throws(() => validateCT084StatusSet(catalog, [...valid, { id: 'ct084-extra' }]), /数量.*目录/)
+  assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: 'ct084-1' }]), /重复/)
+  assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: '' }]), /不能为空/)
+  assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: 'ct084-extra' }]), /目录外.*ct084-extra/)
+  assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: ' ct084-2 ' }]), /目录外/, 'ID equality is exact, not trim-coerced')
+})
+
 test('the shared page owns the full CT lifecycle and changes switches only after verified refresh', () => {
   for (const api of [
     'CharaAcquire',
@@ -97,6 +164,10 @@ test('the shared page owns the full CT lifecycle and changes switches only after
   assert.match(ctPage, /仅离线\/单机使用/)
   assert.match(ctPage, /aria-live="polite"/)
   assert.doesNotMatch(ctPage, /任务得分倍率|动作速度|队伍监测|选中素材/, 'unimplemented Task 7 controls must not be advertised')
+
+  const statusFetchBody = ctPage.match(/async function fetchVerifiedStatuses\([^)]*\) \{([\s\S]*?)\n\}/)?.[1] || ''
+  assert.match(statusFetchBody, /validateCT084StatusSet\(catalog\.value, verified\)/)
+  assert.doesNotMatch(statusFetchBody, /new Set\(/, 'the shared validator owns all exact-set semantics')
 })
 
 test('feature browsing remains keyboard-readable and reflows at the four target widths', () => {

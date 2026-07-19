@@ -14,7 +14,9 @@ import {
   buildCT084StatusIndex,
   findActiveCT084Conflict,
   replaceCT084FeatureIDs,
+  validateCT084StatusSet,
 } from '../ct084FeatureView.js'
+import { createCT084OperationGate } from '../ct084OperationGate.js'
 
 const props = defineProps({
   mode: {
@@ -34,9 +36,7 @@ const statuses = ref([])
 const searchQuery = ref('')
 const activeGroupKey = ref('')
 const catalogLoading = ref(true)
-const connectionLoading = ref(false)
-const statusLoading = ref(false)
-const busyFeatureID = ref('')
+const activeOperation = ref(null)
 const connected = ref(false)
 const processInfo = ref({ pid: 0, moduleBase: 0 })
 const liveMessage = ref('正在读取 CT 0.8.4 功能目录…')
@@ -49,6 +49,9 @@ let disposed = false
 let lifecycleEpoch = 0
 let connectionOwnerToken = ''
 let confirmationReturnTarget = null
+const operationGate = createCT084OperationGate((operation) => {
+  activeOperation.value = operation
+})
 
 const modeCopy = computed(() => ({
   combat: {
@@ -69,6 +72,10 @@ const groups = computed(() => buildCT084Groups(catalog.value, props.mode, search
 const currentGroup = computed(() => groups.value.find(group => group.key === activeGroupKey.value) || groups.value[0] || null)
 const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0))
 const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length)
+const operationBusy = computed(() => activeOperation.value !== null)
+const connectionLoading = computed(() => ['connect', 'disconnect'].includes(activeOperation.value?.kind))
+const statusLoading = computed(() => activeOperation.value?.kind === 'refresh')
+const busyFeatureID = computed(() => activeOperation.value?.kind === 'feature' ? activeOperation.value.featureID : '')
 
 watch(groups, (nextGroups) => {
   if (!nextGroups.some(group => group.key === activeGroupKey.value)) activeGroupKey.value = nextGroups[0]?.key || ''
@@ -116,6 +123,19 @@ function applyStatuses(nextStatuses) {
   statuses.value = normalizeStatuses(nextStatuses)
 }
 
+function beginOperation(kind, featureID = '') {
+  if (disposed) return null
+  return operationGate.begin(kind, featureID)
+}
+
+function operationIsCurrent(token, epoch) {
+  return !disposed && lifecycleEpoch === epoch && operationGate.isCurrent(token)
+}
+
+function finishOperation(token) {
+  operationGate.finish(token)
+}
+
 async function loadCatalog(notify = false) {
   const epoch = lifecycleEpoch
   catalogLoading.value = true
@@ -138,30 +158,31 @@ async function releaseCT084PageOwner(ownerToken) {
 }
 
 function clearConnectionState() {
+  operationGate.reset()
   connected.value = false
   connectionOwnerToken = ''
   processInfo.value = { pid: 0, moduleBase: 0 }
   statuses.value = []
-  busyFeatureID.value = ''
 }
 
 async function connect() {
-  if (connectionLoading.value || connected.value) return
+  if (connected.value) return
+  const operationToken = beginOperation('connect')
+  if (!operationToken) return
   const epoch = ++lifecycleEpoch
-  connectionLoading.value = true
   let acquiredOwnerToken = ''
   try {
     if (!catalog.value.length) catalog.value = normalizeCatalog(await CT084GetCatalog())
-    if (disposed || epoch !== lifecycleEpoch) return
+    if (!operationIsCurrent(operationToken, epoch)) return
     const info = await CharaAcquire(nextRuntimeAcquireRequestID())
     acquiredOwnerToken = String(info?.ownerToken || '')
     if (!acquiredOwnerToken) throw new Error('后端未返回 CT 0.8.4 连接所有权令牌')
-    if (disposed || epoch !== lifecycleEpoch) {
+    if (!operationIsCurrent(operationToken, epoch)) {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, releaseCT084PageOwner)
       return
     }
     const verifiedStatuses = await fetchVerifiedStatuses(acquiredOwnerToken)
-    if (disposed || epoch !== lifecycleEpoch) {
+    if (!operationIsCurrent(operationToken, epoch)) {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, releaseCT084PageOwner)
       return
     }
@@ -185,72 +206,71 @@ async function connect() {
       announce(`${errorMessage(error)}${suffix}`, 'danger')
     }
   } finally {
-    if (!disposed && epoch === lifecycleEpoch) connectionLoading.value = false
+    finishOperation(operationToken)
   }
 }
 
 async function disconnect() {
-  if (connectionLoading.value || busyFeatureID.value) return
   const ownerToken = connectionOwnerToken
   if (!ownerToken) return
+  const operationToken = beginOperation('disconnect')
+  if (!operationToken) return
   const epoch = ++lifecycleEpoch
-  connectionLoading.value = true
   try {
     await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, ownerToken, releaseCT084PageOwner)
-    if (disposed || epoch !== lifecycleEpoch) return
+    if (!operationIsCurrent(operationToken, epoch)) return
     clearConnectionState()
     announce('全部 CT 0.8.4 补丁已恢复，并已断开游戏进程', 'ok')
   } catch (error) {
-    if (!disposed && epoch === lifecycleEpoch) announce(`安全断开失败：${errorMessage(error)}`, 'danger')
+    if (operationIsCurrent(operationToken, epoch)) announce(`安全断开失败：${errorMessage(error)}`, 'danger')
   } finally {
-    if (!disposed && epoch === lifecycleEpoch) connectionLoading.value = false
+    finishOperation(operationToken)
   }
 }
 
 async function fetchVerifiedStatuses(ownerToken) {
   const verified = normalizeStatuses(await CT084GetStatusesOwned(ownerToken))
-  const expectedIDs = new Set(catalog.value.map(feature => feature.id))
-  const returnedIDs = new Set(verified.map(status => status.id))
-  if ([...expectedIDs].some(id => !returnedIDs.has(id))) throw new Error('CT 0.8.4 回读状态不完整，界面不会更新')
-  return verified
+  return validateCT084StatusSet(catalog.value, verified)
 }
 
 async function refreshStatuses() {
   const ownerToken = connectionOwnerToken
-  if (!ownerToken || statusLoading.value || busyFeatureID.value) return
+  if (!ownerToken) return
+  const operationToken = beginOperation('refresh')
+  if (!operationToken) return
   const epoch = lifecycleEpoch
-  statusLoading.value = true
   try {
     const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
-    if (disposed || epoch !== lifecycleEpoch || ownerToken !== connectionOwnerToken) return
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
     applyStatuses(verifiedStatuses)
     announce('CT 0.8.4 补丁状态已回读', 'ok')
   } catch (error) {
-    if (!disposed && epoch === lifecycleEpoch) announce(`刷新状态失败：${errorMessage(error)}`, 'danger')
+    if (operationIsCurrent(operationToken, epoch)) announce(`刷新状态失败：${errorMessage(error)}`, 'danger')
   } finally {
-    if (!disposed && epoch === lifecycleEpoch) statusLoading.value = false
+    finishOperation(operationToken)
   }
 }
 
 async function setFeatureEnabled(feature, enabled) {
-  if (!feature || busyFeatureID.value || connectionLoading.value) return
+  if (!feature) return
+  const operationToken = beginOperation('feature', feature.id)
+  if (!operationToken) return
   const ownerToken = connectionOwnerToken
   const epoch = lifecycleEpoch
-  busyFeatureID.value = feature.id
   try {
     if (!ownerToken) throw new Error('当前页面不再持有 CT 0.8.4 连接所有权')
     await CT084SetEnabledOwned(ownerToken, feature.id, enabled)
     const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
-    if (disposed || epoch !== lifecycleEpoch || ownerToken !== connectionOwnerToken) return
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
     const verifiedStatus = verifiedStatuses.find(status => status.id === feature.id)
     if (!verifiedStatus || verifiedStatus.enabled !== enabled) throw new Error(`${feature.name} 写后回读状态不一致`)
     applyStatuses(verifiedStatuses)
     announce(`${displayFeatureName(feature)}已${enabled ? '开启' : '恢复默认'}`, 'ok')
   } catch (error) {
-    if (!disposed && epoch === lifecycleEpoch && ownerToken === connectionOwnerToken) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
       try {
         const recoveredStatuses = await fetchVerifiedStatuses(ownerToken)
-        if (!disposed && epoch === lifecycleEpoch) applyStatuses(recoveredStatuses)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyStatuses(recoveredStatuses)
       } catch {
         // Keep the last verified UI state. Disconnect remains available so the
         // backend can retry restoration using its retained recovery lease.
@@ -258,7 +278,7 @@ async function setFeatureEnabled(feature, enabled) {
       announce(`${displayFeatureName(feature)}操作失败：${errorMessage(error)}`, 'danger')
     }
   } finally {
-    if (!disposed && epoch === lifecycleEpoch && busyFeatureID.value === feature.id) busyFeatureID.value = ''
+    finishOperation(operationToken)
   }
 }
 
@@ -346,7 +366,7 @@ function displayFeatureError(feature) {
 
 function featureDisabled(feature) {
   const status = statusFor(feature)
-  if (!connected.value || connectionLoading.value || !!busyFeatureID.value) return true
+  if (!connected.value || operationBusy.value) return true
   if (ownsFeature(feature)) return false
   return !status.available || !!activeConflictFor(feature)
 }
@@ -374,6 +394,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   lifecycleEpoch += 1
+  operationGate.reset()
   pendingConfirmationFeature.value = null
   confirmationReturnTarget = null
   const ownerToken = connectionOwnerToken
@@ -395,10 +416,10 @@ onBeforeUnmount(() => {
         <span class="ui-tag" :class="connected ? 'is-ok' : 'is-info'">{{ connected ? '已验证连接' : '未连接' }}</span>
       </div>
       <div class="ct-connection-actions ui-actions">
-        <button v-if="connected" type="button" class="ui-btn is-ghost is-sm" :disabled="statusLoading || !!busyFeatureID || connectionLoading" @click="refreshStatuses">
+        <button v-if="connected" type="button" class="ui-btn is-ghost is-sm" :disabled="operationBusy" @click="refreshStatuses">
           {{ statusLoading ? '回读中…' : '刷新状态' }}
         </button>
-        <button type="button" class="ui-btn is-sm" :class="connected ? 'is-danger' : 'is-primary'" :disabled="connectionLoading || !!busyFeatureID" @click="connected ? disconnect() : connect()">
+        <button type="button" class="ui-btn is-sm" :class="connected ? 'is-danger' : 'is-primary'" :disabled="operationBusy" @click="connected ? disconnect() : connect()">
           {{ connectionLoading ? '处理中…' : connected ? '恢复全部并断开' : '连接游戏进程' }}
         </button>
       </div>
