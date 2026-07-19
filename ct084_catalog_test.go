@@ -193,6 +193,9 @@ func TestCT084ProductionCatalogRejectsInvalidMutations(t *testing.T) {
 			site.Offset = c.Features[0].Sites[0].Offset
 			c.Features[0].Sites = append(c.Features[0].Sites, site)
 		}},
+		{name: "cross-feature overlapping patch slices", mutate: func(c *CT084Catalog) {
+			c.Features[1].Sites[0] = c.Features[0].Sites[0]
+		}},
 		{name: "missing conflict target", mutate: func(c *CT084Catalog) { c.Features[featureWithConflicts].Conflicts[0] = "ct084-999999" }},
 		{name: "self conflict", mutate: func(c *CT084Catalog) {
 			c.Features[featureWithConflicts].Conflicts[0] = c.Features[featureWithConflicts].ID

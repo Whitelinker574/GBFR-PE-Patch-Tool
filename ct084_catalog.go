@@ -58,6 +58,14 @@ type CT084PatchSite struct {
 	RequiresRuntimeCapture bool   `json:"requiresRuntimeCapture"`
 }
 
+type ct084CatalogPatchRange struct {
+	start        int
+	end          int
+	featureID    string
+	featureIndex int
+	siteIndex    int
+}
+
 var (
 	ct084CatalogOnce sync.Once
 	ct084CatalogData *CT084Catalog
@@ -123,6 +131,7 @@ func validateCT084Catalog(catalog *CT084Catalog) error {
 
 	byID := make(map[string]*CT084Feature, len(catalog.Features))
 	seenCTIDs := make(map[int]string, len(catalog.Features))
+	patchRanges := make(map[[3]string][]ct084CatalogPatchRange)
 	for featureIndex := range catalog.Features {
 		feature := &catalog.Features[featureIndex]
 		label := fmt.Sprintf("feature[%d] %q", featureIndex, feature.ID)
@@ -159,7 +168,7 @@ func validateCT084Catalog(catalog *CT084Catalog) error {
 		if len(feature.Sites) == 0 {
 			return fmt.Errorf("%s: patch sites are empty", label)
 		}
-		if err := validateCT084PatchSites(feature, label); err != nil {
+		if err := validateCT084PatchSites(feature, featureIndex, label, patchRanges); err != nil {
 			return err
 		}
 	}
@@ -189,13 +198,7 @@ func validateCT084Catalog(catalog *CT084Catalog) error {
 	return validateCT084DamageCapConflicts(byID)
 }
 
-func validateCT084PatchSites(feature *CT084Feature, featureLabel string) error {
-	type patchRange struct {
-		start int
-		end   int
-		site  int
-	}
-	ranges := make(map[string][]patchRange)
+func validateCT084PatchSites(feature *CT084Feature, featureIndex int, featureLabel string, ranges map[[3]string][]ct084CatalogPatchRange) error {
 	for siteIndex := range feature.Sites {
 		site := &feature.Sites[siteIndex]
 		label := fmt.Sprintf("%s site[%d]", featureLabel, siteIndex)
@@ -245,11 +248,20 @@ func validateCT084PatchSites(feature *CT084Feature, featureLabel string) error {
 			return fmt.Errorf("%s: disableBytes length=%d, want %d", label, len(site.DisableBytes), len(site.EnableBytes))
 		}
 
-		key := site.Symbol + "\x00" + site.AOB
-		current := patchRange{start: site.Offset, end: site.Offset + len(site.EnableBytes), site: siteIndex}
+		key := [3]string{site.Module, site.Symbol, site.AOB}
+		current := ct084CatalogPatchRange{
+			start:        site.Offset,
+			end:          site.Offset + len(site.EnableBytes),
+			featureID:    feature.ID,
+			featureIndex: featureIndex,
+			siteIndex:    siteIndex,
+		}
 		for _, previous := range ranges[key] {
 			if current.start < previous.end && previous.start < current.end {
-				return fmt.Errorf("%s: patch range overlaps site[%d] for the same symbol/AOB", label, previous.site)
+				return fmt.Errorf(
+					"%s: patch range overlaps feature[%d] %q site[%d] for the same module/symbol/AOB",
+					label, previous.featureIndex, previous.featureID, previous.siteIndex,
+				)
 			}
 		}
 		ranges[key] = append(ranges[key], current)
