@@ -315,17 +315,23 @@ func cloneCT084Catalog(source *CT084Catalog) *CT084Catalog {
 	for featureIndex := range source.Features {
 		cloned.Features[featureIndex] = source.Features[featureIndex]
 		feature := &cloned.Features[featureIndex]
-		feature.GroupPath = append([]string(nil), source.Features[featureIndex].GroupPath...)
-		feature.Conflicts = append([]string(nil), source.Features[featureIndex].Conflicts...)
+		feature.GroupPath = make([]string, len(source.Features[featureIndex].GroupPath))
+		copy(feature.GroupPath, source.Features[featureIndex].GroupPath)
+		feature.Conflicts = make([]string, len(source.Features[featureIndex].Conflicts))
+		copy(feature.Conflicts, source.Features[featureIndex].Conflicts)
 		feature.Sites = make([]CT084PatchSite, len(source.Features[featureIndex].Sites))
 		for siteIndex := range source.Features[featureIndex].Sites {
 			feature.Sites[siteIndex] = source.Features[featureIndex].Sites[siteIndex]
 			site := &feature.Sites[siteIndex]
 			sourceSite := &source.Features[featureIndex].Sites[siteIndex]
-			site.PatternValues = append([]byte(nil), sourceSite.PatternValues...)
-			site.PatternMasks = append([]byte(nil), sourceSite.PatternMasks...)
-			site.EnableBytes = append([]byte(nil), sourceSite.EnableBytes...)
-			site.DisableBytes = append([]byte(nil), sourceSite.DisableBytes...)
+			site.PatternValues = make([]byte, len(sourceSite.PatternValues))
+			copy(site.PatternValues, sourceSite.PatternValues)
+			site.PatternMasks = make([]byte, len(sourceSite.PatternMasks))
+			copy(site.PatternMasks, sourceSite.PatternMasks)
+			site.EnableBytes = make([]byte, len(sourceSite.EnableBytes))
+			copy(site.EnableBytes, sourceSite.EnableBytes)
+			site.DisableBytes = make([]byte, len(sourceSite.DisableBytes))
+			copy(site.DisableBytes, sourceSite.DisableBytes)
 		}
 	}
 	return &cloned

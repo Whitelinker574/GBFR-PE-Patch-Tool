@@ -280,6 +280,30 @@ func TestCT084ProductionCatalogReturnsDeepDefensiveCopies(t *testing.T) {
 	}
 }
 
+func TestCT084ProductionCatalogWailsJSONPreservesEmptyArrays(t *testing.T) {
+	features, err := NewApp().CT084GetCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(features)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{
+		"groupPath",
+		"conflicts",
+		"sites",
+		"patternValues",
+		"patternMasks",
+		"enableBytes",
+		"disableBytes",
+	} {
+		if bytes.Contains(raw, []byte(`"`+field+`":null`)) {
+			t.Errorf("CT084GetCatalog() JSON contains null array for %s", field)
+		}
+	}
+}
+
 func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 	catalog := readCT084CatalogFile(t)
 	if catalog.SchemaVersion != 1 {
