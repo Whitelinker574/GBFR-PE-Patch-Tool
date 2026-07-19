@@ -7,13 +7,15 @@ const component = existsSync(componentUrl) ? readFileSync(componentUrl, 'utf8') 
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 const offlineGenerator = readFileSync(new URL('./components/WrightstoneGenerator.vue', import.meta.url), 'utf8')
 
-test('live wrightstone editor is reachable from the realtime group and reuses its existing artwork', () => {
+test('live wrightstone editor is reachable from the realtime group and owns function-specific artwork', () => {
   assert.ok(component, 'WrightstoneMemoryGenerator.vue must exist')
   assert.match(shell, /import WrightstoneMemoryGenerator from '.\/WrightstoneMemoryGenerator\.vue'/)
   assert.match(shell, /wrightstoneMemory:\s*\{[\s\S]*?group:\s*'memory'[\s\S]*?tone:\s*'live'/)
   assert.match(shell, /items:\s*\[[^\]]*'wrightstoneMemory'/)
-  assert.match(shell, /wrightstoneMemory:\s*wrightstoneArt/)
-  assert.match(shell, /wrightstoneMemory:\s*wrightstoneSticker/)
+  assert.match(shell, /import wrightstoneMemoryArt from '\.\.\/assets\/gbfr\/cutouts\/wrightstone-memory-official-edge-safe\.webp'/)
+  assert.match(shell, /import wrightstoneMemorySticker from '\.\.\/assets\/gbfr\/stickers\/wrightstone-memory\.webp'/)
+  assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemoryArt/)
+  assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemorySticker/)
   assert.match(shell, /<WrightstoneMemoryGenerator\s+v-else-if="activeTab === 'wrightstoneMemory'"/)
   assert.match(shell, /\.tool-stage\[data-tool="wrightstoneMemory"\]/)
 })
