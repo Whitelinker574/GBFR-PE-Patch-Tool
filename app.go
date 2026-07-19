@@ -163,6 +163,11 @@ type App struct {
 	// this App instance. Exact entry bytes, rel32 cave and an in-cave marker are
 	// retained until restoration succeeds, so detach can fail closed and retry.
 	monsterEnhanceOwned map[string]monsterEnhanceOwnedPatch
+	// ct084PatchLeases owns only independently verified direct patches. The
+	// process identity and exact bytes make every record a retryable recovery
+	// lease; ct084PatchOrder preserves reverse installation order on detach.
+	ct084PatchLeases    map[string]ct084PatchLease
+	ct084PatchOrder     []string
 	materialConsumeAddr uintptr
 	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
 	// read/validate/write sequence must be atomic or concurrent Wails calls can
@@ -1037,6 +1042,9 @@ var potionDefs = []potionDef{
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
+	if len(a.ct084PatchLeases) != 0 || len(a.ct084PatchOrder) != 0 {
+		return CharaProcessInfo{}, fmt.Errorf("CT 0.8.4 内存补丁仍由当前页面持有，请先安全释放")
+	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由当前页面持有，请先关闭或断开该页面")
 	}
@@ -1055,6 +1063,9 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	defer a.procMu.Unlock()
 	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
 		return CharaProcessInfo{}, err
+	}
+	if len(a.ct084PatchLeases) != 0 || len(a.ct084PatchOrder) != 0 {
+		return CharaProcessInfo{}, fmt.Errorf("CT 0.8.4 内存补丁由另一运行时页面持有，请先安全释放")
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由另一个页面持有，请等待该页面完成安全释放后重试")
@@ -1432,10 +1443,17 @@ func (a *App) CharaRelease(token string) error {
 	}
 	processLive := a.hProcess != 0 && processHandleAlive(a.hProcess)
 	if processLive {
+		a.runtimePatchMu.Lock()
+		ctErr := a.restoreAllCT084PatchesLocked(token)
+		a.runtimePatchMu.Unlock()
+		if ctErr != nil {
+			return fmt.Errorf("CT 0.8.4 patch restoration failed; connection remains owned: %w", ctErr)
+		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
 			return fmt.Errorf("monster-enhance hook restoration failed; connection remains owned: %w", err)
 		}
 	} else {
+		a.dropCT084PatchesForOwnerLocked(token)
 		// Once the game process is gone there is no executable jump left to
 		// restore. Consume only this page's monster recovery records; unrelated
 		// runtime owners keep their existing detach semantics below.
@@ -1481,6 +1499,11 @@ func (a *App) charaDetachLocked() error {
 	// game build and can also leave the game executing tool-owned code.
 	if a.hProcess != 0 && processHandleAlive(a.hProcess) {
 		var releaseErr error
+		a.runtimePatchMu.Lock()
+		if err := a.restoreAllCT084PatchesLocked(""); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("CT 0.8.4 patches: %w", err))
+		}
+		a.runtimePatchMu.Unlock()
 		if err := a.releaseOverLimitHook(); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("OverLimit hook: %w", err))
 		}
@@ -1531,6 +1554,8 @@ func (a *App) charaDetachLocked() error {
 	a.currencyCaveAddr = 0
 	a.currencyOriginal = nil
 	a.monsterEnhanceOwned = nil
+	a.ct084PatchLeases = nil
+	a.ct084PatchOrder = nil
 	a.materialConsumeAddr = 0
 	a.charaOwnerToken = ""
 	a.sigilMemoryOwnerToken = ""
@@ -2839,7 +2864,9 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		a.currencyHookAddr != 0 ||
 		a.currencyCaveAddr != 0 ||
 		len(a.currencyOriginal) != 0 ||
-		len(a.monsterEnhanceOwned) != 0
+		len(a.monsterEnhanceOwned) != 0 ||
+		len(a.ct084PatchLeases) != 0 ||
+		len(a.ct084PatchOrder) != 0
 }
 
 // nextRuntimeOwnerToken is called only while procMu is held.
