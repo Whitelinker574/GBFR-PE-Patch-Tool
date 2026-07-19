@@ -56,9 +56,11 @@ import languageSticker from '../assets/gbfr/stickers/language.webp'
 const ctCombatArt = new URL('../assets/gbfr/cutouts/ct-combat-official-edge-safe.webp', import.meta.url).href
 const ctCharactersArt = new URL('../assets/gbfr/cutouts/ct-characters-official-edge-safe.webp', import.meta.url).href
 const ctQuestArt = new URL('../assets/gbfr/cutouts/ct-quest-official-edge-safe.webp', import.meta.url).href
+const ctMonitorArt = new URL('../assets/gbfr/cutouts/ct-monitor-official-edge-safe.webp', import.meta.url).href
 const ctCombatSticker = new URL('../assets/gbfr/stickers/ct-combat.webp', import.meta.url).href
 const ctCharactersSticker = new URL('../assets/gbfr/stickers/ct-characters.webp', import.meta.url).href
 const ctQuestSticker = new URL('../assets/gbfr/stickers/ct-quest.webp', import.meta.url).href
+const ctMonitorSticker = new URL('../assets/gbfr/stickers/ct-monitor.webp', import.meta.url).href
 
 const componentLoaders = {
   progression: () => import('./ProgressionEditor.vue'),
@@ -78,6 +80,7 @@ const componentLoaders = {
   ctCombat: () => import('./CT084Features.vue'),
   ctCharacters: () => import('./CT084Features.vue'),
   ctQuest: () => import('./CT084Features.vue'),
+  ctMonitor: () => import('./CT084RuntimeMonitor.vue'),
   language: () => import('./LanguageSettings.vue'),
 }
 // 桌面本地应用无网络加载成本，改用静态直引：全部组件打进主包，
@@ -97,6 +100,7 @@ import CharaStats from './CharaStats.vue'
 import SaveEditor from './SaveEditor.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
 import CT084Features from './CT084Features.vue'
+import CT084RuntimeMonitor from './CT084RuntimeMonitor.vue'
 import LanguageSettings from './LanguageSettings.vue'
 
 const state = reactive({
@@ -200,6 +204,13 @@ const toolMeta = {
     caution: '重启游戏后运行时设置会失效，需要重新连接。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
+  ctMonitor: {
+    group: 'monitor', title: '运行监测（CT 0.8.4）', eyebrow: 'CT 0.8.4 · 只读监测', status: '只读 · 需连接游戏', tone: 'live',
+    description: '只读展示玩家、三名队员、碧的小红龙，以及游戏列表当前选中的素材或关键物品。',
+    usage: ['启动游戏并进入稳定场景', '连接后读取队伍快照', '选中素材或关键物品后刷新并读取一次'],
+    caution: '页面不会写物品或存档；选中物品捕获 Hook 会在安全断开或离开页面时恢复原字节。',
+    speaker: '尤斯塔斯', note: '等数据稳定再读。地址变化就停一下——巡检只看证据，不靠猜。',
+  },
   ctCombat: {
     group: 'memory', title: '战斗规则补丁', eyebrow: 'CT 0.8.4 · 战斗', status: '仅离线/单机', tone: 'live',
     description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
@@ -219,7 +230,7 @@ const toolMeta = {
     description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
     usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
     caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
-    speaker: '尤达哈拉', note: '任务路线先看清，宝箱和结算各归各位。用完恢复，下一趟才不会乱。',
+    speaker: '尤达拉哈', note: '任务路线先看清，宝箱和结算各归各位。用完恢复，下一趟才不会乱。',
   },
   chara: {
     group: 'save', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
@@ -272,11 +283,12 @@ const toolMeta = {
   },
 }
 
-// 顶层按「存档修改 / 内存注入 / 工具」三分（内存注入=运行时改进程内存，退游戏即失效；
-// 存档修改=离线改存档文件，可批量可回滚）。items 顺序即台前优先级。
+// 顶层把只读内存监测从内存注入中单独分出，避免把观察数据与修改功能混为一谈。
+// 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['progression', 'sigil', 'wrightstone', 'loadoutPresets', 'chara', 'save'] },
   { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'ctCombat', 'ctCharacters', 'ctQuest', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'legacyRuntime', 'monster'] },
+  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live game data without writes', items: ['ctMonitor'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'patch', 'language'] },
 ])
 
@@ -296,6 +308,7 @@ const functionArt = {
   ctCombat: ctCombatArt,
   ctCharacters: ctCharactersArt,
   ctQuest: ctQuestArt,
+  ctMonitor: ctMonitorArt,
   chara: charaArt,
   save: saveArt,
   compatibility: compatibilityArt,
@@ -319,6 +332,7 @@ const functionStickers = {
   ctCombat: ctCombatSticker,
   ctCharacters: ctCharactersSticker,
   ctQuest: ctQuestSticker,
+  ctMonitor: ctMonitorSticker,
   chara: charaSticker,
   save: saveSticker,
   compatibility: compatibilitySticker,
@@ -588,7 +602,7 @@ async function toggleFullscreen() {
             <div class="breadcrumb"><span>{{ activeGroup.label }}</span><b>/</b><strong>{{ currentMeta.title }}</strong></div>
             <div class="workspace-actions">
               <div class="workspace-state"><span :class="['state-dot', currentMeta.tone]"></span>{{ currentMeta.status }}</div>
-              <SaveBackupDrawer @status="showStatus" />
+              <SaveBackupDrawer v-if="currentMeta.group !== 'monitor'" @status="showStatus" />
             </div>
         </div>
 
@@ -634,6 +648,7 @@ async function toggleFullscreen() {
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'runtime'" mode="stable" @status="showStatus" />
+            <CT084RuntimeMonitor v-else-if="activeTab === 'ctMonitor'" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCombat'" mode="combat" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCharacters'" mode="characters" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctQuest'" mode="quest" @status="showStatus" />
@@ -1372,6 +1387,7 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="summon"] { --art-scale:188%; --art-x:-8%; --art-y:-24%; }
 .tool-stage[data-tool="overlimit"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="runtime"] { --art-scale:208%; --art-x:-22%; --art-y:-31%; }
+.tool-stage[data-tool="ctMonitor"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
 .tool-stage[data-tool="ctCombat"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
 .tool-stage[data-tool="ctCharacters"] { --art-scale:188%; --art-x:-9%; --art-y:-22%; }
 .tool-stage[data-tool="ctQuest"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }

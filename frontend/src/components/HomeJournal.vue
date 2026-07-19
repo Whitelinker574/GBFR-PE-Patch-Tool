@@ -4,7 +4,7 @@ import journalScene from '../assets/gbfr/journal-scene-4k.webp'
 defineProps({ version: { type: String, default: '—' } })
 const emit = defineEmits(['open', 'warm'])
 
-// 首页按两大方式分组：存档修改（离线改文件）/ 内存注入（连游戏改内存）
+// 首页把只读内存监测单列，避免与存档修改或运行时注入混淆。
 const groups = [
   {
     id: 'save', mark: '档', label: '存档修改', hint: '退出游戏后离线改存档文件，可批量、可回滚',
@@ -25,6 +25,12 @@ const groups = [
       { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
       { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
       { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
+    ],
+  },
+  {
+    id: 'monitor', mark: '测', label: '内存监测', hint: '只读读取运行中游戏数据，不修改物品或存档',
+    items: [
+      { id: 'ctMonitor', icon: '测', title: '运行监测（CT 0.8.4）', copy: '队伍快照、选中素材与关键物品' },
     ],
   },
 ]
