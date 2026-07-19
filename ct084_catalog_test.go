@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -518,6 +519,70 @@ REAL+1:
 	site := catalog.Features[0].Sites[0]
 	if site.Symbol != "REAL" || site.Offset != 1 || !reflect.DeepEqual(site.EnableBytes, []byte{0x90, 0x90}) || !reflect.DeepEqual(site.DisableBytes, []byte{0xab, 0xcc}) {
 		t.Fatalf("site=%+v, want only the real patch", site)
+	}
+}
+
+func readCT084GeneratorExclusionSet(t *testing.T, script, variable string) []int {
+	t.Helper()
+	declaration := "$" + variable + " = [System.Collections.Generic.HashSet[int]]::new()"
+	declarationIndex := strings.Index(script, declaration)
+	if declarationIndex < 0 {
+		t.Fatalf("generator does not declare $%s as a HashSet[int]", variable)
+	}
+	remainder := script[declarationIndex+len(declaration):]
+	const loopPrefix = "foreach ($excludedCTID in @("
+	loopIndex := strings.Index(remainder, loopPrefix)
+	if loopIndex < 0 {
+		t.Fatalf("generator does not populate $%s", variable)
+	}
+	remainder = remainder[loopIndex+len(loopPrefix):]
+	loopEnd := strings.Index(remainder, ")) {")
+	if loopEnd < 0 {
+		t.Fatalf("generator has no complete population loop for $%s", variable)
+	}
+
+	var ids []int
+	for _, line := range strings.Split(remainder[:loopEnd], "\n") {
+		if comment := strings.IndexByte(line, '#'); comment >= 0 {
+			line = line[:comment]
+		}
+		for _, field := range strings.FieldsFunc(line, func(char rune) bool {
+			return char == ',' || char == ' ' || char == '\t' || char == '\r'
+		}) {
+			id, err := strconv.Atoi(field)
+			if err != nil {
+				t.Fatalf("generator $%s contains non-integer exclusion %q", variable, field)
+			}
+			ids = append(ids, id)
+		}
+	}
+	if !strings.Contains(remainder[loopEnd:], "$"+variable+".Add($excludedCTID)") {
+		t.Fatalf("generator population loop does not add IDs to $%s", variable)
+	}
+	return ids
+}
+
+func TestCT084GeneratorClassifiesExclusionsBySafetyEvidence(t *testing.T) {
+	raw, err := os.ReadFile("tools/generate_ct084_patches.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(raw)
+	wantSets := []struct {
+		variable string
+		ids      []int
+	}{
+		{variable: "knownUnsafeCTIDs", ids: []int{31935, 33086}},
+		{variable: "unsafeOrUnverifiedCTIDs", ids: []int{31066, 31960}},
+		{variable: "alreadyImplementedCTIDs", ids: []int{31060, 31456}},
+	}
+	for _, want := range wantSets {
+		if got := readCT084GeneratorExclusionSet(t, script, want.variable); !reflect.DeepEqual(got, want.ids) {
+			t.Errorf("generator $%s=%v, want %v", want.variable, got, want.ids)
+		}
+		if filter := "$" + want.variable + ".Contains($ctID)"; !strings.Contains(script, filter) {
+			t.Errorf("generator does not filter with %s", filter)
+		}
 	}
 }
 

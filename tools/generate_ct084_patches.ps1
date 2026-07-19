@@ -247,10 +247,16 @@ catch {
     throw 'Failed to load CT XML safely.'
 }
 
-$unsafeOrUnverifiedCTIDs = [System.Collections.Generic.HashSet[int]]::new()
+$knownUnsafeCTIDs = [System.Collections.Generic.HashSet[int]]::new()
 foreach ($excludedCTID in @(
         31935, # CT warns that disabling Eugen's instant Detonator can crash.
-        33086, # CT marks infinite repeat quest as experimental and potentially buggy.
+        33086  # CT marks infinite repeat quest as experimental and potentially buggy.
+    )) {
+    [void] $knownUnsafeCTIDs.Add($excludedCTID)
+}
+
+$unsafeOrUnverifiedCTIDs = [System.Collections.Generic.HashSet[int]]::new()
+foreach ($excludedCTID in @(
         31066, # Game 2.0.2 has two matches for NBGFR019B; the intended site is unproven.
         31960  # Game 2.0.2 has three matches for NBGFR040; the intended site is unproven.
     )) {
@@ -276,6 +282,7 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
 
     $ctID = 0
     if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID) -or
+        $knownUnsafeCTIDs.Contains($ctID) -or
         $unsafeOrUnverifiedCTIDs.Contains($ctID) -or
         $alreadyImplementedCTIDs.Contains($ctID)) {
         continue
