@@ -511,6 +511,7 @@ export const uiTranslations = {
   '药水和“不消耗素材”在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。': 'Use potions and No Material Consumption live; add specific items, materials, and weapons through the offline progression editor.',
   '实时数值需要让游戏正常触发一次保存；游戏运行时不要同时离线修改同一存档。': 'Live values require one normal in-game save. Never edit the same save offline while the game is running.',
   '实时货币编辑': 'Live Currency Editor',
+  '共鸣点数（RP）': 'Resonance Points (RP)',
   '金币、MSP、高级炼成点数与共鸣点数（RP）': 'Rupies, MSP, Advanced Sigil Synthesis Points & Resonance Points (RP)',
   'AOB 捕获玩家结构 · 写入后回读': 'AOB player-structure capture · Read back after write',
   '用途：实时修改金币、MSP、高级炼成点数和共鸣点数（RP）。首次连接后若没有读数，请在游戏内打开主菜单或让资源发生一次变化。': 'Use: edit Rupies, MSP, Advanced Sigil Synthesis points, and Resonance Points (RP) live. If no values appear, open the main menu or change a resource once.',

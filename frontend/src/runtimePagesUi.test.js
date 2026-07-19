@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { uiTranslations } from './i18n-ui.js'
 
 const componentNames = [
   'SigilMemoryGenerator.vue',
@@ -22,7 +23,7 @@ const i18nUi = readFileSync(new URL('./i18n-ui.js', import.meta.url), 'utf8')
 test('runtime currency copy publishes resonance points instead of the incorrect CP label', () => {
   assert.equal((miscTools.match(/共鸣点数（RP）/g) || []).length, 3, 'catalog and both help surfaces must name RP')
   assert.doesNotMatch(miscTools, /\bCP\b/, 'the runtime UI must not publish the legacy CP label')
-  assert.match(i18nUi, /Resonance Points \(RP\)/, 'English UI copy must translate the corrected resource')
+  assert.equal(uiTranslations['共鸣点数（RP）'], 'Resonance Points (RP)', 'a dynamic currency item name needs its own exact translation')
   assert.doesNotMatch(i18nUi, /\bCP\b/, 'the runtime translation catalog must not publish the legacy CP label')
 })
 
