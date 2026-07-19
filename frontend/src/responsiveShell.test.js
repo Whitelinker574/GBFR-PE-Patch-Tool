@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const patchTool = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
+const wrightstoneMemory = readFileSync(new URL('./components/WrightstoneMemoryGenerator.vue', import.meta.url), 'utf8')
 const uiScaleSource = readFileSync(new URL('./utils/uiScale.js', import.meta.url), 'utf8')
 
 test('ui scale keeps the app at the real viewport scale without inverse size compensation', async () => {
@@ -43,37 +44,54 @@ test('ui scale keeps the app at the real viewport scale without inverse size com
   assert.doesNotMatch(uiScaleSource, /MIN_ZOOM|computeZoom|\b1\s*\/\s*z\b|\bw\s*\/\s*z\b|\bh\s*\/\s*z\b/)
 })
 
-test('tool shell uses one bounded portrait column system at the real viewport breakpoints', () => {
-  assert.match(patchTool, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+clamp\(220px,\s*18vw,\s*300px\)/is)
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1279px\)\s*\{[\s\S]*?\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/i)
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1279px\)\s*\{[\s\S]*?\.art-rail\s*,\s*\.art-toggle\s*\{[^}]*display\s*:\s*none\s*;/is)
-  assert.doesNotMatch(patchTool, /\.art-rail\s*,\s*\.art-toggle\s*\{[^}]*display\s*:\s*none\s*!important/is)
-  assert.doesNotMatch(patchTool, /grid-template-columns\s*:\s*168px\s+minmax\(0,\s*1fr\)/i)
+test('frameless titlebar keeps controls on the right and exposes maximise plus fullscreen', () => {
+  assert.match(patchTool, /WindowToggleMaximise/)
+  assert.match(patchTool, /WindowFullscreen/)
+  assert.match(patchTool, /@dblclick\.self="WindowToggleMaximise"/)
+  for (const label of ['最小化', '最大化或还原', '一键全屏', '关闭']) {
+    assert.match(patchTool, new RegExp(`aria-label="${label}"`))
+  }
+  assert.match(patchTool, /\.titlebar-controls\s*\{[^}]*position\s*:\s*absolute[^}]*right\s*:\s*0/is)
+  assert.match(patchTool, /--window-controls-width\s*:\s*168px/)
+  assert.match(patchTool, /\.titlebar-status\s*\{[^}]*max-width\s*:\s*min\([^;]*calc\(100%\s*-\s*var\(--window-controls-width\)/is)
+  assert.match(patchTool, /\.titlebar-status\s*\{[^}]*position\s*:\s*absolute[^}]*left\s*:\s*50%/is)
 })
 
-test('portrait images are clipped and contained by the art rail', () => {
-  assert.match(patchTool, /\.art-rail\s*\{[^}]*overflow\s*:\s*hidden/is)
-  assert.match(patchTool, /\.art-rail\s+\.function-character\s*\{[^}]*inset\s*:\s*0[^}]*overflow\s*:\s*hidden/is)
-  assert.match(patchTool, /\.art-rail\s+\.function-character\s+img\s*\{[^}]*width\s*:\s*100%[^}]*height\s*:\s*100%[^}]*object-fit\s*:\s*contain/is)
-  assert.doesNotMatch(patchTool, /--ah\s*:\s*160%|--ax\s*:\s*-250px|max-width\s*:\s*none\s*!important;\s*max-height\s*:\s*none/i)
+test('the branded parchment skin remains visible behind translucent work surfaces', () => {
+  assert.match(patchTool, /parchment-ui-v2\.webp/)
+  assert.match(patchTool, /journal-scene-4k\.webp/)
+  assert.match(patchTool, /\.app-window::before\s*\{[^}]*background-image/is)
+  assert.match(patchTool, /\.workspace\s*\{[^}]*background\s*:[^}]*rgba\([^)]*,\s*\.[0-9]+\)[^}]*journal-scene-4k\.webp/is)
 })
 
-test('compact desktop widths use an icon sidebar and do not reserve a ghost portrait column', () => {
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1024px\)\s*\{[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px\s+minmax\(0,\s*1fr\)/i)
-  assert.doesNotMatch(patchTool, /@media\s*\(max-width\s*:\s*900px\)[\s\S]{0,160}?\.tool-stage\s*\{[^}]*168px/i)
+test('ordinary tool pages preserve the fluid left-panel and large right-art dual column', () => {
+  assert.match(patchTool, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*62fr\)\s+minmax\(260px,\s*38fr\)/is)
+  assert.match(patchTool, /\.tool-page-heading\s*,\s*\.tool-panel\s*\{[^}]*width\s*:\s*100%[^}]*max-width\s*:\s*none/is)
+  assert.doesNotMatch(patchTool, /--tool-measure\s*:/)
+  assert.doesNotMatch(patchTool, /width\s*:\s*min\(100%,\s*var\(--tool-measure\)\)/)
+  assert.match(patchTool, /\.tool-stage\.loadout-dedicated\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/is)
 })
 
-test('mid desktop keeps the portrait rail without making the center narrower than compact desktop', () => {
-  assert.match(patchTool, /<div class="app-body"\s+:class="\{[^\"]*'art-visible'\s*:/s)
-  assert.match(patchTool, /@media\s*\(min-width\s*:\s*1280px\)\s+and\s+\(max-width\s*:\s*1399px\)\s*\{[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px\s+minmax\(0,\s*1fr\)/i)
-  assert.match(patchTool, /@media\s*\(min-width\s*:\s*1280px\)[\s\S]*?\.app-body\.art-visible\s+\.sidebar-mascot\s*\{[^}]*display\s*:\s*none/i)
+test('portrait is an unframed anchored scene layer with per-page optical calibration', () => {
+  assert.match(patchTool, /\.tool-stage\[data-tool="progression"\]\s*\{[^}]*--art-scale\s*:/is)
+  assert.match(patchTool, /\.art-rail\s*\{[^}]*overflow\s*:\s*visible[^}]*border\s*:\s*0[^}]*background\s*:\s*transparent/is)
+  assert.match(patchTool, /\.art-rail\s*\{[^}]*height\s*:\s*clamp\(420px,\s*calc\(100dvh\s*-\s*166px\),\s*1400px\)/is)
+  assert.match(patchTool, /\.art-rail \.function-character img\s*\{[^}]*right\s*:\s*var\(--art-x\)[^}]*bottom\s*:\s*var\(--art-y\)[^}]*width\s*:\s*var\(--art-scale\)/is)
+  assert.doesNotMatch(patchTool, /\.art-rail \.function-character img\s*\{[^}]*object-fit\s*:\s*contain/is)
 })
 
-test('page heading and panel share a dense or narrow reading measure', () => {
-  assert.match(patchTool, /\.tool-center-scroll\s*\{[^}]*--tool-measure\s*:\s*840px/is)
-  assert.match(patchTool, /\.tool-stage:is\([^}]+\)\s+\.tool-center-scroll\s*\{[^}]*--tool-measure\s*:\s*960px/is)
-  assert.match(patchTool, /\.tool-page-heading\s*,\s*\.tool-panel\s*\{[^}]*width\s*:\s*min\(100%,\s*var\(--tool-measure\)\)[^}]*margin-inline\s*:\s*auto/is)
-  assert.doesNotMatch(patchTool, /\.tool-panel\s*:\s*deep\(\.root\)[^{]*\{[^}]*max-width\s*:\s*none/is)
+test('compact navigation always retains a real home control and the Q sticker', () => {
+  assert.match(patchTool, /class="sidebar-home-compact"[^>]*aria-label="返回功能首页"/)
+  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.sidebar-home-compact\s*\{[^}]*display\s*:\s*grid/is)
+  assert.doesNotMatch(patchTool, /\.app-body\.art-visible \.sidebar-mascot\s*\{[^}]*display\s*:\s*none/is)
+  assert.match(patchTool, /@media\s*\(max-height\s*:\s*620px\)[\s\S]*?\.sidebar-mascot-say\s*\{[^}]*display\s*:\s*none/is)
+  assert.doesNotMatch(patchTool, /@media\s*\(max-height\s*:\s*620px\)[\s\S]*?\.sidebar-mascot\s*\{[^}]*display\s*:\s*none/is)
+})
+
+test('wrightstone live selection guidance is a compact inline notice, not a centered empty panel', () => {
+  assert.match(wrightstoneMemory, /class="selection-inline-notice"/)
+  assert.doesNotMatch(wrightstoneMemory, /启用读取后，在游戏内祝福石列表选中目标记录。[^<]*<\/p>/)
+  assert.match(wrightstoneMemory, /\.selection-inline-notice\s*\{[^}]*min-height\s*:\s*0[^}]*text-align\s*:\s*left/is)
 })
 
 test('experimental runtime pages are discoverable and active in the memory switcher', () => {
@@ -84,5 +102,5 @@ test('experimental runtime pages are discoverable and active in the memory switc
 test('memory tools reflow into a visible tab grid before any item leaves the viewport', () => {
   assert.match(patchTool, /class="tool-switcher ui-tabs"[^>]*:data-group="activeGroup\.id"/)
   assert.match(patchTool, /@media\s*\(max-width\s*:\s*1439px\)[\s\S]*?\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*grid[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,\s*minmax\(180px,\s*1fr\)\)[^}]*overflow\s*:\s*visible/is)
-  assert.match(patchTool, /\.tool-switcher\[data-group="memory"\]\s+\.ui-tab\s*\{[^}]*min-width\s*:\s*0[^}]*white-space\s*:\s*normal/is)
+  assert.match(patchTool, /\.tool-switcher\[data-group="memory"\] \.ui-tab\s*\{[^}]*min-width\s*:\s*0[^}]*white-space\s*:\s*normal/is)
 })

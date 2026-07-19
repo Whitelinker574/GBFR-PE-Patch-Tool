@@ -110,8 +110,11 @@ const (
 	defaultAppHeight = 800
 	minAppWidth      = 960
 	minAppHeight     = 620
-	maxAppWidth      = 1320
-	maxAppHeight     = 820
+	// Persist real desktop sizes instead of forcing every restored/maximised
+	// window back into the old 1320×820 review canvas. The upper bound only
+	// rejects corrupted configuration values and still covers dual-4K setups.
+	maxAppWidth  = 7680
+	maxAppHeight = 4320
 )
 
 // ── App ──

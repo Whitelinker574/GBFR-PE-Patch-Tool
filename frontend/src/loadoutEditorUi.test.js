@@ -34,35 +34,42 @@ test('factor cards keep all four lines without becoming oversized tiles', () => 
   assert.ok(Number(rule[1]) <= 96, `factor card is still an oversized ${rule[1]}px tile`)
 })
 
-test('character profile shows five calculated final values and four real summon selectors', () => {
+test('character profile distinguishes four runtime-exact values from the draft estimate', () => {
   assert.match(source, /LoadoutStatContext/)
-	assert.match(source, /aria-label="最终人物属性"/)
+	assert.match(source, /LoadoutRuntimePanelStats/)
+	assert.match(source, /aria-label="人物属性面板"/)
 	for (const label of ['HP', '攻击力', '暴击率', '昏厥值', '伤害上限']) {
 		assert.match(source, new RegExp(`>${label}<`))
 	}
+	assert.match(source, /游戏真实回读/)
+	assert.match(source, /配装草稿估算/)
+	assert.match(source, /从游戏读取/)
+	assert.match(source, /formatPanelStat/)
+	assert.doesNotMatch(source, /最终人物属性/)
 	assert.match(source, /formatFinalStat/)
 	assert.match(source, /\.profile-stat-cap\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1/is)
   assert.match(source, /v-for="index in 4"/)
   assert.match(source, /statContext\.summons/)
 })
 
-test('final character values have a visible hierarchy and use the full profile width', () => {
+test('character values have a visible hierarchy and use the full profile width', () => {
 	assert.match(source, /class="profile-stat-card"/)
-	assert.match(source, /class="profile-stat-heading"[\s\S]*<strong>最终人物属性<\/strong>[\s\S]*公式未完全验证/)
-	assert.match(source, /<dl class="profile-stats" aria-label="最终人物属性">/)
+	assert.match(source, /class="profile-stat-heading"[\s\S]*<strong>人物属性<\/strong>[\s\S]*游戏真实回读/)
+	assert.match(source, /<dl class="profile-stats" aria-label="人物属性面板">/)
 	assert.equal((source.match(/class="profile-stat-value"/g) || []).length, 5)
 	assert.match(source, /\.profile-stat-card\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1/is)
 	assert.match(source, /\.profile-stats\s*\{[^}]*grid-template-columns\s*:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/is)
 	assert.match(source, /\.profile-stat-value\s*\{[^}]*white-space\s*:\s*nowrap/is)
 })
 
-test('final values expose formula verification and every backend warning without claiming false precision', () => {
+test('offline values expose approximation and every backend warning without claiming false precision', () => {
 	assert.match(source, /const calculationWarnings = computed/)
 	assert.match(source, /finalStats\.value\?\.warnings/)
 	assert.match(source, /selectedWeaponContext\.value\?\.warnings/)
-	assert.match(source, /finalStats\?\.formulaVerified/)
-	assert.match(source, /selectedWeaponContext\?\.formulaVerified/)
+	assert.match(source, /finalStats\.value\?\.formulaVerified/)
+	assert.match(source, /selectedWeaponContext\.value\?\.formulaVerified/)
 	assert.match(source, /公式未完全验证/)
+	assert.match(source, /return `≈\$\{formatted\}`/)
 	assert.match(source, /v-for="warning in calculationWarnings"/)
 })
 
@@ -86,12 +93,20 @@ test('complete build simulation follows weapon, factors, mastery and summon slot
 })
 
 test('calculation scope is explicit beside merged totals', () => {
-	const scope = '默认仅计算可随时更换的配装来源：武器（含武器技能）、因子、专精、角色上限突破与召唤石；不含任务、队伍、临时状态及战斗内条件加成。'
+	const scope = '人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。'
 	assert.equal(source.split(scope).length - 1, 1)
 	const totalsTitle = source.indexOf('<strong>总计加成</strong>')
 	const note = source.indexOf(scope)
 	const list = source.indexOf('class="effect-total-list"')
 	assert.ok(totalsTitle >= 0 && note > totalsTitle && list > note)
+})
+
+test('character detail separates save base, permanent growth and the fixed baseline', () => {
+  for (const field of ['baseHp', 'baseAtk', 'permanentGrowth?.fateHp', 'permanentGrowth?.fateAtk', 'permanentGrowth?.masterHp', 'permanentGrowth?.masterAtk', 'baselineHp', 'baselineAtk', 'baselineStun', 'baselineCritRate', 'baselineDamageCap']) {
+    assert.ok(source.includes(`statContext.${field}`), `${field} is absent from the character detail`)
+  }
+  assert.match(source, /固定基准 HP/)
+  assert.match(source, /角色强化伤害上限/)
 })
 
 test('final stats expose the three independent damage-cap totals in a compact drill-down', () => {
@@ -157,9 +172,11 @@ test('successful parent reload rehydrates the editor from the newly read save', 
   assert.match(source, /watch\(\(\)\s*=>\s*props\.loadouts\s*,/)
 })
 
-test('editor columns have bounded reading measures and collapse before they overflow', () => {
-  assert.match(source, /grid-template-columns\s*:\s*minmax\(270px,\s*290px\)\s+minmax\(620px,\s*1fr\)\s+minmax\(300px,\s*330px\)/)
-  assert.match(source, /justify-content\s*:\s*center/)
+test('maximised editor fills its workspace while keeping bounded side-column measures', () => {
+	assert.match(source, /\.loadout-editor\s*\{[^}]*width\s*:\s*100%/is)
+	assert.match(source, /grid-template-columns\s*:\s*clamp\(250px,\s*20vw,\s*360px\)\s+minmax\(540px,\s*1fr\)\s+clamp\(280px,\s*22vw,\s*400px\)/)
+	assert.match(source, /justify-content\s*:\s*stretch/)
+	assert.doesNotMatch(source, /\.editor-layout\s*\{[^}]*justify-content\s*:\s*center/is)
   assert.match(source, /container\s*:\s*loadout-editor\s*\/\s*inline-size/)
   assert.match(source, /@container\s+loadout-editor\s*\(max-width\s*:\s*1199px\)/)
 })

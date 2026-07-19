@@ -280,7 +280,6 @@ func hasUnverifiedSigilNotes(notes string) bool {
 
 func isVerifiedSigilDefinition(sigil *SigilDef) bool {
 	return sigil != nil &&
-		!strings.EqualFold(sigil.InternalID, "GEEN_142_02") &&
 		strings.EqualFold(strings.TrimSpace(sigil.Confidence), "high") &&
 		!hasUnverifiedSigilNotes(sigil.Notes)
 }
@@ -307,7 +306,10 @@ func maxNaturalSigilLevel(levels []int) int {
 }
 
 func (c *Catalog) IsSigilConstructible(sigil *SigilDef) bool {
-	if !isVerifiedSigilDefinition(sigil) {
+	// Seven Net is a verified retail-DLC record, but its real save flags are
+	// 22 while the ordinary constructor deliberately emits normal flags 2.
+	// Keep record authenticity separate from safe natural construction.
+	if !isVerifiedSigilDefinition(sigil) || strings.EqualFold(sigil.InternalID, "GEEN_142_02") {
 		return false
 	}
 	sigilLevels, err := c.RequireSigilLevels(sigil)

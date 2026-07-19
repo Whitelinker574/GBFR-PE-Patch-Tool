@@ -137,7 +137,7 @@ func (a *App) LoadoutConstructSigil(path string, item QueueItem) (*ApplyResult, 
 		return nil, fmt.Errorf("存档路径不能为空")
 	}
 	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
-		return nil, fmt.Errorf("因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
+		return nil, fmt.Errorf("因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
 	}
 	if _, err := loadoutFindProcessByName(charaProcessName); err == nil {
 		return nil, fmt.Errorf("写入存档前请先完全退出游戏，避免游戏把旧数据写回")
@@ -408,7 +408,7 @@ func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*prepared
 	}
 	item := draft.Item
 	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
-		return nil, fmt.Errorf("因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
+		return nil, fmt.Errorf("因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
 	}
 	sigil, err := cat.RequireSigil(item.SigilID)
 	if err != nil {

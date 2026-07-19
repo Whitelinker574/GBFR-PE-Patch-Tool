@@ -488,7 +488,7 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		return item, report, nil
 	}
 	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
-		report := newLegalityReport(LegalityImpossible, false, "因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
+		report := newLegalityReport(LegalityImpossible, false, "因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
 		return item, report, nil
 	}
 

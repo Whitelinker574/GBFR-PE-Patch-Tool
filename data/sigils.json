@@ -12940,24 +12940,26 @@
             "hash": "0xF44367CF",
             "displayName": "Seven Net",
             "category": null,
-            "isPlusSigil": null,
+            "isPlusSigil": false,
             "supportsSecondaryTrait": false,
             "allowedSigilLevels": [
-                15
+                6
             ],
-            "defaultSigilLevel": 15,
-            "maxSigilLevel": 15,
+            "defaultSigilLevel": 6,
+            "maxSigilLevel": 6,
             "primaryTraitId": "SKILL_142_00",
             "primaryTraitName": "Seven Net",
             "firstTraitMaxLevel": 6,
-            "allowedFirstTraitLevels": null,
+            "allowedFirstTraitLevels": [
+                6
+            ],
             "allowedSecondaryTraitIds": [],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Imported from GBFRDataTools item_id.csv. Primary trait, levels, plus support, and secondary compatibility are not verified yet. Primary trait mapped from public Trait/Skill IDs by exact/alias name match; exact SkillId1 still needs gem.tbl verification. Temporary data pass: sigil level is fixed to 15 and the secondary pool includes every trait currently in traits.json; final legality still needs gem/lot verification.",
-            "source": "GBFRDataTools-master/GBFRQuestClearChecker/csv_data/item_id.csv; Nenkai Trait/Skill IDs; public trait max-level tables",
-            "confidence": "medium",
+            "notes": "2.0.2 dlc.tbl/dlcpack.tbl and cs/en/jp text.msg verify this as the Seven Net Shopping DLC bonus. Real SaveData2 slot 30015 confirms item level 6, primary trait level 6, no secondary trait and special flags 22. The ordinary constructor writes flags 2, so this verified record remains non-constructible until special DLC flags are modeled.",
+            "source": "local 2.0.2 dlc.tbl; dlcpack.tbl; table/text/{cs,en,jp}/text.msg; real SaveData2 slot 30015",
+            "confidence": "high",
             "defaultSecondaryTraitId": null,
             "defaultSecondaryTraitName": null
         },

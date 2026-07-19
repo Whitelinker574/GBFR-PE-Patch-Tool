@@ -19,6 +19,12 @@ type LoadoutStatContext struct {
 	BaseATK               int                     `json:"baseAtk"`
 	BaseStun              float64                 `json:"baseStun"`
 	BaseCritRate          float64                 `json:"baseCritRate"`
+	PermanentGrowth       LoadoutPermanentGrowth  `json:"permanentGrowth"`
+	BaselineHP            int                     `json:"baselineHp"`
+	BaselineATK           int                     `json:"baselineAtk"`
+	BaselineStun          float64                 `json:"baselineStun"`
+	BaselineCritRate      float64                 `json:"baselineCritRate"`
+	BaselineDamageCap     float64                 `json:"baselineDamageCap"`
 	Summons               []LoadoutSummon         `json:"summons"`
 	EquippedSummonSlotIDs []uint32                `json:"equippedSummonSlotIds"`
 	EquippedSummons       []LoadoutSummon         `json:"equippedSummons"`
@@ -129,6 +135,19 @@ func intUnitExact(data *SaveDataBinary, idType, unitID uint32) (*IntSaveDataUnit
 	return nil, false
 }
 
+func floatUnitExact(data *SaveDataBinary, idType, unitID uint32) (*FloatSaveDataUnit, bool) {
+	if data == nil {
+		return nil, false
+	}
+	for i := range data.FloatTable {
+		unit := &data.FloatTable[i]
+		if unit.IDType == idType && unit.UnitID == unitID {
+			return unit, true
+		}
+	}
+	return nil, false
+}
+
 func uintUnitsByType(data *SaveDataBinary, idType uint32) []UIntSaveDataUnit {
 	if data == nil {
 		return nil
@@ -173,6 +192,14 @@ func requireIntScalar(data *SaveDataBinary, idType, unitID uint32, label string)
 		return 0, fmt.Errorf("存档缺少角色 %d 的 %d %s 标量", unitID, idType, label)
 	}
 	return int(unit.ValueData[0]), nil
+}
+
+func requireFloatScalar(data *SaveDataBinary, idType, unitID uint32, label string) (float64, error) {
+	unit, ok := floatUnitExact(data, idType, unitID)
+	if !ok || len(unit.ValueData) != 1 {
+		return 0, fmt.Errorf("存档缺少角色 %d 的 %d %s 标量", unitID, idType, label)
+	}
+	return float64(unit.ValueData[0]), nil
 }
 
 func hashText(hash uint32) string { return fmt.Sprintf("%08X", hash) }
@@ -357,6 +384,14 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	if err != nil {
 		return nil, err
 	}
+	baseStun, err := requireFloatScalar(data, 1312, charaUnitID, "BaseStun")
+	if err != nil {
+		return nil, err
+	}
+	baseCritRate, err := requireIntScalar(data, 1313, charaUnitID, "BaseCritRate")
+	if err != nil {
+		return nil, err
+	}
 	catalog, err := loadSummonStatCatalog()
 	if err != nil {
 		return nil, err
@@ -364,16 +399,17 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	context := &LoadoutStatContext{
 		CharaHash: hashText(charaHash), CharaUnitID: charaUnitID,
 		Level: level, BaseHP: baseHP, BaseATK: baseATK,
+		BaseStun: baseStun, BaseCritRate: float64(baseCritRate),
 	}
-	// 2.0 chara_status.tbl stores these two panel bases separately from the
-	// save-backed HP/ATK fields. Every player character currently has Stun 8
-	// and Crit 5; fail closed for unknown hashes instead of inventing values.
-	if _, known := characterNameByHash[charaHash]; known {
-		context.BaseStun = 8
-		context.BaseCritRate = 5
-	} else {
-		appendWarning(&context.Warnings, "角色 %08X 未收录于 2.0 基础暴击/昏厥目录", charaHash)
+	context.PermanentGrowth, err = readLoadoutPermanentGrowth(data, charaHash, charaUnitID, &context.Warnings)
+	if err != nil {
+		return nil, err
 	}
+	context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP
+	context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK
+	context.BaselineStun = context.BaseStun
+	context.BaselineCritRate = context.BaseCritRate
+	context.BaselineDamageCap = context.PermanentGrowth.MasterDamageCap
 	context.Summons = readSummonInventory(data, catalog, &context.Warnings)
 
 	if equipped, ok := uintUnitExact(data, 1451, 0); ok {
@@ -737,9 +773,10 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	}
 	sortEffectTotals(totals)
 	panelInput := loadoutPanelInputs{
-		CharacterHP: float64(context.BaseHP), CharacterATK: float64(context.BaseATK),
-		CharacterCritRate: context.BaseCritRate, CharacterStun: context.BaseStun,
-		Bonuses: bonuses, Mastery: panelBonuses, OverLimit: context.OverLimit,
+		CharacterHP: float64(context.BaselineHP), CharacterATK: float64(context.BaselineATK),
+		CharacterCritRate: context.BaselineCritRate, CharacterStun: context.BaselineStun,
+		CharacterDamageCap: context.BaselineDamageCap,
+		Bonuses:            bonuses, Mastery: panelBonuses, OverLimit: context.OverLimit,
 		Warnings: append([]string(nil), context.Warnings...),
 	}
 	if weapon != nil {

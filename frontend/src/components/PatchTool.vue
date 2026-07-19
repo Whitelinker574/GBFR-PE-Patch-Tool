@@ -4,7 +4,14 @@ import {
   AutoDetect, SetExePath, GetStatus, PatchFile, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
 } from '../../wailsjs/go/main/App'
-import { WindowMinimise, Quit } from '../../wailsjs/runtime/runtime'
+import {
+  WindowFullscreen,
+  WindowIsFullscreen,
+  WindowMinimise,
+  WindowToggleMaximise,
+  WindowUnfullscreen,
+  Quit,
+} from '../../wailsjs/runtime/runtime'
 import HomeJournal from './HomeJournal.vue'
 import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
@@ -460,11 +467,20 @@ function showStatus(message, type) {
   statusType.value = type
   statusTimer = window.setTimeout(() => { saveStatus.value = '' }, 3600)
 }
+
+async function toggleFullscreen() {
+  try {
+    if (await WindowIsFullscreen()) WindowUnfullscreen()
+    else WindowFullscreen()
+  } catch (error) {
+    showStatus(`切换全屏失败：${String(error)}`, 'error')
+  }
+}
 </script>
 
 <template>
   <div class="app-window">
-    <header class="titlebar" style="--wails-draggable:drag">
+    <header class="titlebar" style="--wails-draggable:drag" @dblclick.self="WindowToggleMaximise">
       <div class="titlebar-brand">
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
@@ -477,6 +493,8 @@ function showStatus(message, type) {
       </transition>
       <div class="titlebar-controls" style="--wails-draggable:no-drag">
         <button class="win-btn" @click="WindowMinimise" title="最小化" aria-label="最小化"><span class="minimize-line"></span></button>
+        <button class="win-btn" @click="WindowToggleMaximise" title="最大化或还原" aria-label="最大化或还原"><span class="maximise-box"></span></button>
+        <button class="win-btn" @click="toggleFullscreen" title="一键全屏" aria-label="一键全屏"><span class="fullscreen-corners"></span></button>
         <button class="win-btn close" @click="Quit" title="关闭" aria-label="关闭"><span class="close-lines"></span></button>
       </div>
     </header>
@@ -484,6 +502,9 @@ function showStatus(message, type) {
     <div class="app-body" :class="{ 'home-mode': activeTab === 'home', 'sidebar-collapsed': sidebarCollapsed, 'loadout-workspace': isLoadoutWorkspace, 'art-visible': activeTab !== 'home' && !isLoadoutWorkspace && !artCollapsed }" style="--wails-draggable:no-drag">
       <aside class="sidebar">
         <button class="sidebar-collapse" :title="sidebarCollapsed ? '展开目录' : '收起目录'" :aria-label="sidebarCollapsed ? '展开目录' : '收起目录'" @click="toggleSidebar">{{ sidebarCollapsed ? '›' : '‹' }}</button>
+        <button class="sidebar-home-compact" type="button" title="返回功能首页" aria-label="返回功能首页" @click="selectTool('home')">
+          <span aria-hidden="true">⌂</span>
+        </button>
         <button class="sidebar-heading" type="button" title="返回功能首页" @click="selectTool('home')">
           <span class="sidebar-kicker">GBFR PE PATCH TOOL</span>
           <strong>GBFR 存档修改工具</strong>
@@ -506,12 +527,12 @@ function showStatus(message, type) {
             <span class="nav-arrow">›</span>
           </button>
         </nav>
+        <!-- Q版角色是左栏常驻元素；紧凑尺寸只收起气泡，不删除图片。 -->
+        <div class="sidebar-mascot" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
+          <img class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="eager" decoding="async">
+          <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
+        </div>
         <div class="sidebar-foot">
-          <!-- Q版角色作常驻吉祥物：随当前功能切换，鼠标悬停显示该角色的一句建议 -->
-          <div class="sidebar-mascot" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
-            <img class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="lazy" decoding="async">
-            <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
-          </div>
           <div class="target-row"><span class="target-dot"></span><div><strong>当前游戏版本</strong><small>Relink DLC 2.0.2</small></div></div>
           <a href="https://github.com/BitterG/GBFR-PE-Patch-Tool" target="_blank">项目仓库 ↗</a>
         </div>
@@ -637,6 +658,7 @@ function showStatus(message, type) {
             <button v-if="!isLoadoutWorkspace" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
             <aside v-if="!isLoadoutWorkspace" class="art-rail" aria-hidden="true">
               <figure class="function-character" :key="`art-${activeTab}`">
+                <img class="character-blend" :src="currentArt" alt="" loading="eager" decoding="async">
                 <img class="character-main" :src="currentArt" :alt="`${currentMeta.title}角色立绘`" loading="eager" decoding="async">
               </figure>
               <div class="art-caption"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
@@ -652,24 +674,40 @@ function showStatus(message, type) {
 <style scoped>
 .app-window {
   --titlebar-size:42px;
+  position:relative;
+  isolation:isolate;
   width:100%;
   height:100%;
   overflow:hidden;
   color:var(--text-primary);
-  background:var(--surface-app);
+  background:#ead9b6;
   font-family:var(--font-ui);
+}
+.app-window::before {
+  content:"";
+  position:absolute;
+  z-index:-2;
+  inset:0;
+  background-image:
+    linear-gradient(120deg,rgba(255,252,239,.54),rgba(225,202,154,.3)),
+    url('../assets/gbfr/parchment-ui-v2.webp');
+  background-position:center;
+  background-size:cover;
+  filter:saturate(.92) contrast(.98);
 }
 button,input,select { font:inherit; }
 
 .titlebar {
+  --window-controls-width:168px;
   position:relative;
   z-index:20;
   height:var(--titlebar-size);
-  display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(180px,420px) minmax(84px,1fr);
+  display:flex;
   align-items:center;
+  padding-right:var(--window-controls-width);
   border-bottom:1px solid var(--border-default);
-  background:var(--surface-card);
+  background:color-mix(in srgb,var(--surface-card) 82%,transparent);
+  backdrop-filter:blur(12px) saturate(.9);
   box-shadow:0 1px 0 rgba(255,255,255,.5) inset;
   user-select:none;
 }
@@ -711,9 +749,13 @@ button,input,select { font:inherit; }
   font-size:var(--fs-xs);
 }
 .titlebar-status {
-  justify-self:center;
+  position:absolute;
+  z-index:1;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
   min-width:0;
-  max-width:100%;
+  max-width:min(42vw,520px,calc(100% - var(--window-controls-width) - 320px));
   display:flex;
   align-items:center;
   gap:var(--space-2);
@@ -738,7 +780,10 @@ button,input,select { font:inherit; }
   background:currentColor;
 }
 .titlebar-controls {
-  justify-self:end;
+  position:absolute;
+  z-index:2;
+  top:0;
+  right:0;
   display:flex;
   height:100%;
 }
@@ -755,6 +800,27 @@ button,input,select { font:inherit; }
 .win-btn:hover { color:var(--text-primary); background:var(--state-hover); }
 .win-btn.close:hover { color:var(--text-on-accent); background:var(--danger-ink); }
 .minimize-line { width:12px; height:1px; background:currentColor; }
+.maximise-box {
+  width:12px;
+  height:10px;
+  border:1px solid currentColor;
+  border-radius:1px;
+}
+.fullscreen-corners {
+  position:relative;
+  width:14px;
+  height:14px;
+  border:1px solid transparent;
+  background:
+    linear-gradient(currentColor,currentColor) left top / 5px 1px no-repeat,
+    linear-gradient(currentColor,currentColor) left top / 1px 5px no-repeat,
+    linear-gradient(currentColor,currentColor) right top / 5px 1px no-repeat,
+    linear-gradient(currentColor,currentColor) right top / 1px 5px no-repeat,
+    linear-gradient(currentColor,currentColor) left bottom / 5px 1px no-repeat,
+    linear-gradient(currentColor,currentColor) left bottom / 1px 5px no-repeat,
+    linear-gradient(currentColor,currentColor) right bottom / 5px 1px no-repeat,
+    linear-gradient(currentColor,currentColor) right bottom / 1px 5px no-repeat;
+}
 .close-lines { position:relative; width:13px; height:13px; }
 .close-lines::before,.close-lines::after {
   content:"";
@@ -788,7 +854,9 @@ button,input,select { font:inherit; }
   padding:var(--space-7) var(--space-4) var(--space-5);
   overflow:hidden;
   border-right:1px solid var(--border-default);
-  background:var(--surface-card);
+  background:
+    linear-gradient(180deg,rgba(255,251,236,.88),rgba(228,207,164,.84)),
+    url('../assets/gbfr/parchment-ui-v2.webp') left center / cover;
   box-shadow:6px 0 20px rgba(72,50,22,.06);
 }
 .sidebar-collapse {
@@ -808,6 +876,21 @@ button,input,select { font:inherit; }
   cursor:pointer;
 }
 .sidebar-collapse:hover { color:var(--text-primary); background:var(--state-hover); }
+.sidebar-home-compact {
+  width:48px;
+  height:48px;
+  flex:0 0 48px;
+  display:none;
+  place-items:center;
+  border:1px solid var(--accent-border);
+  border-radius:var(--radius-md);
+  color:var(--accent-hover);
+  background:color-mix(in srgb,var(--surface-card-pop) 72%,transparent);
+  box-shadow:inset 0 1px rgba(255,255,255,.58);
+  font-size:24px;
+  cursor:pointer;
+}
+.sidebar-home-compact:hover { background:var(--state-hover); }
 .sidebar-heading {
   width:100%;
   min-width:0;
@@ -900,16 +983,18 @@ button,input,select { font:inherit; }
 .nav-arrow { font-size:var(--fs-lg); }
 .sidebar-foot {
   min-width:0;
-  margin-top:auto;
+  margin-top:0;
   padding:var(--space-4) var(--space-2) 0;
   border-top:1px solid var(--border-soft);
 }
 .sidebar-mascot {
+  min-width:0;
   display:grid;
   grid-template-columns:46px minmax(0,1fr);
   align-items:end;
   gap:var(--space-2);
-  margin-bottom:var(--space-4);
+  margin-top:auto;
+  padding:var(--space-3) var(--space-2) var(--space-4);
 }
 .sidebar-mascot-img {
   width:46px;
@@ -969,7 +1054,8 @@ button,input,select { font:inherit; }
 .sidebar-collapsed .nav-copy,
 .sidebar-collapsed .nav-arrow,
 .sidebar-collapsed .sidebar-foot { display:none; }
-.sidebar-collapsed .primary-nav { align-items:center; padding-top:42px; }
+.sidebar-collapsed .sidebar-home-compact { display:grid; }
+.sidebar-collapsed .primary-nav { align-items:center; padding-top:var(--space-3); }
 .sidebar-collapsed .nav-item {
   width:48px;
   min-height:48px;
@@ -978,6 +1064,14 @@ button,input,select { font:inherit; }
   padding:var(--space-2);
 }
 .sidebar-collapsed .nav-mark { width:32px; height:32px; }
+.sidebar-collapsed .sidebar-mascot {
+  width:48px;
+  grid-template-columns:48px;
+  place-items:center;
+  padding:var(--space-2) 0;
+}
+.sidebar-collapsed .sidebar-mascot-img { width:48px; height:54px; }
+.sidebar-collapsed .sidebar-mascot-say { display:none; }
 
 .workspace {
   min-width:0;
@@ -985,6 +1079,9 @@ button,input,select { font:inherit; }
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  background:
+    linear-gradient(105deg,rgba(255,251,238,.55),rgba(239,220,180,.35)),
+    url('../assets/gbfr/journal-scene-4k.webp') center / cover fixed;
 }
 .workspace-bar {
   min-height:44px;
@@ -1082,29 +1179,33 @@ button,input,select { font:inherit; }
 .workspace-scene { min-width:0; min-height:100%; }
 
 .tool-stage {
+  --art-scale:184%;
+  --art-x:-8%;
+  --art-y:-22%;
   position:relative;
+  isolation:isolate;
   min-width:0;
   min-height:100%;
   display:grid;
-  grid-template-columns:minmax(0,1fr) clamp(220px,18vw,300px);
-  align-items:start;
-  gap:clamp(14px,2vw,26px);
+  grid-template-columns:minmax(0,62fr) minmax(260px,38fr);
+  align-items:stretch;
+  gap:clamp(4px,1vw,16px);
+  overflow:clip;
 }
 .tool-stage.art-collapsed { grid-template-columns:minmax(0,1fr) 0; gap:0; }
 .tool-stage.loadout-dedicated { grid-template-columns:minmax(0,1fr); gap:0; }
 .tool-center-scroll {
-  --tool-measure:840px;
+  position:relative;
+  z-index:2;
   min-width:0;
   min-height:0;
   padding-bottom:var(--space-8);
   container:tool-center / inline-size;
 }
-.tool-stage:is([data-tool="progression"],[data-tool="sigil"],[data-tool="sigilMemory"],[data-tool="wrightstoneMemory"],[data-tool="loadout"],[data-tool="loadoutPresets"],[data-tool="wrightstone"],[data-tool="summon"],[data-tool="overlimit"],[data-tool="runtime"],[data-tool="chara"],[data-tool="save"],[data-tool="legacyRuntime"],[data-tool="monster"]) .tool-center-scroll {
-  --tool-measure:960px;
-}
 .tool-page-heading,.tool-panel {
-  width:min(100%,var(--tool-measure));
-  margin-inline:auto;
+  width:100%;
+  max-width:none;
+  margin-inline:0;
 }
 .tool-page-heading {
   margin-bottom:var(--space-5);
@@ -1139,6 +1240,11 @@ button,input,select { font:inherit; }
   min-width:0;
   container:tool-panel / inline-size;
 }
+.tool-panel :deep(.ui-page),
+.tool-panel :deep(.ui-page-stack) {
+  width:100%;
+  max-width:none;
+}
 .tool-panel :deep(.root),
 .tool-panel :deep(.sigil-container),
 .tool-panel :deep(.wrightstone-container),
@@ -1158,43 +1264,87 @@ button,input,select { font:inherit; }
 
 .art-rail {
   position:sticky;
+  z-index:1;
   top:0;
   min-width:0;
-  height:min(760px,calc(100dvh - 166px));
+  height:clamp(420px,calc(100dvh - 166px),1400px);
   min-height:420px;
-  overflow:hidden;
-  border:1px solid var(--border-default);
-  border-radius:var(--radius-lg);
-  background:linear-gradient(180deg,var(--surface-card-pop),var(--surface-card));
-  box-shadow:var(--shadow-1);
+  overflow:visible;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
   pointer-events:none;
+}
+.art-rail::before {
+  content:"";
+  position:absolute;
+  inset:5% -4% 2% -18%;
+  z-index:0;
+  background:radial-gradient(ellipse at 68% 46%,rgba(255,250,229,.54),rgba(219,191,139,.14) 54%,transparent 74%);
+  filter:blur(3px);
 }
 .art-rail .function-character {
   position:absolute;
-  inset:0;
+  z-index:1;
+  inset:0 0 0 -34%;
   margin:0;
-  overflow:hidden;
+  overflow:visible;
 }
 .art-rail .function-character img {
   position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  object-position:center bottom;
+  right:var(--art-x);
+  bottom:var(--art-y);
+  width:var(--art-scale);
+  height:auto;
+  max-width:none;
+  max-height:none;
+  object-position:right bottom;
+  transform-origin:right bottom;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.58) 24%,#000 43%);
+  mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.58) 24%,#000 43%);
+}
+.art-rail .character-blend {
+  z-index:0;
+  opacity:.2;
+  filter:blur(9px) saturate(.82);
+  transform:scale(1.025);
+}
+.art-rail .character-main {
+  z-index:1;
   filter:drop-shadow(0 8px 8px rgba(72,50,22,.12));
 }
+.tool-stage[data-tool="progression"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="sigil"] { --art-scale:184%; --art-x:-9%; --art-y:-22%; }
+.tool-stage[data-tool="sigilMemory"] { --art-scale:182%; --art-x:-8%; --art-y:-21%; }
+.tool-stage[data-tool="loadout"] { --art-scale:184%; --art-x:-9%; --art-y:-22%; }
+.tool-stage[data-tool="loadoutPresets"] { --art-scale:185%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="wrightstone"],
+.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="summon"] { --art-scale:188%; --art-x:-8%; --art-y:-24%; }
+.tool-stage[data-tool="overlimit"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="runtime"] { --art-scale:208%; --art-x:-22%; --art-y:-31%; }
+.tool-stage[data-tool="chara"],
+.tool-stage[data-tool="save"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="compatibility"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="legacyRuntime"] { --art-scale:194%; --art-x:-10%; --art-y:-18%; }
+.tool-stage[data-tool="monster"] { --art-scale:180%; --art-x:-2%; --art-y:-22%; }
+.tool-stage[data-tool="patch"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="language"] { --art-scale:192%; --art-x:-14%; --art-y:-23%; }
 .art-caption {
   position:absolute;
   z-index:2;
-  right:var(--space-4);
-  bottom:var(--space-4);
-  left:var(--space-4);
-  padding:var(--space-3) var(--space-4);
-  border:1px solid var(--border-default);
-  border-radius:var(--radius-md);
-  background:color-mix(in srgb,var(--surface-card-pop) 90%,transparent);
-  box-shadow:var(--shadow-1);
+  right:var(--space-3);
+  bottom:var(--space-3);
+  left:auto;
+  padding:var(--space-2) var(--space-3);
+  border:0;
+  border-right:3px solid color-mix(in srgb,var(--accent) 68%,transparent);
+  border-radius:0;
+  background:color-mix(in srgb,var(--surface-card-pop) 62%,transparent);
+  box-shadow:none;
+  backdrop-filter:blur(4px);
+  text-align:right;
 }
 .art-caption span,.art-caption small { display:block; }
 .art-caption span { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
@@ -1203,7 +1353,7 @@ button,input,select { font:inherit; }
   position:absolute;
   z-index:4;
   top:var(--space-4);
-  right:clamp(220px,18vw,300px);
+  right:38%;
   width:30px;
   height:36px;
   border:1px solid var(--border-default);
@@ -1415,14 +1565,12 @@ button,input,select { font:inherit; }
     white-space:normal;
   }
 }
-@media (min-width:1280px) {
-  .app-body.art-visible .sidebar-mascot { display:none; }
-}
 @media (min-width:1280px) and (max-width:1399px) {
   .app-body { grid-template-columns:70px minmax(0,1fr); }
   .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
   .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .primary-nav { align-items:center; padding-top:42px; }
+  .sidebar-home-compact { display:grid; }
+  .primary-nav { align-items:center; padding-top:var(--space-3); }
   .nav-item {
     width:48px;
     min-height:48px;
@@ -1431,8 +1579,16 @@ button,input,select { font:inherit; }
     padding:var(--space-2);
   }
   .nav-mark { width:32px; height:32px; }
+  .sidebar-mascot {
+    width:48px;
+    grid-template-columns:48px;
+    place-items:center;
+    padding:var(--space-2) 0;
+  }
+  .sidebar-mascot-img { width:48px; height:54px; }
+  .sidebar-mascot-say { display:none; }
 }
-@media (max-width:1279px) {
+@media (max-width:900px) {
   .tool-stage { grid-template-columns:minmax(0,1fr); gap:0; }
   .art-rail,.art-toggle { display:none; }
 }
@@ -1440,7 +1596,8 @@ button,input,select { font:inherit; }
   .app-body { grid-template-columns:70px minmax(0,1fr); }
   .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
   .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .primary-nav { align-items:center; padding-top:42px; }
+  .sidebar-home-compact { display:grid; }
+  .primary-nav { align-items:center; padding-top:var(--space-3); }
   .nav-item {
     width:48px;
     min-height:48px;
@@ -1449,12 +1606,20 @@ button,input,select { font:inherit; }
     padding:var(--space-2);
   }
   .nav-mark { width:32px; height:32px; }
+  .sidebar-mascot {
+    width:48px;
+    grid-template-columns:48px;
+    place-items:center;
+    padding:var(--space-2) 0;
+  }
+  .sidebar-mascot-img { width:48px; height:54px; }
+  .sidebar-mascot-say { display:none; }
   .workspace-bar { padding-inline:var(--space-4); }
   .tool-switcher { padding-inline:var(--space-3); }
 }
 @media (max-width:960px) {
-  .titlebar { grid-template-columns:minmax(0,1fr) minmax(120px,260px) 84px; }
   .build-chip { display:none; }
+  .titlebar-status { max-width:36vw; }
   .workspace-state { display:none; }
   .tool-page-heading { padding:var(--space-5) var(--space-6); }
   .workspace-scroll.tool-workspace { padding:var(--space-4); }
@@ -1469,7 +1634,9 @@ button,input,select { font:inherit; }
   .sidebar-heading { padding-block:var(--space-2) var(--space-3); }
   .primary-nav { gap:var(--space-1); padding-top:var(--space-3); }
   .nav-item { min-height:46px; }
-  .sidebar-mascot { display:none; }
+  .sidebar-mascot-say { display:none; }
+  .sidebar-mascot { padding-block:var(--space-1); }
+  .sidebar-mascot-img { height:48px; }
   .workspace-scroll.tool-workspace { padding-block:var(--space-3); }
   .tool-page-heading { margin-bottom:var(--space-3); padding-block:var(--space-4); }
 }

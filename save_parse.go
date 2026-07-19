@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 
 	"github.com/cespare/xxhash/v2"
@@ -432,7 +433,7 @@ func parseFloatUnits(r *fbReader, tpos int, fo uint16) []FloatSaveDataUnit {
 			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
 				u.ValueData = make([]float32, vc)
 				for j := 0; j < vc; j++ {
-					u.ValueData[j] = float32(r.u32(vd + j*4))
+					u.ValueData[j] = math.Float32frombits(r.u32(vd + j*4))
 				}
 			}
 		}

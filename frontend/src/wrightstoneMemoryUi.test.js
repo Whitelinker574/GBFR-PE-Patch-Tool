@@ -15,7 +15,7 @@ test('live wrightstone editor is reachable from the realtime group and reuses it
   assert.match(shell, /wrightstoneMemory:\s*wrightstoneArt/)
   assert.match(shell, /wrightstoneMemory:\s*wrightstoneSticker/)
   assert.match(shell, /<WrightstoneMemoryGenerator\s+v-else-if="activeTab === 'wrightstoneMemory'"/)
-  assert.match(shell, /\.tool-stage:is\([^)]*\[data-tool="wrightstoneMemory"\]/)
+  assert.match(shell, /\.tool-stage\[data-tool="wrightstoneMemory"\]/)
 })
 
 test('live wrightstone editor owns an explicit enable, polling and disable lifecycle', () => {

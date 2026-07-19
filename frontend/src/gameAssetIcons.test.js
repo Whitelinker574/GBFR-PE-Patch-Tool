@@ -90,7 +90,7 @@ test('coverage is derived from the current application catalogs', () => {
   assert.equal(catalog.schemaVersion, 1)
   assert.equal(catalog.source, 'GBFR UI Reference Library 2.0.2 / semantic catalog + unpacked 2.0.2 game tables')
   assert.deepEqual(expectedCoverage, {
-    traits: '182/184',
+    traits: '183/184',
     weapons: '159/163',
     summons: '189/189',
     items: '301/312',
@@ -142,13 +142,13 @@ test('records without an authoritative 2.0.2 join remain unmapped', () => {
   const missingWeaponHashes = weapons.filter(row => !catalog.weapons.byHash[normalizeHash(row.hash)]).map(row => normalizeHash(row.hash))
   const missingItemHashes = items.filter(row => !catalog.items.byHash[normalizeHash(row.hash)]).map(row => normalizeHash(row.hash)).sort()
 
-  assert.deepEqual(missingTraitIDs, ['SKILL_112_00', 'SKILL_023_00'])
+  assert.deepEqual(missingTraitIDs, ['SKILL_112_00'])
   assert.deepEqual(missingWeaponHashes, ['2C4CAADD', 'DFBB5727', '73D34F1B', 'DA807CA2'])
   assert.deepEqual(missingItemHashes, expectedMissingItemHashes)
   assert.equal(catalog.traits.byHash.D0A1C6E5, undefined)
   assert.equal(catalog.traits.byName['Window of Opportunity'], undefined)
-  assert.equal(catalog.traits.byId.SKILL_023_00, undefined, 'duplicate Potent Greens name is not exact ID proof')
-  assert.equal(catalog.traits.byHash.CAC6AFF2, undefined, 'duplicate Potent Greens name is not exact hash proof')
+  assert.equal(catalog.traits.byId.SKILL_023_00, 'cmn_icskill_01_00.png', 'skill.tbl IconId1 is the exact ID proof')
+  assert.equal(catalog.traits.byHash.CAC6AFF2, 'cmn_icskill_01_00.png', 'skill.tbl hash row is authoritative')
   assert.equal(catalog.traits.byName['Potent Greens'], 'cmn_icskill_04_04.png', 'legacy name-only compatibility fallback remains explicit')
   assert.equal(catalog.weapons.byId.WEP_PL2100_06, undefined)
   assert.equal(catalog.weapons.byHash.DFBB5727, undefined)
@@ -158,4 +158,8 @@ test('records without an authoritative 2.0.2 join remain unmapped', () => {
   assert.equal(catalog.weapons.byHash['73D34F1B'], undefined)
   assert.equal(catalog.weapons.byId.WEP_PL2300_03, undefined)
   assert.equal(catalog.weapons.byHash.DA807CA2, undefined)
+  assert.equal(catalog.weapons.byHash.AD915067, 'cmn_imgequ_wp2106.png', 'special runtime canonical hash')
+  assert.equal(catalog.weapons.byHash.FA5F32D5, 'cmn_imgequ_wp2206.png', 'special runtime canonical hash')
+  assert.equal(catalog.weapons.byId.WEP_PL2300_07, 'cmn_imgequ_wp2306.png', 'special runtime canonical ID')
+  assert.equal(catalog.weapons.byHash['4CBA06D8'], 'cmn_imgequ_wp2306.png', 'special runtime canonical hash')
 })

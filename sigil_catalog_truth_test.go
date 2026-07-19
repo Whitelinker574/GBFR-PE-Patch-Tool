@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,23 @@ func sigilInfoJSONByID(t *testing.T, id string) map[string]any {
 	}
 	t.Fatalf("因子目录中找不到 %s", id)
 	return nil
+}
+
+func intSliceField(t *testing.T, value map[string]any, key string) []int {
+	t.Helper()
+	raw, ok := value[key].([]any)
+	if !ok {
+		t.Fatalf("%s is not a JSON array: %#v", key, value[key])
+	}
+	result := make([]int, len(raw))
+	for index, item := range raw {
+		number, ok := item.(float64)
+		if !ok {
+			t.Fatalf("%s[%d] is not a number: %#v", key, index, item)
+		}
+		result[index] = int(number)
+	}
+	return result
 }
 
 func boolField(t *testing.T, item map[string]any, field string) bool {
@@ -59,8 +77,14 @@ func TestSigilCatalogMarksOnlyVerifiedNaturalEntriesConstructible(t *testing.T) 
 	}
 
 	sevenNet := sigilInfoJSONByID(t, "GEEN_142_02")
-	if boolField(t, sevenNet, "verified") || boolField(t, sevenNet, "constructible") {
-		t.Fatalf("GEEN_142_02 缺少可信自然生成依据，必须禁用: %#v", sevenNet)
+	if !boolField(t, sevenNet, "verified") || boolField(t, sevenNet, "constructible") {
+		t.Fatalf("GEEN_142_02 应标记为真实 DLC 记录，但普通 flags=2 构造必须禁用: %#v", sevenNet)
+	}
+	if levels := intSliceField(t, sevenNet, "allowedSigilLevels"); !reflect.DeepEqual(levels, []int{6}) {
+		t.Fatalf("GEEN_142_02 物品等级=%v，真实 DLC 表/存档应为 [6]", levels)
+	}
+	if levels := intSliceField(t, sevenNet, "allowedFirstTraitLevels"); !reflect.DeepEqual(levels, []int{6}) {
+		t.Fatalf("GEEN_142_02 主词条等级=%v，真实 DLC 表/存档应为 [6]", levels)
 	}
 }
 
@@ -339,12 +363,12 @@ func TestCompatibleSecondaryTraitsFailClosedWithoutVerifiedExplicitAllowlist(t *
 	}
 }
 
-func TestSigilQueueRejectsUnverifiedSevenNet(t *testing.T) {
+func TestSigilQueueRejectsSevenNetSpecialFlagsInOrdinaryConstructor(t *testing.T) {
 	gen := NewSigilGen()
 	err := gen.AddToQueue(QueueItem{
-		SigilID: "GEEN_142_02", Level: 15, PrimaryLevel: 6, Quantity: 1,
+		SigilID: "GEEN_142_02", Level: 6, PrimaryLevel: 6, Quantity: 1,
 	})
-	if err == nil || !strings.Contains(strings.ToUpper(err.Error()), "GEEN_142_02") {
-		t.Fatalf("独立因子生成入口必须明确拒绝 GEEN_142_02，实际错误: %v", err)
+	if err == nil || !strings.Contains(strings.ToUpper(err.Error()), "GEEN_142_02") || !strings.Contains(err.Error(), "flags=22") {
+		t.Fatalf("普通构造入口必须说明 GEEN_142_02 的特殊 flags，实际错误: %v", err)
 	}
 }

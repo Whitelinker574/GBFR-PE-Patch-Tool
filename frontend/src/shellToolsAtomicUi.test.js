@@ -25,11 +25,12 @@ test('the shell does not repaint child controls through deep important skinning'
   }
 })
 
-test('portrait rail is a wide-workspace enhancement and loadout editing stays art free', () => {
+test('portrait rail is a permanent dual-column scene and loadout editing stays art free', () => {
   const shellCss = styleBlocks(patchTool).join('\n')
-  assert.match(shellCss, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+clamp\(220px,\s*18vw,\s*300px\)/is)
-  assert.match(shellCss, /@media\s*\(max-width\s*:\s*1279px\)[\s\S]*?\.art-rail\s*,\s*\.art-toggle\s*\{[^}]*display\s*:\s*none/is)
+  assert.match(shellCss, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*62fr\)\s+minmax\(260px,\s*38fr\)/is)
+  assert.match(shellCss, /@media\s*\(max-width\s*:\s*900px\)[\s\S]*?\.art-rail\s*,\s*\.art-toggle\s*\{[^}]*display\s*:\s*none/is)
   assert.match(shellCss, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px\s+minmax\(0,\s*1fr\)/is)
+  assert.match(shellCss, /\.art-rail\s*\{[^}]*overflow\s*:\s*visible[^}]*border\s*:\s*0/is)
   assert.match(patchTool, /<aside\s+v-if="!isLoadoutWorkspace"\s+class="art-rail"/)
   assert.match(shellCss, /\.tool-stage\.loadout-dedicated\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/is)
 })

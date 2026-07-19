@@ -54,7 +54,7 @@ test('dense editor details stay readable and the narrow identity header cannot o
 
 test('formula, weapon and inventory content wrap without a nested inventory scrollbar', () => {
   assert.match(editor, /\.profile-stat-heading\s*\{[^}]*min-width\s*:\s*0[^}]*flex-wrap\s*:\s*wrap/is)
-  assert.match(editor, /\.profile-stat-heading\s+small\s*\{[^}]*white-space\s*:\s*normal/is)
+  assert.match(editor, /\.runtime-read-row\s+small\s*\{[^}]*white-space\s*:\s*normal/is)
   assert.match(editor, /\.weapon-context-strip\s*\{[^}]*grid-template-columns\s*:\s*58px\s+minmax\(0,1fr\)/is)
   assert.match(editor, /\.weapon-context-strip\s+em\s*\{[^}]*grid-column\s*:\s*2\s*\/\s*-1[^}]*white-space\s*:\s*normal/is)
   const pickGridRules = [...editor.matchAll(/\.pick-grid(?:\.sigils)?\s*\{([^}]*)\}/g)].map(match => match[1]).join('\n')

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
+import { LoadoutApply, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
 import { GetCompatibleSecondaryTraits, GetSecondaryTraitLevels, GetSigilList } from '../../wailsjs/go/main/SigilGen'
 import { applyMasteryDirection, groupMasteryNodes, inferMasteryDirection, isMasteryNodeSelectable, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
@@ -50,6 +50,13 @@ const finalStats = ref(null)
 const simulationError = ref('')
 const weaponSkills = ref([])
 const selectedWeaponContext = ref(null)
+const runtimePanelStats = ref(null)
+const runtimePanelLoading = ref(false)
+const runtimePanelError = ref('')
+const statPanelMode = ref('estimate')
+const displayedPanelStats = computed(() => statPanelMode.value === 'runtime' && runtimePanelStats.value
+  ? { ...runtimePanelStats.value, damageCap: finalStats.value?.damageCap }
+  : (finalStats.value || {}))
 const calculationFormulaVerified = computed(() => Boolean(finalStats.value?.formulaVerified)
   && (!selectedWeaponContext.value || Boolean(selectedWeaponContext.value?.formulaVerified)))
 const calculationWarnings = computed(() => {
@@ -58,9 +65,6 @@ const calculationWarnings = computed(() => {
     ...(finalStats.value?.warnings || []),
     ...(selectedWeaponContext.value?.warnings || []),
   ]
-  if (finalStats.value && !finalStats.value.formulaVerified) {
-    warnings.push('HP 与攻击的百分比效果乘区及中间量化顺序尚未完成 2.0.2 运行时闭环；最终 float32 向零截断已确认。')
-  }
   if (selectedWeaponContext.value && !selectedWeaponContext.value.formulaVerified) {
     warnings.push('当前武器仍有未完全解析的属性或技能效果。')
   }
@@ -134,6 +138,30 @@ function formatSignedValue(value, unit = '') {
   const numeric = Number(value || 0)
   const sign = numeric > 0 ? '+' : numeric < 0 ? '−' : ''
   return `${sign}${formatStatNumber(Math.abs(numeric))}${unit === 'pct' ? '%' : ''}`
+}
+function formatPanelStat(field, unit = '') {
+  const value = displayedPanelStats.value?.[field]
+  if (value === null || value === undefined) return '—'
+  const formatted = formatFinalStat(value, unit)
+  const isRuntimeExact = statPanelMode.value === 'runtime' && Boolean(runtimePanelStats.value) && field !== 'damageCap'
+  if (isRuntimeExact) return formatted
+  return `≈${formatted}`
+}
+
+async function readRuntimePanel(silent = false) {
+  if (!props.charaHash || runtimePanelLoading.value) return
+  runtimePanelLoading.value = true
+  runtimePanelError.value = ''
+  try {
+    runtimePanelStats.value = await LoadoutRuntimePanelStats(props.charaHash)
+    statPanelMode.value = 'runtime'
+  } catch (err) {
+    runtimePanelStats.value = null
+    statPanelMode.value = 'estimate'
+    if (!silent) runtimePanelError.value = String(err)
+  } finally {
+    runtimePanelLoading.value = false
+  }
 }
 function summonOptionLabel(summon) {
   const main = summon.mainTraitName ? `${summon.mainTraitName} Lv${summon.mainTraitLevel}` : '无主词条'
@@ -467,6 +495,9 @@ async function loadCtx() {
 	clearTimeout(simTimer)
 	clearSimulationResult()
 	simulating.value = false
+  runtimePanelStats.value = null
+  runtimePanelError.value = ''
+  statPanelMode.value = 'estimate'
   if (!props.savePath || !props.charaHash) return
   loading.value = true
   ctx.value = null
@@ -490,6 +521,7 @@ async function loadCtx() {
     if (occupiedSlots.value.length) cloneFrom.value = occupiedSlots.value[0].unitId
     if (masterySources.value.length) form.value.masterySource = masterySources.value[0].unitId
     hydrateFromTarget()
+    void readRuntimePanel(true)
   } catch (err) {
     emit('status', String(err), 'error')
   } finally {
@@ -711,31 +743,38 @@ async function apply() {
         </div>
         <div class="profile-stat-card">
           <div class="profile-stat-heading">
-            <strong>最终人物属性</strong>
-            <small :class="{ unverified: finalStats && (!finalStats?.formulaVerified || (selectedWeaponContext && !selectedWeaponContext?.formulaVerified)) }">
-              当前草稿 · {{ calculationFormulaVerified ? '公式已验证' : '公式未完全验证' }}
-            </small>
+            <strong>人物属性</strong>
+            <div class="profile-stat-source-tabs" role="tablist" aria-label="人物属性数据来源">
+              <button type="button" role="tab" :aria-selected="statPanelMode === 'estimate'" :class="{ on: statPanelMode === 'estimate' }" @click="statPanelMode = 'estimate'">配装草稿估算</button>
+              <button type="button" role="tab" :aria-selected="statPanelMode === 'runtime'" :class="{ on: statPanelMode === 'runtime' }" :disabled="!runtimePanelStats" @click="statPanelMode = 'runtime'">游戏真实回读</button>
+            </div>
           </div>
-          <dl class="profile-stats" aria-label="最终人物属性">
+          <div class="runtime-read-row">
+            <small v-if="statPanelMode === 'runtime' && runtimePanelStats">2.0.2 游戏已计算对象 · 当前游戏内已应用配装</small>
+            <small v-else>离线草稿近似值仅用于比较，写入游戏后可读取真实面板</small>
+            <button type="button" :disabled="runtimePanelLoading" @click="readRuntimePanel(false)">{{ runtimePanelLoading ? '读取中…' : (runtimePanelStats ? '刷新游戏回读' : '从游戏读取') }}</button>
+          </div>
+          <small v-if="runtimePanelError" class="runtime-read-error" role="alert">{{ runtimePanelError }}</small>
+          <dl class="profile-stats" aria-label="人物属性面板">
             <div class="profile-stat">
               <dt class="profile-stat-label">HP</dt>
-              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.hp) }}</dd>
+              <dd class="profile-stat-value">{{ formatPanelStat('hp') }}</dd>
             </div>
             <div class="profile-stat">
               <dt class="profile-stat-label">攻击力</dt>
-              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.attack) }}</dd>
+              <dd class="profile-stat-value">{{ formatPanelStat('attack') }}</dd>
             </div>
             <div class="profile-stat">
               <dt class="profile-stat-label">暴击率</dt>
-              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.critRate, 'pct') }}</dd>
+              <dd class="profile-stat-value">{{ formatPanelStat('critRate', 'pct') }}</dd>
             </div>
             <div class="profile-stat">
               <dt class="profile-stat-label">昏厥值</dt>
-              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.stunPower) }}</dd>
+              <dd class="profile-stat-value">{{ formatPanelStat('stunPower') }}</dd>
             </div>
             <div class="profile-stat profile-stat-cap">
               <dt class="profile-stat-label">伤害上限</dt>
-              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.damageCap, 'signedPct') }}</dd>
+              <dd class="profile-stat-value">{{ formatPanelStat('damageCap', 'signedPct') }}</dd>
             </div>
           </dl>
         </div>
@@ -746,8 +785,15 @@ async function apply() {
           <div class="panel-base-grid">
             <span><small>角色基础 HP</small><b>{{ formatStatNumber(statContext.baseHp) }}</b></span>
             <span><small>角色基础攻击</small><b>{{ formatStatNumber(statContext.baseAtk) }}</b></span>
-            <span><small>基础暴击率</small><b>{{ formatFinalStat(statContext.baseCritRate, 'pct') }}</b></span>
-            <span><small>基础昏厥值</small><b>{{ formatFinalStat(statContext.baseStun) }}</b></span>
+            <span><small>命运篇章 HP</small><b>{{ formatSignedValue(statContext.permanentGrowth?.fateHp) }}</b></span>
+            <span><small>命运篇章攻击</small><b>{{ formatSignedValue(statContext.permanentGrowth?.fateAtk) }}</b></span>
+            <span><small>角色强化 HP</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterHp) }}</b></span>
+            <span><small>角色强化攻击</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterAtk) }}</b></span>
+            <span class="baseline-total"><small>固定基准 HP</small><b>{{ formatStatNumber(statContext.baselineHp) }}</b></span>
+            <span class="baseline-total"><small>固定基准攻击</small><b>{{ formatStatNumber(statContext.baselineAtk) }}</b></span>
+            <span><small>固定基准暴击率</small><b>{{ formatFinalStat(statContext.baselineCritRate, 'pct') }}</b></span>
+            <span><small>固定基准昏厥值</small><b>{{ formatFinalStat(statContext.baselineStun) }}</b></span>
+            <span><small>角色强化伤害上限</small><b>{{ formatFinalStat(statContext.baselineDamageCap, 'signedPct') }}</b></span>
             <span v-if="selectedWeaponContext"><small>武器 HP</small><b>{{ formatFinalStat(selectedWeaponContext.total?.hp) }}</b></span>
             <span v-if="selectedWeaponContext"><small>武器攻击</small><b>{{ formatFinalStat(selectedWeaponContext.total?.attack) }}</b></span>
           </div>
@@ -757,8 +803,8 @@ async function apply() {
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
           </div>
           <div class="formula-audit-row" :class="{ verified: calculationFormulaVerified }">
-            <b>{{ calculationFormulaVerified ? '公式证据已闭环' : '公式未完全验证' }}</b>
-            <span>当前数值仍可用于草稿比较；未验证项不会被标成无条件精确。</span>
+            <b>{{ calculationFormulaVerified ? '草稿公式证据已闭环' : '草稿公式未完全验证' }}</b>
+            <span>带“≈”的离线值只用于草稿比较；只有游戏运行时回读不带近似标记。</span>
           </div>
           <div v-if="calculationWarnings.length" class="stat-warnings">
             <span v-for="warning in calculationWarnings" :key="warning">{{ warning }}</span>
@@ -1098,7 +1144,7 @@ async function apply() {
 
         <section class="result-card bonus-summary-card ui-card ui-panel is-compact">
           <header><strong>总计加成</strong><span>{{ simulating ? '计算中…' : displayTotals.length + ' 类' }}</span></header>
-          <p class="calculation-scope-note">默认仅计算可随时更换的配装来源：武器（含武器技能）、因子、专精、角色上限突破与召唤石；不含任务、队伍、临时状态及战斗内条件加成。</p>
+          <p class="calculation-scope-note">人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。</p>
           <div v-if="bonuses.length" class="trait-level-ledger">
             <span><small>有效</small><b>{{ traitLevelSummary.effective }}</b></span>
             <span><small>投入</small><b>{{ traitLevelSummary.invested }}</b></span>
@@ -1174,8 +1220,8 @@ async function apply() {
 </template>
 
 <style scoped>
-.loadout-editor { min-width:0; height:100%; min-height:0; --editor-scale:1; color:var(--text-secondary); font-family:var(--font-ui,"Microsoft YaHei UI","Microsoft YaHei",sans-serif); font-size:var(--fs-base); font-weight:var(--fw-normal); line-height:var(--lh-normal); container:loadout-editor / inline-size; }
-.editor-layout { height:100%; min-height:0; display:grid; grid-template-columns:minmax(270px,290px) minmax(620px,1fr) minmax(300px,330px); justify-content:center; gap:var(--space-4); align-items:stretch; }
+.loadout-editor { width:100%; min-width:0; height:100%; min-height:0; --editor-scale:1; color:var(--text-secondary); font-family:var(--font-ui,"Microsoft YaHei UI","Microsoft YaHei",sans-serif); font-size:var(--fs-base); font-weight:var(--fw-normal); line-height:var(--lh-normal); container:loadout-editor / inline-size; }
+.editor-layout { width:100%; height:100%; min-height:0; display:grid; grid-template-columns:clamp(250px,20vw,360px) minmax(540px,1fr) clamp(280px,22vw,400px); justify-content:stretch; gap:var(--space-4); align-items:stretch; }
 .editor-column { min-width:0; min-height:0; overflow:auto; scrollbar-gutter:stable; padding:0; border:1px solid var(--line); border-radius:10px; background:rgba(255,253,247,.94); box-shadow:0 4px 14px rgba(61,47,29,.06); }
 .setup-column, .build-column { display:flex; flex-direction:column; gap:0; }
 .setup-column > * + *,
@@ -1188,10 +1234,17 @@ async function apply() {
 .character-portrait > b { position:absolute; right:4px; bottom:4px; padding:1px 5px; border-radius:8px; background:rgba(47,39,27,.8); color:#fffdf7; font-size:var(--fs-xs); line-height:1.5; }
 .character-profile-main { min-width:0; display:flex; flex-direction:column; justify-content:center; }
 .profile-stat-card { grid-column:1 / -1; padding:8px; border:1px solid var(--line-soft); border-radius:8px; background:rgba(255,255,255,.5); }
-.profile-stat-heading { min-width:0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 8px; margin-bottom:6px; padding:0 1px; }
+.profile-stat-heading { min-width:0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:5px 8px; margin-bottom:6px; padding:0 1px; }
 .profile-stat-heading strong { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-weight:700; }
-.profile-stat-heading small { min-width:0; margin-left:auto; color:var(--text-muted); font-size:var(--fs-xs); text-align:right; white-space:normal; overflow-wrap:anywhere; }
-.profile-stat-heading small.unverified { color:var(--warning-ink); font-weight:var(--fw-semibold); }
+.profile-stat-source-tabs { min-width:0; display:flex; gap:3px; padding:2px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.06); }
+.profile-stat-source-tabs button { min-height:26px; padding:2px 7px; border:0; border-radius:5px; background:transparent; color:var(--text-muted); font-size:calc(12px * var(--editor-scale)); cursor:pointer; }
+.profile-stat-source-tabs button.on { background:#8b6737; color:#fff9e9; }
+.profile-stat-source-tabs button:disabled { opacity:.42; cursor:not-allowed; }
+.runtime-read-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:center; margin-bottom:6px; padding:5px 6px; border-left:2px solid #b5925b; background:rgba(139,103,55,.045); }
+.runtime-read-row small { min-width:0; color:var(--text-muted); font-size:calc(12px * var(--editor-scale)); line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+.runtime-read-row button { min-height:26px; padding:2px 7px; border:1px solid var(--line-gold); border-radius:5px; background:rgba(255,255,255,.64); color:#765126; font-size:calc(12px * var(--editor-scale)); cursor:pointer; white-space:nowrap; }
+.runtime-read-row button:disabled { opacity:.5; cursor:wait; }
+.runtime-read-error { display:block; margin:-1px 0 6px; color:var(--red); font-size:calc(12px * var(--editor-scale)); line-height:1.4; overflow-wrap:anywhere; }
 .profile-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin:0; }
 .profile-stat { min-width:0; display:flex; flex-direction:column; padding:5px 7px; border-left:2px solid #b5925b; background:rgba(139,103,55,.06); }
 .profile-stat:nth-child(2) { border-left-color:#88704e; }
@@ -1210,6 +1263,7 @@ async function apply() {
 .final-stat-detail-disclosure[open] summary { margin-bottom:6px; }
 .panel-base-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:6px; }
 .panel-base-grid > span { min-width:0; display:flex; flex-direction:column; padding:5px 6px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.46); }
+.panel-base-grid > .baseline-total { border-color:rgba(143,97,39,.34); background:rgba(220,188,122,.14); }
 .panel-base-grid small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
 .panel-base-grid b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
 .cap-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin-top:4px; }

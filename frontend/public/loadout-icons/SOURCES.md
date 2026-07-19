@@ -32,20 +32,21 @@ separate source of guessed artwork.
 
 The current application-catalog coverage is:
 
-- traits: 182/184
+- traits: 183/184
 - weapons: 159/163
 - summons: 189/189
 - items: 301/312
 - characters: 29/29
 
+`SKILL_023_00` / `0xCAC6AFF2` is now mapped exactly to
+`cmn_icskill_01_00.png`: the unpacked 2.0.2 `skill.tbl` row supplies
+`IconId=01_00`, so this mapping no longer depends on the duplicate display
+name used by `SKILL_156_00`.
+
 Unresolved records intentionally have no icon mapping and keep the neutral UI
-fallback. The 2.0.2 semantic catalog has no authoritative join for:
+fallback. The 2.0.2 tables and supplied archives have no authoritative icon for:
 
 - `SKILL_112_00` / `0xD0A1C6E5` — Window of Opportunity
-- `SKILL_023_00` / `0xCAC6AFF2` — Potent Greens; the semantic catalog only
-  joins the same display name to the distinct `SKILL_156_00` /
-  `0xCD18A77D` identity, so the UI may use its name fallback but must not
-  invent an ID/hash mapping
 - `WEP_PL2100_03` / `0x2C4CAADD` — World Ender (`weapon.tbl` requires
   `cmn_imgequ_wp2102`)
 - `WEP_PL2100_06` / `0xDFBB5727` — Efes (`weapon.tbl` requires

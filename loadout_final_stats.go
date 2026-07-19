@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-const loadoutFinalStatsScope = "默认仅计算可随时更换的配装来源：武器（含武器技能）、因子、专精、角色上限突破与召唤石；不含任务、队伍、临时状态及战斗内条件加成。"
+const loadoutFinalStatsScope = "人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。"
 
-const loadoutFinalStatsFormulaWarning = "HP/攻击最终值为配装草稿估算：2.0.2 运行时会先把各百分比效果换算成绝对贡献，其乘区与中间量化顺序尚未闭环；已确认最终聚合使用 float32 并向零截断。"
+const loadoutFinalStatsFormulaWarning = "角色基础值、命运篇章与角色强化固定基准按 2.0.2 存档及游戏表精确读取；HP/攻击的配装百分比乘区与中间量化顺序尚未闭环，最终值仍为草稿估算。已确认最终聚合使用 float32 并向零截断。"
 
 // LoadoutPanelBonus is an unconditional value that is safe to apply to the
 // five compact character-panel stats. Conditional skillboard text is kept in
@@ -41,18 +41,19 @@ type LoadoutFinalStats struct {
 }
 
 type loadoutPanelInputs struct {
-	CharacterHP       float64
-	CharacterATK      float64
-	CharacterCritRate float64
-	CharacterStun     float64
-	WeaponHP          float64
-	WeaponATK         float64
-	WeaponCritRate    float64
-	WeaponStun        float64
-	Bonuses           []TraitBonus
-	Mastery           []LoadoutPanelBonus
-	OverLimit         []LoadoutOverLimitBonus
-	Warnings          []string
+	CharacterHP        float64
+	CharacterATK       float64
+	CharacterCritRate  float64
+	CharacterStun      float64
+	CharacterDamageCap float64
+	WeaponHP           float64
+	WeaponATK          float64
+	WeaponCritRate     float64
+	WeaponStun         float64
+	Bonuses            []TraitBonus
+	Mastery            []LoadoutPanelBonus
+	OverLimit          []LoadoutOverLimitBonus
+	Warnings           []string
 }
 
 // loadoutFactorCategoryCounts counts only each equipped sigil's primary
@@ -255,7 +256,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 	atkMultiplier := float32(1)
 	masteryHPPct := float32(0)
 	masteryATKPct := float32(0)
-	normalCap, abilityCap, skyboundCap := 0.0, 0.0, 0.0
+	normalCap, abilityCap, skyboundCap := input.CharacterDamageCap, input.CharacterDamageCap, input.CharacterDamageCap
 	var hpGatedTerminus *TraitBonus
 
 	for index := range input.Bonuses {
@@ -379,7 +380,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		NormalDamageCap:   normalCap,
 		AbilityDamageCap:  abilityCap,
 		SkyboundDamageCap: skyboundCap,
-		Mode:              "changeable-loadout",
+		Mode:              "permanent-baseline+changeable-loadout",
 		Scope:             loadoutFinalStatsScope,
 		// The final scalar-float32 aggregation and toward-zero conversions are
 		// audited. The producer that turns percentage effects into the absolute

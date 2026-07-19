@@ -351,7 +351,9 @@ onBeforeUnmount(() => {
           <code>{{ status.selectedAddr ? `0x${Number(status.selectedAddr).toString(16).toUpperCase()}` : '未选择' }}</code>
         </header>
 
-        <p v-if="!status.selectedAddr || stale" class="ui-empty">{{ stale ? '写入后的旧记录不可复用，请在游戏内重新选中一条记录。' : '启用读取后，在游戏内祝福石列表选中目标记录。' }}</p>
+        <div v-if="!status.selectedAddr || stale" class="selection-inline-notice" role="status">
+          <span>{{ stale ? '写入后的旧记录不可复用，请在游戏内重新选中一条记录。' : '启用读取后，在游戏内祝福石列表选中目标记录。' }}</span>
+        </div>
 
         <div class="trait-grid ui-card-grid" :aria-disabled="!status.selectedAddr || stale">
           <article v-for="(slot, index) in traitSlots" :key="slot.label" class="trait-card ui-card ui-panel is-compact">
@@ -406,6 +408,19 @@ onBeforeUnmount(() => {
 .connection-actions { margin-top:var(--space-4); }
 .connection-message { margin:var(--space-4) 0 0; }
 .record-panel > header code { color:var(--text-muted); font-family:var(--font-data); }
+.selection-inline-notice {
+  min-height:0;
+  display:flex;
+  align-items:center;
+  margin-top:var(--space-3);
+  padding:var(--space-2) var(--space-3);
+  border-left:3px solid var(--info);
+  color:var(--text-secondary);
+  background:color-mix(in srgb,var(--info-bg) 58%,transparent);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+  text-align:left;
+}
 .trait-grid { --ui-grid-min:260px; margin-top:var(--space-4); }
 .trait-card { display:grid; gap:var(--space-4); }
 .trait-current { display:grid; grid-template-columns:44px minmax(0,1fr); gap:var(--space-1) var(--space-3); align-items:center; padding:var(--space-3); border-radius:var(--radius-sm); background:var(--surface-sunken); }
