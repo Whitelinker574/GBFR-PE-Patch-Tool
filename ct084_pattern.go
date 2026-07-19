@@ -82,6 +82,10 @@ func matchCT084Pattern(buf []byte, pattern ct084Pattern) bool {
 	if validateCT084Pattern(pattern) != nil || len(buf) < len(pattern.Values) {
 		return false
 	}
+	return matchCT084PatternValidated(buf, pattern)
+}
+
+func matchCT084PatternValidated(buf []byte, pattern ct084Pattern) bool {
 	for i, value := range pattern.Values {
 		mask := pattern.Mask[i]
 		if buf[i]&mask != value&mask {
@@ -98,7 +102,7 @@ func findCT084PatternMatches(buf []byte, base uintptr, pattern ct084Pattern) []u
 
 	var matches []uintptr
 	for offset := 0; offset <= len(buf)-len(pattern.Values); offset++ {
-		if matchCT084Pattern(buf[offset:], pattern) {
+		if matchCT084PatternValidated(buf[offset:], pattern) {
 			matches = append(matches, base+uintptr(offset))
 		}
 	}
@@ -151,10 +155,14 @@ func scanCT084PatternChunksUnique(base, size, chunkSize uintptr, pattern ct084Pa
 			scanBase = carryBase
 		}
 
-		for _, candidate := range findCT084PatternMatches(scanBuf, scanBase, pattern) {
+		for scanOffset := 0; scanOffset <= len(scanBuf)-len(pattern.Values); scanOffset++ {
+			candidate := scanBase + uintptr(scanOffset)
 			// A completed match whose end is not in this chunk was already
 			// reported while scanning an earlier chunk.
 			if candidate+uintptr(len(pattern.Values)) <= address {
+				continue
+			}
+			if !matchCT084PatternValidated(scanBuf[scanOffset:], pattern) {
 				continue
 			}
 			match = candidate

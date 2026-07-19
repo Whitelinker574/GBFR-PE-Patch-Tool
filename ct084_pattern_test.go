@@ -4,6 +4,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
 	"runtime"
 	"strings"
@@ -245,6 +248,63 @@ func TestScanCT084PatternChunksUniqueReportsZeroAndMultipleMatches(t *testing.T)
 	}
 }
 
+func TestScanCT084PatternChunksUniqueStreamsEarlyWildcardMatches(t *testing.T) {
+	const chunkSize = 64 * 1024
+	chunk := make([]byte, chunkSize)
+	pattern := ct084Pattern{Values: []byte{0x00}, Mask: []byte{0x00}}
+	readCalls := 0
+	reader := func(uintptr, int) ([]byte, error) {
+		readCalls++
+		return chunk, nil
+	}
+
+	_, err := scanCT084PatternChunksUnique(0xA000, chunkSize*2, chunkSize, pattern, "wildcard", reader)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "multiple") {
+		t.Fatalf("scanCT084PatternChunksUnique() error = %v, want multiple-match error", err)
+	}
+	if readCalls != 1 {
+		t.Fatalf("reader calls = %d, want 1 because the first chunk contains two early matches", readCalls)
+	}
+
+	allocationReader := func(uintptr, int) ([]byte, error) { return chunk, nil }
+	allocs := testing.AllocsPerRun(10, func() {
+		if _, err := scanCT084PatternChunksUnique(0xA000, chunkSize*2, chunkSize, pattern, "wildcard", allocationReader); err == nil {
+			t.Fatal("scanCT084PatternChunksUnique() error = nil, want multiple-match error")
+		}
+	})
+	if allocs > 8 {
+		t.Fatalf("allocations per streaming uniqueness scan = %.1f, want at most 8", allocs)
+	}
+}
+
+func TestCT084PatternSearchHotLoopsUseValidatedMatcher(t *testing.T) {
+	bodies := ct084FunctionBodies(t)
+	findBody := bodies["findCT084PatternMatches"]
+	if findBody == nil {
+		t.Fatal("missing findCT084PatternMatches")
+	}
+	if got := ct084CountCallsIdent(findBody, "validateCT084Pattern"); got != 1 {
+		t.Fatalf("findCT084PatternMatches calls validateCT084Pattern %d times syntactically, want 1", got)
+	}
+	if got := ct084CountCallsIdent(findBody, "matchCT084Pattern"); got != 0 {
+		t.Fatalf("findCT084PatternMatches calls validating matchCT084Pattern %d times, want 0 in its hot loop", got)
+	}
+
+	scanBody := bodies["scanCT084PatternChunksUnique"]
+	if scanBody == nil {
+		t.Fatal("missing scanCT084PatternChunksUnique")
+	}
+	if got := ct084CountCallsIdent(scanBody, "validateCT084Pattern"); got != 1 {
+		t.Fatalf("scanCT084PatternChunksUnique calls validateCT084Pattern %d times syntactically, want 1", got)
+	}
+	if got := ct084CountCallsIdent(scanBody, "findCT084PatternMatches"); got != 0 {
+		t.Fatalf("scanCT084PatternChunksUnique materializes findCT084PatternMatches %d times, want streaming matching", got)
+	}
+	if got := ct084CountCallsIdent(scanBody, "matchCT084Pattern"); got != 0 {
+		t.Fatalf("scanCT084PatternChunksUnique calls validating matchCT084Pattern %d times, want 0 in its hot loop", got)
+	}
+}
+
 func TestScanCT084PatternChunksUniqueRejectsInvalidConfiguration(t *testing.T) {
 	reader := func(uintptr, int) ([]byte, error) {
 		t.Fatal("reader called for invalid scan configuration")
@@ -306,4 +366,36 @@ func ct084SliceReader(base uintptr, data []byte, failures map[uintptr]error) ct0
 		offset := int(addr - base)
 		return append([]byte(nil), data[offset:offset+size]...), nil
 	}
+}
+
+func ct084FunctionBodies(t *testing.T) map[string]*ast.BlockStmt {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), "ct084_pattern.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := make(map[string]*ast.BlockStmt)
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Body != nil {
+			bodies[function.Name.Name] = function.Body
+		}
+	}
+	return bodies
+}
+
+func ct084CountCallsIdent(body *ast.BlockStmt, name string) int {
+	count := 0
+	ast.Inspect(body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		identifier, ok := call.Fun.(*ast.Ident)
+		if ok && identifier.Name == name {
+			count++
+		}
+		return true
+	})
+	return count
 }
