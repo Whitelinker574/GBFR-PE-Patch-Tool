@@ -1380,17 +1380,17 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="progression"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="sigil"] { --art-scale:184%; --art-x:-9%; --art-y:-22%; }
 .tool-stage[data-tool="sigilMemory"] { --art-scale:182%; --art-x:-8%; --art-y:-21%; }
-.tool-stage[data-tool="loadout"] { --art-scale:184%; --art-x:-9%; --art-y:-22%; }
-.tool-stage[data-tool="loadoutPresets"] { --art-scale:185%; --art-x:-8%; --art-y:-22%; }
-.tool-stage[data-tool="wrightstone"],
-.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="loadout"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
+.tool-stage[data-tool="loadoutPresets"] { --art-scale:116%; --art-x:-2%; --art-y:-10%; }
+.tool-stage[data-tool="wrightstone"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
+.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
 .tool-stage[data-tool="summon"] { --art-scale:188%; --art-x:-8%; --art-y:-24%; }
 .tool-stage[data-tool="overlimit"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="runtime"] { --art-scale:208%; --art-x:-22%; --art-y:-31%; }
-.tool-stage[data-tool="ctMonitor"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
-.tool-stage[data-tool="ctCombat"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
-.tool-stage[data-tool="ctCharacters"] { --art-scale:188%; --art-x:-9%; --art-y:-22%; }
-.tool-stage[data-tool="ctQuest"] { --art-scale:190%; --art-x:-10%; --art-y:-23%; }
+.tool-stage[data-tool="ctMonitor"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
+.tool-stage[data-tool="ctCombat"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
+.tool-stage[data-tool="ctCharacters"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
+.tool-stage[data-tool="ctQuest"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
 .tool-stage[data-tool="chara"],
 .tool-stage[data-tool="save"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="compatibility"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
@@ -1398,6 +1398,13 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="monster"] { --art-scale:180%; --art-x:-2%; --art-y:-22%; }
 .tool-stage[data-tool="patch"] { --art-scale:184%; --art-x:-8%; --art-y:-22%; }
 .tool-stage[data-tool="language"] { --art-scale:192%; --art-x:-14%; --art-y:-23%; }
+.tool-stage[data-tool="loadout"] .art-rail .function-character img,
+.tool-stage[data-tool="loadoutPresets"] .art-rail .function-character img,
+.tool-stage[data-tool="wrightstoneMemory"] .art-rail .function-character img,
+.tool-stage[data-tool^="ct"] .art-rail .function-character img {
+  width:auto;
+  height:var(--art-scale);
+}
 .art-caption {
   position:absolute;
   z-index:2;

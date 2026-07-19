@@ -53,3 +53,14 @@ test('CT pages ship their approved function-specific assets without repeated bin
     hashes.set(hash, path)
   }
 })
+
+test('portrait-format function art is sized by rail height so faces and props remain visible', () => {
+  assert.match(
+    shell,
+    /\.tool-stage\[data-tool="loadout"\] \.art-rail \.function-character img,[\s\S]*?\.tool-stage\[data-tool\^="ct"\] \.art-rail \.function-character img\s*\{\s*width:auto;\s*height:var\(--art-scale\);\s*\}/,
+  )
+  for (const page of ['loadout', 'loadoutPresets', 'wrightstoneMemory', 'ctMonitor', 'ctCombat', 'ctCharacters', 'ctQuest']) {
+    assert.match(shell, new RegExp(`\\.tool-stage\\[data-tool="${page}"\\] \\{[^}]*--art-scale:1[1-3][0-9]%`))
+  }
+  assert.match(shell, /\.tool-stage\[data-tool="loadoutPresets"\] \{ --art-scale:116%; --art-x:-2%; --art-y:-10%; \}/)
+})
