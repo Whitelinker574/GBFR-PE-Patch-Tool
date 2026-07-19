@@ -1023,7 +1023,20 @@ var currencyDefs = []currencyDef{
 	{ID: "rupies", Name: "金币", Offset: 0x30},
 	{ID: "transmarvel", Name: "高级炼成点数", Offset: 0x34},
 	{ID: "msp", Name: "MSP", Offset: 0x98},
-	{ID: "cp", Name: "CP", Offset: 0x9C},
+	{ID: "rp", Name: "共鸣点数（RP）", Offset: 0x9C},
+}
+
+func lookupCurrencyDef(id string) (currencyDef, bool) {
+	id = strings.TrimSpace(id)
+	if id == "cp" {
+		id = "rp"
+	}
+	for _, def := range currencyDefs {
+		if def.ID == id {
+			return def, true
+		}
+	}
+	return currencyDef{}, false
 }
 
 type potionDef struct {
@@ -1764,52 +1777,50 @@ func (a *App) CurrencySetOneOwned(token, id string, value int) (CurrencyInfo, er
 }
 
 func (a *App) currencySetOneLocked(id string, value int) (CurrencyInfo, error) {
-	id = strings.TrimSpace(id)
 	if value < 0 || value > math.MaxInt32 {
 		return CurrencyInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
 	}
-	for _, def := range currencyDefs {
-		if def.ID != id {
-			continue
-		}
-		root, err := a.currencyRoot()
-		if err != nil {
-			return CurrencyInfo{}, err
-		}
-		addr := root + def.Offset
-		var originalValue int32
-		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
-			return CurrencyInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
-		}
-		if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
-			return CurrencyInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
-		}
-		confirmedRoot, err := a.currencyRoot()
-		if err != nil {
-			return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s资源根指针失败: %w", def.Name, err)
-		}
-		confirmedAddr := confirmedRoot + def.Offset
-		if confirmedRoot != root || confirmedAddr != addr {
-			return CurrencyInfo{}, fmt.Errorf("自动备份期间%s资源结构已重建，请刷新后重试", def.Name)
-		}
-		var confirmedValue int32
-		if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
-			return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
-		}
-		if confirmedValue != originalValue {
-			return CurrencyInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
-		}
-		newVal := int32(value)
-		if err := a.writeInt32TransactionalLocked(confirmedAddr, confirmedValue, newVal, def.Name); err != nil {
-			return CurrencyInfo{}, err
-		}
-		rva := uint64(0)
-		if a.currencyHookAddr >= a.moduleBase {
-			rva = uint64(a.currencyHookAddr - a.moduleBase)
-		}
-		return CurrencyInfo{ID: def.ID, Name: def.Name, RVA: rva, Offset: uint64(def.Offset), Address: uint64(confirmedAddr), Value: newVal}, nil
+	requestedID := id
+	def, ok := lookupCurrencyDef(id)
+	if !ok {
+		return CurrencyInfo{}, fmt.Errorf("未知货币: %s", strings.TrimSpace(requestedID))
 	}
-	return CurrencyInfo{}, fmt.Errorf("未知货币: %s", id)
+	root, err := a.currencyRoot()
+	if err != nil {
+		return CurrencyInfo{}, err
+	}
+	addr := root + def.Offset
+	var originalValue int32
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
+		return CurrencyInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
+	}
+	if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
+		return CurrencyInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
+	}
+	confirmedRoot, err := a.currencyRoot()
+	if err != nil {
+		return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s资源根指针失败: %w", def.Name, err)
+	}
+	confirmedAddr := confirmedRoot + def.Offset
+	if confirmedRoot != root || confirmedAddr != addr {
+		return CurrencyInfo{}, fmt.Errorf("自动备份期间%s资源结构已重建，请刷新后重试", def.Name)
+	}
+	var confirmedValue int32
+	if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
+		return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
+	}
+	if confirmedValue != originalValue {
+		return CurrencyInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
+	}
+	newVal := int32(value)
+	if err := a.writeInt32TransactionalLocked(confirmedAddr, confirmedValue, newVal, def.Name); err != nil {
+		return CurrencyInfo{}, err
+	}
+	rva := uint64(0)
+	if a.currencyHookAddr >= a.moduleBase {
+		rva = uint64(a.currencyHookAddr - a.moduleBase)
+	}
+	return CurrencyInfo{ID: def.ID, Name: def.Name, RVA: rva, Offset: uint64(def.Offset), Address: uint64(confirmedAddr), Value: newVal}, nil
 }
 
 // writeInt32TransactionalLocked proves either the requested value or the exact

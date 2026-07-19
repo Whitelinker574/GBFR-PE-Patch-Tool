@@ -52,13 +52,43 @@ func TestBuildCurrencyCaptureCave(t *testing.T) {
 }
 
 func TestCurrencyFieldsMatchDLC202CT(t *testing.T) {
-	want := map[string]uintptr{"rupies": 0x30, "transmarvel": 0x34, "msp": 0x98, "cp": 0x9C}
+	want := map[string]struct {
+		name   string
+		offset uintptr
+	}{
+		"rupies":      {name: "金币", offset: 0x30},
+		"transmarvel": {name: "高级炼成点数", offset: 0x34},
+		"msp":         {name: "MSP", offset: 0x98},
+		"rp":          {name: "共鸣点数（RP）", offset: 0x9C},
+	}
 	if len(currencyDefs) != len(want) {
 		t.Fatalf("currency definitions = %d, want %d", len(currencyDefs), len(want))
 	}
 	for _, def := range currencyDefs {
-		if want[def.ID] != def.Offset {
-			t.Fatalf("%s offset = 0x%X, want 0x%X", def.ID, def.Offset, want[def.ID])
+		expected, ok := want[def.ID]
+		if !ok {
+			t.Fatalf("unexpected published currency id %q", def.ID)
 		}
+		if def.Offset != expected.offset {
+			t.Fatalf("%s offset = 0x%X, want 0x%X", def.ID, def.Offset, expected.offset)
+		}
+		if def.Name != expected.name {
+			t.Fatalf("%s name = %q, want %q", def.ID, def.Name, expected.name)
+		}
+	}
+}
+
+func TestCurrencyInputLookupAcceptsLegacyCPAliasWithoutPublishingIt(t *testing.T) {
+	for _, inputID := range []string{"rp", "cp", " cp "} {
+		def, ok := lookupCurrencyDef(inputID)
+		if !ok {
+			t.Fatalf("lookupCurrencyDef(%q) did not resolve", inputID)
+		}
+		if def.ID != "rp" || def.Name != "共鸣点数（RP）" || def.Offset != 0x9C {
+			t.Fatalf("lookupCurrencyDef(%q) = %+v, want canonical RP definition", inputID, def)
+		}
+	}
+	if _, ok := lookupCurrencyDef("CP"); ok {
+		t.Fatal("legacy alias must remain the exact backend input id cp")
 	}
 }

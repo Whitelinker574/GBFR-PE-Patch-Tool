@@ -63,7 +63,7 @@ const activeRuntimeGroup = ref(props.mode === 'compatibility' ? 'battle' : 'reso
 const runtimeCatalog = computed(() => {
   const catalogs = {
     resources: [
-      ['实时货币编辑', '金币、MSP、高级炼成点数与 CP', '已适配'],
+      ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
       ['素材不消耗', '强化、练成期间临时阻止素材变化', '已适配'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
@@ -665,7 +665,7 @@ onBeforeUnmount(() => {
           <span class="memory-hint">DLC 2.0.2 分工</span>
         </div>
         <div class="memory-info">
-          <span>金币、MSP、高级炼成点数和 CP 使用 2.0.2 特征动态定位，实时写入后立即回读。</span>
+          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.2 特征动态定位，实时写入后立即回读。</span>
           <span>药水和“不消耗素材”在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。</span>
           <span>实时数值需要让游戏正常触发一次保存；游戏运行时不要同时离线修改同一存档。</span>
         </div>
@@ -677,7 +677,7 @@ onBeforeUnmount(() => {
             <span class="memory-title">实时货币编辑</span>
             <span class="memory-hint">AOB 捕获玩家结构 · 写入后回读</span>
           </div>
-          <p class="feature-help">用途：实时修改金币、MSP、高级炼成点数和 CP。首次连接后若没有读数，请在游戏内打开主菜单或让资源发生一次变化。</p>
+          <p class="feature-help">用途：实时修改金币、MSP、高级炼成点数和共鸣点数（RP）。首次连接后若没有读数，请在游戏内打开主菜单或让资源发生一次变化。</p>
           <div class="currency-grid">
             <div v-for="item in currencies" :key="item.id" class="currency-row">
               <div class="currency-name">{{ item.name }}</div>
