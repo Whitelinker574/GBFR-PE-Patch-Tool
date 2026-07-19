@@ -18,11 +18,14 @@ func validateCT084Pattern(pattern ct084Pattern) error {
 	if len(pattern.Values) != len(pattern.Mask) {
 		return fmt.Errorf("CT084 pattern values and mask have different lengths")
 	}
-	for _, mask := range pattern.Mask {
+	for index, mask := range pattern.Mask {
 		switch mask {
 		case 0xFF, 0xF0, 0x0F, 0x00:
 		default:
 			return fmt.Errorf("invalid CT084 pattern mask 0x%02X", mask)
+		}
+		if pattern.Values[index]&^mask != 0 {
+			return fmt.Errorf("nonzero CT084 wildcard bits at byte %d", index)
 		}
 	}
 	return nil

@@ -106,6 +106,28 @@ func TestMatchCT084PatternRejectsInvalidPatterns(t *testing.T) {
 	}
 }
 
+func TestCT084PatternRejectsNonzeroWildcardBits(t *testing.T) {
+	pattern := ct084Pattern{Values: []byte{0x0F}, Mask: []byte{0xF0}}
+	if matchCT084Pattern([]byte{0x00}, pattern) {
+		t.Fatal("matchCT084Pattern accepted a noncanonical wildcard value")
+	}
+	if got := findCT084PatternMatches([]byte{0x00}, 0x1000, pattern); got != nil {
+		t.Fatalf("findCT084PatternMatches() = %#v, want nil for a noncanonical wildcard value", got)
+	}
+
+	readerCalled := false
+	reader := func(uintptr, int) ([]byte, error) {
+		readerCalled = true
+		return []byte{0x00}, nil
+	}
+	if _, err := scanCT084PatternChunksUnique(0x1000, 1, 1, pattern, "noncanonical", reader); err == nil {
+		t.Fatal("scanCT084PatternChunksUnique() error = nil, want validation error")
+	}
+	if readerCalled {
+		t.Fatal("scanCT084PatternChunksUnique() called reader before rejecting a noncanonical wildcard value")
+	}
+}
+
 func TestFindCT084PatternMatches(t *testing.T) {
 	pattern := ct084Pattern{Values: []byte{0xA0, 0x0B}, Mask: []byte{0xF0, 0x0F}}
 	tests := []struct {
