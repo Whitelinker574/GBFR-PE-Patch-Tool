@@ -104,6 +104,24 @@ static bool PatchBytes(lm_address_t target, const lm_byte_t* patch, lm_size_t si
     return ok;
 }
 
+static const lm_byte_t kMonsterCaveMarker[] = { 'G', 'B', 'F', 'R', 'M', 'H', '0', '3' };
+
+static bool StampMonsterCave(lm_address_t cave, lm_size_t caveSize, wchar_t* message, size_t messageSize)
+{
+    if (cave == LM_ADDRESS_BAD || caveSize < sizeof(kMonsterCaveMarker))
+    {
+        swprintf_s(message, messageSize, L"invalid monster cave marker range");
+        return false;
+    }
+    lm_address_t marker = cave + caveSize - sizeof(kMonsterCaveMarker);
+    if (LM_WriteMemory(marker, kMonsterCaveMarker, sizeof(kMonsterCaveMarker)) != sizeof(kMonsterCaveMarker))
+    {
+        swprintf_s(message, messageSize, L"monster cave marker write failed");
+        return false;
+    }
+    return true;
+}
+
 static bool ReadPatchId(char* patchId, DWORD patchIdSize)
 {
     wchar_t tempPath[MAX_PATH]{};
@@ -304,6 +322,7 @@ static bool PatchDamageHook(lm_address_t target, wchar_t* message, size_t messag
         swprintf_s(message, messageSize, L"cave write failed: monster hp");
         return false;
     }
+    if (!StampMonsterCave(cave, 128, message, messageSize)) return false;
 
     lm_byte_t jmp[7]{ 0xE9 };
     memset(jmp + 5, 0x90, sizeof(jmp) - 5);
@@ -368,6 +387,7 @@ static bool PatchMonsterDamageHook(lm_address_t target, wchar_t* message, size_t
         swprintf_s(message, messageSize, L"cave write failed: monster damage");
         return false;
     }
+    if (!StampMonsterCave(cave, 128, message, messageSize)) return false;
 
     lm_byte_t jmp[6]{ 0xE9, 0, 0, 0, 0, 0x90 };
     int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
@@ -466,6 +486,7 @@ static bool PatchCrocodileDamageHook(lm_address_t target, lm_address_t moduleBas
         swprintf_s(message, messageSize, L"cave write failed: crocodile damage");
         return false;
     }
+    if (!StampMonsterCave(cave, 256, message, messageSize)) return false;
 
     lm_byte_t jmp[16]{ 0xE9 };
     memset(jmp + 5, 0x90, sizeof(jmp) - 5);
@@ -583,6 +604,7 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
         swprintf_s(message, messageSize, L"cave write failed: overdrive state");
         return false;
     }
+    if (!StampMonsterCave(cave, 256, message, messageSize)) return false;
 
     lm_byte_t jmp[11]{ 0xE9 };
     memset(jmp + 5, 0x90, sizeof(jmp) - 5);
@@ -636,6 +658,7 @@ static bool PatchInventorySetQuantityHook(lm_address_t target, wchar_t* message,
         swprintf_s(message, messageSize, L"cave write failed: inventory quantity");
         return false;
     }
+    if (!StampMonsterCave(cave, 32, message, messageSize)) return false;
 
     lm_byte_t jmp[7]{ 0xE9 };
     memset(jmp + 5, 0x90, sizeof(jmp) - 5);
@@ -701,6 +724,7 @@ static bool PatchStunHook(lm_address_t target, wchar_t* message, size_t messageS
         swprintf_s(message, messageSize, L"cave write failed: monster stun");
         return false;
     }
+    if (!StampMonsterCave(cave, 128, message, messageSize)) return false;
 
     lm_byte_t jmp[9]{ 0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90 };
     int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
@@ -849,4 +873,3 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     }
     return TRUE;
 }
-

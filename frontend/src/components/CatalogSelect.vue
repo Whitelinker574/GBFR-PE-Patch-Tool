@@ -10,6 +10,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   optional: { type: Boolean, default: false },
   detailKey: { type: String, default: '' },
+  iconResolver: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'pick'])
@@ -26,6 +27,10 @@ const filtered = computed(() => {
   if (!q) return props.options
   return props.options.filter(option => matchText(option.displayName, q) || matchText(option.internalId, q))
 })
+
+function optionIcon(option) {
+  return option && props.iconResolver ? props.iconResolver(option) || '' : ''
+}
 
 function openDropdown() {
   if (props.disabled) return
@@ -86,27 +91,31 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentPointe
 
 <template>
   <div ref="rootEl" class="catalog-select" :class="{ open, disabled }">
-    <button type="button" class="catalog-trigger" :disabled="disabled" @click="open ? closeDropdown() : openDropdown()">
+    <button type="button" class="catalog-trigger ui-btn" :disabled="disabled" @click="open ? closeDropdown() : openDropdown()">
+      <img v-if="optionIcon(selected)" class="catalog-icon" :src="optionIcon(selected)" alt="" />
       <span :class="selected ? 'catalog-value' : 'catalog-placeholder'">{{ selected?.displayName || placeholder }}</span>
       <span v-if="optional && selected" class="catalog-clear" role="button" tabindex="0" title="清除选择" @click.stop="clearSelection" @keydown.enter.stop="clearSelection">×</span>
       <span class="catalog-chevron" aria-hidden="true">{{ open ? '▴' : '▾' }}</span>
     </button>
-    <div v-if="open" class="catalog-popover">
+    <div v-if="open" class="catalog-popover ui-card">
       <div class="catalog-search">
-        <input ref="searchEl" v-model="query" :placeholder="searchPlaceholder" @keydown="onKey">
+        <input ref="searchEl" v-model="query" class="catalog-search-input ui-input" :placeholder="searchPlaceholder" @keydown="onKey">
       </div>
       <div ref="listEl" class="catalog-options">
-        <div v-if="!filtered.length" class="catalog-empty">没有匹配项</div>
+        <div v-if="!filtered.length" class="catalog-empty ui-empty">没有匹配项</div>
         <button
           v-for="(option, index) in filtered"
           :key="option.internalId"
           type="button"
-          class="catalog-option"
+          class="catalog-option ui-row"
           :class="{ highlight: index === highlight, selected: option.internalId === modelValue }"
           @mousedown.prevent="commit(option)"
           @mouseenter="highlight = index"
         >
-          <span>{{ option.displayName }}</span>
+          <span class="catalog-option-main">
+            <img v-if="optionIcon(option)" class="catalog-icon" :src="optionIcon(option)" alt="" />
+            <span>{{ option.displayName }}</span>
+          </span>
           <small v-if="detailKey && option[detailKey] != null">{{ option[detailKey] }}</small>
         </button>
       </div>
@@ -115,25 +124,25 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentPointe
 </template>
 
 <style scoped>
-/* 下拉框：配色统一到卡片羊皮纸色阶(#fdf6e4→#efe1c0) + 金棕#9a7440，圆角/阴影与整体一致（据 Gemini 重设计） */
-.catalog-select{position:relative;min-width:0;width:100%}
-.catalog-trigger{width:100%;min-height:34px;display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid rgba(154,116,64,.4);border-radius:6px;color:#4e4438;background:#fdf6e4;text-align:left;cursor:pointer;transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease}
-.catalog-trigger:hover,.open .catalog-trigger{border-color:#9a7440;background:#fffdf6;box-shadow:0 0 0 1px rgba(154,116,64,.12)}
-.catalog-trigger:disabled{cursor:not-allowed;opacity:.48}
-.catalog-value,.catalog-placeholder{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.catalog-placeholder{color:#9c8a73;font-size:.92em}
-.catalog-clear{padding:0 4px;color:#a6473d;font-weight:800}
-.catalog-chevron{color:#9a7440;font-size:.72rem}
-.catalog-popover{position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;overflow:hidden;border:1px solid rgba(154,116,64,.32);border-radius:6px;background:#fdf6e4;box-shadow:0 8px 24px rgba(78,68,56,.14),0 2px 8px rgba(78,68,56,.05)}
-.catalog-search{padding:8px;border-bottom:1px solid rgba(154,116,64,.15);background:#f6ebd4}
-.catalog-search input{width:100%;min-height:30px;padding:5px 9px;border:1px solid rgba(154,116,64,.3);border-radius:4px;color:#4e4438;background:#fffdf6;outline:0}
-.catalog-search input:focus{border-color:#9a7440}
-.catalog-options{max-height:236px;overflow-y:auto}
-.catalog-option{width:100%;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border:0;border-bottom:1px solid rgba(154,116,64,.09);color:#6f6152;background:transparent;text-align:left;cursor:pointer;transition:background-color .14s ease,color .14s ease}
-.catalog-option:nth-child(even){background:rgba(154,116,64,.035)}
-.catalog-option>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.catalog-option:hover,.catalog-option.highlight,.catalog-option.selected{color:#4e4438;background:#efe1c0;box-shadow:inset 3px 0 #9a7440}
-.catalog-option small{flex:0 0 auto;color:#9c8a73;font-size:.82em;font-weight:600}
-.catalog-option:hover small,.catalog-option.highlight small,.catalog-option.selected small{color:#7a664d}
-.catalog-empty{padding:14px;color:#9c8a73;text-align:center;font-size:.78rem}
+.catalog-select { position:relative; width:100%; min-width:0; }
+.catalog-trigger { width:100%; min-height:var(--control-height); justify-content:flex-start; gap:var(--space-3); padding-inline:var(--space-4); text-align:left; }
+.open .catalog-trigger { border-color:var(--accent-border); background:var(--surface-field-hover); box-shadow:var(--focus-ring); }
+.catalog-value,.catalog-placeholder { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.catalog-icon { width:28px; height:28px; flex:0 0 28px; object-fit:cover; border:1px solid var(--line-soft); border-radius:6px; background:var(--surface-field); }
+.catalog-placeholder { color:var(--text-muted); font-size:var(--fs-sm); font-weight:var(--fw-normal); }
+.catalog-clear { display:grid; width:24px; height:24px; flex:0 0 24px; place-items:center; border-radius:var(--radius-sm); color:var(--danger-ink); font-size:var(--fs-base); font-weight:var(--fw-bold); }
+.catalog-clear:hover,.catalog-clear:focus-visible { background:var(--danger-bg); }
+.catalog-chevron { flex:0 0 auto; color:var(--accent); font-size:var(--fs-xs); }
+.catalog-popover { position:absolute; z-index:var(--z-dropdown); top:calc(100% + var(--space-1)); right:0; left:0; overflow:hidden; background:var(--surface-card-pop); box-shadow:var(--shadow-2); }
+.catalog-search { padding:var(--space-3); border-bottom:1px solid var(--border-soft); background:var(--surface-field); }
+.catalog-search-input { width:100%; }
+.catalog-options { max-height:236px; overflow-y:auto; overscroll-behavior:contain; }
+.catalog-option { width:100%; min-height:var(--control-height); justify-content:space-between; gap:var(--space-4); border-width:0 0 1px; border-radius:0; background:var(--surface-card-pop); color:var(--text-secondary); box-shadow:none; text-align:left; cursor:pointer; }
+.catalog-option:last-child { border-bottom:0; }
+.catalog-option-main { min-width:0; flex:1; display:flex; align-items:center; gap:var(--space-3); }
+.catalog-option-main > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.catalog-option:hover,.catalog-option.highlight,.catalog-option.selected { color:var(--text-primary); background:var(--surface-row-hover); box-shadow:3px 0 0 var(--selected-bar) inset; }
+.catalog-option small { flex:0 0 auto; color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
+.catalog-option:hover small,.catalog-option.highlight small,.catalog-option.selected small { color:var(--text-secondary); }
+.catalog-empty { padding:var(--space-7) var(--space-4); color:var(--text-muted); font-size:var(--fs-sm); }
 </style>

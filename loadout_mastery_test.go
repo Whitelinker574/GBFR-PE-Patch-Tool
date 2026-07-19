@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // 专精配置器：节点池按 10/10/10/20 配额分档，各角色池子足够选。
 func TestMasteryNodePool(t *testing.T) {
@@ -25,6 +28,57 @@ func TestMasteryNodePool(t *testing.T) {
 			t.Errorf("%s 官方标签=%q，期望 %q", p.Rank, p.Label, wantLabel[p.Rank])
 		}
 		t.Logf("%s(%s) 配额%d 池%d", p.Rank, p.Label, p.Cap, len(p.Nodes))
+	}
+}
+
+func TestMasteryNodePoolMarksStageSpecializationNodes(t *testing.T) {
+	pools, err := (&App{}).MasteryNodePool("PL0400")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]map[string]string{
+		"R2": {"SB_ATK": "80490676", "SB_DEF": "58E2FE10", "SB_LIMIT": "49E65B86"},
+		"R3": {"SB_ATK": "88DCAC00", "SB_DEF": "81F4970A", "SB_LIMIT": "E63217E6"},
+	}
+	for _, pool := range pools {
+		expected, ok := want[pool.Rank]
+		if !ok {
+			continue
+		}
+		seen := map[string]string{}
+		for _, node := range pool.Nodes {
+			if node.Specialization {
+				if previous := seen[node.Cat]; previous != "" {
+					t.Fatalf("%s/%s 出现多个专精主技能节点: %s, %s", pool.Rank, node.Cat, previous, node.Hash)
+				}
+				seen[node.Cat] = node.Hash
+			}
+		}
+		if len(seen) != 3 {
+			t.Fatalf("%s 应有三个方向各一个专精主技能节点，得到 %v", pool.Rank, seen)
+		}
+		for cat, hash := range expected {
+			if seen[cat] != hash {
+				t.Errorf("%s/%s 主技能节点=%s，期望原始 layout 的 %s", pool.Rank, cat, seen[cat], hash)
+			}
+		}
+	}
+}
+
+func TestMasteryNodePoolHidesNodesWithoutVerifiedEffects(t *testing.T) {
+	pools, err := (&App{}).MasteryNodePool("PL1200")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pool := range pools {
+		for _, node := range pool.Nodes {
+			if strings.TrimSpace(node.Desc) == "" {
+				t.Errorf("%s/%s 节点 %s 没有可核对的效果文本，不应进入自由配置池", pool.Rank, node.Cat, node.Hash)
+			}
+			if node.Hash == "F2D81718" {
+				t.Error("未解明的 F2D81718 不应进入专精配置池")
+			}
+		}
 	}
 }
 
@@ -68,11 +122,11 @@ func TestMasterySummaryFollowsThreeDirectionActivationRules(t *testing.T) {
 		return out
 	}
 	hashes := toHashes(
-		"8330DD47", "F5F495BE", "C20A0EC1", // R1 真谛 3
-		"12AA6898", "1F55589B", "1AD4D530", // R1 觉醒 3
-		"64D850F3", "DACCAB76", "EC9C657D", // R1 秘义 3
-		"2904689B", "6ED1BE0F", "DF5883DE", "D69522F1", "AD6575D4", "82BE5E7C", // R2 觉醒 6
-		"3AA0FBEF", "E0E6FF0C", "7580D66D", "16271F83", "E03C3AD2", "A66398F9", // R3 觉醒 6
+		"C5E2C95C", "8330DD47", "F5F495BE", // R1 真谛：主技能 + 2 子词条
+		"B29EF8B8", "12AA6898", "1F55589B", // R1 觉醒：主技能 + 2 子词条
+		"6FA783B6", "64D850F3", "DACCAB76", // R1 秘义：主技能 + 2 子词条
+		"58E2FE10", "2904689B", "6ED1BE0F", "DF5883DE", "D69522F1", "AD6575D4", // R2 觉醒 6（含100 MSP主技能）
+		"81F4970A", "3AA0FBEF", "E0E6FF0C", "7580D66D", "16271F83", "E03C3AD2", // R3 觉醒 6（含100 MSP主技能）
 		"5B124A50", // EX 节点
 	)
 	summary, err := summarizeMasteryHashes("PL0400", hashes)
@@ -107,31 +161,122 @@ func TestMasteryQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pick := func(rank string, n int) []uint32 {
+	pick := func(rank, cat string, n int) []uint32 {
 		var out []uint32
 		for _, p := range pools {
 			if p.Rank != rank {
 				continue
 			}
-			for i := 0; i < n && i < len(p.Nodes); i++ {
-				h, _ := ParseHashHex(p.Nodes[i].Hash)
+			for _, node := range p.Nodes {
+				if cat != "" && node.Cat != cat {
+					continue
+				}
+				h, _ := ParseHashHex(node.Hash)
 				out = append(out, h)
+				if len(out) == n {
+					break
+				}
+			}
+		}
+		if len(out) != n {
+			t.Fatalf("%s/%s 需要 %d 个测试节点，实际只有 %d 个", rank, cat, n, len(out))
+		}
+		return out
+	}
+	pickSubtraits := func(rank, cat string, n int) []uint32 {
+		var out []uint32
+		for _, p := range pools {
+			if p.Rank != rank {
+				continue
+			}
+			for _, node := range p.Nodes {
+				if node.Cat != cat || node.Specialization {
+					continue
+				}
+				h, _ := ParseHashHex(node.Hash)
+				out = append(out, h)
+				if len(out) == n {
+					break
+				}
+			}
+		}
+		if len(out) != n {
+			t.Fatalf("%s/%s 需要 %d 个普通子词条，实际只有 %d 个", rank, cat, n, len(out))
+		}
+		return out
+	}
+	pickDirectionalRank := func(rank, primary string) []uint32 {
+		secondary := []string{"SB_ATK", "SB_DEF", "SB_LIMIT"}
+		var out []uint32
+		out = append(out, pick(rank, primary, 6)...)
+		for _, cat := range secondary {
+			if cat != primary {
+				out = append(out, pickSubtraits(rank, cat, 2)...)
 			}
 		}
 		return out
 	}
-	// 正好 10/10/10/20 = 50，requireFull 应通过
+	// 正好 10/10/10/20 = 50，且 2/3 阶沿用同一主方向，应通过。
 	var full []uint32
-	full = append(full, pick("R1", 10)...)
-	full = append(full, pick("R2", 10)...)
-	full = append(full, pick("R3", 10)...)
-	full = append(full, pick("EX", 20)...)
+	full = append(full, pick("R1", "", 10)...)
+	full = append(full, pickDirectionalRank("R2", "SB_DEF")...)
+	full = append(full, pickDirectionalRank("R3", "SB_DEF")...)
+	full = append(full, pick("EX", "", 20)...)
 	if _, err := validateMasteryQuota(full, "PL0400", true); err != nil {
 		t.Errorf("满盘 10/10/10/20 应通过，得错误: %v", err)
 	}
-	// R1 超一个（11），应拒绝
-	over := append(pick("R1", 11), pick("R2", 10)...)
+	// 后端写入调用 requireFull=false；一旦实际收到完整 50 节点，仍必须执行方向校验。
+	wrongDirection := append([]uint32{}, pick("R1", "", 10)...)
+	wrongDirection = append(wrongDirection, pickDirectionalRank("R2", "SB_DEF")...)
+	wrongDirection = append(wrongDirection, pickDirectionalRank("R3", "SB_ATK")...)
+	wrongDirection = append(wrongDirection, pick("EX", "", 20)...)
+	if _, err := validateMasteryQuota(wrongDirection, "PL0400", false); err == nil {
+		t.Error("2/3 阶主方向不一致的满盘应被拒绝")
+	}
+	// 2 阶 4/3/3 没有达到任一主方向门槛，满盘应拒绝。
+	noPrimary := append([]uint32{}, pick("R1", "", 10)...)
+	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_ATK", 4)...)
+	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_DEF", 3)...)
+	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_LIMIT", 3)...)
+	noPrimary = append(noPrimary, pickDirectionalRank("R3", "SB_DEF")...)
+	noPrimary = append(noPrimary, pick("EX", "", 20)...)
+	if _, err := validateMasteryQuota(noPrimary, "PL0400", true); err == nil {
+		t.Error("2 阶没有达到六节点主方向门槛的满盘应被拒绝")
+	}
+	// 真实存档允许 2/3 阶只配置方向内的子词条而不选择 100-MSP 专精技能。
+	// 这种满盘必须能保存/分享，但摘要应明确该阶专精效果未生效。
+	missingRoot := append([]uint32{}, pick("R1", "", 10)...)
+	r2WithoutRoot := pickSubtraits("R2", "SB_DEF", 6)
+	r2WithoutRoot = append(r2WithoutRoot, pickSubtraits("R2", "SB_ATK", 2)...)
+	r2WithoutRoot = append(r2WithoutRoot, pickSubtraits("R2", "SB_LIMIT", 2)...)
+	missingRoot = append(missingRoot, r2WithoutRoot...)
+	missingRoot = append(missingRoot, pickDirectionalRank("R3", "SB_DEF")...)
+	missingRoot = append(missingRoot, pick("EX", "", 20)...)
+	if _, err := validateMasteryQuota(missingRoot, "PL0400", true); err != nil {
+		t.Errorf("方向子词条满盘即使未选择2阶专精技能也应可保存: %v", err)
+	}
+	missingSummary, err := summarizeMasteryHashes("PL0400", missingRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rank := range missingSummary.Ranks {
+		if rank.Rank != "R2" {
+			continue
+		}
+		for _, category := range rank.Categories {
+			if category.Cat == "SB_DEF" && (category.Active || category.Reason != "未选择2阶专精技能") {
+				t.Fatalf("未选择2阶专精技能时不应激活，得到 %+v", category)
+			}
+		}
+	}
+	// R1 超一个（11），应拒绝。
+	over := append(pick("R1", "", 11), pick("R2", "", 10)...)
 	if _, err := validateMasteryQuota(over, "PL0400", false); err == nil {
 		t.Error("R1 档 11 个应被拒绝")
+	}
+	duplicate := pick("R1", "", 10)
+	duplicate[1] = duplicate[0]
+	if _, err := validateMasteryQuota(duplicate, "PL0400", false); err == nil {
+		t.Error("重复专精节点应被拒绝")
 	}
 }

@@ -1020,7 +1020,7 @@
     {
       "internalId": "SKILL_120_00",
       "hash": "0xD908223D",
-      "displayName": "Phantasm's Concord",
+      "displayName": "Phantasm's Harmony",
       "category": "character_trait",
       "maxLevel": 15,
       "allowedLevels": null,
@@ -1037,7 +1037,7 @@
     {
       "internalId": "SKILL_120_01",
       "hash": "0x7351D602",
-      "displayName": "Phantasm's Harmony",
+      "displayName": "Phantasm's Concord",
       "category": "character_trait",
       "maxLevel": 15,
       "allowedLevels": null,
@@ -2018,7 +2018,7 @@
       "confidence": "low"
     },
     {
-      "internalId": "SKILL_166_50",
+      "internalId": "SKILL_143_00",
       "hash": "0x40223C28",
       "displayName": "Catastrophe",
       "category": null,
@@ -2028,9 +2028,9 @@
       "canAppearAsPrimary": true,
       "canAppearAsSecondary": true,
       "bannedAsSecondaryOnPlusSigils": false,
-      "notes": "Added from in-game hash verification and CT hash-name mapping. Distinct from Less Is More (0x82CE278D / 身无长技). Exact internalId still needs authoritative table export verification.",
-      "source": "Cheat Engine live memory verification; sigil_ctdata.go hash-name mapping; user in-game validation",
-      "confidence": "low"
+      "notes": "Distinct from Less Is More (0x82CE278D / 身无长技). The internal ID is independently fixed by the local GBFRDataTools ID table and the local 2.0.2 weapon-table-derived traitIds mapping.",
+      "source": "local GBFRDataTools ids.txt; local 2.0.2 weapon.tbl-derived traitIds; in-game hash verification",
+      "confidence": "high"
     },
     {
       "internalId": "SKILL_167_00",
@@ -2295,7 +2295,25 @@
       "notes": "Added from current sigil pool base-trait mapping. Max level is null unless present in public trait max-level tables.",
       "source": "Nenkai Trait/Skill IDs; public trait max-level tables; temporary broad secondary pool",
       "confidence": "low"
-    }
+    },
+    {"internalId":"SKILL_078_00","hash":"0x6018372B","displayName":"Provoke","category":"support_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Verified blessing choice; ordinary V-trait max-level rule.","source":"local GBFRDataTools ids.txt; verified Provoke V trait data","confidence":"high"},
+    {"internalId":"SKILL_088_00","hash":"0x9702860F","displayName":"Blight Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_079_00","hash":"0xF687C5EF","displayName":"Fast Learner","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_080_00","hash":"0xC86F3082","displayName":"Rupie Tycoon","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_147_00","hash":"0x5E422AE5","displayName":"Path to Mastery","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_055_00","hash":"0x2242921F","displayName":"Paralysis Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_058_00","hash":"0xCFB48782","displayName":"SBA Sealed Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_057_00","hash":"0x50B453DD","displayName":"Skill Sealed Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_052_00","hash":"0xFB572681","displayName":"Glaciate Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_051_00","hash":"0xD54F8CA7","displayName":"Sandtomb Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_065_00","hash":"0x9389CC06","displayName":"Improved Healing","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_139_00","hash":"0x66DE60B1","displayName":"Defense Down Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_054_00","hash":"0x3759A5B9","displayName":"Dizzy Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_046_00","hash":"0x973B49AF","displayName":"Poison Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_137_00","hash":"0xDD4A701E","displayName":"Darkflame Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_136_00","hash":"0x1DC9D7E7","displayName":"Held Under Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_047_00","hash":"0x7C84A6B3","displayName":"Burn Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"},
+    {"internalId":"SKILL_086_00","hash":"0xA2FA9685","displayName":"Slow Resistance","category":"blessing_trait","maxLevel":20,"allowedLevels":null,"observedLevels":[20],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"Blessing availability and level-20 storage range were verified in game for the v1.8.4 feature; ID and hash were independently verified locally.","source":"local GBFRDataTools ids.txt; GBFR PE Patch Tool v1.8.4 in-game verification notes","confidence":"medium"}
   ],
   "todos": [
     "If future game patches add new sigils or traits, rerun the ID/hash/max-level audit before publishing a new build.",

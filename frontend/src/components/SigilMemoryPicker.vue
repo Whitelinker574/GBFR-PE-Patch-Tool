@@ -8,6 +8,7 @@ const props = defineProps({
   optional: { type: Boolean, default: false },
   placeholder: { type: String, default: '未选择' },
   disabled: { type: Boolean, default: false },
+  iconResolver: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'pick', 'open', 'close'])
@@ -28,6 +29,10 @@ const filtered = computed(() => {
   if (!q) return props.options
   return props.options.filter(o => matchText(o.displayName, q) || matchText(hex(o.hash), q))
 })
+
+function optionIcon(option) {
+  return option && props.iconResolver ? props.iconResolver(option) || '' : ''
+}
 
 function openDropdown() {
   if (props.disabled) return
@@ -53,6 +58,7 @@ function commit(opt) {
 }
 
 function clearSelection() {
+  if (props.disabled) return
   emit('update:modelValue', 0)
   emit('pick', null)
   closeDropdown()
@@ -90,61 +96,59 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
 <template>
   <div class="picker" :class="{ 'picker-open': open, disabled }" ref="rootEl">
-    <button type="button" class="picker-selected" @click="open ? closeDropdown() : openDropdown()" :disabled="disabled">
-      <span v-if="selected" class="picker-label" :title="selected.displayName">{{ selected.displayName }}</span>
-      <span v-else class="picker-placeholder">{{ placeholder }}</span>
-      <span v-if="optional && selected" class="picker-inline-clear" role="button" tabindex="0" @click.stop="clearSelection" @keydown.enter.stop="clearSelection" title="移除">✕</span>
-      <span class="cheveron">{{ open ? '▴' : '▾' }}</span>
-    </button>
-    <div v-if="open" class="picker-dropdown">
+    <div class="picker-control">
+      <button type="button" class="picker-selected ui-btn" @click="open ? closeDropdown() : openDropdown()" :disabled="disabled" :aria-expanded="open">
+        <img v-if="optionIcon(selected)" class="picker-icon" :src="optionIcon(selected)" alt="" />
+        <span v-if="selected" class="picker-label" :title="selected.displayName">{{ selected.displayName }}</span>
+        <span v-else class="picker-placeholder">{{ placeholder }}</span>
+        <span class="picker-chevron" aria-hidden="true">{{ open ? '▴' : '▾' }}</span>
+      </button>
+      <button v-if="optional && selected" type="button" class="picker-inline-clear ui-btn is-icon is-ghost" :disabled="disabled" @click="clearSelection" title="移除当前选择" aria-label="移除当前选择">×</button>
+    </div>
+    <div v-if="open" class="picker-dropdown ui-card is-raised">
       <div class="picker-search">
-        <input ref="searchEl" v-model="query" @keydown="onKey" placeholder="搜索名称 / 拼音 / hex" />
+        <input ref="searchEl" v-model="query" class="ui-input" @keydown="onKey" placeholder="搜索名称 / 拼音 / Hash" aria-label="搜索因子或词条" />
       </div>
-      <div class="picker-list" ref="listEl">
-        <div v-if="!filtered.length" class="picker-none">无匹配</div>
-        <div
+      <div class="picker-list ui-scroll-region" ref="listEl">
+        <div v-if="!filtered.length" class="ui-empty picker-none">无匹配结果</div>
+        <button
           v-for="(opt, i) in filtered"
           :key="opt.hash"
-          class="opt"
-          :class="{ hi: i === highlight, selected: (opt.hash >>> 0) === (modelValue >>> 0) }"
-          @mousedown.prevent="commit(opt)"
+          type="button"
+          class="opt ui-row"
+          :class="{ hi: i === highlight, 'is-on': (opt.hash >>> 0) === (modelValue >>> 0) }"
+          @click="commit(opt)"
           @mouseenter="highlight = i"
           :title="`${opt.displayName} · ${hex(opt.hash)}`"
         >
           <span class="opt-name">
+            <img v-if="optionIcon(opt)" class="picker-icon" :src="optionIcon(opt)" alt="" />
             {{ opt.displayName }}
-            <span v-if="opt.source === 'memory-only'" class="opt-tag">补</span>
+            <span v-if="opt.source === 'memory-only'" class="ui-tag">补</span>
           </span>
           <span v-if="opt.maxLevel != null" class="opt-max">Lv {{ opt.maxLevel }}</span>
-        </div>
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 样式统一到 CatalogSelect(Gemini 重设计)：羊皮纸色阶#fdf6e4→#efe1c0 + 金棕#9a7440，
-   去掉原来的青色强调与双色渐变；选项名单行不换行。 */
-.picker { position: relative; flex: 1; font-family:inherit; }
-.picker-selected { display:flex; align-items:center; gap:8px; width:100%; min-height:38px; padding:9px 12px; border:1px solid rgba(154,116,64,.4); border-radius:6px; background:#fdf6e4; color:#4e4438; cursor:pointer; font-family:inherit; font-size:.86rem; font-weight:600; line-height:1.35; text-align:left; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
-.picker-selected:hover,.picker-open .picker-selected { border-color:#9a7440; background:#fffdf6; box-shadow:0 0 0 1px rgba(154,116,64,.12); }
-.picker-selected:disabled { opacity:.48; cursor:not-allowed; }
+.picker { position:relative; min-width:0; flex:1; }
+.picker-control { display:grid; min-width:0; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); }
+.picker-selected { width:100%; justify-content:flex-start; text-align:left; }
 .picker-label, .picker-placeholder { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.picker-placeholder { color:#9c8a73; }
-.picker-inline-clear { flex-shrink:0; background:transparent; border:0; padding:0 4px; color:#a6473d; font:inherit; font-size:.8rem; line-height:1; cursor:pointer; font-weight:800; font-family:inherit; }
-.picker-inline-clear:hover,.picker-inline-clear:focus-visible { color:#8a3a30; outline:none; }
-.cheveron { color:#9a7440; font-size:.7rem; flex-shrink:0; }
-.picker-dropdown { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; overflow:hidden; background:#fdf6e4; border:1px solid rgba(154,116,64,.32); border-radius:6px; box-shadow:0 8px 24px rgba(78,68,56,.14),0 2px 8px rgba(78,68,56,.05); }
-.picker-search { display:flex; align-items:center; gap:6px; padding:8px; border-bottom:1px solid rgba(154,116,64,.15); background:#f6ebd4; }
-.picker-search input { flex:1; min-height:30px; padding:5px 9px; border:1px solid rgba(154,116,64,.3); border-radius:4px; background:#fffdf6; color:#4e4438; outline:none; font-family:inherit; font-size:.78rem; }
-.picker-search input:focus { border-color:#9a7440; }
+.picker-icon { width:28px; height:28px; flex:0 0 28px; object-fit:cover; border:1px solid var(--line-soft); border-radius:6px; background:var(--surface-field); }
+.picker-placeholder { color:var(--text-muted); }
+.picker-inline-clear { color:var(--danger-ink); }
+.picker-chevron { flex:0 0 auto; color:var(--accent); font-size:var(--fs-xs); }
+.picker-dropdown { position:absolute; top:calc(100% + var(--space-1)); left:0; right:0; z-index:var(--z-dropdown); overflow:hidden; }
+.picker-search { display:flex; padding:var(--space-3); border-bottom:1px solid var(--border-soft); background:var(--surface-field); }
 .picker-list { max-height:236px; overflow-y:auto; }
-.opt { min-height:38px;display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 12px; border:0; border-bottom:1px solid rgba(154,116,64,.09); font-size:.84rem; font-weight:600; line-height:1.35; color:#6f6152; background:transparent; cursor:pointer; font-family:inherit; transition:background-color .14s ease,color .14s ease; }
-.opt:nth-child(even) { background:rgba(154,116,64,.035); }
-.opt:hover, .opt.hi, .opt.selected { color:#4e4438; background:#efe1c0; box-shadow:inset 3px 0 #9a7440; }
+.opt { width:100%; min-height:var(--control-height); justify-content:space-between; border-width:0 0 1px; border-radius:0; box-shadow:none; text-align:left; }
+.opt:last-child { border-bottom:0; }
+.opt.hi { background:var(--surface-row-hover); }
 .opt-name { flex:1; min-width:0; display:inline-flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.opt-tag { flex:0 0 auto; padding:1px 5px; border:1px solid rgba(154,116,64,.4); border-radius:20px; color:#8a6a34; background:rgba(154,116,64,.1); font-size:.6rem; letter-spacing:.5px; font-family:inherit; }
-.opt-max { flex:0 0 auto; color:#9c8a73; font-size:.82em; font-weight:600; }
-.opt:hover .opt-max,.opt.hi .opt-max,.opt.selected .opt-max { color:#7a664d; }
-.picker-none { padding:14px; text-align:center; color:#9c8a73; font-size:.72rem; }
+.opt-max { flex:0 0 auto; color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-xs); }
+.picker-none { padding:var(--space-6); }
 </style>

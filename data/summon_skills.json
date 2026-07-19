@@ -412,12 +412,12 @@
     },
     {
       "hash": "0xD908223D",
-      "displayName": "幽幻之应",
+      "displayName": "幽幻之谊",
       "maxLevel": 15
     },
     {
       "hash": "0x7351D602",
-      "displayName": "幽幻之谊",
+      "displayName": "幽幻之应",
       "maxLevel": 15
     },
     {
@@ -607,17 +607,17 @@
     },
     {
       "hash": "0x0FBA47E8",
-      "displayName": "幸运甘露",
-      "maxLevel": 50
-    },
-    {
-      "hash": "0xA4D6B880",
       "displayName": "强健甘露",
       "maxLevel": 50
     },
     {
-      "hash": "0xCDEB73F6",
+      "hash": "0xA4D6B880",
       "displayName": "修炼甘露",
+      "maxLevel": 50
+    },
+    {
+      "hash": "0xCDEB73F6",
+      "displayName": "幸运甘露",
       "maxLevel": 50
     },
     {
@@ -887,7 +887,7 @@
     },
     {
       "hash": "0x9ACE140B",
-      "displayName": "刃姬的圆舞曲",
+      "displayName": "刃姬的轮舞曲",
       "maxLevel": 15
     },
     {
@@ -937,17 +937,17 @@
     },
     {
       "hash": "0x1DE14C65",
-      "displayName": "狼王之觉醒",
+      "displayName": "狼王的激昂",
       "maxLevel": 15
     },
     {
       "hash": "0x26956F25",
-      "displayName": "狼王的大轮转",
+      "displayName": "狼王的大转轮",
       "maxLevel": 15
     },
     {
       "hash": "0xD176D262",
-      "displayName": "狼王的激昂",
+      "displayName": "群青的剑光",
       "maxLevel": 15
     },
     {
@@ -1057,7 +1057,7 @@
     },
     {
       "hash": "0x96D6FE5E",
-      "displayName": "刃姬的圆舞曲",
+      "displayName": "刃姬的轮舞曲",
       "maxLevel": 15
     },
     {
@@ -1117,12 +1117,12 @@
     },
     {
       "hash": "0xF21404B1",
-      "displayName": "狼王的大轮转",
+      "displayName": "狼王的大转轮",
       "maxLevel": 15
     },
     {
       "hash": "0x9EC6C56D",
-      "displayName": "狼王的激昂",
+      "displayName": "群青的剑光",
       "maxLevel": 15
     },
     {

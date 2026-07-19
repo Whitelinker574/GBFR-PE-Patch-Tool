@@ -16,6 +16,9 @@ type SigilDef struct {
 	InternalID                   string                        `json:"internalId"`
 	Hash                         string                        `json:"hash"`
 	DisplayName                  string                        `json:"displayName"`
+	Notes                        string                        `json:"notes"`
+	Source                       string                        `json:"source"`
+	Confidence                   string                        `json:"confidence"`
 	Category                     *string                       `json:"category"`
 	IsPlusSigil                  *bool                         `json:"isPlusSigil"`
 	SupportsSecondaryTrait       *bool                         `json:"supportsSecondaryTrait"`
@@ -250,6 +253,93 @@ func supportsGeneratedPlusSigil(sigil *SigilDef) bool {
 	return strings.HasSuffix(sigil.DisplayName, " V") || strings.EqualFold(sigil.DisplayName, "Stout Heart")
 }
 
+func requiresCharacterSigilSecondary(sigil *SigilDef) bool {
+	return sigil != nil &&
+		strings.EqualFold(derefStr(sigil.Category), "character_sigil") &&
+		len(sigil.AllowedSecondaryTraitIDs) > 0
+}
+
+func hasUnverifiedSigilNotes(notes string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(notes))
+	for _, marker := range []string{
+		"not verified",
+		"unverified",
+		"temporary data pass",
+		"secondary pool includes every trait",
+		"未验证",
+		"未经验证",
+		"临时全部副词条",
+		"临时全词条",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isVerifiedSigilDefinition(sigil *SigilDef) bool {
+	return sigil != nil &&
+		!strings.EqualFold(sigil.InternalID, "GEEN_142_02") &&
+		strings.EqualFold(strings.TrimSpace(sigil.Confidence), "high") &&
+		!hasUnverifiedSigilNotes(sigil.Notes)
+}
+
+func naturalSigilLevels(levels []int) []int {
+	result := make([]int, 0, len(levels))
+	seen := make(map[int]bool, len(levels))
+	for _, level := range levels {
+		if level < 1 || level > 15 || seen[level] {
+			continue
+		}
+		seen[level] = true
+		result = append(result, level)
+	}
+	sort.Ints(result)
+	return result
+}
+
+func maxNaturalSigilLevel(levels []int) int {
+	if len(levels) == 0 {
+		return 0
+	}
+	return levels[len(levels)-1]
+}
+
+func (c *Catalog) IsSigilConstructible(sigil *SigilDef) bool {
+	if !isVerifiedSigilDefinition(sigil) {
+		return false
+	}
+	sigilLevels, err := c.RequireSigilLevels(sigil)
+	if err != nil || len(naturalSigilLevels(sigilLevels)) == 0 {
+		return false
+	}
+	primaryLevels, err := c.RequirePrimaryTraitLevels(sigil)
+	if err != nil || len(naturalSigilLevels(primaryLevels)) == 0 {
+		return false
+	}
+	if !supportsGeneratedPlusSigil(sigil) {
+		return true
+	}
+	if len(sigil.AllowedSecondaryTraitIDs) == 0 {
+		return false
+	}
+	for _, traitID := range sigil.AllowedSecondaryTraitIDs {
+		if traitID == sigil.PrimaryTraitID {
+			continue
+		}
+		trait, err := c.RequireTrait(traitID)
+		if err != nil || !isSelectableTrait(trait) {
+			continue
+		}
+		levels, err := c.RequireSecondaryTraitLevels(sigil, trait)
+		if err == nil && len(naturalSigilLevels(levels)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func generatedPlusDisplayName(name string) string {
 	if strings.HasSuffix(name, "+") {
 		return name
@@ -263,6 +353,12 @@ func generatedPlusDisplayName(name string) string {
 func displaySigilName(sigil *SigilDef) string {
 	if sigil == nil {
 		return ""
+	}
+	// Stout Heart keeps its real in-game item name even when the save record
+	// carries a constructed secondary trait.  Appending "+" here invents a
+	// name that the freshly written save never reports back.
+	if strings.EqualFold(sigil.DisplayName, "Stout Heart") {
+		return cnName(sigil.DisplayName)
 	}
 	if supportsGeneratedPlusSigil(sigil) {
 		if sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait {
@@ -316,8 +412,10 @@ func (c *Catalog) GetAllowedSecondaryTraits(sigil *SigilDef) ([]*TraitDef, error
 			}
 			result = appendIfAllowed(result, trait)
 		}
-		if trait, err := c.RequireTrait("SKILL_109_00"); err == nil {
-			result = appendIfAllowed(result, trait)
+		if !strings.EqualFold(derefStr(sigil.Category), "character_sigil") {
+			if trait, err := c.RequireTrait("SKILL_109_00"); err == nil {
+				result = appendIfAllowed(result, trait)
+			}
 		}
 		return result, nil
 	}

@@ -560,7 +560,7 @@ export const uiTranslations = {
   '语言设置': 'Language Settings',
   '选择界面语言。更改后界面会自动重新加载。': 'Choose the interface language. The interface reloads automatically after a change.',
   '当前语言': 'Current Language',
-  '使用完整英文界面（默认）': 'Use the complete English interface (default)',
+  '使用英文界面（部分新增专业术语仍保留中文）': 'Use the English interface (some newly added technical terms remain Chinese)',
   '简体中文': 'Simplified Chinese',
   '使用原始中文界面': 'Use the original Chinese interface',
   '已启用': 'Active',

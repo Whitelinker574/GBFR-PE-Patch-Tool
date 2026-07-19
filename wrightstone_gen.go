@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -56,20 +57,76 @@ type WrightstoneApplyResult struct {
 }
 
 type WrightstoneGen struct {
-	ctx      context.Context
-	catalog  *WrightstoneCatalog
-	save     *SaveData
-	savePath string
-	queue    []WrightstoneQueueItem
+	mu                      sync.Mutex
+	ctx                     context.Context
+	catalog                 *WrightstoneCatalog
+	save                    *SaveData
+	savePath                string
+	queue                   []WrightstoneQueueItem
+	loadSaveForVerification func(string) (*SaveData, error)
 }
 
 func NewWrightstoneGen() *WrightstoneGen {
-	return &WrightstoneGen{}
+	return &WrightstoneGen{loadSaveForVerification: LoadSave}
 }
 
-func (wg *WrightstoneGen) startup(ctx context.Context) { wg.ctx = ctx }
+type wrightstoneWriteExpectation struct {
+	ItemUnitID      int
+	SlotID          int
+	WrightstoneHash uint32
+	FirstHash       uint32
+	FirstLevel      int
+	SecondHash      uint32
+	SecondLevel     int
+	ThirdHash       uint32
+	ThirdLevel      int
+}
+
+type wrightstoneRecordVerifier func(*SaveData, wrightstoneWriteExpectation) error
+
+func (wg *WrightstoneGen) verifyWrittenWrightstones(outputPath string, created int,
+	expected []wrightstoneWriteExpectation, verifyRecord wrightstoneRecordVerifier) (int, error) {
+	loader := wg.loadSaveForVerification
+	if loader == nil {
+		loader = LoadSave
+	}
+	verifySave, err := loader(outputPath)
+	if err != nil {
+		return 0, fmt.Errorf("祝福已写入，但重新读取失败: %w", err)
+	}
+	verified := 0
+	for i, record := range expected {
+		if err := verifyRecord(verifySave, record); err != nil {
+			return verified, fmt.Errorf("祝福已写入，但第 %d 个祝福回读验证失败: %w", i+1, err)
+		}
+		verified++
+	}
+	if verified != created {
+		return verified, fmt.Errorf("祝福已写入，但回读验证数量不符: 已创建 %d，已验证 %d", created, verified)
+	}
+	return verified, nil
+}
+
+func verifyWrightstoneRecord(save *SaveData, record wrightstoneWriteExpectation) error {
+	return save.VerifyWrightstone(record.ItemUnitID, record.SlotID, record.WrightstoneHash,
+		record.FirstHash, record.FirstLevel,
+		record.SecondHash, record.SecondLevel,
+		record.ThirdHash, record.ThirdLevel)
+}
+
+func (wg *WrightstoneGen) startup(ctx context.Context) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	wg.ctx = ctx
+}
 
 func (wg *WrightstoneGen) LoadCatalog() error {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	return wg.loadCatalogLocked()
+}
+
+func (wg *WrightstoneGen) loadCatalogLocked() error {
 	c, err := LoadWrightstoneCatalog()
 	if err != nil {
 		return err
@@ -78,15 +135,17 @@ func (wg *WrightstoneGen) LoadCatalog() error {
 	return nil
 }
 
-func (wg *WrightstoneGen) ensureCatalog() error {
+func (wg *WrightstoneGen) ensureCatalogLocked() error {
 	if wg.catalog == nil {
-		return wg.LoadCatalog()
+		return wg.loadCatalogLocked()
 	}
 	return nil
 }
 
 func (wg *WrightstoneGen) GetWrightstoneList() ([]WrightstoneInfo, error) {
-	if err := wg.ensureCatalog(); err != nil {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return nil, err
 	}
 	sorted := wg.catalog.GetWrightstoneSortedList()
@@ -94,7 +153,7 @@ func (wg *WrightstoneGen) GetWrightstoneList() ([]WrightstoneInfo, error) {
 	for i, w := range sorted {
 		defaultName := ""
 		if t, err := wg.catalog.RequireTrait(w.DefaultTraitID); err == nil {
-			defaultName = cnTrait(t.DisplayName)
+			defaultName = cnWrightstoneTrait(t.DisplayName)
 		}
 		result[i] = WrightstoneInfo{
 			InternalID:       w.InternalID,
@@ -108,7 +167,9 @@ func (wg *WrightstoneGen) GetWrightstoneList() ([]WrightstoneInfo, error) {
 }
 
 func (wg *WrightstoneGen) GetTraitList() ([]WrightstoneTraitInfo, error) {
-	if err := wg.ensureCatalog(); err != nil {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return nil, err
 	}
 	sorted := wg.catalog.GetTraitSortedList()
@@ -118,7 +179,7 @@ func (wg *WrightstoneGen) GetTraitList() ([]WrightstoneTraitInfo, error) {
 		result[i] = WrightstoneTraitInfo{
 			InternalID:    t.InternalID,
 			Hash:          t.Hash,
-			DisplayName:   cnTrait(t.DisplayName),
+			DisplayName:   cnWrightstoneTrait(t.DisplayName),
 			MaxLevel:      derefInt(t.MaxLevel),
 			AllowedLevels: levels,
 		}
@@ -127,7 +188,9 @@ func (wg *WrightstoneGen) GetTraitList() ([]WrightstoneTraitInfo, error) {
 }
 
 func (wg *WrightstoneGen) GetTraitLevels(traitID string) ([]int, error) {
-	if err := wg.ensureCatalog(); err != nil {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return nil, err
 	}
 	trait, err := wg.catalog.RequireTrait(traitID)
@@ -138,7 +201,9 @@ func (wg *WrightstoneGen) GetTraitLevels(traitID string) ([]int, error) {
 }
 
 func (wg *WrightstoneGen) GetDefaultTrait(wrightstoneID string) (*WrightstoneTraitInfo, error) {
-	if err := wg.ensureCatalog(); err != nil {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return nil, err
 	}
 	w, err := wg.catalog.RequireWrightstone(wrightstoneID)
@@ -153,13 +218,15 @@ func (wg *WrightstoneGen) GetDefaultTrait(wrightstoneID string) (*WrightstoneTra
 	return &WrightstoneTraitInfo{
 		InternalID:    t.InternalID,
 		Hash:          t.Hash,
-		DisplayName:   cnTrait(t.DisplayName),
+		DisplayName:   cnWrightstoneTrait(t.DisplayName),
 		MaxLevel:      derefInt(t.MaxLevel),
 		AllowedLevels: levels,
 	}, nil
 }
 
 func (wg *WrightstoneGen) LoadSaveFile(path string) (*WrightstoneSaveInfo, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	s, err := LoadSave(path)
 	if err != nil {
 		return nil, err
@@ -175,6 +242,8 @@ func (wg *WrightstoneGen) LoadSaveFile(path string) (*WrightstoneSaveInfo, error
 }
 
 func (wg *WrightstoneGen) GetLoadedSaveInfo() (*WrightstoneSaveInfo, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if wg.save == nil {
 		return nil, fmt.Errorf("未加载存档")
 	}
@@ -186,6 +255,8 @@ func (wg *WrightstoneGen) GetLoadedSaveInfo() (*WrightstoneSaveInfo, error) {
 }
 
 func (wg *WrightstoneGen) FileExists(path string) (bool, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if strings.TrimSpace(path) == "" {
 		return false, nil
 	}
@@ -200,6 +271,8 @@ func (wg *WrightstoneGen) FileExists(path string) (bool, error) {
 }
 
 func (wg *WrightstoneGen) SelectWrightstoneInputSave() (string, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if wg.ctx == nil {
 		return "", fmt.Errorf("Wails 上下文未初始化")
 	}
@@ -213,6 +286,8 @@ func (wg *WrightstoneGen) SelectWrightstoneInputSave() (string, error) {
 }
 
 func (wg *WrightstoneGen) SelectWrightstoneOutputSave(defaultPath string) (string, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if wg.ctx == nil {
 		return "", fmt.Errorf("Wails 上下文未初始化")
 	}
@@ -234,13 +309,17 @@ func (wg *WrightstoneGen) SelectWrightstoneOutputSave(defaultPath string) (strin
 }
 
 func (wg *WrightstoneGen) GetQueue() []WrightstoneQueueItem {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if wg.queue == nil {
 		return []WrightstoneQueueItem{}
 	}
-	return wg.queue
+	return append([]WrightstoneQueueItem(nil), wg.queue...)
 }
 
 func (wg *WrightstoneGen) AddToQueue(item WrightstoneQueueItem) error {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	normalized, report, err := wg.normalizeWrightstoneQueueItem(item)
 	if err != nil {
 		return err
@@ -253,16 +332,22 @@ func (wg *WrightstoneGen) AddToQueue(item WrightstoneQueueItem) error {
 }
 
 func (wg *WrightstoneGen) CheckLegality(item WrightstoneQueueItem) (LegalityReport, error) {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	_, report, err := wg.normalizeWrightstoneQueueItem(item)
 	return report, err
 }
 
 func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueItem) (WrightstoneQueueItem, LegalityReport, error) {
-	if err := wg.ensureCatalog(); err != nil {
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return item, LegalityReport{}, err
 	}
 	if item.Quantity <= 0 {
 		report := newLegalityReport(LegalityImpossible, false, "数量至少为 1")
+		return item, report, nil
+	}
+	if item.Quantity > generatorQuantityMax {
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("数量不能超过 %d", generatorQuantityMax))
 		return item, report, nil
 	}
 	wrightstone, err := wg.catalog.RequireWrightstone(item.WrightstoneID)
@@ -281,7 +366,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err := validateWrightstoneSlotLevel(firstTrait, item.FirstLevel, "第一特性", 20); err != nil {
 		reasons = append(reasons, err.Error())
 	}
-	item.FirstTraitName = cnTrait(firstTrait.DisplayName)
+	item.FirstTraitName = cnWrightstoneTrait(firstTrait.DisplayName)
 	firstLevels, err := requireWrightstoneTraitLevels(firstTrait)
 	if err != nil {
 		return item, LegalityReport{}, err
@@ -302,7 +387,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err := validateWrightstoneSlotLevel(secondTrait, item.SecondLevel, "第二特性", 15); err != nil {
 		reasons = append(reasons, err.Error())
 	}
-	item.SecondTraitName = cnTrait(secondTrait.DisplayName)
+	item.SecondTraitName = cnWrightstoneTrait(secondTrait.DisplayName)
 	secondLevels, err := requireWrightstoneTraitLevels(secondTrait)
 	if err != nil {
 		return item, LegalityReport{}, err
@@ -320,7 +405,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err := validateWrightstoneSlotLevel(thirdTrait, item.ThirdLevel, "第三特性", 10); err != nil {
 		reasons = append(reasons, err.Error())
 	}
-	item.ThirdTraitName = cnTrait(thirdTrait.DisplayName)
+	item.ThirdTraitName = cnWrightstoneTrait(thirdTrait.DisplayName)
 	thirdLevels, err := requireWrightstoneTraitLevels(thirdTrait)
 	if err != nil {
 		return item, LegalityReport{}, err
@@ -367,6 +452,8 @@ func validateWrightstoneSlotLevel(trait *WrightstoneTraitDef, level int, label s
 }
 
 func (wg *WrightstoneGen) RemoveFromQueue(index int) error {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	if index < 0 || index >= len(wg.queue) {
 		return fmt.Errorf("无效的队列索引: %d", index)
 	}
@@ -375,11 +462,16 @@ func (wg *WrightstoneGen) RemoveFromQueue(index int) error {
 }
 
 func (wg *WrightstoneGen) ClearQueue() {
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
 	wg.queue = nil
 }
 
 func (wg *WrightstoneGen) ApplyQueue(outputPath string) (*WrightstoneApplyResult, error) {
-	result, err := wg.applyItems(wg.queue, outputPath)
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	items := append([]WrightstoneQueueItem(nil), wg.queue...)
+	result, err := wg.applyItemsLocked(items, outputPath)
 	if err != nil {
 		return nil, err
 	}
@@ -388,10 +480,15 @@ func (wg *WrightstoneGen) ApplyQueue(outputPath string) (*WrightstoneApplyResult
 }
 
 func (wg *WrightstoneGen) ApplyItems(items []WrightstoneQueueItem, outputPath string) (*WrightstoneApplyResult, error) {
-	return wg.applyItems(items, outputPath)
+	wg.mu.Lock()
+	defer wg.mu.Unlock()
+	return wg.applyItemsLocked(append([]WrightstoneQueueItem(nil), items...), outputPath)
 }
 
-func (wg *WrightstoneGen) applyItems(items []WrightstoneQueueItem, outputPath string) (*WrightstoneApplyResult, error) {
+func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputPath string) (*WrightstoneApplyResult, error) {
+	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
+		return nil, err
+	}
 	if len(items) == 0 {
 		return nil, fmt.Errorf("没有要写入的祝福")
 	}
@@ -402,7 +499,7 @@ func (wg *WrightstoneGen) applyItems(items []WrightstoneQueueItem, outputPath st
 	if outputPath == "" {
 		return nil, fmt.Errorf("请输入输出路径")
 	}
-	if err := wg.ensureCatalog(); err != nil {
+	if err := wg.ensureCatalogLocked(); err != nil {
 		return nil, err
 	}
 
@@ -462,12 +559,29 @@ func (wg *WrightstoneGen) applyItems(items []WrightstoneQueueItem, outputPath st
 		}
 	}
 
+	// Treat the in-memory patch, disk replacement and strict readback as one
+	// transaction.  A failed attempt must leave both the save buffer and queue
+	// exactly as they were so a retry rewrites the same slots instead of appending.
+	originalData := append([]byte(nil), wg.save.data...)
+	originalQueue := append([]WrightstoneQueueItem(nil), wg.queue...)
+	originalBackupPath := wg.save.lastBackupPath
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		wg.save.data = originalData
+		wg.save.lastBackupPath = originalBackupPath
+		wg.queue = originalQueue
+	}()
+
 	newMaxSlotID := firstNewSlotID + len(expanded) - 1
 	if err := wg.save.SetMaxWrightstoneSlotID(newMaxSlotID); err != nil {
 		return nil, err
 	}
 
 	created := 0
+	expectedWrites := make([]wrightstoneWriteExpectation, 0, len(expanded))
 	for i, item := range expanded {
 		itemUnitID := emptySlots[i]
 		newSlotID := firstNewSlotID + i
@@ -499,6 +613,17 @@ func (wg *WrightstoneGen) applyItems(items []WrightstoneQueueItem, outputPath st
 			thirdHash, item.ThirdLevel); err != nil {
 			return nil, fmt.Errorf("写入 %s 失败: %w", item.WrightstoneName, err)
 		}
+		expectedWrites = append(expectedWrites, wrightstoneWriteExpectation{
+			ItemUnitID:      itemUnitID,
+			SlotID:          newSlotID,
+			WrightstoneHash: wrightstoneHash,
+			FirstHash:       firstHash,
+			FirstLevel:      item.FirstLevel,
+			SecondHash:      secondHash,
+			SecondLevel:     item.SecondLevel,
+			ThirdHash:       thirdHash,
+			ThirdLevel:      item.ThirdLevel,
+		})
 		created++
 	}
 
@@ -509,31 +634,13 @@ func (wg *WrightstoneGen) applyItems(items []WrightstoneQueueItem, outputPath st
 		return nil, fmt.Errorf("写入输出文件失败: %w", err)
 	}
 
-	verified := 0
-	verifySave, err := LoadSave(outputPath)
-	if err == nil {
-		for i, item := range expanded {
-			itemUnitID := emptySlots[i]
-			newSlotID := firstNewSlotID + i
-			wrightstone, _ := wg.catalog.RequireWrightstone(item.WrightstoneID)
-			wrightstoneHash, _ := ParseHashHex(wrightstone.Hash)
-			firstTrait, _ := wg.catalog.RequireTrait(item.FirstTraitID)
-			firstHash, _ := ParseHashHex(firstTrait.Hash)
-			secondTrait, _ := wg.catalog.RequireTrait(item.SecondTraitID)
-			secondHash, _ := ParseHashHex(secondTrait.Hash)
-			thirdTrait, _ := wg.catalog.RequireTrait(item.ThirdTraitID)
-			thirdHash, _ := ParseHashHex(thirdTrait.Hash)
-
-			if verifySave.VerifyWrightstone(itemUnitID, newSlotID, wrightstoneHash,
-				firstHash, item.FirstLevel,
-				secondHash, item.SecondLevel,
-				thirdHash, item.ThirdLevel) == nil {
-				verified++
-			}
-		}
+	verified, err := wg.verifyWrittenWrightstones(outputPath, created, expectedWrites, verifyWrightstoneRecord)
+	if err != nil {
+		return nil, err
 	}
 
 	absPath, _ := filepath.Abs(outputPath)
+	committed = true
 	return &WrightstoneApplyResult{CreatedCount: created, VerifiedCount: verified, OutputPath: absPath}, nil
 }
 

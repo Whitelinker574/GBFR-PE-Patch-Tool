@@ -1,16 +1,15 @@
 [简体中文](README.md)
 
-# GBFR PE Patch Tool v1.7.3 — English and Chinese
+# GBFR Data Tools — Granblue Fantasy: Relink 2.0.2
 
 A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Granblue Fantasy: Relink** and **Endless Ragnarok**.
 
-> English is the default language. Open the **Language** tab to switch between English and Simplified Chinese. The preference is stored locally and restored on the next launch.
+> Open the **Language** tab to switch between English and Simplified Chinese. The preference is stored locally and restored on the next launch. Some newly added specialist loadout terminology still remains in Chinese and the app states that limitation explicitly.
 
 ## Language support
 
-- **English is the default language.**
 - Switch between **English** and **Simplified Chinese** from the Language tab.
-- Sigil, trait, wrightstone, and in-memory sigil names follow the selected language.
+- Core navigation and the mature generators are bilingual; some new loadout/mastery terminology is not translated yet.
 - The selected language is saved locally and restored automatically.
 
 ## Features
@@ -20,6 +19,8 @@ A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Gr
 - **Sigil Generator** — Search for sigils, configure sigil and trait levels, and write them to an output save.
 - **New Sigil Memory Editor** — Read the sigil currently selected in-game and edit its sigil, primary trait, secondary trait, and levels.
 - **Wrightstone Generator** — Configure a wrightstone and its three traits, with queue support for batch generation.
+- **Selected Wrightstone Memory Editor** — Read and transactionally update the selected three-trait record; successful writes automatically restore the hook.
+- **Single-character Loadouts** — Edit one character build with weapon, 12 sigil slots, four skills, mastery paths, summons, and single-build JSON import/export.
 - **Quest Clear Statistics** — Scan save slots and display quest clear counts and save summaries.
 - **In-place Save Editing** — Optionally overwrite the selected input save directly. Back up the save first.
 
@@ -33,17 +34,16 @@ A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Gr
 ### Runtime tools
 
 - **Character Usage Counts** — View and edit per-character quest usage counts.
-- **Quest Result Countdown** — Change the result-screen countdown; setting it to `0` allows immediate chest opening.
-- **Face Rune Display** — Hide or restore face runes on the purple skin, and show purple runes on other skins.
 - **Currency and Potion Editors** — Read and write supported currencies and potion counts through stable pointer paths.
 - **No Material Consumption** — Temporarily prevent upgrade, enhancement, and transmutation material quantities from decreasing.
-- **Infinite Challenges** — Ignore the ten consecutive-quest limit.
-- **Unlock All Titles** — Temporarily make all titles available. Save persistence timing is not fully known; back up the save first.
 - **Guaranteed Terminus Weapon Drop** — Removes the 80% exclusion check for Terminus Weapon lots while preserving ownership and character-unlock checks.
-- **Team Damage Meter** — Track team damage from actual monster HP changes, without overkill damage.
 - **Over Mastery Editor** — Scan, refresh, edit, and save Over Mastery values.
 - **Monster Enhancements** — Controls for monster HP, damage, stun gauge, Overdrive state, SBA chain timing, Link Time, and related gauges. Some items are currently marked as not fixed.
 - **Update Check** — Check GitHub Releases for newer versions.
+
+### Compatibility lab
+
+Quest-result countdown, infinite challenges, face/alternate-skin runes, unlock-all-titles, team damage metering, score multipliers, forced sub-objective rewards, and mission multipliers are retained only as legacy/experimental material. They have not completed production acceptance against game 2.0.2 and are labelled accordingly in the UI.
 
 ## Safety notes
 
@@ -91,7 +91,7 @@ When `src_dll/patch_core` is modified, build the DLL as **Release x64** first an
 
 ## Translation scope
 
-The English localization includes:
+The English localization currently covers:
 
 - Main navigation and tabs
 - Sigil and Wrightstone generators
@@ -101,9 +101,11 @@ The English localization includes:
 - Miscellaneous runtime tools
 - Monster enhancement controls
 - Over Mastery interface
-- User-facing status and error messages
+- Most established user-facing status and error messages
 - Character, Sigil, Trait, and Wrightstone display names
 - New Endless Ragnarok sigils and character-specific traits used by the memory editor
+
+The expanded loadout, mastery, summon, and final-stat editor still contains Chinese specialist terms. Until those strings are fully catalogued, English mode is intentionally described as partial rather than complete.
 
 The Chinese lookup tables remain in the source as reference data, but the English build returns the original English catalog names.
 

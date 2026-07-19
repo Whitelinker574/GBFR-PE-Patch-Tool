@@ -1,17 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
 const (
-	sigilMemoryHookRVA        = uintptr(0x345157)
-	sigilMemorySaveRVA        = uintptr(0x79D820)
-	sigilMemoryHookSize       = 8
-	sigilMemoryCaveDataOffset = uintptr(0x40)
-	sigilMemoryOriginalOffset = uintptr(13)
+	sigilMemoryHookRVA              = uintptr(0x345157)
+	sigilMemorySaveRVA              = uintptr(0x79D820)
+	sigilMemoryHookSize             = 8
+	sigilMemoryCaveDataOffset       = uintptr(0x40)
+	sigilMemoryOriginalOffset       = uintptr(17)
+	sigilMemoryLegacyOriginalOffset = uintptr(13)
+	sigilMemoryMarkerOffset         = uintptr(0x30)
 )
 
 var (
@@ -25,6 +30,9 @@ var (
 		true, false, true, false, false, false, false, false, true, true, false,
 		true, false, true, false, false, false, false, false, true, true, false, true, false, true, false, true,
 	}
+	sigilMemoryOriginalBytes = []byte{0x31, 0xC9, 0x81, 0x38, 0xB0, 0xE0, 0x7A, 0x88}
+	sigilMemoryMarker        = []byte("GBFRSGM1")
+	sigilMemoryLifecycleMu   sync.Mutex
 )
 
 type SigilMemoryOption struct {
@@ -35,6 +43,8 @@ type SigilMemoryOption struct {
 	MaxLevel                    *int     `json:"maxLevel,omitempty"`
 	AllowedLevels               []int    `json:"allowedLevels,omitempty"`
 	FirstTraitMaxLevel          *int     `json:"firstTraitMaxLevel,omitempty"`          // sigils only
+	PrimaryTraitHash            uint32   `json:"primaryTraitHash,omitempty"`            // catalog sigils only
+	AllowedPrimaryTraitLevels   []int    `json:"allowedPrimaryTraitLevels,omitempty"`   // catalog sigils only
 	AllowedSecondaryTraitHashes []uint32 `json:"allowedSecondaryTraitHashes,omitempty"` // sigils only
 	SupportsSecondaryTrait      *bool    `json:"supportsSecondaryTrait,omitempty"`      // sigils only
 	Source                      string   `json:"source"`                                // "catalog" | "memory-only"
@@ -46,6 +56,7 @@ type SigilMemoryOptions struct {
 }
 
 type SigilMemoryStatus struct {
+	OwnerToken          string `json:"ownerToken,omitempty"`
 	Found               bool   `json:"found"`
 	Hooked              bool   `json:"hooked"`
 	Address             uint64 `json:"address"`
@@ -65,12 +76,13 @@ type SigilMemoryStatus struct {
 }
 
 type SigilMemoryUpdate struct {
-	SigilHash           uint32 `json:"sigilHash"`
-	SigilLevel          uint32 `json:"sigilLevel"`
-	PrimaryTraitHash    uint32 `json:"primaryTraitHash"`
-	PrimaryTraitLevel   uint32 `json:"primaryTraitLevel"`
-	SecondaryTraitHash  uint32 `json:"secondaryTraitHash"`
-	SecondaryTraitLevel uint32 `json:"secondaryTraitLevel"`
+	ExpectedSelectedAddr uint64 `json:"expectedSelectedAddr"`
+	SigilHash            uint32 `json:"sigilHash"`
+	SigilLevel           uint32 `json:"sigilLevel"`
+	PrimaryTraitHash     uint32 `json:"primaryTraitHash"`
+	PrimaryTraitLevel    uint32 `json:"primaryTraitLevel"`
+	SecondaryTraitHash   uint32 `json:"secondaryTraitHash"`
+	SecondaryTraitLevel  uint32 `json:"secondaryTraitLevel"`
 }
 
 func sigilMemoryHookedMask() []bool {
@@ -106,6 +118,18 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		if err != nil {
 			continue
 		}
+		primaryTrait, err := catalog.RequireTrait(sigil.PrimaryTraitID)
+		if err != nil {
+			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的固定主词条无效: %w", sigil.DisplayName, err)
+		}
+		primaryTraitHash, err := ParseHashHex(primaryTrait.Hash)
+		if err != nil {
+			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的固定主词条哈希无效: %w", sigil.DisplayName, err)
+		}
+		allowedPrimaryLevels, err := catalog.RequirePrimaryTraitLevels(sigil)
+		if err != nil {
+			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的固定主词条等级无效: %w", sigil.DisplayName, err)
+		}
 		// Keep the memory editor's legality hints in sync with the save
 		// generator. GetAllowedSecondaryTraits applies the catalog-wide
 		// eligibility flags and the DLC compatibility additions (for example
@@ -126,6 +150,8 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 			MaxLevel:                    sigil.MaxSigilLevel,
 			AllowedLevels:               sigil.AllowedSigilLevels,
 			FirstTraitMaxLevel:          sigil.FirstTraitMaxLevel,
+			PrimaryTraitHash:            primaryTraitHash,
+			AllowedPrimaryTraitLevels:   allowedPrimaryLevels,
 			AllowedSecondaryTraitHashes: allowedSecHashes,
 			SupportsSecondaryTrait:      sigil.SupportsSecondaryTrait,
 			Source:                      "catalog",
@@ -154,15 +180,33 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		result.Sigils = append(result.Sigils, SigilMemoryOption{Hash: entry.Hash, DisplayName: entry.Name, Source: "memory-only"})
 	}
 	for _, entry := range sigilMemoryTraits {
-		result.Traits = append(result.Traits, SigilMemoryOption{Hash: entry.Hash, DisplayName: entry.Name, Source: "memory-only"})
+		maxLevel := int(sigilMemoryTraitMaxLevel(entry.Hash))
+		allowedLevels := make([]int, maxLevel)
+		for index := range allowedLevels {
+			allowedLevels[index] = index + 1
+		}
+		result.Traits = append(result.Traits, SigilMemoryOption{
+			Hash:          entry.Hash,
+			DisplayName:   entry.Name,
+			MaxLevel:      &maxLevel,
+			AllowedLevels: allowedLevels,
+			Source:        "memory-only",
+		})
 	}
 	return result, nil
 }
 
 func (a *App) SigilMemoryScan() (SigilMemoryStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return SigilMemoryStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	return a.scanSigilMemoryLocked()
+}
+
+func (a *App) scanSigilMemoryLocked() (SigilMemoryStatus, error) {
 	// Current game build verified at granblue_fantasy_relink.exe+345157.
 	// Its first 8 bytes are safe to validate and hook; later bytes vary by build.
 	addr := a.moduleBase + sigilMemoryHookRVA
@@ -174,16 +218,10 @@ func (a *App) SigilMemoryScan() (SigilMemoryStatus, error) {
 		a.sigilMemoryOriginal = append(a.sigilMemoryOriginal[:0], first...)
 		a.sigilMemoryCaveAddr = 0
 	} else if isSigilMemoryJump(first) {
-		// A previous tool instance may have exited while the game stayed open.
-		// Adopt only a hook whose code cave has our exact prologue, then recover
-		// the displaced instructions so it can be safely removed on shutdown.
-		cave := relJumpTarget(addr, first)
-		original, err := a.recoverSigilMemoryHook(cave)
-		if err != nil {
-			return SigilMemoryStatus{}, fmt.Errorf("选中因子 Hook 无法接管: %w", err)
-		}
-		a.sigilMemoryCaveAddr = cave
-		a.sigilMemoryOriginal = original
+		// readSigilMemoryStatus adopts only the preserving format. A legacy
+		// self-owned cave is recognised solely so its hook can be removed.
+		a.sigilMemoryCaveAddr = 0
+		a.sigilMemoryOriginal = nil
 	} else {
 		return SigilMemoryStatus{}, fmt.Errorf("选中因子指令字节异常: %s", bytesToHex(first))
 	}
@@ -231,32 +269,138 @@ func (a *App) scanSigilMemoryPattern() (uintptr, error) {
 }
 
 func (a *App) SigilMemoryGetStatus() (SigilMemoryStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return SigilMemoryStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
 	if a.sigilMemoryHookAddr == 0 {
-		return a.SigilMemoryScan()
+		return a.scanSigilMemoryLocked()
 	}
-	status, err := a.readSigilMemoryStatus()
-	if err != nil {
-		a.sigilMemoryHookAddr = 0
-		return a.SigilMemoryScan()
+	return a.readSigilMemoryStatus()
+}
+
+func (a *App) grantSigilMemoryOwner(status SigilMemoryStatus) SigilMemoryStatus {
+	token := a.nextRuntimeOwnerToken("sigil")
+	// The hook page now owns the shared process lifetime. Invalidate any older
+	// character-page cleanup before exposing the new hook token.
+	a.charaOwnerToken = ""
+	a.sigilMemoryOwnerToken = token
+	status.OwnerToken = token
+	return status
+}
+
+func (a *App) SigilMemoryDisable() (SigilMemoryStatus, error) {
+	// A never-enabled page can unmount after the game has already exited.
+	// Avoid opening a connection solely for that idempotent no-op.
+	a.procMu.Lock()
+	idle := a.sigilMemoryHookAddr == 0 && a.sigilMemoryCaveAddr == 0 && len(a.sigilMemoryOriginal) == 0
+	if idle {
+		a.sigilMemoryOwnerToken = ""
 	}
-	return status, nil
+	a.procMu.Unlock()
+	if idle {
+		return SigilMemoryStatus{}, nil
+	}
+	if err := a.acquireGameProcessLease(); err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	if err := a.releaseSigilMemoryHookLocked(); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("关闭因子读取失败: %w", err)
+	}
+	a.sigilMemoryOwnerToken = ""
+	return SigilMemoryStatus{}, nil
+}
+
+// SigilMemoryRelease tears down the hook only while token is still the latest
+// owner. A delayed cleanup from a previous page instance is a no-op.
+func (a *App) SigilMemoryRelease(token string) (SigilMemoryStatus, error) {
+	a.procMu.Lock()
+	if !runtimeOwnerTokenMatches(a.sigilMemoryOwnerToken, token) {
+		a.procMu.Unlock()
+		return SigilMemoryStatus{}, nil
+	}
+	idle := a.sigilMemoryHookAddr == 0 && a.sigilMemoryCaveAddr == 0 && len(a.sigilMemoryOriginal) == 0
+	if idle {
+		a.sigilMemoryOwnerToken = ""
+		a.procMu.Unlock()
+		return SigilMemoryStatus{}, nil
+	}
+	a.procMu.Unlock()
+
+	if err := a.acquireGameProcessLease(); err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	if !runtimeOwnerTokenMatches(a.sigilMemoryOwnerToken, token) {
+		return SigilMemoryStatus{}, nil
+	}
+	if err := a.releaseSigilMemoryHookLocked(); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("关闭因子读取失败: %w", err)
+	}
+	a.sigilMemoryOwnerToken = ""
+	return SigilMemoryStatus{}, nil
 }
 
 func (a *App) SigilMemoryEnable() (SigilMemoryStatus, error) {
-	status, err := a.SigilMemoryGetStatus()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	status, err := a.sigilMemoryEnableLocked()
+	if err == nil {
+		// Compatibility callers deliberately take an unowned hook lease.
+		a.sigilMemoryOwnerToken = ""
+	}
+	return status, err
+}
+
+func (a *App) SigilMemoryAcquire(requestID uint64) (SigilMemoryStatus, error) {
+	if err := a.acquireOwnedGameProcessLease(requestID); err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	status, err := a.sigilMemoryEnableLocked()
+	if err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	return a.grantSigilMemoryOwner(status), nil
+}
+
+func (a *App) sigilMemoryEnableLocked() (SigilMemoryStatus, error) {
+	var status SigilMemoryStatus
+	var err error
+	if a.sigilMemoryHookAddr == 0 {
+		status, err = a.scanSigilMemoryLocked()
+	} else {
+		status, err = a.readSigilMemoryStatus()
+	}
 	if err != nil {
 		return SigilMemoryStatus{}, err
 	}
 	if status.Hooked {
 		return status, nil
 	}
+	if err := a.validateRemoteFunctionStart(a.moduleBase+sigilMemorySaveRVA, "游戏内因子保存函数"); err != nil {
+		return SigilMemoryStatus{}, err
+	}
 
 	original := make([]byte, sigilMemoryHookSize)
 	if err := readProcessMemory(a.hProcess, a.sigilMemoryHookAddr, unsafe.Pointer(&original[0]), uintptr(len(original))); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("读取选中因子原始指令失败: %w", err)
+	}
+	if !isSigilMemoryOriginal(original) {
+		return SigilMemoryStatus{}, fmt.Errorf("选中因子精确指令签名已变化: %s", bytesToHex(original))
 	}
 	cave, err := virtualAllocRemoteNear(a.hProcess, a.sigilMemoryHookAddr, 0x1000)
 	if err != nil {
@@ -267,7 +411,7 @@ func (a *App) SigilMemoryEnable() (SigilMemoryStatus, error) {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return SigilMemoryStatus{}, err
 	}
-	if err := writeProcessMemory(a.hProcess, cave, unsafe.Pointer(&code[0]), uintptr(len(code))); err != nil {
+	if err := writeCodeMemory(a.hProcess, cave, code); err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return SigilMemoryStatus{}, fmt.Errorf("写入因子读取代码洞失败: %w", err)
 	}
@@ -276,71 +420,137 @@ func (a *App) SigilMemoryEnable() (SigilMemoryStatus, error) {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return SigilMemoryStatus{}, err
 	}
-	if err := writeCodeMemory(a.hProcess, a.sigilMemoryHookAddr, patch); err != nil {
-		_ = virtualFreeRemote(a.hProcess, cave)
-		return SigilMemoryStatus{}, fmt.Errorf("写入因子读取 Hook 失败: %w", err)
+	canFree, err := installRemoteCodeHook(a.hProcess, a.sigilMemoryHookAddr, original, patch)
+	if err != nil {
+		return SigilMemoryStatus{}, runtimeHookInstallFailure(
+			"因子读取 Hook", canFree, err,
+			func() { _ = virtualFreeRemote(a.hProcess, cave) },
+			func() {
+				a.sigilMemoryCaveAddr = cave
+				a.sigilMemoryOriginal = append(a.sigilMemoryOriginal[:0], original...)
+			},
+			a.poisonCurrentLiveMemoryWrites,
+		)
 	}
 	a.sigilMemoryCaveAddr = cave
 	a.sigilMemoryOriginal = append(a.sigilMemoryOriginal[:0], original...)
-	return a.readSigilMemoryStatus()
+	return finalizeRuntimeHookEnable(
+		"因子读取 Hook",
+		a.readSigilMemoryStatus,
+		a.releaseSigilMemoryHookLocked,
+		a.poisonCurrentLiveMemoryWrites,
+	)
 }
 
 func (a *App) SigilMemoryUpdate(update SigilMemoryUpdate) (SigilMemoryStatus, error) {
-	status, err := a.SigilMemoryGetStatus()
+	return a.sigilMemoryUpdate("", false, update)
+}
+
+func (a *App) SigilMemoryUpdateOwned(token string, update SigilMemoryUpdate) (SigilMemoryStatus, error) {
+	return a.sigilMemoryUpdate(token, true, update)
+}
+
+func (a *App) sigilMemoryUpdate(token string, owned bool, update SigilMemoryUpdate) (SigilMemoryStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	sigilMemoryWriteMu.Lock()
+	defer sigilMemoryWriteMu.Unlock()
+	var leaseErr error
+	if owned {
+		leaseErr = a.acquireOwnedRuntimeWriteLease(runtimeOwnerSigil, token)
+	} else {
+		leaseErr = a.acquireGameProcessLease()
+	}
+	if leaseErr != nil {
+		return SigilMemoryStatus{}, leaseErr
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return SigilMemoryStatus{}, err
+	}
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	var status SigilMemoryStatus
+	var err error
+	if a.sigilMemoryHookAddr == 0 {
+		status, err = a.scanSigilMemoryLocked()
+	} else {
+		status, err = a.readSigilMemoryStatus()
+	}
 	if err != nil {
 		return SigilMemoryStatus{}, err
 	}
 	if !status.Hooked || status.SelectedAddr == 0 {
 		return SigilMemoryStatus{}, fmt.Errorf("请先开启读取，并在游戏内因子列表选中一个因子")
 	}
-	catalog, catalogErr := LoadCatalog()
-	if update.SigilLevel > sigilWritableLevelMax {
-		return SigilMemoryStatus{}, fmt.Errorf("因子等级修改上限是 %d", sigilWritableLevelMax)
+	catalog, err := LoadCatalog()
+	if err != nil {
+		return SigilMemoryStatus{}, err
 	}
-	traitWritableMax := func(hash uint32) uint32 {
-		if catalogErr == nil {
-			if trait := catalog.LookupTraitByHash(hash); trait != nil {
-				levels, err := requireTraitLevels(trait, "实时词条")
-				if err == nil {
-					return uint32(highestLevel(levels, 15))
-				}
-			}
-		}
-		return sigilWritableLevelMax
+	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("因子写入参数无效: %w", err)
 	}
-	if max := traitWritableMax(update.PrimaryTraitHash); update.PrimaryTraitLevel > max {
-		return SigilMemoryStatus{}, fmt.Errorf("主词条等级修改上限是 %d", max)
+
+	var selected uintptr
+	if a.sigilMemoryCaveAddr == 0 {
+		return SigilMemoryStatus{}, fmt.Errorf("因子读取代码洞尚未就绪")
 	}
-	if update.SecondaryTraitHash != 0 {
-		if max := traitWritableMax(update.SecondaryTraitHash); update.SecondaryTraitLevel > max {
-			return SigilMemoryStatus{}, fmt.Errorf("副词条等级修改上限是 %d", max)
-		}
+	if err := readProcessMemory(a.hProcess, a.sigilMemoryCaveAddr+sigilMemoryCaveDataOffset, unsafe.Pointer(&selected), unsafe.Sizeof(selected)); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("写入前复核选中因子指针失败: %w", err)
+	}
+	base, err := validateSigilMemorySelection(uintptr(update.ExpectedSelectedAddr), uintptr(status.SelectedAddr), selected)
+	if err != nil {
+		return SigilMemoryStatus{}, err
+	}
+
+	original := make([]byte, sigilMemoryRecordSize)
+	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&original[0]), uintptr(len(original))); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("读取因子原记录失败: %w", err)
+	}
+	desired, err := encodeSigilMemoryRecord(original, update)
+	if err != nil {
+		return SigilMemoryStatus{}, err
 	}
 	if err := snapshotBeforeLiveSaveChange("游戏内因子写入前自动备份"); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 	}
-
-	base := uintptr(status.SelectedAddr)
-	writes := []struct {
-		offset uintptr
-		value  uint32
-		name   string
-	}{
-		{0x00, update.PrimaryTraitHash, "主词条"},
-		{0x04, update.PrimaryTraitLevel, "主词条等级"},
-		{0x08, update.SecondaryTraitHash, "副词条"},
-		{0x0C, update.SecondaryTraitLevel, "副词条等级"},
-		{0x10, update.SigilHash, "因子"},
-		{0x18, update.SigilLevel, "因子等级"},
+	confirmedStatus, err := a.readSigilMemoryStatus()
+	if err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("自动备份后复核因子状态失败: %w", err)
 	}
-	for _, write := range writes {
-		if err := writeUint32Remote(a.hProcess, base+write.offset, write.value); err != nil {
-			return SigilMemoryStatus{}, fmt.Errorf("写入%s失败: %w", write.name, err)
-		}
+	var confirmedSelected uintptr
+	if err := readProcessMemory(a.hProcess, a.sigilMemoryCaveAddr+sigilMemoryCaveDataOffset, unsafe.Pointer(&confirmedSelected), unsafe.Sizeof(confirmedSelected)); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("自动备份后复核因子指针失败: %w", err)
 	}
-	if err := a.saveSigilMemory(base); err != nil {
+	confirmedRecord := make([]byte, sigilMemoryRecordSize)
+	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&confirmedRecord[0]), uintptr(len(confirmedRecord))); err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("自动备份后复核因子记录失败: %w", err)
+	}
+	if err := validateSigilMemorySnapshot(base, uintptr(confirmedStatus.SelectedAddr), confirmedSelected, original, confirmedRecord); err != nil {
 		return SigilMemoryStatus{}, err
 	}
+
+	writer := func(record []byte) error {
+		if len(record) != sigilMemoryRecordSize {
+			return fmt.Errorf("因子记录长度异常: %d", len(record))
+		}
+		return writeProcessMemory(a.hProcess, base, unsafe.Pointer(&record[0]), uintptr(len(record)))
+	}
+	reader := func() ([]byte, error) {
+		record := make([]byte, sigilMemoryRecordSize)
+		if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&record[0]), uintptr(len(record))); err != nil {
+			return nil, err
+		}
+		return record, nil
+	}
+	if err := writeSigilMemoryRecordAtomic(original, desired, writer, func() error { return a.saveSigilMemory(base) }, reader); err != nil {
+		if isRemoteCallIndeterminate(err) || errors.Is(err, errLiveMemoryRollbackUnproven) {
+			a.poisonCurrentLiveMemoryWrites()
+			_ = a.clearSigilMemorySelection()
+		}
+		return SigilMemoryStatus{}, fmt.Errorf("因子原子写入失败: %w", err)
+	}
+
 	result, err := a.readSigilMemoryStatus()
 	if err != nil {
 		return SigilMemoryStatus{}, err
@@ -388,15 +598,36 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 	if !hooked {
 		return status, nil
 	}
-	if a.sigilMemoryCaveAddr == 0 {
-		cave := relJumpTarget(a.sigilMemoryHookAddr, buf)
-		original, err := a.recoverSigilMemoryHook(cave)
-		if err != nil {
-			return SigilMemoryStatus{}, fmt.Errorf("校验选中因子 Hook 失败: %w", err)
-		}
-		a.sigilMemoryCaveAddr = cave
-		a.sigilMemoryOriginal = original
+	cave := relJumpTarget(a.sigilMemoryHookAddr, buf)
+	if a.sigilMemoryCaveAddr != 0 && cave != a.sigilMemoryCaveAddr {
+		return SigilMemoryStatus{}, fmt.Errorf("因子读取 Hook 跳转目标已被替换")
 	}
+	original, err := a.recoverSigilMemoryHook(cave)
+	if err != nil {
+		legacyOriginal, legacyErr := a.recoverLegacySigilMemoryHook(cave)
+		if legacyErr != nil {
+			return SigilMemoryStatus{}, fmt.Errorf("校验选中因子 Hook 所有权失败: 新洞 %v；旧洞 %w", err, legacyErr)
+		}
+		if err := writeCodeMemory(a.hProcess, a.sigilMemoryHookAddr, legacyOriginal); err != nil {
+			return SigilMemoryStatus{}, fmt.Errorf("卸载旧版因子 Hook 失败: %w", err)
+		}
+		restored := make([]byte, sigilMemoryHookSize)
+		if err := readProcessMemory(a.hProcess, a.sigilMemoryHookAddr, unsafe.Pointer(&restored[0]), uintptr(len(restored))); err != nil || !bytes.Equal(restored, legacyOriginal) {
+			return SigilMemoryStatus{}, fmt.Errorf("卸载旧版因子 Hook 后无法确认原始指令已恢复")
+		}
+		// The exact legacy cave clobbers R10. It is recognised only so the
+		// entry point can be restored; it is never adopted as a writable cave.
+		a.sigilMemoryCaveAddr = 0
+		a.sigilMemoryOriginal = append(a.sigilMemoryOriginal[:0], legacyOriginal...)
+		status.Hooked = false
+		status.CurrentBytes = bytesToHex(legacyOriginal)
+		return status, nil
+	}
+	if len(a.sigilMemoryOriginal) == sigilMemoryHookSize && !bytes.Equal(a.sigilMemoryOriginal, original) {
+		return SigilMemoryStatus{}, fmt.Errorf("因子读取 Hook 原始指令缓存与代码洞不一致")
+	}
+	a.sigilMemoryCaveAddr = cave
+	a.sigilMemoryOriginal = original
 	var selected uintptr
 	if err := readProcessMemory(a.hProcess, a.sigilMemoryCaveAddr+sigilMemoryCaveDataOffset, unsafe.Pointer(&selected), unsafe.Sizeof(selected)); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("读取选中因子指针失败: %w", err)
@@ -460,7 +691,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 }
 
 func isSigilMemoryOriginal(buf []byte) bool {
-	return len(buf) >= sigilMemoryHookSize && buf[0] == 0x31 && buf[2] == 0x81
+	return len(buf) >= sigilMemoryHookSize && bytes.Equal(buf[:sigilMemoryHookSize], sigilMemoryOriginalBytes)
 }
 
 func isSigilMemoryJump(buf []byte) bool {
@@ -471,23 +702,55 @@ func (a *App) recoverSigilMemoryHook(cave uintptr) ([]byte, error) {
 	if cave == 0 {
 		return nil, fmt.Errorf("代码洞地址为空")
 	}
-	prologue := make([]byte, sigilMemoryOriginalOffset)
-	if err := readProcessMemory(a.hProcess, cave, unsafe.Pointer(&prologue[0]), uintptr(len(prologue))); err != nil {
+	code := make([]byte, sigilMemoryCaveDataOffset)
+	if err := readProcessMemory(a.hProcess, cave, unsafe.Pointer(&code[0]), uintptr(len(code))); err != nil {
 		return nil, fmt.Errorf("读取代码洞失败: %w", err)
 	}
-	if prologue[0] != 0x49 || prologue[1] != 0xBA || prologue[10] != 0x49 || prologue[11] != 0x89 || prologue[12] != 0x02 {
+	if code[0] != 0x41 || code[1] != 0x52 || code[2] != 0x49 || code[3] != 0xBA ||
+		code[12] != 0x49 || code[13] != 0x89 || code[14] != 0x02 || code[15] != 0x41 || code[16] != 0x5A {
 		return nil, fmt.Errorf("代码洞签名不匹配")
 	}
-	dataAddr := uintptr(binary.LittleEndian.Uint64(prologue[2:10]))
+	dataAddr := uintptr(binary.LittleEndian.Uint64(code[4:12]))
 	if dataAddr != cave+sigilMemoryCaveDataOffset {
 		return nil, fmt.Errorf("代码洞数据地址不匹配")
 	}
-	original := make([]byte, sigilMemoryHookSize)
-	if err := readProcessMemory(a.hProcess, cave+sigilMemoryOriginalOffset, unsafe.Pointer(&original[0]), uintptr(len(original))); err != nil {
-		return nil, fmt.Errorf("读取原始指令失败: %w", err)
+	if !bytes.Equal(code[sigilMemoryMarkerOffset:sigilMemoryMarkerOffset+uintptr(len(sigilMemoryMarker))], sigilMemoryMarker) {
+		return nil, fmt.Errorf("代码洞所有权标记不匹配")
 	}
+	original := append([]byte(nil), code[sigilMemoryOriginalOffset:sigilMemoryOriginalOffset+sigilMemoryHookSize]...)
 	if !isSigilMemoryOriginal(original) {
 		return nil, fmt.Errorf("原始指令签名不匹配: %s", bytesToHex(original))
+	}
+	jumpOffset := sigilMemoryOriginalOffset + sigilMemoryHookSize
+	if target := relJumpTarget(cave+jumpOffset, code[jumpOffset:jumpOffset+5]); target != a.sigilMemoryHookAddr+sigilMemoryHookSize {
+		return nil, fmt.Errorf("代码洞回跳地址不匹配")
+	}
+	return original, nil
+}
+
+func (a *App) recoverLegacySigilMemoryHook(cave uintptr) ([]byte, error) {
+	if cave == 0 {
+		return nil, fmt.Errorf("旧版代码洞地址为空")
+	}
+	codeLen := sigilMemoryLegacyOriginalOffset + sigilMemoryHookSize + 5
+	code := make([]byte, codeLen)
+	if err := readProcessMemory(a.hProcess, cave, unsafe.Pointer(&code[0]), uintptr(len(code))); err != nil {
+		return nil, fmt.Errorf("读取旧版代码洞失败: %w", err)
+	}
+	if code[0] != 0x49 || code[1] != 0xBA || code[10] != 0x49 || code[11] != 0x89 || code[12] != 0x02 {
+		return nil, fmt.Errorf("旧版代码洞签名不匹配")
+	}
+	dataAddr := uintptr(binary.LittleEndian.Uint64(code[2:10]))
+	if dataAddr != cave+sigilMemoryCaveDataOffset {
+		return nil, fmt.Errorf("旧版代码洞数据地址不匹配")
+	}
+	original := append([]byte(nil), code[sigilMemoryLegacyOriginalOffset:sigilMemoryLegacyOriginalOffset+sigilMemoryHookSize]...)
+	if !isSigilMemoryOriginal(original) {
+		return nil, fmt.Errorf("旧版洞原始指令签名不匹配: %s", bytesToHex(original))
+	}
+	jumpOffset := sigilMemoryLegacyOriginalOffset + sigilMemoryHookSize
+	if target := relJumpTarget(cave+jumpOffset, code[jumpOffset:jumpOffset+5]); target != a.sigilMemoryHookAddr+sigilMemoryHookSize {
+		return nil, fmt.Errorf("旧版代码洞回跳地址不匹配")
 	}
 	return original, nil
 }
@@ -504,6 +767,12 @@ func (a *App) clearSigilMemorySelection() error {
 }
 
 func (a *App) releaseSigilMemoryHook() error {
+	sigilMemoryLifecycleMu.Lock()
+	defer sigilMemoryLifecycleMu.Unlock()
+	return a.releaseSigilMemoryHookLocked()
+}
+
+func (a *App) releaseSigilMemoryHookLocked() error {
 	if a.hProcess == 0 || a.sigilMemoryHookAddr == 0 {
 		return nil
 	}
@@ -511,20 +780,39 @@ func (a *App) releaseSigilMemoryHook() error {
 	if err := readProcessMemory(a.hProcess, a.sigilMemoryHookAddr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {
 		return err
 	}
-	if !isSigilMemoryJump(current) {
+	if isSigilMemoryOriginal(current) {
+		a.sigilMemoryHookAddr = 0
+		a.sigilMemoryCaveAddr = 0
+		a.sigilMemoryOriginal = nil
 		return nil
 	}
+	if !isSigilMemoryJump(current) {
+		return fmt.Errorf("因子 Hook 入口既不是完整自有跳转也不是原始指令: %s", bytesToHex(current))
+	}
 	cave := relJumpTarget(a.sigilMemoryHookAddr, current)
-	original := a.sigilMemoryOriginal
-	if len(original) != sigilMemoryHookSize {
-		var err error
-		original, err = a.recoverSigilMemoryHook(cave)
-		if err != nil {
-			return err
+	if a.sigilMemoryCaveAddr != 0 && cave != a.sigilMemoryCaveAddr {
+		return fmt.Errorf("因子 Hook 跳转目标已被替换，拒绝覆盖外部 Hook")
+	}
+	original, err := a.recoverSigilMemoryHook(cave)
+	if err != nil {
+		legacyOriginal, legacyErr := a.recoverLegacySigilMemoryHook(cave)
+		if legacyErr != nil {
+			return fmt.Errorf("恢复因子 Hook 前所有权校验失败: 新洞 %v；旧洞 %w", err, legacyErr)
 		}
+		original = legacyOriginal
+	}
+	if len(a.sigilMemoryOriginal) == sigilMemoryHookSize && !bytes.Equal(a.sigilMemoryOriginal, original) {
+		return fmt.Errorf("因子 Hook 原始指令缓存与代码洞不一致，拒绝恢复")
 	}
 	if err := writeCodeMemory(a.hProcess, a.sigilMemoryHookAddr, original); err != nil {
 		return fmt.Errorf("恢复选中因子原始指令失败: %w", err)
+	}
+	restored := make([]byte, sigilMemoryHookSize)
+	if err := readProcessMemory(a.hProcess, a.sigilMemoryHookAddr, unsafe.Pointer(&restored[0]), uintptr(len(restored))); err != nil {
+		return fmt.Errorf("恢复选中因子原始指令后回读失败: %w", err)
+	}
+	if !bytes.Equal(restored, original) {
+		return fmt.Errorf("恢复选中因子原始指令后回读不一致: %s", bytesToHex(restored))
 	}
 	// Do not free the remote page here: a game thread may already be inside the
 	// cave. The OS reclaims this single page when the game exits.
@@ -535,19 +823,23 @@ func (a *App) releaseSigilMemoryHook() error {
 }
 
 func buildSigilMemoryCave(cave, returnAddr uintptr, original []byte) ([]byte, error) {
-	if len(original) != sigilMemoryHookSize {
+	if len(original) != sigilMemoryHookSize || !isSigilMemoryOriginal(original) {
 		return nil, fmt.Errorf("选中因子原始指令长度异常")
 	}
 	code := make([]byte, 0, sigilMemoryCaveDataOffset+8)
-	code = append(code, 0x49, 0xBA) // mov r10, cave data address
+	code = append(code, 0x41, 0x52, 0x49, 0xBA) // push r10; mov r10, cave data address
 	code = binary.LittleEndian.AppendUint64(code, uint64(cave+sigilMemoryCaveDataOffset))
-	code = append(code, 0x49, 0x89, 0x02) // mov [r10], rax
+	code = append(code, 0x49, 0x89, 0x02, 0x41, 0x5A) // mov [r10], rax; pop r10
 	code = append(code, original...)
 	jmp, err := makeRelJump(cave+uintptr(len(code)), returnAddr, 5)
 	if err != nil {
 		return nil, err
 	}
 	code = append(code, jmp...)
+	for len(code) < int(sigilMemoryMarkerOffset) {
+		code = append(code, 0)
+	}
+	code = append(code, sigilMemoryMarker...)
 	for len(code) < int(sigilMemoryCaveDataOffset)+8 {
 		code = append(code, 0)
 	}

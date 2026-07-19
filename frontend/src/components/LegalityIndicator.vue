@@ -24,11 +24,14 @@ const meta = computed(() => ({
 
 <style scoped>
 .legality { min-width:0; display:flex; align-items:flex-start; gap:7px; padding:3px 0 3px 8px; border:0; border-left:2px solid currentColor; border-radius:0; background:transparent; }
-.icon { width:17px; height:17px; flex:0 0 17px; display:grid; place-items:center; border:1px solid currentColor; border-radius:50%; font-size:.65rem; font-weight:800; background:transparent; }
-.text { min-width:0; display:flex; flex-direction:column; gap:2px; }.text strong { font-size:.68rem; font-weight:800; white-space:nowrap; }.text small { max-width:none; color:rgba(255,255,255,.42); font-size:.6rem; line-height:1.4; overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
-.legal { color:#4a7658; }
-.forced { color:#956719; }
-.unknown { color:#6f6946; }
-.impossible { color:#9a4740; }
-.compact { padding:5px 8px; }.compact .text strong { font-size:.66rem; }
+.icon { width:18px; height:18px; flex:0 0 18px; display:grid; place-items:center; border:1px solid currentColor; border-radius:50%; font-size:var(--fs-xs); font-weight:var(--fw-bold); background:transparent; }
+.text { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.text strong { color:currentColor; font-size:var(--fs-sm); font-weight:var(--fw-bold); line-height:var(--lh-tight); white-space:nowrap; }
+.text small { max-width:none; color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
+.legal { color:var(--success-ink); }
+.forced { color:var(--warning-ink); }
+.unknown { color:var(--text-secondary); }
+.impossible { color:var(--danger-ink); }
+.compact { padding:5px 8px; }
+.compact .text strong { font-size:var(--fs-sm); }
 </style>

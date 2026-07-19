@@ -120,6 +120,31 @@ var awakeningWeaponAliases = map[uint32]uint32{
 	0x165F82F5: 0x1EB2B398, 0x280EA816: 0x1EB2B398, 0x219EE448: 0x1EB2B398, 0x18B8476C: 0xCDB13688, 0x32B5DC17: 0xCDB13688, 0xF0B8CF77: 0xCDB13688,
 }
 
+// storedWeaponAliases are additional hashes observed in 2.0.2 WeaponId2 and
+// archive save records. They identify the same player-facing weapon as the
+// catalog hash on the right; keeping the alias explicit avoids showing a raw
+// eight-character hash or treating a character weapon as universal.
+var storedWeaponAliases = map[uint32]uint32{
+	// WeaponId2 aliases.
+	0xC2D446F7: 0xD4CED80E,
+	0xCDE3B884: 0x7463358A,
+	0xB1C0E0C2: 0xF7D69475,
+	0xD2DFBE87: 0x159CA5B6,
+	0x8A14E9DB: 0x283CC36B,
+	0x3D94F6E9: 0xBEFFB034,
+	0x1F0BCDBA: 0xB03EA930,
+	0x095082AB: 0x3B2082B6,
+	0x90CDA5F3: 0xBA30BD26,
+	0xCD19623A: 0x75EC54D0,
+	0xE45ED17F: 0x9240D597,
+	// Archive/compatibility aliases seen in real saves.
+	0xE180DADB: 0x3EC1D082,
+	0x76265AA7: 0xDB8ED674,
+	0x6E59B0DD: 0xCB5A08CD,
+	0x08DE4F36: 0xDAA4D559,
+	0x1A977F3F: 0xD4CED80E,
+}
+
 func decorateProgressionWeaponDef(def ProgressionWeaponDef, hash uint32) ProgressionWeaponDef {
 	def.WeaponType = "normal"
 	if ascensionWeaponHashes[hash] {
@@ -258,7 +283,10 @@ func progressionWeaponDefForHash(hash uint32) (ProgressionWeaponDef, bool) {
 	}
 	baseHash, ok := awakeningWeaponAliases[hash]
 	if !ok {
-		return ProgressionWeaponDef{}, false
+		baseHash, ok = storedWeaponAliases[hash]
+		if !ok {
+			return ProgressionWeaponDef{}, false
+		}
 	}
 	def, ok := progressionWeaponByHash[baseHash]
 	if !ok {
@@ -266,6 +294,21 @@ func progressionWeaponDefForHash(hash uint32) (ProgressionWeaponDef, bool) {
 	}
 	def.AliasOf = fmt.Sprintf("%08X", baseHash)
 	def.CatalogHidden = true
+	return def, true
+}
+
+// progressionWeaponDefForLoadout is the fail-closed resolver used by the
+// loadout editor and writer. Unknown/sentinel hashes and internal compatibility
+// mirrors are never offered or accepted; aliases still resolve to the real
+// localized weapon definition and owner.
+func progressionWeaponDefForLoadout(hash uint32) (ProgressionWeaponDef, bool) {
+	if hash == 0 || hash == EmptyHash || !progressionWeaponVisibleInInventory(hash) {
+		return ProgressionWeaponDef{}, false
+	}
+	def, ok := progressionWeaponDefForHash(hash)
+	if !ok || strings.TrimSpace(progressionWeaponName(def)) == "" {
+		return ProgressionWeaponDef{}, false
+	}
 	return def, true
 }
 
@@ -331,6 +374,22 @@ func loadProgressionCatalog() (*ProgressionCatalog, error) {
 		weapon = decorateProgressionWeaponDef(weapon, hash)
 		weapons.Weapons[i] = weapon
 		progressionWeaponByHash[hash] = weapon
+	}
+	// The special awakening rows use three canonical hashes that are absent
+	// from weapons.json, while the same named/owned weapon is catalogued under
+	// its ordinary record. Materialize resolver-only definitions so every
+	// observed awakening stage keeps its true name, owner and category.
+	for specialHash, sourceHash := range map[uint32]uint32{
+		0xAD915067: 0x2C4CAADD,
+		0xFA5F32D5: 0x73D34F1B,
+		0x4CBA06D8: 0xDA807CA2,
+	} {
+		source, ok := progressionWeaponByHash[sourceHash]
+		if !ok {
+			return nil, fmt.Errorf("特殊觉醒武器来源 %08X 未收录", sourceHash)
+		}
+		source.Hash = fmt.Sprintf("%08X", specialHash)
+		progressionWeaponByHash[specialHash] = decorateProgressionWeaponDef(source, specialHash)
 	}
 	// 2.0.2 keeps compatibility copies for a few base weapons. They are valid
 	// inventory records but must not be offered as separately addable weapons.

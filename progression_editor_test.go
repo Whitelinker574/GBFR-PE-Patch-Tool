@@ -89,6 +89,84 @@ func TestAwakeningWeaponAliasesResolveToBaseDefinition(t *testing.T) {
 	}
 }
 
+func TestWeaponId2AndArchiveAliasesResolveToCataloguedWeapons(t *testing.T) {
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		alias uint32
+		base  string
+		owner string
+	}{
+		{0xC2D446F7, "D4CED80E", "PL0100"},
+		{0xCDE3B884, "7463358A", "PL1900"},
+		{0xB1C0E0C2, "F7D69475", "PL2100"},
+		{0xD2DFBE87, "159CA5B6", "PL1000"},
+		{0x8A14E9DB, "283CC36B", "PL0900"},
+		{0x3D94F6E9, "BEFFB034", "PL1100"},
+		{0x1F0BCDBA, "B03EA930", "PL1700"},
+		{0x095082AB, "3B2082B6", "PL0200"},
+		{0x90CDA5F3, "BA30BD26", "PL0300"},
+		{0xCD19623A, "75EC54D0", "PL2800"},
+		{0xE45ED17F, "9240D597", "PL2900"},
+		{0xE180DADB, "3EC1D082", "PL0800"},
+		{0x76265AA7, "DB8ED674", "PL2200"},
+		{0x6E59B0DD, "CB5A08CD", "PL1600"},
+		{0x08DE4F36, "DAA4D559", "PL2700"},
+		{0x1A977F3F, "D4CED80E", "PL0100"},
+	}
+	for _, tc := range cases {
+		def, ok := progressionWeaponDefForHash(tc.alias)
+		if !ok {
+			t.Errorf("别名 %08X 未解析", tc.alias)
+			continue
+		}
+		if def.AliasOf != tc.base || def.OwnerCode != tc.owner || progressionWeaponName(def) == "" {
+			t.Errorf("别名 %08X = %+v，期望 base=%s owner=%s", tc.alias, def, tc.base, tc.owner)
+		}
+	}
+}
+
+func TestSpecialAwakeningAliasesUseRealWeaponNamesAndOwners(t *testing.T) {
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		alias uint32
+		base  string
+		owner string
+		name  string
+	}{
+		{0x1E8011EB, "AD915067", "PL2100", "[天纺刃]世界终焉"},
+		{0x02E70DE2, "FA5F32D5", "PL2200", "[七煌]天枢·极星剑"},
+		{0x7DD506A3, "4CBA06D8", "PL2300", "[二诤]真灭·霸王弓"},
+	}
+	for _, tc := range cases {
+		def, ok := progressionWeaponDefForHash(tc.alias)
+		if !ok {
+			t.Errorf("特殊觉醒别名 %08X 未解析", tc.alias)
+			continue
+		}
+		if def.AliasOf != tc.base || def.OwnerCode != tc.owner || def.NameCN != tc.name || def.WeaponType != "special" || !def.CanAwaken {
+			t.Errorf("特殊觉醒别名 %08X = %+v", tc.alias, def)
+		}
+	}
+}
+
+func TestLoadoutWeaponResolverRejectsSentinelsUnknownsAndHiddenMirrors(t *testing.T) {
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	for _, hash := range []uint32{0xC8736136, 0x76288D01, 0x7460CD22, 0x1B0F29BF, 0xDEADBEEF, 0xEE1EBC2E} {
+		if def, ok := progressionWeaponDefForLoadout(hash); ok {
+			t.Errorf("%08X 不应进入配装武器池，却解析成 %+v", hash, def)
+		}
+	}
+	if def, ok := progressionWeaponDefForLoadout(0xC2D446F7); !ok || def.OwnerCode != "PL0100" || def.NameCN == "" {
+		t.Fatalf("真实 WeaponId2 武器应可用于配装: ok=%v def=%+v", ok, def)
+	}
+}
+
 func TestInternalCompatibilityWeaponIsNotShownAsOwnedCopy(t *testing.T) {
 	if _, err := loadProgressionCatalog(); err != nil {
 		t.Fatal(err)

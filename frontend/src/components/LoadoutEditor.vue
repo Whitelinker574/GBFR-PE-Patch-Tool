@@ -1,7 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutSimulate, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
-import { groupMasteryNodes, resolveMasteryHashes } from '../loadoutMastery'
+import { LoadoutApply, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
+import { GetCompatibleSecondaryTraits, GetSecondaryTraitLevels, GetSigilList } from '../../wailsjs/go/main/SigilGen'
+import { applyMasteryDirection, groupMasteryNodes, inferMasteryDirection, isMasteryNodeSelectable, resolveMasteryHashes } from '../loadoutMastery'
+import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
+import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
+import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
+import skillIconFiles from '../loadoutSkillIcons.json'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps({
@@ -20,9 +25,47 @@ const sharing = ref(false)
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
-const form = ref({ name: '', weaponSlotId: 0, sigilSlotIds: [], skillHashes: [], masterySource: 0 })
+const form = ref({ name: '', weaponSlotId: 0, skillHashes: [], masterySource: 0 })
+const factorSlots = ref(createFactorSlots())
+const activeFactorIndex = ref(0)
 const cloneFrom = ref(0)
 const sigilSearch = ref('')
+const factorMode = ref('construct')
+const masteryExpanded = ref(false)
+const masteryDirection = ref('')
+const pendingSkillHash = ref('')
+const constructCatalog = ref([])
+const constructSecondaries = ref([])
+const constructSearch = ref('')
+const constructSigilId = ref('')
+const constructSecondaryId = ref('')
+const constructSigilLevel = ref(0)
+const constructPrimaryLevel = ref(0)
+const constructSecondaryLevel = ref(0)
+const constructLoading = ref(false)
+const statContext = ref({ summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] })
+const summonSlotIds = ref([0, 0, 0, 0])
+const writeGlobalSummons = ref(false)
+const finalStats = ref(null)
+const simulationError = ref('')
+const weaponSkills = ref([])
+const selectedWeaponContext = ref(null)
+const calculationFormulaVerified = computed(() => Boolean(finalStats.value?.formulaVerified)
+  && (!selectedWeaponContext.value || Boolean(selectedWeaponContext.value?.formulaVerified)))
+const calculationWarnings = computed(() => {
+  const warnings = [
+    ...(statContext.value?.warnings || []),
+    ...(finalStats.value?.warnings || []),
+    ...(selectedWeaponContext.value?.warnings || []),
+  ]
+  if (finalStats.value && !finalStats.value.formulaVerified) {
+    warnings.push('HP 与攻击的百分比效果乘区及中间量化顺序尚未完成 2.0.2 运行时闭环；最终 float32 向零截断已确认。')
+  }
+  if (selectedWeaponContext.value && !selectedWeaponContext.value.formulaVerified) {
+    warnings.push('当前武器仍有未完全解析的属性或技能效果。')
+  }
+  return [...new Set(warnings.filter(Boolean))]
+})
 
 // 名称字节数（后端上限 63）
 function utf8Bytes(s) { return new TextEncoder().encode(s || '').length }
@@ -32,30 +75,156 @@ const nameTooLong = computed(() => nameBytes.value > 63)
 const slots = computed(() => ctx.value?.slots || [])
 const occupiedSlots = computed(() => slots.value.filter(s => s.occupied))
 const masterySources = computed(() => ctx.value?.masterySources || [])
+const configuredFactorCount = computed(() => factorSlotCount(factorSlots.value))
+const factorSlotCards = computed(() => factorSlots.value.map((entry, index) => {
+  if (!entry) return { index, empty: true }
+  if (entry.kind === 'construct') {
+    return { index, kind: 'construct', ...entry.preview, slotId: 0 }
+  }
+  const sigil = (ctx.value?.sigils || []).find(item => item.slotId === entry.slotId)
+  return {
+    index,
+    kind: 'bag',
+    slotId: entry.slotId,
+    name: sigil?.name || '未收录因子',
+    level: sigil?.level || 0,
+    primaryTraitHash: sigil?.primaryTraitHash || '',
+    primaryTraitName: sigil?.primaryTraitName || '',
+    primaryTraitLevel: sigil?.primaryTraitLevel || 0,
+    secondaryTraitHash: sigil?.secondaryTraitHash || '',
+    secondaryTraitName: sigil?.secondaryTraitName || '',
+    secondaryTraitLevel: sigil?.secondaryTraitLevel || 0,
+  }
+}))
+const activeFactorCard = computed(() => factorSlotCards.value[activeFactorIndex.value] || { index: activeFactorIndex.value, empty: true })
 const filteredSigils = computed(() => {
   const query = sigilSearch.value.trim().toLocaleLowerCase()
   if (!query) return ctx.value?.sigils || []
   return (ctx.value?.sigils || []).filter(item => [item.name, item.primaryTraitName, item.secondaryTraitName]
     .some(value => String(value || '').toLocaleLowerCase().includes(query)))
 })
-const SKILL_ICONS = {
-  '花耀七闪': 'https://cdn.gbf.wiki/relink/Flowery_Seven.png',
-  '魔力漩涡': 'https://cdn.gbf.wiki/relink/Mystic_Vortex.png',
-  '寒冰': 'https://cdn.gbf.wiki/relink/Freeze.png',
-  '专注': 'https://cdn.gbf.wiki/relink/Concentration.png',
-  '治愈之风': 'https://cdn.gbf.wiki/relink/Healing_Winds.png',
-  '雷霆': 'https://cdn.gbf.wiki/relink/Lightning.png',
-  '魔洞': 'https://cdn.gbf.wiki/relink/Gravity_Well.png',
-  '火焰': 'https://cdn.gbf.wiki/relink/Fire.png',
+function assetPath(folder, file) {
+  if (!file) return ''
+  return `/loadout-icons/${folder}/${String(file).split('/').map(part => encodeURIComponent(part).replace(/'/g, '%27')).join('/')}`
 }
-function skillIcon(name) { return SKILL_ICONS[name] || '' }
+function skillIcon(skill) {
+  const verifiedFile = skillIconFiles[skill?.key || ''] || ''
+  return assetPath('skills', verifiedFile || 'Plain_Skill_Frame.png')
+}
+function traitIcon(name, hash = '', internalId = '') { return traitAssetIcon({ name, hash, internalId }) }
+
+function normalizedHash(value) { return String(value || '').replace(/^0x/i, '').toUpperCase() }
+const characterAvatar = computed(() => characterAssetIcon(props.charaHash))
+const selectedWeaponPick = computed(() => ctx.value?.weapons?.find(item => Number(item.slotId) === Number(form.value.weaponSlotId)) || null)
+const selectedWeaponIcon = computed(() => weaponAssetIcon(selectedWeaponContext.value || selectedWeaponPick.value || {}))
+const selectedSummons = computed(() => summonSlotIds.value.map(slotId =>
+  statContext.value.summons.find(item => item.slotId === slotId) || null
+))
+const summonSelectionValid = computed(() => {
+  const ids = summonSlotIds.value.map(Number)
+  return ids.length === 4 && ids.every(id => id > 0 && statContext.value.summons.some(item => item.slotId === id)) && new Set(ids).size === 4
+})
+function summonUsedElsewhere(slotId, currentIndex) {
+  return summonSlotIds.value.some((value, index) => index !== currentIndex && Number(value) === Number(slotId))
+}
+function formatStatNumber(value) {
+  return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+function formatSignedValue(value, unit = '') {
+  const numeric = Number(value || 0)
+  const sign = numeric > 0 ? '+' : numeric < 0 ? '−' : ''
+  return `${sign}${formatStatNumber(Math.abs(numeric))}${unit === 'pct' ? '%' : ''}`
+}
+function summonOptionLabel(summon) {
+  const main = summon.mainTraitName ? `${summon.mainTraitName} Lv${summon.mainTraitLevel}` : '无主词条'
+  const sub = summon.subParamName ? `${summon.subParamName} ${formatSignedValue(summon.subParamValue, summon.subParamUnit)}` : '无副参数'
+  return `${summon.name} · ${main} · ${sub}`
+}
+const usableConstructCatalog = computed(() => {
+  const existing = new Set((ctx.value?.sigils || []).map(item => normalizedHash(item.hash)))
+  return constructCatalog.value.filter(item => item.constructible !== false && item.internalId !== 'GEEN_142_02' && (item.category !== 'character_sigil' || existing.has(normalizedHash(item.hash))))
+})
+const filteredConstructCatalog = computed(() => {
+  const query = constructSearch.value.trim().toLocaleLowerCase()
+  if (!query) return usableConstructCatalog.value
+  return usableConstructCatalog.value.filter(item => [item.displayName, item.primaryTraitName]
+    .some(value => String(value || '').toLocaleLowerCase().includes(query)))
+})
+const selectedConstructSigil = computed(() => usableConstructCatalog.value.find(item => item.internalId === constructSigilId.value) || null)
+const selectedConstructSecondary = computed(() => constructSecondaries.value.find(item => item.internalId === constructSecondaryId.value) || null)
+function highestAllowed(levels, fallback = 0) {
+  return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
+}
+function naturalLevels(levels) { return (levels || []).filter(level => level >= 1 && level <= 15) }
+
+async function loadConstructCatalog() {
+  if (constructCatalog.value.length || constructLoading.value) return
+  constructLoading.value = true
+  try {
+    constructCatalog.value = (await GetSigilList()) || []
+    const first = usableConstructCatalog.value.find(item => item.allowedSigilLevels?.length && item.allowedFirstTraitLevels?.length)
+    if (first) constructSigilId.value = first.internalId
+  } catch (err) {
+    emit('status', String(err), 'error')
+  } finally {
+    constructLoading.value = false
+  }
+}
+
+watch(factorMode, value => { if (value === 'construct') loadConstructCatalog() }, { immediate: true })
+watch(usableConstructCatalog, items => {
+  if (items.some(item => item.internalId === constructSigilId.value)) return
+  const first = items.find(item => item.allowedSigilLevels?.length && item.allowedFirstTraitLevels?.length)
+  constructSigilId.value = first?.internalId || ''
+}, { immediate: true })
+let pendingConstructRestore = null
+let secondaryRequestId = 0
+watch(constructSigilId, async value => {
+  const requestId = ++secondaryRequestId
+  const sigil = usableConstructCatalog.value.find(item => item.internalId === value)
+  constructSigilLevel.value = highestAllowed(sigil?.allowedSigilLevels, sigil?.defaultSigilLevel || 0)
+  constructPrimaryLevel.value = highestAllowed(sigil?.allowedFirstTraitLevels, sigil?.firstTraitMaxLevel || 0)
+  constructSecondaries.value = []
+  constructSecondaryId.value = ''
+  constructSecondaryLevel.value = 0
+  const restore = pendingConstructRestore?.sigilId === value ? pendingConstructRestore : null
+  constructSigilLevel.value = restore?.level || constructSigilLevel.value
+  constructPrimaryLevel.value = restore?.primaryLevel || constructPrimaryLevel.value
+  if (!sigil?.supportsSecondaryTrait) {
+    if (restore) pendingConstructRestore = null
+    return
+  }
+  try {
+    const result = (await GetCompatibleSecondaryTraits(value)) || []
+    if (requestId !== secondaryRequestId || constructSigilId.value !== value) return
+    constructSecondaries.value = result
+    constructSecondaryId.value = restore?.secondaryTraitId || constructSecondaries.value[0]?.internalId || ''
+  } catch (err) {
+    emit('status', String(err), 'error')
+  }
+})
+let secondaryLevelRequestId = 0
+watch(constructSecondaryId, async value => {
+  const requestId = ++secondaryLevelRequestId
+  const sigilId = constructSigilId.value
+  constructSecondaryLevel.value = 0
+  if (!value || !sigilId) return
+  try {
+    const levels = await GetSecondaryTraitLevels(sigilId, value)
+    if (requestId !== secondaryLevelRequestId || constructSigilId.value !== sigilId || constructSecondaryId.value !== value) return
+    const restore = pendingConstructRestore?.sigilId === sigilId && pendingConstructRestore?.secondaryTraitId === value ? pendingConstructRestore : null
+    constructSecondaryLevel.value = restore?.secondaryLevel || highestAllowed(levels)
+    if (restore) pendingConstructRestore = null
+  } catch (err) {
+    emit('status', String(err), 'error')
+  }
+})
 
 // 专精：复制现有 or 自由配置（4 档 10/10/10/20）
 const masteryMode = ref('free')     // copy | free
 const masteryPool = ref([])         // [{rank,label,cap,nodes}]
 const masteryPick = ref({})         // { R1:[hash...], R2:[], R3:[], EX:[] }
 const masteryRankTab = ref('R1')
-const masteryDirection = ref('')    // 2阶起锁定的专精方向
 const CAT_ABBR = { SB_ATK: '攻', SB_DEF: '防', SB_LIMIT: '界' }
 function catAbbr(cat) { return CAT_ABBR[cat] || '基' }
 const activeRankPool = computed(() => masteryPool.value.find(p => p.rank === masteryRankTab.value) || null)
@@ -63,31 +232,30 @@ const activeRankGroups = computed(() => groupMasteryNodes(activeRankPool.value?.
 function rankPicked(rank) { return (masteryPick.value[rank] || []).length }
 const masteryTotal = computed(() => Object.values(masteryPick.value).reduce((n, a) => n + a.length, 0))
 function toggleNode(rank, hash, cap) {
-  const node = masteryNodeByHash.value.get(hash)
-  if (masteryNodeDisabled(rank, node)) return
   const arr = masteryPick.value[rank] || (masteryPick.value[rank] = [])
   const i = arr.indexOf(hash)
   if (i >= 0) arr.splice(i, 1)
-  else if (arr.length < cap) arr.push(hash)
-}
-
-function chooseMasteryDirection(cat) {
-  masteryDirection.value = cat
-  // 方向切换时只移除另两个方向的“具名专精技能”；普通子词条原样保留。
-  for (const rank of ['R2', 'R3']) {
-    masteryPick.value[rank] = (masteryPick.value[rank] || []).filter(hash => {
-      const node = masteryNodeByHash.value.get(hash)
-      return !node?.name || node.cat === cat
-    })
+  else {
+    const node = masteryNodeByHash.value.get(hash)
+    if (!isMasteryNodeSelectable(rank, node, masteryDirection.value)) return
+    if (arr.length < cap) arr.push(hash)
   }
 }
 
-function masteryNodeDisabled(rank, node) {
-  return ['R2', 'R3'].includes(rank) && !!node?.name && (!masteryDirection.value || node.cat !== masteryDirection.value)
+function chooseMasteryDirection(cat) {
+  masteryPick.value = applyMasteryDirection(masteryPick.value, cat, masteryNodeByHash.value)
+  masteryDirection.value = cat
 }
+
+function masteryNodeDisabled(rank, node) {
+  const selected = (masteryPick.value[rank] || []).includes(node.hash)
+  return !selected && !isMasteryNodeSelectable(rank, node, masteryDirection.value)
+}
+
 async function loadMasteryPool() {
   masteryPool.value = []
   masteryPick.value = { R1: [], R2: [], R3: [], EX: [] }
+  masteryDirection.value = ''
   if (!ctx.value?.ownerCode) return
   try { masteryPool.value = (await MasteryNodePool(ctx.value.ownerCode)) || [] }
   catch (err) { emit('status', String(err), 'error') }
@@ -106,29 +274,145 @@ const masteryNodeByHash = computed(() => {
   for (const pool of masteryPool.value) for (const node of pool.nodes || []) result.set(node.hash, { ...node, rank: pool.rank, rankLabel: pool.label })
   return result
 })
+function masteryCategoryPicked(rank, cat) {
+  return (masteryPick.value[rank] || []).filter(hash => masteryNodeByHash.value.get(hash)?.cat === cat).length
+}
+function masteryStageSkillPicked(rank, cat) {
+  return (masteryPick.value[rank] || []).some(hash => {
+    const node = masteryNodeByHash.value.get(hash)
+    return node?.cat === cat && node.specialization
+  })
+}
+const masteryDirectionReady = computed(() => {
+  if (masteryTotal.value !== 50) return true
+  return Boolean(
+    masteryDirection.value
+    && masteryCategoryPicked('R2', masteryDirection.value) >= 6
+    && masteryCategoryPicked('R3', masteryDirection.value) >= 6
+    && masteryStageSkillPicked('R2', masteryDirection.value)
+    && masteryStageSkillPicked('R3', masteryDirection.value),
+  )
+})
+const displayedMasteryDirection = computed(() => masteryMode.value === 'free' ? masteryDirection.value : (masterySummary.value?.primaryCat || ''))
 const selectedMasteryDetails = computed(() => selectedMasteryHashes.value.map(hash => masteryNodeByHash.value.get(hash)).filter(Boolean))
 const selectedSkills = computed(() => form.value.skillHashes.map(hash => ctx.value?.skills?.find(skill => skill.hash === hash)).filter(Boolean))
 const masterySummary = ref(null)
 const summarizingMastery = ref(false)
+const masteryDirectionCards = computed(() => {
+  const rankOne = masteryPool.value.find(pool => pool.rank === 'R1')
+  return groupMasteryNodes(rankOne?.nodes || []).map(group => {
+    const rows = ['R1', 'R2', 'R3'].map(rank => {
+      const rankSummary = masterySummary.value?.ranks?.find(item => item.rank === rank)
+      const category = rankSummary?.categories?.find(item => item.cat === group.cat)
+      const threshold = category?.threshold || (rank === 'R1' ? 3 : 6)
+      if (masteryMode.value === 'free') {
+        const count = masteryCategoryPicked(rank, group.cat)
+        const hasStageSkill = masteryStageSkillPicked(rank, group.cat)
+        const directionMatches = rank === 'R1' || masteryDirection.value === group.cat
+        let reason = ''
+        if (rank !== 'R1' && !masteryDirection.value) reason = '请选择2阶起主方向'
+        else if (rank !== 'R1' && !directionMatches) reason = '非主方向，仅保留普通子词条'
+        else if (!hasStageSkill) reason = `未选择${rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶'}专精技能`
+        else if (count < threshold) reason = `需 ${threshold} 项，当前 ${count} 项`
+        return {
+          rank,
+          label: rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶',
+          count,
+          threshold,
+          active: directionMatches && hasStageSkill && count >= threshold,
+          reason,
+        }
+      }
+      return {
+        rank,
+        label: rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶',
+        count: category?.count || 0,
+        threshold,
+        active: !!category?.active,
+        reason: category?.reason || (rank === 'R1' ? '三个方向均可激活' : rank === 'R2' ? '达到门槛后成为唯一主方向' : '必须沿用2阶主方向'),
+      }
+    })
+    const summaryCategory = masterySummary.value?.ranks?.find(item => item.rank === 'R1')?.categories?.find(item => item.cat === group.cat)
+    return {
+      cat: group.cat,
+      label: group.label,
+      specialization: summaryCategory?.specialization || group.nodes.find(node => node.name)?.name || group.label,
+      rows,
+    }
+  })
+})
+
+function masteryNodeTitle(rank, node) {
+  if (node.name) return node.name
+  if (!node.specialization) return ''
+  const direction = masteryDirectionCards.value.find(item => item.cat === node.cat)
+  return `${rank === 'R2' ? '2阶' : '3阶'} · ${direction?.specialization || node.catLabel}`
+}
 
 // ── 配装模拟器：随所选因子实时算「词条加成汇总」 ──
 const bonuses = ref([])
+const totals = ref([])
+const displayTotals = computed(() => groupEffectTotals(totals.value))
+const traitLevelSummary = computed(() => summarizeTraitLevels(bonuses.value))
 const simulating = ref(false)
 let simTimer = null
 let masteryTimer = null
+let simRequestId = 0
+function clearSimulationResult() {
+  bonuses.value = []
+  totals.value = []
+  finalStats.value = null
+  weaponSkills.value = []
+  selectedWeaponContext.value = null
+}
 function refreshSim() {
   clearTimeout(simTimer)
   simTimer = setTimeout(async () => {
-    const ids = form.value.sigilSlotIds.filter(Boolean)
-    if (!props.savePath || !ids.length) { bonuses.value = []; return }
+    const requestId = ++simRequestId
+    const payload = buildFactorWritePayload(factorSlots.value)
+    if (!props.savePath) {
+      simulationError.value = ''
+      clearSimulationResult()
+      return
+    }
     simulating.value = true
-    try { bonuses.value = (await LoadoutSimulate(props.savePath, ids)) || [] }
-    catch { bonuses.value = [] }
-    finally { simulating.value = false }
+    simulationError.value = ''
+    try {
+      const result = await LoadoutSimulateBuild(
+        props.savePath,
+        props.charaHash,
+        form.value.weaponSlotId,
+        payload.sigilSlotIds,
+        payload.constructedSigils,
+        selectedMasteryHashes.value.slice(),
+        [...summonSlotIds.value],
+      )
+      if (requestId !== simRequestId) return
+      bonuses.value = result?.bonuses || []
+      totals.value = result?.totals || []
+      finalStats.value = result?.finalStats || null
+      weaponSkills.value = result?.weaponSkills || []
+      selectedWeaponContext.value = result?.weapon || null
+    } catch (error) {
+      if (requestId !== simRequestId) return
+      clearSimulationResult()
+      simulationError.value = `配装计算失败：${String(error)}`
+    }
+    finally { if (requestId === simRequestId) simulating.value = false }
   }, 180)
 }
-watch(() => form.value.sigilSlotIds.slice(), refreshSim, { deep: true })
+watch(factorSlots, refreshSim, { deep: true })
+watch(summonSlotIds, refreshSim, { deep: true })
+watch(() => form.value.weaponSlotId, refreshSim)
+watch(() => selectedMasteryHashes.value.slice(), refreshSim, { deep: true })
 const catClass = (label) => ({ '攻击类': 'atk', '基础能力': 'base', '防御类': 'def', '支援类': 'sup' }[label] || 'misc')
+function formatEffectTotal(total) {
+  const value = Number(total?.value || 0)
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  const magnitude = Math.abs(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+  return `${sign}${magnitude}${total?.unit === 'pct' ? '%' : ''}`
+}
+const effectUnitLabel = unit => unit === 'pct' ? '比例' : '固定'
 
 function refreshMasterySummary() {
   clearTimeout(masteryTimer)
@@ -150,23 +434,23 @@ function setMasteryHashes(hashes) {
     const rank = (typeof value === 'object' && value.rank) || masteryNodeByHash.value.get(hash)?.rank
     if (rank && masteryPick.value[rank]) masteryPick.value[rank].push(hash)
   }
-  const r2Counts = new Map()
-  for (const hash of masteryPick.value.R2) {
-    const node = masteryNodeByHash.value.get(hash)
-    if (node?.cat) r2Counts.set(node.cat, (r2Counts.get(node.cat) || 0) + 1)
+  masteryDirection.value = inferMasteryDirection(masteryPick.value, masteryNodeByHash.value)
+  if (masteryDirection.value) {
+    masteryPick.value = applyMasteryDirection(masteryPick.value, masteryDirection.value, masteryNodeByHash.value)
   }
-  masteryDirection.value = [...r2Counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ''
 }
 
 function hydrateFromTarget() {
   const loadout = selectedLoadout.value
+  pendingSkillHash.value = ''
   form.value = {
     name: loadout?.name || '',
     weaponSlotId: loadout?.weaponSlotId || 0,
-    sigilSlotIds: (loadout?.sigils || []).map(item => item.slotId).filter(Boolean),
     skillHashes: (loadout?.skills || []).map(item => item.hash).filter(Boolean),
     masterySource: loadout?.unitId || 0,
   }
+  factorSlots.value = createFactorSlots(loadout?.sigils || [])
+  activeFactorIndex.value = Math.min(activeFactorIndex.value, 11)
   setMasteryHashes(loadout?.mastery || [])
   const fullestRank = ['R1', 'R2', 'R3', 'EX'].find(rank => rankPicked(rank) < (masteryPool.value.find(pool => pool.rank === rank)?.cap || 0))
   masteryRankTab.value = fullestRank || 'EX'
@@ -179,11 +463,23 @@ function selectTarget(unitId) {
 }
 
 async function loadCtx() {
+	simRequestId++
+	clearTimeout(simTimer)
+	clearSimulationResult()
+	simulating.value = false
   if (!props.savePath || !props.charaHash) return
   loading.value = true
   ctx.value = null
   try {
-    ctx.value = await LoadoutEditContext(props.savePath, props.charaHash)
+    const [editContext, loadedStatContext] = await Promise.all([
+      LoadoutEditContext(props.savePath, props.charaHash),
+      LoadoutStatContext(props.savePath, props.charaHash),
+    ])
+    ctx.value = editContext
+    statContext.value = loadedStatContext || { summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] }
+    summonSlotIds.value = [...(statContext.value.equippedSummonSlotIds || [])].slice(0, 4)
+    while (summonSlotIds.value.length < 4) summonSlotIds.value.push(0)
+    writeGlobalSummons.value = false
     await loadMasteryPool()
     // 默认打开该角色内容最完整的一套，真实存档可直接看到 12 因子、4 技能与 50 专精。
     const richest = [...props.loadouts].filter(item => !item.isParty).sort((a, b) =>
@@ -202,27 +498,102 @@ async function loadCtx() {
 }
 
 watch(() => [props.savePath, props.charaHash], loadCtx, { immediate: true })
+watch(() => props.loadouts, (next, previous) => {
+  if (next !== previous && props.savePath && props.charaHash) loadCtx()
+})
 
-function toggleSigil(slotId) {
-  const arr = form.value.sigilSlotIds
-  const i = arr.indexOf(slotId)
-  if (i >= 0) arr.splice(i, 1)
-  else if (arr.length < 12) arr.push(slotId)
+function selectFactorSlot(index) {
+  activeFactorIndex.value = index
+  const entry = factorSlots.value[index]
+  if (entry?.kind !== 'construct') return
+  pendingConstructRestore = { ...entry.item }
+  if (constructSigilId.value === entry.item.sigilId) {
+    constructSigilLevel.value = entry.item.level
+    constructPrimaryLevel.value = entry.item.primaryLevel
+    constructSecondaryId.value = entry.item.secondaryTraitId || ''
+    constructSecondaryLevel.value = entry.item.secondaryLevel || 0
+    pendingConstructRestore = null
+  } else {
+    constructSigilId.value = entry.item.sigilId
+  }
+}
+function chooseBagFactor(slotId) {
+  factorSlots.value = putBagFactor(factorSlots.value, activeFactorIndex.value, slotId)
+}
+function clearActiveFactor() {
+  factorSlots.value = clearFactorSlot(factorSlots.value, activeFactorIndex.value)
+}
+function bagFactorSlotNumber(slotId) {
+  const index = factorSlots.value.findIndex(entry => entry?.kind === 'bag' && entry.slotId === slotId)
+  return index >= 0 ? index + 1 : 0
 }
 function toggleSkill(hash) {
   const arr = form.value.skillHashes
   const i = arr.indexOf(hash)
-  if (i >= 0) arr.splice(i, 1)
-  else if (arr.length < 4) arr.push(hash)
+  if (i >= 0) {
+    arr.splice(i, 1)
+    if (pendingSkillHash.value && !arr.includes(pendingSkillHash.value)) arr.push(pendingSkillHash.value)
+    pendingSkillHash.value = ''
+  } else if (arr.length < 4) {
+    arr.push(hash)
+    pendingSkillHash.value = ''
+  } else {
+    pendingSkillHash.value = hash
+  }
+}
+function skillOrder(hash) { return form.value.skillHashes.indexOf(hash) + 1 }
+function replaceSkillAt(index) {
+  if (!pendingSkillHash.value || index < 0 || index >= form.value.skillHashes.length) return
+  const pending = pendingSkillHash.value
+  if (form.value.skillHashes.includes(pending)) {
+    pendingSkillHash.value = ''
+    return
+  }
+  if (form.value.skillHashes.length < 4) form.value.skillHashes.push(pending)
+  else form.value.skillHashes.splice(index, 1, pending)
+  pendingSkillHash.value = ''
+}
+watch(op, () => { pendingSkillHash.value = '' })
+
+function stageConstructedFactor() {
+  const sigil = selectedConstructSigil.value
+  const secondary = selectedConstructSecondary.value
+  if (!sigil) return
+  const item = {
+    sigilId: sigil.internalId,
+    sigilName: sigil.displayName,
+    level: constructSigilLevel.value,
+    primaryTraitId: sigil.primaryTraitId,
+    primaryTraitName: sigil.primaryTraitName,
+    primaryLevel: constructPrimaryLevel.value,
+    secondaryTraitId: secondary?.internalId || '',
+    secondaryTraitName: secondary?.displayName || '',
+    secondaryLevel: secondary ? constructSecondaryLevel.value : 0,
+    quantity: 1,
+  }
+  factorSlots.value = putConstructedFactor(factorSlots.value, activeFactorIndex.value, item, {
+    name: sigil.displayName,
+    level: constructSigilLevel.value,
+    primaryTraitName: sigil.primaryTraitName,
+    primaryTraitId: sigil.primaryTraitId,
+    primaryTraitLevel: constructPrimaryLevel.value,
+    secondaryTraitName: secondary?.displayName || '',
+    secondaryTraitId: secondary?.internalId || '',
+    secondaryTraitLevel: secondary ? constructSecondaryLevel.value : 0,
+  })
 }
 
 const writeInvalid = computed(() => {
   if (op.value === 'clear') return false
   if (op.value === 'clone') return !cloneFrom.value || cloneFrom.value === targetSlot.value
-  return !form.value.name.trim() || nameTooLong.value || (masteryMode.value === 'free' && masteryTotal.value !== 0 && masteryTotal.value !== 50)
+  return !form.value.name.trim()
+    || nameTooLong.value
+    || (writeGlobalSummons.value && !summonSelectionValid.value)
+    || (masteryMode.value === 'free' && masteryTotal.value !== 0 && masteryTotal.value !== 50)
+    || (masteryMode.value === 'free' && !masteryDirectionReady.value)
 })
 
-onBeforeUnmount(() => { clearTimeout(simTimer); clearTimeout(masteryTimer) })
+onBeforeUnmount(() => { simRequestId++; clearTimeout(simTimer); clearTimeout(masteryTimer) })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -248,8 +619,13 @@ async function importLoadout() {
     if (!draft) return
     form.value.name = draft.name || form.value.name
     form.value.weaponSlotId = draft.weaponSlotId || 0
-    form.value.sigilSlotIds = [...(draft.sigilSlotIds || [])]
+    factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
+    if (Array.isArray(draft.summonSlotIds) && draft.summonSlotIds.length === 4) {
+      summonSlotIds.value = [...draft.summonSlotIds]
+    }
+    activeFactorIndex.value = 0
     form.value.skillHashes = [...(draft.skillHashes || [])]
+    pendingSkillHash.value = ''
     masteryMode.value = 'free'
     setMasteryHashes(draft.masteryHashes || [])
     masteryRankTab.value = 'EX'
@@ -269,10 +645,12 @@ async function apply() {
   if (!props.savePath || !targetSlot.value) return
   const slotNo = selectedSlot.value?.slot ?? '?'
   const occupied = selectedSlot.value?.occupied
+  const factorPayload = buildFactorWritePayload(factorSlots.value)
+  const draftCount = factorPayload.constructedSigils.length
   const verb = op.value === 'clear' ? '清空' : (occupied ? '覆盖' : '写入')
   const detail = op.value === 'clear'
     ? `将清空【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。`
-    : `将${verb}【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。请确认游戏已完全退出；工具会先自动备份原存档，再写入并回读验证。`
+    : `将${verb}【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。${draftCount ? `其中 ${draftCount} 个构造草稿会在本次写入中自动生成并绑定到对应槽位。` : ''}${writeGlobalSummons.value ? '同时更新存档共用的全局四槽召唤石。' : ''}`
   const confirmed = await confirmDialog.value?.ask({
     title: '写入存档前确认',
     detail,
@@ -285,7 +663,9 @@ async function apply() {
   if (op.value === 'write') {
     w.name = form.value.name
     w.weaponSlotId = form.value.weaponSlotId || 0
-    w.sigilSlotIds = [...form.value.sigilSlotIds]
+    w.sigilSlotIds = factorPayload.sigilSlotIds
+    w.constructedSigils = factorPayload.constructedSigils
+    if (writeGlobalSummons.value) w.summonSlotIds = [...summonSlotIds.value]
     w.skillHashes = [...form.value.skillHashes]
     if (masteryMode.value === 'free') {
       w.masteryHashes = [...selectedMasteryHashes.value]
@@ -300,9 +680,8 @@ async function apply() {
   applying.value = true
   try {
     const res = await LoadoutApply(props.savePath, '', [w])
-    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.backupPath ? '（已自动备份）' : ''}`, 'success')
+    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，同时生成 ${res.createdCount} 个因子` : ''}`, 'success')
     emit('reload')
-    await loadCtx()
   } catch (err) {
     emit('status', String(err), 'error')
   } finally {
@@ -312,23 +691,94 @@ async function apply() {
 </script>
 
 <template>
-  <div class="loadout-editor">
-    <div v-if="loading" class="hint">正在读取该角色可用资源…</div>
+  <div class="loadout-editor ui-page is-fluid">
+    <div v-if="loading" class="hint ui-empty">正在读取该角色可用资源…</div>
     <template v-else-if="ctx">
       <div class="editor-layout">
-      <main class="editor-form">
-      <div class="ed-head">
-        <strong>{{ charaName }}</strong>
-        <span v-if="ctx.ownerCode" class="owner">{{ ctx.ownerCode }}</span>
-        <span v-else class="owner warn">未能确定角色码（仅可用通用武器）</span>
+      <aside class="editor-column setup-column">
+      <section class="character-profile ui-card ui-panel is-compact">
+        <div class="character-portrait">
+          <img v-if="characterAvatar" :src="characterAvatar" :alt="charaName" />
+          <span v-else>{{ (charaName || '?').slice(0, 1) }}</span>
+          <b>Lv{{ statContext.level || 0 }}</b>
+        </div>
+        <div class="character-profile-main">
+          <div class="ed-head">
+            <strong>{{ charaName }}</strong>
+            <span v-if="ctx.ownerCode" class="owner">{{ ctx.ownerCode }}</span>
+            <span v-else class="owner warn">未能确定角色码</span>
+          </div>
+        </div>
+        <div class="profile-stat-card">
+          <div class="profile-stat-heading">
+            <strong>最终人物属性</strong>
+            <small :class="{ unverified: finalStats && (!finalStats?.formulaVerified || (selectedWeaponContext && !selectedWeaponContext?.formulaVerified)) }">
+              当前草稿 · {{ calculationFormulaVerified ? '公式已验证' : '公式未完全验证' }}
+            </small>
+          </div>
+          <dl class="profile-stats" aria-label="最终人物属性">
+            <div class="profile-stat">
+              <dt class="profile-stat-label">HP</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.hp) }}</dd>
+            </div>
+            <div class="profile-stat">
+              <dt class="profile-stat-label">攻击力</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.attack) }}</dd>
+            </div>
+            <div class="profile-stat">
+              <dt class="profile-stat-label">暴击率</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.critRate, 'pct') }}</dd>
+            </div>
+            <div class="profile-stat">
+              <dt class="profile-stat-label">昏厥值</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.stunPower) }}</dd>
+            </div>
+            <div class="profile-stat profile-stat-cap">
+              <dt class="profile-stat-label">伤害上限</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.damageCap, 'signedPct') }}</dd>
+            </div>
+          </dl>
+        </div>
+        <p v-if="simulationError" class="simulation-error ui-notice is-danger" role="alert">{{ simulationError }}</p>
         <span class="source-badge">真实存档 · {{ selectedLoadout ? '槽' + String(selectedLoadout.slot).padStart(2, '0') : '新配装' }}</span>
-      </div>
+        <details class="final-stat-detail-disclosure ui-disclosure">
+          <summary>查看属性计算明细</summary>
+          <div class="panel-base-grid">
+            <span><small>角色基础 HP</small><b>{{ formatStatNumber(statContext.baseHp) }}</b></span>
+            <span><small>角色基础攻击</small><b>{{ formatStatNumber(statContext.baseAtk) }}</b></span>
+            <span><small>基础暴击率</small><b>{{ formatFinalStat(statContext.baseCritRate, 'pct') }}</b></span>
+            <span><small>基础昏厥值</small><b>{{ formatFinalStat(statContext.baseStun) }}</b></span>
+            <span v-if="selectedWeaponContext"><small>武器 HP</small><b>{{ formatFinalStat(selectedWeaponContext.total?.hp) }}</b></span>
+            <span v-if="selectedWeaponContext"><small>武器攻击</small><b>{{ formatFinalStat(selectedWeaponContext.total?.attack) }}</b></span>
+          </div>
+          <div class="cap-detail-grid" aria-label="三类伤害上限明细">
+            <span><small>普通伤害上限</small><b>{{ formatFinalStat(finalStats?.normalDamageCap, 'signedPct') }}</b></span>
+            <span><small>能力伤害上限</small><b>{{ formatFinalStat(finalStats?.abilityDamageCap, 'signedPct') }}</b></span>
+            <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
+          </div>
+          <div class="formula-audit-row" :class="{ verified: calculationFormulaVerified }">
+            <b>{{ calculationFormulaVerified ? '公式证据已闭环' : '公式未完全验证' }}</b>
+            <span>当前数值仍可用于草稿比较；未验证项不会被标成无条件精确。</span>
+          </div>
+          <div v-if="calculationWarnings.length" class="stat-warnings">
+            <span v-for="warning in calculationWarnings" :key="warning">{{ warning }}</span>
+          </div>
+        </details>
+        <details v-if="statContext.overLimit?.length" class="overlimit-disclosure ui-disclosure">
+          <summary>极限加成来源（{{ statContext.overLimit.length }} 槽）</summary>
+          <div class="overlimit-list">
+            <span v-for="bonus in statContext.overLimit" :key="bonus.index">
+              <b>{{ bonus.name }}</b><em>Lv{{ bonus.level }}</em><strong>{{ formatSignedValue(bonus.value, bonus.unit) }}</strong>
+            </span>
+          </div>
+        </details>
+      </section>
 
       <!-- 目标槽 -->
       <div class="ed-field">
         <label>目标槽位</label>
         <div class="slot-grid">
-          <button v-for="s in slots" :key="s.unitId" class="slot-btn" :class="{ on: targetSlot === s.unitId, occ: s.occupied }"
+          <button v-for="s in slots" :key="s.unitId" class="slot-btn ui-btn is-sm" :class="{ on: targetSlot === s.unitId, occ: s.occupied }"
             @click="selectTarget(s.unitId)" :title="s.occupied ? s.name : '空槽'">
             {{ String(s.slot).padStart(2, '0') }}
           </button>
@@ -339,17 +789,17 @@ async function apply() {
       <!-- 操作 -->
       <div class="ed-field">
         <label>操作</label>
-        <div class="op-row">
-          <button class="op-btn" :class="{ on: op === 'write' }" @click="op = 'write'">自定义写入</button>
-          <button class="op-btn" :class="{ on: op === 'clone' }" @click="op = 'clone'" :disabled="!occupiedSlots.length">克隆现有</button>
-          <button class="op-btn" :class="{ on: op === 'clear' }" @click="op = 'clear'">清空</button>
+        <div class="op-row ui-seg">
+          <button class="op-btn ui-seg-btn" :class="{ 'is-on': op === 'write' }" @click="op = 'write'">自定义写入</button>
+          <button class="op-btn ui-seg-btn" :class="{ 'is-on': op === 'clone' }" @click="op = 'clone'" :disabled="!occupiedSlots.length">克隆现有</button>
+          <button class="op-btn ui-seg-btn" :class="{ 'is-on': op === 'clear' }" @click="op = 'clear'">清空</button>
         </div>
       </div>
 
       <!-- 克隆源 -->
       <div v-if="op === 'clone'" class="ed-field">
         <label>克隆来源</label>
-        <select v-model.number="cloneFrom" class="ed-select">
+        <select v-model.number="cloneFrom" class="ed-select ui-select">
           <option v-for="s in occupiedSlots" :key="s.unitId" :value="s.unitId" :disabled="s.unitId === targetSlot">
             槽{{ String(s.slot).padStart(2, '0') }} · {{ s.name || '(未命名)' }}
           </option>
@@ -360,55 +810,199 @@ async function apply() {
       <template v-if="op === 'write'">
         <div class="ed-field">
           <label>配装名称 <em :class="{ over: nameTooLong }">{{ nameBytes }}/63 字节</em></label>
-          <input v-model="form.name" class="ed-input" maxlength="30" placeholder="给这套配装起个名字" />
+          <input v-model="form.name" class="ed-input ui-input" maxlength="30" placeholder="给这套配装起个名字" />
         </div>
 
         <div class="ed-field">
           <label>武器（{{ ctx.weapons.length }} 可选）</label>
-          <select v-model.number="form.weaponSlotId" class="ed-select">
+          <select v-model.number="form.weaponSlotId" class="ed-select ui-select">
             <option :value="0">— 不设置武器 —</option>
             <option v-for="w in ctx.weapons" :key="w.slotId" :value="w.slotId">
               {{ w.name }}{{ w.ownerCode ? '' : '（通用）' }}
             </option>
           </select>
+          <div v-if="selectedWeaponContext" class="weapon-context-strip">
+            <img v-if="selectedWeaponIcon" class="weapon-context-icon" :src="selectedWeaponIcon" alt="" />
+            <span><b>{{ selectedWeaponContext.name }}</b><small>Lv{{ selectedWeaponContext.level }} · 觉醒 {{ selectedWeaponContext.awakening }} · 超凡 {{ selectedWeaponContext.transcendence }}</small></span>
+            <em>HP {{ formatFinalStat(selectedWeaponContext.total?.hp) }} · 攻击 {{ formatFinalStat(selectedWeaponContext.total?.attack) }}</em>
+          </div>
         </div>
 
-        <div class="ed-field">
-          <label>因子（{{ form.sigilSlotIds.length }}/12 · 池 {{ ctx.sigils.length }}）</label>
-          <div class="bag-toolbar">
-            <strong>从真实背包选择</strong>
-            <input v-model="sigilSearch" placeholder="搜索因子或主 / 副词条" />
-            <span>{{ filteredSigils.length }} 件</span>
+        <div class="ed-field summon-field">
+          <label>全局已装备召唤石（独立于单套配装）</label>
+          <label class="summon-write-toggle ui-check">
+            <input v-model="writeGlobalSummons" type="checkbox" />
+            <span>
+              <b>写入时同步更新全局四槽</b>
+              <small>关闭时仅参与右侧数值预览；背包可选 {{ statContext.summons.length }} 个</small>
+            </span>
+          </label>
+          <div class="summon-slot-list">
+            <label v-for="index in 4" :key="index" class="summon-slot-card">
+              <span class="summon-slot-index">{{ String(index).padStart(2, '0') }}</span>
+              <select v-model.number="summonSlotIds[index - 1]" class="ed-select ui-select">
+                <option :value="0" disabled>— 选择召唤石 —</option>
+                <option v-for="summon in statContext.summons" :key="summon.slotId" :value="summon.slotId"
+                  :disabled="summonUsedElsewhere(summon.slotId, index - 1)">
+                  {{ summonOptionLabel(summon) }}
+                </option>
+              </select>
+              <img v-if="selectedSummons[index - 1] && summonAssetIcon(selectedSummons[index - 1])" class="summon-icon" :src="summonAssetIcon(selectedSummons[index - 1])" alt="" />
+              <span v-if="selectedSummons[index - 1]" class="summon-source-lines">
+                <b>{{ selectedSummons[index - 1].name }}</b>
+                <small><i>主</i>{{ selectedSummons[index - 1].mainTraitName }} Lv{{ selectedSummons[index - 1].mainTraitLevel }}</small>
+                <small><i>副</i>{{ selectedSummons[index - 1].subParamName }} {{ formatSignedValue(selectedSummons[index - 1].subParamValue, selectedSummons[index - 1].subParamUnit) }}</small>
+              </span>
+            </label>
           </div>
-          <div class="pick-grid sigils">
-            <button v-for="s in filteredSigils" :key="s.slotId" class="pick sigil-pick" :class="{ on: form.sigilSlotIds.includes(s.slotId) }"
-              @click="toggleSigil(s.slotId)" :title="s.generic ? '通用因子' : '角色因子'">
-              <span class="sigil-glyph">{{ s.generic ? '◇' : '◆' }}</span>
-              <span class="sigil-copy"><b>{{ s.name }}</b><small>{{ s.primaryTraitName }} Lv{{ s.primaryTraitLevel }}<template v-if="s.secondaryTraitName"> · {{ s.secondaryTraitName }} Lv{{ s.secondaryTraitLevel }}</template></small></span>
-              <i v-if="s.level">Lv{{ s.level }}</i>
+          <small v-if="writeGlobalSummons && !summonSelectionValid" class="summon-invalid">要同步全局四槽，请选择四个不重复、确实存在于当前存档背包中的召唤石。</small>
+          <small v-else class="hint">四个召唤石始终参与右侧来源汇总；只有开启上方选项时才会改动存档的全局装备槽。</small>
+        </div>
+
+        <div class="ed-field skill-field">
+          <label>技能顺序（{{ form.skillHashes.length }}/4 · 完整技能池 {{ ctx.skills.length }}）</label>
+          <div class="skill-grid ui-card-grid">
+            <button v-for="s in ctx.skills" :key="s.hash" class="skill-pick"
+              :class="{ on: form.skillHashes.includes(s.hash), pending: pendingSkillHash === s.hash }"
+              @click="toggleSkill(s.hash)" :title="form.skillHashes.includes(s.hash) ? `当前第 ${skillOrder(s.hash)} 个技能` : s.name">
+              <img class="skill-icon" :src="skillIcon(s)" alt="" />
+              <span>{{ s.name || '未收录技能' }}</span>
+              <b v-if="skillOrder(s.hash)" class="skill-order">{{ skillOrder(s.hash) }}</b>
+            </button>
+            <span v-if="!ctx.skills.length" class="empty">解包技能表中没有该角色的可选技能。</span>
+          </div>
+          <div v-if="pendingSkillHash" class="replace-strip">
+            <span>4 个技能已满，替换哪一位？</span>
+            <button v-for="(hash, index) in form.skillHashes" :key="hash" @click="replaceSkillAt(index)">
+              <b>{{ index + 1 }}</b>{{ ctx.skills.find(s => s.hash === hash)?.name || '未收录技能' }}
+            </button>
+            <button class="replace-cancel" @click="pendingSkillHash = ''">取消</button>
+          </div>
+        </div>
+      </template>
+      </aside>
+
+      <main class="editor-column build-column">
+      <template v-if="op === 'write'">
+
+        <div class="ed-field factor-field">
+          <label>因子配置（{{ configuredFactorCount }}/12 · 背包 {{ ctx.sigils.length }}）</label>
+
+          <div class="factor-slot-grid ui-card-grid" aria-label="当前配装的十二个因子槽">
+            <button v-for="card in factorSlotCards" :key="card.index" class="factor-slot-card"
+              :class="{ active: activeFactorIndex === card.index, empty: card.empty, draft: card.kind === 'construct' }"
+              @click="selectFactorSlot(card.index)">
+              <i class="factor-slot-number">{{ String(card.index + 1).padStart(2, '0') }}</i>
+              <template v-if="card.empty">
+                <span class="empty-factor-mark">＋</span><strong>空槽</strong><small>点此配置</small>
+              </template>
+              <template v-else>
+                <span class="sigil-icon-frame">
+                  <img v-if="traitIcon(card.primaryTraitName, card.primaryTraitHash, card.primaryTraitId)" :src="traitIcon(card.primaryTraitName, card.primaryTraitHash, card.primaryTraitId)" alt="" />
+                  <i v-else>◆</i>
+                </span>
+                <span class="factor-slot-copy">
+                  <b>{{ card.name }}</b>
+                  <small v-if="card.primaryTraitName" class="trait-line"><i>主</i><span>{{ card.primaryTraitName }}</span><em>Lv{{ card.primaryTraitLevel }}</em></small>
+                  <small v-if="card.secondaryTraitName" class="trait-line"><i>副</i><span>{{ card.secondaryTraitName }}</span><em>Lv{{ card.secondaryTraitLevel }}</em></small>
+                </span>
+                <em class="factor-source">{{ card.kind === 'construct' ? '待生成' : `背包 #${card.slotId}` }}</em>
+              </template>
             </button>
           </div>
-        </div>
 
-        <div class="ed-field">
-          <label>技能（{{ form.skillHashes.length }}/4 · 池 {{ ctx.skills.length }}）</label>
-          <div class="pick-grid">
-            <button v-for="s in ctx.skills" :key="s.hash" class="pick" :class="{ on: form.skillHashes.includes(s.hash) }" @click="toggleSkill(s.hash)">
-              <img v-if="skillIcon(s.name)" class="skill-icon" :src="skillIcon(s.name)" alt="" />{{ s.name || s.hash }}
+          <div class="factor-selection-bar">
+            <span><b>当前槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</b>{{ activeFactorCard.empty ? '空槽' : ` · ${activeFactorCard.name}` }}</span>
+            <button v-if="!activeFactorCard.empty" @click="clearActiveFactor">清空此槽</button>
+          </div>
+
+          <div class="factor-mode-tabs ui-seg" role="tablist" aria-label="因子替换来源">
+            <button class="ui-seg-btn" role="tab" :aria-selected="factorMode === 'construct'" :class="{ 'is-on': factorMode === 'construct' }" @click="factorMode = 'construct'">
+              <b>构造模式</b><span>写入配装时自动生成</span>
             </button>
-            <span v-if="!ctx.skills.length" class="empty">该角色现有配装未记录技能，无法自定义技能</span>
+            <button class="ui-seg-btn" role="tab" :aria-selected="factorMode === 'bag'" :class="{ 'is-on': factorMode === 'bag' }" @click="factorMode = 'bag'">
+              <b>从背包选择</b><span>替换当前选中槽</span>
+            </button>
+          </div>
+
+          <div v-if="factorMode === 'bag'" class="bag-picker-shell">
+            <div class="bag-toolbar ui-toolbar">
+              <strong>替换槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</strong>
+              <input v-model="sigilSearch" class="ui-input" placeholder="搜索因子、主词条或副词条" />
+              <span>{{ filteredSigils.length }} 件</span>
+            </div>
+            <div class="pick-grid sigils">
+              <button v-for="s in filteredSigils" :key="s.slotId" class="pick sigil-pick"
+                :class="{ on: factorSlots[activeFactorIndex]?.kind === 'bag' && factorSlots[activeFactorIndex]?.slotId === s.slotId, used: bagFactorSlotNumber(s.slotId) }"
+                @click="chooseBagFactor(s.slotId)" :title="`${s.name}｜主：${s.primaryTraitName} Lv${s.primaryTraitLevel}${s.secondaryTraitName ? `｜副：${s.secondaryTraitName} Lv${s.secondaryTraitLevel}` : ''}`">
+                <span class="sigil-icon-frame">
+                  <img v-if="traitIcon(s.primaryTraitName, s.primaryTraitHash)" :src="traitIcon(s.primaryTraitName, s.primaryTraitHash)" alt="" />
+                  <i v-else>{{ s.generic ? '◇' : '◆' }}</i>
+                </span>
+                <span class="sigil-copy">
+                  <b>{{ s.name }}</b>
+                  <small v-if="s.primaryTraitName" class="trait-line"><i>主</i><span>{{ s.primaryTraitName }}</span><em>Lv{{ s.primaryTraitLevel }}</em></small>
+                  <small v-if="s.secondaryTraitName" class="trait-line"><i>副</i><span>{{ s.secondaryTraitName }}</span><em>Lv{{ s.secondaryTraitLevel }}</em></small>
+                </span>
+                <span class="bag-factor-meta"><b v-if="bagFactorSlotNumber(s.slotId)">槽 {{ String(bagFactorSlotNumber(s.slotId)).padStart(2, '0') }}</b><i v-if="s.level">Lv{{ s.level }}</i></span>
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="constructor-shell">
+            <div class="constructor-note">
+              <span class="constructor-mark">{{ String(activeFactorIndex + 1).padStart(2, '0') }}</span>
+              <div><b>因子构造器</b><small>配置会先留在当前槽；点击整套写入时再生成真实因子并绑定。</small></div>
+            </div>
+            <div class="constructor-grid">
+              <label class="constructor-search ui-field"><span class="ui-field-label">搜索目录</span><input v-model="constructSearch" class="ui-input" placeholder="按因子名或主词条搜索" /></label>
+              <label class="constructor-wide"><span>因子</span>
+                <select v-model="constructSigilId" class="ui-select" :disabled="constructLoading">
+                  <option v-for="item in filteredConstructCatalog" :key="item.internalId" :value="item.internalId">{{ item.displayName }} · {{ item.primaryTraitName }}</option>
+                </select>
+              </label>
+              <label><span>因子等级</span>
+                <select v-model.number="constructSigilLevel" class="ui-select"><option v-for="level in naturalLevels(selectedConstructSigil?.allowedSigilLevels)" :key="level" :value="level">Lv{{ level }}</option></select>
+              </label>
+              <label><span>主词条等级</span>
+                <select v-model.number="constructPrimaryLevel" class="ui-select"><option v-for="level in naturalLevels(selectedConstructSigil?.allowedFirstTraitLevels)" :key="level" :value="level">Lv{{ level }}</option></select>
+              </label>
+              <label v-if="selectedConstructSigil?.supportsSecondaryTrait" class="constructor-wide"><span>副词条</span>
+                <select v-model="constructSecondaryId" class="ui-select"><option value="">— 不设置副词条 —</option><option v-for="item in constructSecondaries" :key="item.internalId" :value="item.internalId">{{ item.displayName }}</option></select>
+              </label>
+              <label v-if="selectedConstructSecondary"><span>副词条等级</span><input :value="`Lv${constructSecondaryLevel}`" class="ui-input" readonly /></label>
+            </div>
+            <div v-if="selectedConstructSigil" class="constructor-preview">
+              <span class="sigil-icon-frame large"><img v-if="traitIcon(selectedConstructSigil.primaryTraitName, '', selectedConstructSigil.primaryTraitId)" :src="traitIcon(selectedConstructSigil.primaryTraitName, '', selectedConstructSigil.primaryTraitId)" alt="" /><i v-else>◆</i></span>
+              <div><b>{{ selectedConstructSigil.displayName }}</b><span>主 · {{ selectedConstructSigil.primaryTraitName }} Lv{{ constructPrimaryLevel }}</span><span v-if="selectedConstructSecondary">副 · {{ selectedConstructSecondary.displayName }} Lv{{ constructSecondaryLevel }}</span></div>
+              <button class="ui-btn is-primary" :disabled="!constructSigilId" @click="stageConstructedFactor">替换槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</button>
+            </div>
           </div>
         </div>
 
-        <div class="ed-field">
-          <label>专精 <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/50</em></label>
-          <div class="op-row">
-            <button class="op-btn" :class="{ on: masteryMode === 'copy' }" @click="masteryMode = 'copy'">复制现有</button>
-            <button class="op-btn" :class="{ on: masteryMode === 'free' }" @click="masteryMode = 'free'" :disabled="!ctx.ownerCode">自由配置</button>
+        <div class="ed-field mastery-field">
+          <button class="mastery-toggle" :aria-expanded="masteryExpanded" @click="masteryExpanded = !masteryExpanded">
+            <span><b>专精配置</b><small>位于因子配置下方 · 三方向 1–3 阶 + EX</small></span>
+            <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/50</em>
+            <i>{{ masteryExpanded ? '收起' : '展开' }}</i>
+          </button>
+          <div class="mastery-direction-map" aria-label="三个专精方向与阶段效果">
+            <article v-for="direction in masteryDirectionCards" :key="direction.cat" :class="['direction-card', 'cat-' + catAbbr(direction.cat), { 'is-primary-direction': displayedMasteryDirection === direction.cat }]">
+              <header><span class="cat-mark">{{ catAbbr(direction.cat) }}</span><div><small>{{ direction.label }}</small><b>{{ direction.specialization }}</b></div><em v-if="displayedMasteryDirection === direction.cat">当前主方向</em></header>
+              <div v-for="row in direction.rows" :key="row.rank" class="direction-stage" :class="{ active: row.active }">
+                <b>{{ row.label }}</b><span>{{ row.count }}/{{ row.threshold }}</span><small>{{ row.active ? '专精效果生效' : row.reason }}</small>
+              </div>
+            </article>
+          </div>
+
+          <div v-if="masteryExpanded" class="mastery-panel">
+          <div class="op-row ui-seg">
+            <button class="op-btn ui-seg-btn" :class="{ 'is-on': masteryMode === 'copy' }" @click="masteryMode = 'copy'">复制现有</button>
+            <button class="op-btn ui-seg-btn" :class="{ 'is-on': masteryMode === 'free' }" @click="masteryMode = 'free'" :disabled="!ctx.ownerCode">自由配置</button>
           </div>
 
           <template v-if="masteryMode === 'copy'">
-            <select v-model.number="form.masterySource" class="ed-select">
+            <select v-model.number="form.masterySource" class="ed-select ui-select">
               <option :value="0">— 不设置专精 —</option>
               <option v-for="m in masterySources" :key="m.unitId" :value="m.unitId">
                 复制自 槽{{ String(m.slot).padStart(2, '0') }}「{{ m.name || '未命名' }}」（{{ m.nodeCount }} 节点）
@@ -418,19 +1012,20 @@ async function apply() {
           </template>
 
           <template v-else>
+            <div class="direction-picker">
+              <div><strong>2阶起主方向</strong><small>1阶三方向均可点；2/3阶沿同一方向各配置至少 6 个节点</small></div>
+              <button v-for="direction in masteryDirectionCards" :key="direction.cat" :class="{ on: masteryDirection === direction.cat }" @click="chooseMasteryDirection(direction.cat)">
+                {{ direction.label }} · {{ direction.specialization }}
+              </button>
+            </div>
             <div class="rank-tabs">
               <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" @click="masteryRankTab = p.rank">
                 {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= p.cap }">{{ rankPicked(p.rank) }}/{{ p.cap }}</i>
               </button>
             </div>
-            <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="direction-picker">
-              <div>
-                <strong>2阶起主方向</strong>
-                <small>3阶必须沿用；其他方向只可配置普通子词条</small>
-              </div>
-              <button v-for="grp in activeRankGroups" :key="grp.cat" :class="{ on: masteryDirection === grp.cat }" @click="chooseMasteryDirection(grp.cat)">
-                {{ grp.label }}
-              </button>
+            <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="mastery-rule direction-rule">
+              <b>2阶起只保留一个专精方向</b>
+              <span>所选主方向在 2阶与3阶都需达到 6 个节点。其他方向的普通子词条仍可配置，但对应专精效果不会生效，也不能选择非主方向的具名专精技能。</span>
             </div>
             <div v-if="masteryRankTab === 'R1'" class="mastery-rule">
               1阶三个方向互不排斥：每组达到 3 项即可激活该方向的1阶专精技能。
@@ -448,40 +1043,92 @@ async function apply() {
                 </header>
                 <div class="node-list">
                   <button v-for="n in grp.nodes" :key="n.hash" class="node"
-                    :class="{ on: (masteryPick[activeRankPool.rank] || []).includes(n.hash), named: n.name, disabled: masteryNodeDisabled(activeRankPool.rank, n) }"
+                    :class="{ on: (masteryPick[activeRankPool.rank] || []).includes(n.hash), named: n.name || n.specialization, disabled: masteryNodeDisabled(activeRankPool.rank, n) }"
                     :disabled="masteryNodeDisabled(activeRankPool.rank, n)"
                     @click="toggleNode(activeRankPool.rank, n.hash, activeRankPool.cap)">
                     <span class="node-check">{{ (masteryPick[activeRankPool.rank] || []).includes(n.hash) ? '✓' : '' }}</span>
-                    <span><b v-if="n.name">{{ n.name }}</b><small>{{ n.desc }}</small></span>
-                    <em v-if="n.name">专精技能</em>
+                    <span><b v-if="n.name || n.specialization">{{ masteryNodeTitle(activeRankPool.rank, n) }}</b><small>{{ n.desc }}</small></span>
+                    <em v-if="n.name || n.specialization">专精技能</em>
                   </button>
                 </div>
               </section>
             </div>
-            <small class="hint">满级配置必须为 10 / 10 / 10 / 20；页面展示的是解包专精节点与真实存档选择，写入前仍会校验角色归属和各阶配额。</small>
+            <small class="hint">满级配置固定为 10 / 10 / 10 / 20；2阶与3阶需沿同一主方向各配置至少 6 个节点。</small>
           </template>
+          </div>
         </div>
       </template>
 
       <div class="ed-actions">
-        <button class="apply-btn" :disabled="applying || writeInvalid" @click="apply">
+        <button class="apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
           {{ applying ? '写入中…' : opLabel() + '到槽' + String(selectedSlot?.slot ?? 0).padStart(2, '0') }}
         </button>
-        <small class="safety">写入前自动备份 · 写后回读验证 · 建议先在副本存档上试</small>
       </div>
       </main>
 
-      <aside class="result-sidebar">
-        <section class="result-card result-overview">
+      <aside class="editor-column result-sidebar">
+        <section class="result-card result-overview ui-card ui-panel is-compact">
           <header><strong>角色效果总计</strong><span>随当前槽实时更新</span></header>
           <div class="result-metrics">
-            <div><b>{{ form.sigilSlotIds.length }}</b><span>/12 因子</span></div>
+            <div><b>{{ configuredFactorCount }}</b><span>/12 因子</span></div>
             <div><b>{{ form.skillHashes.length }}</b><span>/4 技能</span></div>
             <div><b>{{ selectedMasteryHashes.length }}</b><span>/50 专精</span></div>
+            <div><b>{{ selectedSummons.filter(Boolean).length }}</b><span>/4 召唤</span></div>
           </div>
         </section>
 
-        <section class="result-card">
+        <section class="result-card skill-summary-card ui-card ui-panel is-compact">
+          <header><strong>技能效果</strong><span>{{ selectedSkills.length }} 主动 · {{ weaponSkills.length }} 武器 · {{ selectedMasteryDetails.length }} 专精</span></header>
+          <div class="skill-chips">
+            <span v-for="(skill, index) in selectedSkills" :key="skill.hash"><b>{{ index + 1 }}</b><img :src="skillIcon(skill)" alt="" />{{ skill.name || '未收录技能' }}</span>
+            <i v-if="!selectedSkills.length">未配置主动技能</i>
+          </div>
+          <div class="weapon-skill-block">
+            <div class="weapon-skill-title"><b>武器技能</b><span>{{ selectedWeaponContext?.name || '未选择武器' }}</span></div>
+            <div v-if="weaponSkills.length" class="weapon-skill-list">
+              <article v-for="skill in weaponSkills" :key="`${skill.slot}-${skill.traitHash}`">
+                <span><b>{{ skill.name || '未收录武器技能' }}</b><em>{{ formatWeaponSkillLevel(skill) }}</em></span>
+                <p class="weapon-skill-effect">{{ skill.effect || '暂无可验证效果说明' }}</p>
+                <small>来源 · {{ skill.sourceWeapon || '未收录武器' }}</small>
+              </article>
+            </div>
+            <small v-else class="hint">当前武器没有可解析的武器技能。</small>
+          </div>
+        </section>
+
+        <section class="result-card bonus-summary-card ui-card ui-panel is-compact">
+          <header><strong>总计加成</strong><span>{{ simulating ? '计算中…' : displayTotals.length + ' 类' }}</span></header>
+          <p class="calculation-scope-note">默认仅计算可随时更换的配装来源：武器（含武器技能）、因子、专精、角色上限突破与召唤石；不含任务、队伍、临时状态及战斗内条件加成。</p>
+          <div v-if="bonuses.length" class="trait-level-ledger">
+            <span><small>有效</small><b>{{ traitLevelSummary.effective }}</b></span>
+            <span><small>投入</small><b>{{ traitLevelSummary.invested }}</b></span>
+            <span v-if="traitLevelSummary.overflow > 0" class="overflow"><small>溢出</small><b>+{{ traitLevelSummary.overflow }}</b><em>{{ traitLevelSummary.cappedCount }} 项</em></span>
+          </div>
+          <div v-if="displayTotals.length" class="effect-total-list">
+            <div v-for="total in displayTotals" :key="total.key" class="effect-total-row" :class="catClass(total.catLabel)">
+              <span><b>{{ total.label }}</b><small>{{ total.sources.join(' · ') }}</small></span>
+              <strong class="effect-total-values">
+                <span v-for="part in total.parts" :key="part.unit">
+                  <small v-if="total.parts.length > 1">{{ effectUnitLabel(part.unit) }}</small>
+                  <b>{{ formatEffectTotal(part) }}</b>
+                </span>
+              </strong>
+            </div>
+          </div>
+          <small v-else-if="!simulating" class="hint">当前配置没有可合并的数值加成。</small>
+          <details v-if="bonuses.length" class="trait-detail-disclosure ui-disclosure">
+            <summary>查看词条等级与完整效果（{{ bonuses.length }}）</summary>
+            <div class="sim-list">
+              <div v-for="b in bonuses" :key="b.traitId" class="sim-row" :class="catClass(b.catLabel)">
+                <span class="sim-name">{{ b.name }}<i v-if="b.capped" class="sim-cap" title="已达词条上限">封顶</i></span>
+                <span class="sim-lv">Lv{{ b.level }}<small v-if="b.rawLevel !== b.level">/{{ b.rawLevel }}</small></span>
+                <span class="sim-eff">{{ b.effect }}</span>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <section class="result-card mastery-summary-card ui-card ui-panel is-compact">
           <header><strong>专精生效结果</strong><span>{{ summarizingMastery ? '解析中…' : (masterySummary?.primaryLabel || '未形成2阶主方向') }}</span></header>
           <div v-if="masterySummary" class="mastery-result">
             <article v-for="rank in masterySummary.ranks" :key="rank.rank" class="mastery-result-rank">
@@ -499,41 +1146,24 @@ async function apply() {
             </article>
           </div>
           <small v-else class="hint">当前没有可解析的专精节点。</small>
-        </section>
-
-        <section class="result-card">
-          <header><strong>总计加成</strong><span>{{ simulating ? '计算中…' : bonuses.length + ' 条' }}</span></header>
-          <div v-if="bonuses.length" class="sim-list">
-            <div v-for="b in bonuses" :key="b.traitId" class="sim-row" :class="catClass(b.catLabel)">
-              <span class="sim-name">{{ b.name }}<i v-if="b.capped" class="sim-cap" title="已达词条上限">封顶</i></span>
-              <span class="sim-lv">Lv{{ b.level }}<small v-if="b.rawLevel !== b.level">/{{ b.rawLevel }}</small></span>
-              <span class="sim-eff">{{ b.effect }}</span>
+          <details v-if="selectedMasteryDetails.length" class="mastery-detail-disclosure ui-disclosure">
+            <summary>查看已选专精子词条（{{ selectedMasteryDetails.length }}）</summary>
+            <div class="mastery-effect-list">
+              <div v-for="node in selectedMasteryDetails" :key="node.hash" class="mastery-effect">
+                <span>{{ node.rankLabel }} · {{ node.catLabel }}</span>
+                <b v-if="node.name">{{ node.name }}</b>
+                <p>{{ node.desc }}</p>
+              </div>
             </div>
-          </div>
-          <small v-else-if="!simulating" class="hint">当前因子没有可汇总的词条。</small>
+          </details>
         </section>
 
-        <section class="result-card">
-          <header><strong>技能效果</strong><span>{{ selectedSkills.length }} 主动技能 · {{ selectedMasteryDetails.length }} 专精节点</span></header>
-          <div class="skill-chips">
-            <span v-for="skill in selectedSkills" :key="skill.hash">{{ skill.name || skill.hash }}</span>
-            <i v-if="!selectedSkills.length">未配置主动技能</i>
-          </div>
-          <div v-if="selectedMasteryDetails.length" class="mastery-effect-list">
-            <div v-for="node in selectedMasteryDetails" :key="node.hash" class="mastery-effect">
-              <span>{{ node.rankLabel }} · {{ node.catLabel }}</span>
-              <b v-if="node.name">{{ node.name }}</b>
-              <p>{{ node.desc }}</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="result-card share-card">
+        <section class="result-card share-card ui-card ui-panel is-compact">
           <header><strong>分享单套配装</strong><span>不做批量 · 不包含存档</span></header>
           <p>导出时使用物品与主副词条指纹；导入只匹配当前存档已拥有的同一物品，并先载入为草稿。</p>
           <div class="share-actions">
-            <button :disabled="sharing || !selectedLoadout || selectedLoadout.isParty" @click="exportCurrentLoadout">导出当前槽</button>
-            <button :disabled="sharing" @click="importLoadout">导入单套配装</button>
+            <button class="ui-btn is-primary" :disabled="sharing || !selectedLoadout || selectedLoadout.isParty" @click="exportCurrentLoadout">导出当前槽</button>
+            <button class="ui-btn" :disabled="sharing" @click="importLoadout">导入单套配装</button>
           </div>
         </section>
       </aside>
@@ -544,147 +1174,407 @@ async function apply() {
 </template>
 
 <style scoped>
-.loadout-editor { min-width:0; }
-.editor-layout { display:grid; grid-template-columns:minmax(0, 1.55fr) minmax(340px, .75fr); gap:14px; align-items:start; }
-.editor-form { min-width:0; display:flex; flex-direction:column; gap:13px; }
-.hint { font-size:.72rem; color:var(--text-muted); }
-.ed-head { display:flex; align-items:baseline; gap:9px; }
-.ed-head strong { font-size:.9rem; color:var(--text-primary); }
-.ed-head .owner { font-size:.68rem; color:var(--gold); padding:1px 7px; border:1px solid var(--line-soft); border-radius:10px; }
+.loadout-editor { min-width:0; height:100%; min-height:0; --editor-scale:1; color:var(--text-secondary); font-family:var(--font-ui,"Microsoft YaHei UI","Microsoft YaHei",sans-serif); font-size:var(--fs-base); font-weight:var(--fw-normal); line-height:var(--lh-normal); container:loadout-editor / inline-size; }
+.editor-layout { height:100%; min-height:0; display:grid; grid-template-columns:minmax(270px,290px) minmax(620px,1fr) minmax(300px,330px); justify-content:center; gap:var(--space-4); align-items:stretch; }
+.editor-column { min-width:0; min-height:0; overflow:auto; scrollbar-gutter:stable; padding:0; border:1px solid var(--line); border-radius:10px; background:rgba(255,253,247,.94); box-shadow:0 4px 14px rgba(61,47,29,.06); }
+.setup-column, .build-column { display:flex; flex-direction:column; gap:0; }
+.setup-column > * + *,
+.build-column > * + * { border-top:1px solid var(--line-soft); }
+.build-column > * { flex:0 0 auto; }
+.hint { font-size:var(--fs-xs); color:var(--text-muted); }
+.character-profile { display:grid; grid-template-columns:62px minmax(0,1fr); gap:9px 11px; padding:12px 14px; background:rgba(139,103,55,.035); }
+.character-portrait { position:relative; width:62px; height:62px; display:grid; place-items:center; overflow:hidden; border:1px solid #c5ad7f; border-radius:9px; background:#f3e8d2; color:#765126; font-size:calc(23px * var(--editor-scale)); font-weight:700; }
+.character-portrait img { width:100%; height:100%; object-fit:cover; }
+.character-portrait > b { position:absolute; right:4px; bottom:4px; padding:1px 5px; border-radius:8px; background:rgba(47,39,27,.8); color:#fffdf7; font-size:var(--fs-xs); line-height:1.5; }
+.character-profile-main { min-width:0; display:flex; flex-direction:column; justify-content:center; }
+.profile-stat-card { grid-column:1 / -1; padding:8px; border:1px solid var(--line-soft); border-radius:8px; background:rgba(255,255,255,.5); }
+.profile-stat-heading { min-width:0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 8px; margin-bottom:6px; padding:0 1px; }
+.profile-stat-heading strong { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-weight:700; }
+.profile-stat-heading small { min-width:0; margin-left:auto; color:var(--text-muted); font-size:var(--fs-xs); text-align:right; white-space:normal; overflow-wrap:anywhere; }
+.profile-stat-heading small.unverified { color:var(--warning-ink); font-weight:var(--fw-semibold); }
+.profile-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin:0; }
+.profile-stat { min-width:0; display:flex; flex-direction:column; padding:5px 7px; border-left:2px solid #b5925b; background:rgba(139,103,55,.06); }
+.profile-stat:nth-child(2) { border-left-color:#88704e; }
+.profile-stat:nth-child(3) { border-left-color:#a34b50; }
+.profile-stat:nth-child(4) { border-left-color:#81704f; }
+.profile-stat-cap { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; }
+.profile-stat-cap .profile-stat-value { color:#a23f65; }
+.profile-stat-label { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
+.profile-stat-value { margin:0; white-space:nowrap; color:var(--text-primary); font-size:calc(15px * var(--editor-scale)); font-weight:700; font-variant-numeric:tabular-nums; }
+.character-profile > .source-badge,
+.final-stat-detail-disclosure,
+.overlimit-disclosure,
+.stat-warnings { grid-column:1/-1; }
+.final-stat-detail-disclosure { border-top:1px solid var(--line-soft); }
+.final-stat-detail-disclosure summary { padding-top:5px; color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
+.final-stat-detail-disclosure[open] summary { margin-bottom:6px; }
+.panel-base-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:6px; }
+.panel-base-grid > span { min-width:0; display:flex; flex-direction:column; padding:5px 6px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.46); }
+.panel-base-grid small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
+.panel-base-grid b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
+.cap-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin-top:4px; }
+.cap-detail-grid > span { min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:2px; padding:5px 4px; border:1px solid rgba(162,63,101,.16); border-radius:5px; background:rgba(162,63,101,.045); text-align:center; }
+.cap-detail-grid small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.3; }
+.cap-detail-grid b { color:#a23f65; font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.formula-audit-row { display:grid; gap:2px; margin-top:6px; padding:6px 8px; border:1px solid var(--warning); border-radius:var(--radius-sm); background:var(--warning-bg); color:var(--warning-ink); font-size:var(--fs-xs); line-height:1.4; }
+.formula-audit-row.verified { border-color:var(--success); background:var(--success-bg); color:var(--success-ink); }
+.formula-audit-row span { color:inherit; }
+.overlimit-disclosure { padding-top:2px; border-top:1px solid var(--line-soft); }
+.overlimit-disclosure summary { padding-top:5px; color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
+.overlimit-list { display:flex; flex-direction:column; gap:3px; margin-top:6px; }
+.overlimit-list > span { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:6px; padding:3px 5px; border-radius:4px; background:rgba(139,103,55,.05); font-size:calc(11px * var(--editor-scale)); }
+.overlimit-list b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-weight:600; }
+.overlimit-list em { color:var(--text-muted); font-style:normal; }
+.overlimit-list strong { color:#765126; font-variant-numeric:tabular-nums; }
+.stat-warnings { display:flex; flex-direction:column; gap:3px; color:var(--red); font-size:calc(11px * var(--editor-scale)); }
+.ed-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:7px 9px; }
+.ed-head strong { min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:.9rem; color:var(--text-primary); white-space:nowrap; }
+.ed-head .owner { font-size:var(--fs-xs); color:var(--gold); padding:1px 7px; border:1px solid var(--line-soft); border-radius:10px; }
 .ed-head .owner.warn { color:var(--red); }
-.source-badge { margin-left:auto; font-size:.66rem; font-weight:700; color:var(--text-muted); padding:3px 8px; border:1px solid var(--line-soft); border-radius:10px; background:var(--panel-solid); }
-.ed-field { display:flex; flex-direction:column; gap:6px; }
-.ed-field > label { font-size:.74rem; font-weight:700; color:var(--text-secondary); }
+.source-badge { grid-column:1/-1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-xs); font-weight:700; color:var(--text-muted); padding:3px 8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
+.ed-field { display:flex; flex-direction:column; gap:7px; padding:13px 14px; background:transparent; }
+.ed-field > label { font-size:var(--fs-sm); font-weight:700; color:var(--text-secondary); }
 .ed-field > label em { font-style:normal; font-weight:600; color:var(--text-muted); margin-left:6px; }
 .ed-field > label em.over { color:var(--red); }
 .slot-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(38px, 1fr)); gap:5px; }
-.slot-btn { min-height:30px; border:1px solid var(--line-soft); border-radius:5px; background:var(--sky-900); color:var(--text-muted); font-size:.72rem; cursor:pointer; user-select:none; }
+.slot-btn { min-height:30px; border:1px solid var(--line-soft); border-radius:5px; background:var(--sky-900); color:var(--text-muted); font-size:var(--fs-xs); cursor:pointer; user-select:none; }
 .slot-btn.occ { color:var(--text-primary); border-color:var(--line-gold); }
 .slot-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
-.occ-warn { font-size:.68rem; color:var(--amber); }
+.occ-warn { font-size:var(--fs-xs); color:var(--amber); }
 .op-row, .ed-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
-.op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:.76rem; cursor:pointer; user-select:none; }
+.ed-actions { padding:12px 14px; }
+.op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
 .op-btn:disabled { opacity:.4; cursor:not-allowed; }
-.ed-input, .ed-select { min-height:32px; padding:0 10px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel-solid); color:var(--text-primary); font-size:.78rem; }
+.ed-input, .ed-select { min-height:32px; padding:0 10px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel-solid); color:var(--text-primary); font-size:var(--fs-sm); }
 .ed-input:focus, .ed-select:focus { outline:2px solid rgba(154,116,64,.5); outline-offset:1px; }
-.pick-grid { display:flex; flex-wrap:wrap; gap:6px; max-height:180px; overflow-y:auto; padding:2px; }
-.pick-grid.sigils { max-height:300px; display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); align-items:start; }
-.pick { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel-solid); color:var(--text-secondary); font-size:.72rem; cursor:pointer; user-select:none; }
+.weapon-context-strip { min-width:0; display:grid; grid-template-columns:58px minmax(0,1fr); gap:4px 8px; align-items:center; padding:7px 9px; border:1px solid var(--line-soft); border-left:3px solid #8b6737; border-radius:6px; background:rgba(139,103,55,.055); }
+.weapon-context-icon { width:58px; height:42px; object-fit:contain; border-radius:5px; background:rgba(255,255,255,.58); }
+.weapon-context-strip > span { min-width:0; display:flex; flex-direction:column; }
+.weapon-context-strip b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
+.weapon-context-strip small { color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-context-strip em { grid-column:2 / -1; min-width:0; color:#765126; font-size:var(--fs-xs); font-style:normal; font-variant-numeric:tabular-nums; white-space:normal; overflow-wrap:anywhere; }
+.summon-slot-list { display:flex; flex-direction:column; gap:8px; }
+.summon-write-toggle { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; padding:7px 8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.055); cursor:pointer; }
+.summon-write-toggle input { width:16px; height:16px; margin:0; accent-color:#765126; }
+.summon-write-toggle span { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.summon-write-toggle b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
+.summon-write-toggle small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.35; }
+.summon-slot-card { position:relative; min-width:0; display:flex; flex-direction:column; gap:5px; padding:8px 7px 7px 31px; border-top:1px solid var(--line-soft); }
+.summon-slot-card:first-child { border-top:0; }
+.summon-slot-index { position:absolute; top:12px; left:2px; width:22px; height:22px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:#fff9e9; font-size:var(--fs-xs); font-weight:700; font-variant-numeric:tabular-nums; }
+.summon-slot-card .ed-select { width:100%; min-width:0; }
+.summon-icon { position:absolute; top:48px; right:7px; width:46px; height:46px; object-fit:contain; border:1px solid var(--line-soft); border-radius:7px; background:rgba(255,255,255,.7); }
+.summon-source-lines { min-width:0; display:flex; flex-direction:column; gap:2px; padding:0 54px 0 2px; }
+.summon-source-lines > b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-weight:600; }
+.summon-source-lines > small { display:grid; grid-template-columns:19px minmax(0,1fr); gap:4px; color:var(--text-muted); line-height:1.4; }
+.summon-source-lines i { height:17px; display:grid; place-items:center; border:1px solid var(--line-soft); border-radius:3px; color:#765126; font-style:normal; }
+.summon-invalid { color:var(--red); font-size:calc(12px * var(--editor-scale)); }
+.pick-grid { display:flex; flex-wrap:wrap; gap:6px; padding:2px; }
+.pick-grid.sigils { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); grid-auto-rows:minmax(86px,auto); align-items:stretch; gap:9px; padding:3px 5px 3px 3px; }
+.pick { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel-solid); color:var(--text-secondary); font-size:var(--fs-xs); cursor:pointer; user-select:none; }
 .pick:hover { border-color:var(--line-gold); }
 .pick.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
-.pick i { font-style:normal; margin-left:5px; opacity:.7; font-size:.64rem; }
+.pick i { font-style:normal; margin-left:5px; opacity:.7; font-size:var(--fs-xs); }
 .skill-icon { width:22px; height:22px; flex:0 0 22px; object-fit:cover; border-radius:4px; box-shadow:0 0 0 1px rgba(118,81,38,.28); }
 .bag-toolbar { display:grid; grid-template-columns:auto minmax(150px,1fr) auto; gap:8px; align-items:center; padding:7px 8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
-.bag-toolbar strong { font-size:.67rem; color:var(--text-primary); }
-.bag-toolbar input { min-height:28px; padding:0 8px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-primary); font-size:.68rem; }
+.bag-toolbar strong { font-size:var(--fs-xs); color:var(--text-primary); }
+.bag-toolbar input { min-height:28px; padding:0 8px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-primary); font-size:var(--fs-xs); }
 .bag-toolbar input:focus { outline:1px solid var(--line-gold); }
-.bag-toolbar span { font-size:.62rem; color:var(--text-muted); }
-.sigil-pick { min-width:0; min-height:48px; display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:7px; align-items:center; padding:6px 8px; border-radius:7px; text-align:left; }
-.sigil-glyph { width:23px; height:23px; display:grid; place-items:center; border:1px solid var(--line-gold); border-radius:50%; background:rgba(139,103,55,.08); color:var(--gold); font-size:.78rem; }
-.sigil-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
-.sigil-copy b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:.68rem; }
-.sigil-copy small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:.59rem; }
+.bag-toolbar span { font-size:var(--fs-xs); color:var(--text-muted); }
+.sigil-pick { min-width:0; min-height:86px; height:100%; display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 9px; border-radius:7px; text-align:left; }
+.sigil-glyph { width:23px; height:23px; display:grid; place-items:center; border:1px solid var(--line-gold); border-radius:50%; background:rgba(139,103,55,.08); color:var(--gold); font-size:var(--fs-sm); }
+.sigil-copy { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.sigil-copy b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:var(--fs-sm); line-height:1.25; }
+.sigil-copy .trait-line { min-width:0; display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; overflow:visible; color:var(--text-muted); font-size:var(--fs-xs); line-height:1.25; white-space:normal; }
+.trait-line > i { width:18px; height:16px; display:grid; place-items:center; margin:0; border:1px solid rgba(139,103,55,.3); border-radius:3px; color:#765126; font-size:var(--fs-xs); font-style:normal; font-weight:700; opacity:1; }
+.trait-line > span { min-width:0; overflow-wrap:anywhere; }
+.trait-line > em { color:var(--gold); font-size:var(--fs-xs); font-style:normal; font-weight:600; white-space:nowrap; }
 .sigil-pick.on .sigil-copy b, .sigil-pick.on .sigil-copy small, .sigil-pick.on .sigil-glyph { color:inherit; }
-.empty { font-size:.7rem; color:var(--text-muted); }
+.sigil-pick.used:not(.on) { border-color:var(--line-gold); box-shadow:inset 0 0 0 1px rgba(139,103,55,.08); }
+.bag-factor-meta { align-self:stretch; display:flex; flex-direction:column; align-items:flex-end; justify-content:space-between; gap:4px; color:var(--text-muted); }
+.bag-factor-meta b { padding:2px 5px; border-radius:8px; background:rgba(139,103,55,.13); color:#765126; font-size:var(--fs-xs); white-space:nowrap; }
+.bag-factor-meta i { margin:0; }
+.empty { font-size:var(--fs-xs); color:var(--text-muted); }
 .apply-btn { min-height:34px; padding:0 18px; border:1px solid #765126; border-radius:6px; background:#8b6737; color:#fff9e9; font-size:.8rem; font-weight:700; cursor:pointer; }
 .apply-btn:hover:not(:disabled) { background:#76552d; }
 .apply-btn:disabled { opacity:.45; cursor:not-allowed; }
-.safety { font-size:.66rem; color:var(--text-muted); }
 /* 右侧角色总计：始终保留因子加成、技能与专精效果 */
-.result-sidebar { position:sticky; top:8px; min-width:0; max-height:calc(100vh - 116px); overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-right:2px; }
-.result-card { min-width:0; padding:11px; border:1px solid var(--line); border-radius:8px; background:linear-gradient(155deg, var(--panel-solid), var(--sky-900)); box-shadow:0 5px 16px rgba(27,35,44,.06); }
+.result-sidebar { display:flex; flex-direction:column; gap:0; }
+.result-overview { order:0; }
+.skill-summary-card { order:1; }
+.bonus-summary-card { order:2; }
+.mastery-summary-card { order:3; }
+.share-card { order:4; }
+.result-card { min-width:0; padding:14px; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.result-card + .result-card { border-top:1px solid var(--line-soft); }
 .result-card > header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
-.result-card > header strong { font-size:.76rem; color:var(--text-primary); }
-.result-card > header span { font-size:.64rem; color:var(--text-muted); text-align:right; }
-.result-overview { border-color:var(--line-gold); background:linear-gradient(145deg, rgba(139,103,55,.12), var(--panel-solid)); }
-.result-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.result-card > header strong { font-size:var(--fs-sm); color:var(--text-primary); }
+.result-card > header span { font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); text-align:right; }
+.result-overview { background:rgba(139,103,55,.055); }
+.result-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
 .result-metrics div { display:flex; align-items:baseline; justify-content:center; gap:2px; padding:7px 4px; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); }
 .result-metrics b { font-size:1rem; color:var(--gold); font-variant-numeric:tabular-nums; }
-.result-metrics span { font-size:.62rem; color:var(--text-muted); }
-.sim-list { display:flex; flex-direction:column; gap:2px; max-height:320px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-card-pop); padding:4px; }
-.sim-row { display:grid; grid-template-columns:minmax(5.5em,.8fr) 3.5em minmax(0,1.5fr); gap:7px; align-items:baseline; padding:4px 7px; border-radius:var(--radius-sm); font-size:.68rem; border-left:3px solid var(--border-soft); }
+.result-metrics span { font-size:var(--fs-xs); color:var(--text-muted); }
+.trait-level-ledger { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin:0 0 8px; }
+.trait-level-ledger > span { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; gap:4px; padding:5px 7px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.42); }
+.trait-level-ledger small { color:var(--text-muted); font-size:var(--fs-xs); }
+.trait-level-ledger b { color:#765126; font-size:calc(12px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
+.trait-level-ledger .overflow { grid-template-columns:minmax(0,1fr) auto; border-color:rgba(174,94,58,.25); background:rgba(174,94,58,.055); }
+.trait-level-ledger .overflow b { color:#a45735; }
+.trait-level-ledger .overflow em { grid-column:1/-1; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; line-height:1.25; }
+.effect-total-list { display:flex; flex-direction:column; gap:5px; }
+.effect-total-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:center; padding:7px 8px; border:1px solid var(--border-soft); border-left:3px solid var(--border-soft); border-radius:6px; background:var(--surface-card-pop); }
+.effect-total-row.atk { border-left-color:var(--danger); }
+.effect-total-row.base { border-left-color:var(--accent); }
+.effect-total-row.def { border-left-color:var(--info); }
+.effect-total-row.sup { border-left-color:var(--success); }
+.effect-total-row > span { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.effect-total-row > span b { white-space:normal; overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
+.effect-total-row > span small { white-space:normal; overflow-wrap:anywhere; color:var(--text-muted); line-height:1.4; }
+.effect-total-values { display:flex; flex-direction:column; align-items:flex-end; gap:2px; color:#765126; font-size:calc(15px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.effect-total-values > span { display:flex; align-items:baseline; justify-content:flex-end; gap:5px; }
+.effect-total-values small { color:var(--text-muted); font-size:var(--fs-xs); font-weight:500; }
+.effect-total-values b { color:#765126; font-size:inherit; }
+.trait-detail-disclosure { margin-top:8px; border-top:1px solid var(--line-soft); padding-top:7px; }
+.trait-detail-disclosure summary { color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
+.trait-detail-disclosure[open] summary { margin-bottom:7px; }
+.sim-list { display:flex; flex-direction:column; gap:2px; border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-card-pop); padding:4px; }
+.sim-row { display:grid; grid-template-columns:minmax(5.5em,.8fr) 3.5em minmax(0,1.5fr); gap:7px; align-items:baseline; padding:4px 7px; border-radius:var(--radius-sm); font-size:calc(12px * var(--editor-scale)); border-left:3px solid var(--border-soft); }
 .sim-row.atk { border-left-color:var(--danger); }
 .sim-row.base { border-left-color:var(--accent); }
 .sim-row.def { border-left-color:var(--info); }
 .sim-row.sup { border-left-color:var(--success); }
 .sim-row:nth-child(even) { background:var(--surface-row); }
-.sim-name { font-weight:800; color:var(--text-primary); white-space:nowrap; }
-.sim-cap { font-style:normal; margin-left:4px; font-size:.6rem; color:var(--warning-ink); }
+.sim-name { font-weight:600; color:var(--text-primary); white-space:nowrap; }
+.sim-cap { font-style:normal; margin-left:4px; font-size:var(--fs-xs); color:var(--warning-ink); }
 .sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
 .sim-lv small { color:var(--text-muted); }
 .sim-eff { color:var(--text-secondary); white-space:pre-line; line-height:1.4; }
 .skill-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
-.skill-chips span { padding:3px 8px; border:1px solid var(--line-gold); border-radius:12px; background:rgba(139,103,55,.1); color:var(--text-primary); font-size:.68rem; }
-.skill-chips i { font-style:normal; color:var(--text-muted); font-size:.68rem; }
-.mastery-effect-list { max-height:390px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:2px; }
+.skill-chips span { padding:3px 8px; border:1px solid var(--line-gold); border-radius:12px; background:rgba(139,103,55,.1); color:var(--text-primary); font-size:var(--fs-xs); }
+.skill-chips i { font-style:normal; color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-skill-block { display:flex; flex-direction:column; gap:6px; padding-top:8px; border-top:1px solid var(--line-soft); }
+.weapon-skill-title { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.weapon-skill-title b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
+.weapon-skill-title span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-skill-list { display:flex; flex-direction:column; gap:5px; }
+.weapon-skill-list article { padding:7px 8px; border:1px solid var(--line-soft); border-left:3px solid #8b6737; border-radius:6px; background:rgba(139,103,55,.045); }
+.weapon-skill-list article > span { display:flex; align-items:baseline; justify-content:space-between; gap:7px; }
+.weapon-skill-list article b { min-width:0; overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
+.weapon-skill-list article em { color:#765126; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; white-space:nowrap; }
+.weapon-skill-list article p { margin:3px 0 0; color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.45; white-space:pre-line; }
+.weapon-skill-list article small { display:block; margin-top:3px; color:var(--text-muted); font-size:var(--fs-xs); }
+.calculation-scope-note { margin:0 0 9px; padding:8px 9px; border:1px solid rgba(139,103,55,.18); border-radius:6px; background:rgba(139,103,55,.05); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.55; }
+.mastery-effect-list { display:flex; flex-direction:column; gap:4px; padding-right:2px; }
 .mastery-effect { padding:6px 7px; border-left:3px solid var(--line-gold); border-radius:4px; background:var(--surface-row); }
-.mastery-effect > span { display:block; font-size:.59rem; color:var(--text-muted); }
-.mastery-effect > b { display:block; margin-top:2px; font-size:.67rem; color:var(--gold); }
-.mastery-effect > p { margin:2px 0 0; font-size:.67rem; line-height:1.4; color:var(--text-secondary); }
-.share-card > p { margin:0 0 8px; font-size:.64rem; line-height:1.5; color:var(--text-muted); }
+.mastery-effect > span { display:block; font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
+.mastery-effect > b { display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--gold); }
+.mastery-effect > p { margin:2px 0 0; font-size:var(--fs-xs); line-height:1.4; color:var(--text-secondary); }
+.share-card > p { margin:0 0 8px; font-size:calc(11px * var(--editor-scale)); line-height:1.5; color:var(--text-muted); }
 .share-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-.share-actions button { min-height:30px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel); color:var(--text-primary); font-size:.68rem; cursor:pointer; }
+.share-actions button { min-height:30px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel); color:var(--text-primary); font-size:var(--fs-xs); cursor:pointer; }
 .share-actions button:first-child { background:#8b6737; color:#fff9e9; }
 .share-actions button:disabled { opacity:.42; cursor:not-allowed; }
 .mastery-result { display:flex; flex-direction:column; gap:7px; }
 .mastery-result-rank { padding-top:6px; border-top:1px dashed var(--line-soft); }
 .mastery-result-rank:first-child { padding-top:0; border-top:0; }
 .rank-line { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
-.rank-line b { font-size:.68rem; color:var(--text-primary); }
-.rank-line em { font-style:normal; font-size:.62rem; color:var(--gold); font-variant-numeric:tabular-nums; }
+.rank-line b { font-size:calc(12px * var(--editor-scale)); color:var(--text-primary); }
+.rank-line em { font-style:normal; font-size:calc(11px * var(--editor-scale)); color:var(--gold); font-variant-numeric:tabular-nums; }
 .mastery-result-cat { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1px 7px; padding:3px 5px; border-radius:4px; opacity:.68; }
 .mastery-result-cat.active { opacity:1; background:rgba(63,125,92,.1); }
-.mastery-result-cat span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.64rem; color:var(--text-secondary); }
-.mastery-result-cat b { font-size:.62rem; color:var(--text-muted); }
-.mastery-result-cat i { grid-column:1/-1; font-style:normal; font-size:.58rem; color:var(--text-muted); }
-.mastery-result-cat.active i { color:#3f7d5c; font-weight:800; }
-.ex-result { padding:5px 6px; border-radius:4px; background:rgba(139,103,55,.09); font-size:.63rem; line-height:1.45; color:var(--text-secondary); }
+.mastery-result-cat span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-xs); color:var(--text-secondary); }
+.mastery-result-cat b { font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
+.mastery-result-cat i { grid-column:1/-1; font-style:normal; font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
+.mastery-result-cat.active i { color:#3f7d5c; font-weight:600; }
+.ex-result { padding:5px 6px; border-radius:4px; background:rgba(139,103,55,.09); font-size:calc(11px * var(--editor-scale)); line-height:1.45; color:var(--text-secondary); }
+.mastery-detail-disclosure { margin-top:8px; border-top:1px solid var(--line-soft); padding-top:7px; }
+.mastery-detail-disclosure summary { color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
+.mastery-detail-disclosure[open] summary { margin-bottom:7px; }
 /* 专精自由配置 */
 .rank-tabs { display:flex; flex-wrap:wrap; gap:6px; }
-.rank-tab { min-height:28px; padding:0 12px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); font-size:.74rem; cursor:pointer; user-select:none; }
+.rank-tab { min-height:28px; padding:0 12px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .rank-tab.on { background:var(--selected-bg); border-color:var(--selected-border); color:var(--selected-fg); }
-.rank-tab i { font-style:normal; margin-left:5px; font-size:.64rem; opacity:.8; }
-.rank-tab i.full { color:var(--success); font-weight:800; }
+.rank-tab i { font-style:normal; margin-left:5px; font-size:var(--fs-xs); opacity:.8; }
+.rank-tab i.full { color:var(--success); font-weight:600; }
 .rank-tab.on i.full { color:#bfe6cd; }
-.direction-picker { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
-.direction-picker > div { margin-right:auto; display:flex; flex-direction:column; gap:1px; }
-.direction-picker strong { font-size:.68rem; color:var(--text-primary); }
-.direction-picker small { font-size:.6rem; color:var(--text-muted); }
-.direction-picker button { min-height:27px; padding:0 10px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-secondary); font-size:.68rem; cursor:pointer; }
+.direction-picker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
+.direction-picker > div { grid-column:1/-1; display:flex; flex-direction:column; gap:1px; }
+.direction-picker strong { font-size:var(--fs-xs); color:var(--text-primary); }
+.direction-picker small { font-size:var(--fs-xs); color:var(--text-muted); }
+.direction-picker button { min-height:38px; padding:5px 8px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.3; cursor:pointer; }
 .direction-picker button.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
-.mastery-rule { display:flex; gap:6px; align-items:center; padding:7px 9px; border:1px solid var(--line-soft); border-radius:6px; background:rgba(63,125,92,.07); color:var(--text-secondary); font-size:.66rem; line-height:1.45; }
+.mastery-rule { display:flex; gap:6px; align-items:center; padding:7px 9px; border:1px solid var(--line-soft); border-radius:6px; background:rgba(63,125,92,.07); color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.45; }
+.mastery-rule.direction-rule { flex-direction:column; align-items:flex-start; }
 .mastery-rule.ex-rule { flex-direction:column; align-items:flex-start; border-color:var(--line-gold); background:rgba(139,103,55,.08); }
 .mastery-rule b { color:var(--gold); }
-.mastery-groups { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; max-height:510px; overflow-y:auto; padding:2px; }
+.mastery-groups { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; padding:2px; }
 .mastery-group { min-width:0; padding:7px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
 .mastery-group > header { display:flex; align-items:center; gap:5px; margin-bottom:6px; }
-.mastery-group > header .cat-mark { width:17px; height:17px; display:grid; place-items:center; border-radius:4px; color:#fff; font-size:.59rem; font-weight:900; }
+.mastery-group > header .cat-mark { width:19px; height:19px; display:grid; place-items:center; border-radius:4px; color:#fff; font-size:var(--fs-xs); font-weight:700; }
 .mastery-group.cat-攻 .cat-mark { background:var(--danger); }
 .mastery-group.cat-防 .cat-mark { background:var(--info); }
 .mastery-group.cat-界 .cat-mark { background:var(--accent); }
-.mastery-group > header strong { font-size:.7rem; color:var(--text-primary); }
-.mastery-group > header em { margin-left:auto; font-style:normal; font-size:.61rem; color:var(--text-muted); }
-.mastery-group > header i { font-style:normal; padding:1px 5px; border-radius:8px; background:#3f7d5c; color:#fff; font-size:.56rem; }
+.mastery-group > header strong { font-size:var(--fs-sm); color:var(--text-primary); }
+.mastery-group > header em { margin-left:auto; font-style:normal; font-size:var(--fs-xs); color:var(--text-muted); }
+.mastery-group > header i { font-style:normal; padding:1px 5px; border-radius:8px; background:#3f7d5c; color:#fff; font-size:var(--fs-xs); }
 .node-list { display:flex; flex-direction:column; gap:4px; }
 .node { width:100%; display:grid; grid-template-columns:16px minmax(0,1fr) auto; gap:6px; align-items:start; padding:6px; border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); text-align:left; cursor:pointer; user-select:none; }
-.node-check { width:15px; height:15px; display:grid; place-items:center; margin-top:1px; border:1px solid var(--line-soft); border-radius:3px; color:#fff; font-size:.6rem; }
+.node-check { width:15px; height:15px; display:grid; place-items:center; margin-top:1px; border:1px solid var(--line-soft); border-radius:3px; color:#fff; font-size:var(--fs-xs); }
 .node > span:nth-child(2) { min-width:0; display:flex; flex-direction:column; gap:2px; }
-.node b { font-size:.65rem; color:var(--gold); }
-.node small { font-size:.62rem; line-height:1.38; color:var(--text-secondary); }
-.node > em { font-style:normal; font-size:.55rem; color:var(--gold); white-space:nowrap; }
+.node b { font-size:var(--fs-xs); color:var(--gold); }
+.node small { font-size:var(--fs-xs); line-height:1.38; color:var(--text-secondary); }
+.node > em { font-style:normal; font-size:var(--fs-xs); color:var(--gold); white-space:nowrap; }
 .node.on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); }
 .node.on .node-check { border-color:rgba(255,255,255,.55); background:rgba(255,255,255,.22); }
 .node.on b, .node.on small, .node.on > em { color:inherit; }
 .node.disabled { opacity:.42; cursor:not-allowed; }
-.ed-field .hint { font-size:.66rem; color:var(--text-muted); }
-@media (max-width:1180px) {
-  .editor-layout { grid-template-columns:1fr; }
-  .result-sidebar { position:static; max-height:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.ed-field .hint { font-size:var(--fs-xs); color:var(--text-muted); }
+
+/* Keep one stable type hierarchy inside the dedicated editor:
+   16px headings, 14px labels/body controls, 12px supporting copy. */
+.loadout-editor .ed-head strong,
+.loadout-editor .mastery-toggle b { font-size:calc(16px * var(--editor-scale)); line-height:1.35; }
+.loadout-editor .ed-field > label,
+.loadout-editor .result-card > header strong,
+.loadout-editor .bag-toolbar strong,
+.loadout-editor .mastery-rule b { font-size:calc(14px * var(--editor-scale)); }
+.loadout-editor button,
+.loadout-editor input,
+.loadout-editor select,
+.loadout-editor .sigil-copy b,
+.loadout-editor .mastery-group > header strong { font-family:inherit; font-size:calc(13px * var(--editor-scale)); }
+.loadout-editor small,
+.loadout-editor .hint,
+.loadout-editor .source-badge,
+.loadout-editor .owner,
+.loadout-editor .result-card > header span,
+.loadout-editor .trait-line,
+.loadout-editor .sim-row,
+.loadout-editor .mastery-result-cat span,
+.loadout-editor .mastery-effect > p { font-size:calc(12px * var(--editor-scale)); }
+.loadout-editor button:focus-visible,
+.loadout-editor input:focus-visible,
+.loadout-editor select:focus-visible { outline:2px solid #a66b20; outline-offset:2px; }
+
+.skill-field { flex:1 0 auto; }
+.skill-grid { --ui-grid-min:116px; grid-template-columns:repeat(auto-fit, minmax(116px, 1fr)); gap:var(--space-3); }
+.skill-pick { position:relative; min-width:0; min-height:50px; display:grid; grid-template-columns:34px minmax(0,1fr); gap:7px; align-items:center; padding:6px 9px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); color:var(--text-secondary); text-align:left; cursor:pointer; }
+.skill-pick:hover { border-color:var(--line-gold); transform:translateY(-1px); }
+.skill-pick.on { border-color:#765126; background:linear-gradient(145deg, #9a7543, #765126); color:#fff9e9; }
+.skill-pick.pending { border-color:#a33c2d; box-shadow:0 0 0 2px rgba(163,60,45,.12); }
+.skill-pick span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; }
+.loadout-editor .skill-icon { width:32px; height:32px; flex:0 0 32px; object-fit:cover; border-radius:6px; box-shadow:0 0 0 1px rgba(118,81,38,.3); }
+.skill-order { position:absolute; top:3px; right:4px; width:17px; height:17px; display:grid; place-items:center; border-radius:50%; background:#f8ead1; color:#765126; font-size:var(--fs-xs); font-variant-numeric:tabular-nums; box-shadow:0 1px 3px rgba(0,0,0,.16); }
+.replace-strip { display:grid; grid-template-columns:1fr; gap:5px; padding:8px; border:1px solid rgba(163,60,45,.35); border-radius:7px; background:rgba(163,60,45,.06); }
+.replace-strip > span { color:var(--red); font-weight:600; font-size:calc(12px * var(--editor-scale)); }
+.replace-strip button { min-height:28px; display:flex; align-items:center; gap:6px; padding:3px 7px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-primary); text-align:left; cursor:pointer; }
+.replace-strip button b { width:18px; height:18px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:white; }
+.replace-strip .replace-cancel { justify-content:center; color:var(--text-muted); }
+
+.factor-slot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; }
+.factor-slot-card { position:relative; min-width:0; min-height:92px; height:auto; display:grid; grid-template-columns:36px minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; gap:5px 8px; align-items:start; padding:8px 8px 6px 44px; border:1px solid #d1bf98; border-radius:8px; background:#fffdf7; color:var(--text-secondary); text-align:left; cursor:pointer; overflow:hidden; }
+.factor-slot-card:hover { border-color:#9e7a45; transform:translateY(-1px); }
+.factor-slot-card.active { border-color:#765126; box-shadow:0 0 0 2px rgba(118,81,38,.16); }
+.factor-slot-card.draft { background:linear-gradient(145deg, #fff9e8, #f2e3c8); }
+.factor-slot-card.empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:9px; border-style:dashed; background:repeating-linear-gradient(-45deg, rgba(255,255,255,.4), rgba(255,255,255,.4) 7px, rgba(222,208,176,.15) 7px, rgba(222,208,176,.15) 14px); color:var(--text-muted); text-align:center; }
+.factor-slot-card.empty.active { border-style:solid; background:#f6ecd7; }
+.factor-slot-number { position:absolute; left:8px; bottom:6px; margin:0; color:#9b8c72; font:700 calc(11px * var(--editor-scale))/1 ui-monospace, monospace; font-style:normal; }
+.factor-slot-card > .sigil-icon-frame { position:absolute; left:7px; top:8px; }
+.factor-slot-copy { min-width:0; grid-column:1/-1; display:flex; flex-direction:column; gap:3px; }
+.factor-slot-copy > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); }
+.factor-slot-copy .trait-line { min-width:0; display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:4px; align-items:center; color:var(--text-muted); }
+.factor-source { grid-column:1/-1; justify-self:end; align-self:end; margin:0; color:#8a6a3f; font-size:var(--fs-xs); font-style:normal; white-space:nowrap; }
+.empty-factor-mark { font-size:calc(22px * var(--editor-scale)); line-height:1; color:#8b6737; }
+.factor-slot-card.empty strong { color:var(--text-secondary); }
+.factor-selection-bar { min-height:34px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel-solid); }
+.factor-selection-bar span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); }
+.factor-selection-bar b { margin-right:4px; color:#765126; }
+.factor-selection-bar button { min-height:var(--control-height-sm); padding:0 8px; border:1px solid rgba(163,60,45,.28); border-radius:5px; background:rgba(163,60,45,.06); color:var(--red); cursor:pointer; white-space:nowrap; }
+.factor-mode-tabs { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.factor-mode-tabs button { min-height:48px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1px; padding:6px 10px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel); color:var(--text-secondary); cursor:pointer; }
+.factor-mode-tabs button b { color:var(--text-primary); }
+.factor-mode-tabs button span { font-size:var(--fs-xs); color:var(--text-muted); }
+.factor-mode-tabs button.on { border-color:#765126; background:linear-gradient(145deg, rgba(154,117,67,.18), rgba(139,103,55,.08)); box-shadow:inset 0 0 0 1px rgba(118,81,38,.12); }
+.factor-mode-tabs button.on b { color:#765126; }
+.sigil-icon-frame { width:34px; height:34px; display:grid; place-items:center; overflow:hidden; border:1px solid var(--line-gold); border-radius:8px; background:linear-gradient(145deg, #fbf6eb, #e9dcc5); color:var(--gold); }
+.sigil-icon-frame img { width:100%; height:100%; object-fit:cover; }
+.sigil-icon-frame > i { margin:0; font-style:normal; opacity:1; }
+.sigil-icon-frame.large { width:48px; height:48px; border-radius:10px; }
+.loadout-editor .sigil-pick { grid-template-columns:36px minmax(0,1fr) auto; min-height:86px; height:100%; }
+
+.bag-picker-shell { display:flex; flex-direction:column; gap:8px; padding:9px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-solid); }
+.constructor-shell { display:flex; flex-direction:column; gap:9px; padding:10px; border:1px solid var(--line-gold); border-radius:9px; background:rgba(249,242,225,.78); }
+.constructor-note { display:flex; align-items:center; gap:9px; }
+.constructor-mark { width:30px; height:30px; display:grid; place-items:center; flex:0 0 30px; border-radius:50%; background:#8b6737; color:#fff; font-size:calc(12px * var(--editor-scale)); font-weight:700; line-height:1; }
+.constructor-note > div { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.constructor-note b { color:var(--text-primary); }
+.constructor-note small { color:var(--text-muted); line-height:1.45; }
+.constructor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.constructor-grid label { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.constructor-grid label > span { font-size:calc(12px * var(--editor-scale)); font-weight:600; color:var(--text-secondary); }
+.constructor-grid input,
+.constructor-grid select { width:100%; min-height:32px; padding:0 8px; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); color:var(--text-primary); }
+.constructor-wide,
+.constructor-search { grid-column:1/-1; }
+.constructor-preview { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px; border:1px solid rgba(118,81,38,.25); border-radius:8px; background:rgba(255,255,255,.58); }
+.constructor-preview > div { min-width:0; display:flex; flex-direction:column; }
+.constructor-preview > div b { color:var(--text-primary); }
+.constructor-preview > div span { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
+.constructor-preview > button { min-height:34px; padding:0 13px; border:1px solid #765126; border-radius:6px; background:#8b6737; color:#fff9e9; cursor:pointer; }
+.constructor-preview > button:disabled { opacity:.48; cursor:not-allowed; }
+
+.mastery-field { padding:0; overflow:hidden; }
+.mastery-toggle { width:100%; min-height:54px; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:9px; align-items:center; padding:9px 11px; border:0; background:rgba(139,103,55,.1); color:var(--text-primary); text-align:left; cursor:pointer; }
+.mastery-direction-map { margin:0 10px 10px; }
+.mastery-toggle > span { display:flex; flex-direction:column; }
+.mastery-toggle small { color:var(--text-muted); font-weight:400; }
+.mastery-toggle em { font-style:normal; color:var(--gold); font-weight:700; font-variant-numeric:tabular-nums; }
+.mastery-toggle i { min-width:42px; font-style:normal; color:#765126; text-align:right; }
+.mastery-panel { display:flex; flex-direction:column; gap:9px; padding:10px; border-top:1px solid var(--line-soft); }
+.mastery-panel .op-row { flex:0 0 auto; }
+.mastery-direction-map { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.direction-card { min-width:0; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
+.direction-card.is-primary-direction { border-color:#3f7d5c; box-shadow:inset 0 0 0 1px rgba(63,125,92,.14); }
+.direction-card > header { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px; align-items:center; margin-bottom:6px; }
+.direction-card .cat-mark { width:22px; height:22px; display:grid; place-items:center; border-radius:5px; color:#fff; font-weight:700; }
+.direction-card.cat-攻 .cat-mark { background:var(--danger); }
+.direction-card.cat-防 .cat-mark { background:var(--info); }
+.direction-card.cat-界 .cat-mark { background:var(--accent); }
+.direction-card > header div { min-width:0; display:flex; flex-direction:column; }
+.direction-card > header small { color:var(--text-muted); }
+.direction-card > header b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); }
+.direction-card > header em { grid-column:1/-1; padding:2px 5px; border-radius:4px; background:rgba(63,125,92,.1); color:#3f7d5c; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:600; }
+.direction-stage { display:grid; grid-template-columns:auto auto; gap:1px 5px; padding:4px 0; border-top:1px dashed var(--line-soft); opacity:.72; }
+.direction-stage.active { opacity:1; }
+.direction-stage > b { color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
+.direction-stage > span { margin-left:auto; color:var(--gold); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; }
+.direction-stage > small { grid-column:1/-1; min-height:2.8em; color:var(--text-muted); line-height:1.35; }
+.direction-stage.active > small { color:#3f7d5c; font-weight:600; }
+
+.loadout-editor .skill-chips span { display:flex; align-items:center; gap:5px; padding:4px 7px; }
+.loadout-editor .skill-chips span b { width:16px; height:16px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:white; font-size:var(--fs-xs); }
+.loadout-editor .skill-chips img { width:24px; height:24px; border-radius:4px; object-fit:cover; }
+
+@container loadout-editor (max-width:1199px) {
+  .loadout-editor, .editor-layout { height:auto; min-height:100%; }
+  .editor-layout { grid-template-columns:minmax(270px,300px) minmax(0,1fr); align-items:start; }
+  .editor-column { overflow:visible; }
+  .result-sidebar { position:relative; grid-column:1/-1; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); overflow:visible; }
 }
-@media (max-width:760px) {
+@container loadout-editor (max-width:900px) {
+  .editor-layout { grid-template-columns:1fr; }
+  .result-sidebar { grid-column:auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@container loadout-editor (max-width:760px) {
   .mastery-groups, .result-sidebar { grid-template-columns:1fr; }
+  .factor-slot-grid, .mastery-direction-map, .constructor-grid { grid-template-columns:1fr; }
+  .constructor-wide, .constructor-search { grid-column:auto; }
   .source-badge { width:100%; margin-left:0; }
-  .ed-head { flex-wrap:wrap; }
+  .ed-head { grid-template-columns:minmax(0,1fr); }
+  .ed-head .owner { justify-self:start; }
+  .bag-toolbar { grid-template-columns:1fr auto; }
+  .bag-toolbar strong { grid-column:1/-1; }
 }
 </style>

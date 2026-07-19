@@ -1,14 +1,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { SigilMemoryGetOptions, SigilMemoryGetStatus, SigilMemoryEnable, SigilMemoryUpdate } from '../../wailsjs/go/main/App'
+import { SigilMemoryAcquire, SigilMemoryGetOptions, SigilMemoryGetStatus, SigilMemoryRelease, SigilMemoryUpdateOwned } from '../../wailsjs/go/main/App'
 import { matchText } from '../utils/matchText.js'
 import { backendLanguageReady } from '../backendLanguage'
+import { traitAssetIcon } from '../gameAssetIcons'
+import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 import { clearHistory, deleteTemplate, history, pushHistory, renameTemplate, saveTemplate, templates } from '../utils/sigilMemoryStore.js'
 import SigilMemoryPicker from './SigilMemoryPicker.vue'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const emit = defineEmits(['status'])
+const RUNTIME_LEASE_SCOPE = 'sigil-memory-generator'
 
 const status = reactive({
   found: false, hooked: false, selectedAddr: 0,
@@ -32,6 +35,17 @@ const allTraitOptions = computed(() => [...backendOptions.traits, ...runtimeOpti
 const sigilByHash = computed(() => new Map(allSigilOptions.value.map(o => [o.hash >>> 0, o])))
 const traitByHash = computed(() => new Map(allTraitOptions.value.map(o => [o.hash >>> 0, o])))
 
+function traitIconByHash(hash, name = '') {
+  const value = Number(hash) >>> 0
+  if (!value || value === EMPTY_HASH) return ''
+  const option = traitByHash.value.get(value)
+  return traitAssetIcon({ hash: value, name: option?.displayName || name })
+}
+
+function traitOptionIcon(option) {
+  return traitIconByHash(option?.hash, option?.displayName)
+}
+
 const loading = ref(false)
 const applying = ref(false)
 const templateSearch = ref('')
@@ -39,11 +53,24 @@ const tab = ref('templates')
 const renamingId = ref(null)
 const renameBuffer = ref('')
 const confirmDialog = ref(null)
+let disposed = false
+let lifecycleEpoch = 0
+let hookOwnerToken = ''
+let pollTimer = 0
+let pollInFlight = false
 
 function show(msg, type) { emit('status', msg, type) }
 function hex(v) { return '0x' + (Number(v) >>> 0).toString(16).toUpperCase().padStart(8, '0') }
+const EMPTY_HASH = 0x887AE0B0
 const HEX_RE = /^0x[0-9A-F]{8}$/i
 function isRawHexName(n) { return typeof n === 'string' && HEX_RE.test(n.trim()) }
+function isEmptyTraitHash(value) {
+  const hash = Number(value) >>> 0
+  return hash === 0 || hash === EMPTY_HASH
+}
+function normaliseSecondaryHash(value) {
+  return isEmptyTraitHash(value) ? 0 : Number(value) >>> 0
+}
 
 function ensureRuntimeOption(bucket, hash, name) {
   if (!hash) return
@@ -59,10 +86,20 @@ function ensureRuntimeOption(bucket, hash, name) {
 }
 
 function applyStatus(next) {
-  Object.assign(status, next)
-  ensureRuntimeOption(runtimeOptions.sigils, next.sigilHash, next.sigilName)
-  ensureRuntimeOption(runtimeOptions.traits, next.primaryTraitHash, next.primaryTraitName)
-  ensureRuntimeOption(runtimeOptions.traits, next.secondaryTraitHash, next.secondaryTraitName)
+  next = next || {}
+  const normalised = {
+    found: false, hooked: false, selectedAddr: 0,
+    sigilHash: 0, sigilLevel: 0, sigilName: '',
+    primaryTraitHash: 0, primaryTraitLevel: 0, primaryTraitName: '',
+    secondaryTraitHash: 0, secondaryTraitLevel: 0, secondaryTraitName: '',
+    ...next,
+    secondaryTraitHash: normaliseSecondaryHash(next.secondaryTraitHash),
+    secondaryTraitLevel: isEmptyTraitHash(next.secondaryTraitHash) ? 0 : Number(next.secondaryTraitLevel) >>> 0,
+  }
+  Object.assign(status, normalised)
+  ensureRuntimeOption(runtimeOptions.sigils, normalised.sigilHash, normalised.sigilName)
+  ensureRuntimeOption(runtimeOptions.traits, normalised.primaryTraitHash, normalised.primaryTraitName)
+  ensureRuntimeOption(runtimeOptions.traits, normalised.secondaryTraitHash, normalised.secondaryTraitName)
 }
 
 function syncFormFromStatus() {
@@ -74,67 +111,179 @@ function syncFormFromStatus() {
   form.secondaryTraitLevel = status.secondaryTraitLevel >>> 0
 }
 
+function stopPolling() {
+  if (pollTimer) window.clearInterval(pollTimer)
+  pollTimer = 0
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = window.setInterval(pollStatus, 700)
+}
+
+async function pollStatus() {
+  if (disposed || loading.value || applying.value || pollInFlight || !status.hooked) return
+  const epoch = lifecycleEpoch
+  const previousSelectedAddr = Number(status.selectedAddr || 0)
+  pollInFlight = true
+  try {
+    const next = await SigilMemoryGetStatus()
+    if (disposed || epoch !== lifecycleEpoch) return
+    applyStatus(next)
+    const nextSelectedAddr = Number(status.selectedAddr || 0)
+    if (nextSelectedAddr && nextSelectedAddr !== previousSelectedAddr) syncFormFromStatus()
+    if (!status.hooked) stopPolling()
+  } catch (e) {
+    if (!disposed && epoch === lifecycleEpoch) {
+      stopPolling()
+      show(`自动读取已暂停：${String(e)}`, 'error')
+    }
+  } finally {
+    pollInFlight = false
+  }
+}
+
 async function loadOptions() {
   try {
     await backendLanguageReady
+    if (disposed) return
     const res = await SigilMemoryGetOptions()
+    if (disposed) return
     backendOptions.sigils = res.sigils || []
     backendOptions.traits = res.traits || []
-  } catch (e) { show('读取因子数据失败: ' + String(e), 'error') }
+  } catch (e) { if (!disposed) show('读取因子数据失败: ' + String(e), 'error') }
 }
 
 async function refresh(syncForm = false) {
+  if (loading.value || applying.value) return
+  const epoch = ++lifecycleEpoch
   loading.value = true
   try {
-    applyStatus(await SigilMemoryGetStatus())
+    const next = await SigilMemoryGetStatus()
+    if (disposed || epoch !== lifecycleEpoch) return
+    applyStatus(next)
     if (syncForm) syncFormFromStatus()
+    if (status.hooked) startPolling()
+    else stopPolling()
     if (!status.hooked) show('已就绪。启用读取后，在游戏内选中因子。', 'success')
     else if (!status.selectedAddr) show('等待游戏内因子选择。', 'success')
     else show(`已读取: ${status.sigilName}`, 'success')
-  } catch (e) { show(String(e), 'error') }
-  finally { loading.value = false }
+  } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
+  finally { if (!disposed && epoch === lifecycleEpoch) loading.value = false }
 }
 
 async function enable() {
+  if (loading.value || applying.value) return
+  const epoch = ++lifecycleEpoch
+  loading.value = true
+  let acquiredOwnerToken = ''
+  try {
+    const next = await SigilMemoryAcquire(nextRuntimeAcquireRequestID())
+    acquiredOwnerToken = String(next?.ownerToken || '')
+    if (!acquiredOwnerToken) throw new Error('后端未返回因子读取所有权令牌')
+    if (disposed || epoch !== lifecycleEpoch) {
+      queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, SigilMemoryRelease)
+      return
+    }
+    hookOwnerToken = acquiredOwnerToken
+    applyStatus(next)
+    syncFormFromStatus()
+    startPolling()
+    show('已启用。请在游戏内选择一个因子。', 'success')
+  } catch (e) {
+    stopPolling()
+    let cleanupError = null
+    if (acquiredOwnerToken) {
+      try { await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, SigilMemoryRelease) } catch (nextError) { cleanupError = nextError }
+      if (!cleanupError && hookOwnerToken === acquiredOwnerToken) hookOwnerToken = ''
+    }
+    if (!disposed && epoch === lifecycleEpoch) {
+      if (cleanupError) {
+        status.hooked = true
+        status.selectedAddr = 0
+        show(`${String(e)}；停止因子读取也失败：${String(cleanupError)}`, 'error')
+      } else {
+        applyStatus({})
+        syncFormFromStatus()
+        show(String(e), 'error')
+      }
+    }
+  }
+  finally { if (!disposed && epoch === lifecycleEpoch) loading.value = false }
+}
+
+async function disable() {
+  if (loading.value || applying.value) return
+  const epoch = ++lifecycleEpoch
+  const ownerToken = hookOwnerToken
+  stopPolling()
+  if (!ownerToken) {
+    applyStatus({})
+    syncFormFromStatus()
+    return
+  }
   loading.value = true
   try {
-    applyStatus(await SigilMemoryEnable())
+    const next = await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, ownerToken, SigilMemoryRelease)
+    if (disposed || epoch !== lifecycleEpoch) return
+    if (hookOwnerToken === ownerToken) hookOwnerToken = ''
+    applyStatus(next)
     syncFormFromStatus()
-    show('已启用。请在游戏内选择一个因子。', 'success')
-  } catch (e) { show(String(e), 'error') }
-  finally { loading.value = false }
+    show('读取已停止，游戏指令已恢复。', 'success')
+  } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
+  finally { if (!disposed && epoch === lifecycleEpoch) loading.value = false }
 }
 
 async function performWrite() {
+  if (loading.value || applying.value) return
   if (!status.hooked || !status.selectedAddr) { show('请先启用读取，并在游戏内选中一个因子', 'error'); return }
+  if (!canWrite.value) { show(legality.value.message || '当前因子组合未通过写入校验', 'error'); return }
+  const epoch = ++lifecycleEpoch
   applying.value = true
   try {
+    const ownerToken = hookOwnerToken
+    if (!ownerToken) throw new Error('当前页面不再持有因子读取所有权')
     const snapshot = { ...form }
-    applyStatus(await SigilMemoryUpdate({ ...form }))
+    const expectedSelectedAddr = Number(status.selectedAddr || 0)
+    const next = await SigilMemoryUpdateOwned(ownerToken, { ...snapshot, expectedSelectedAddr })
+    if (disposed || epoch !== lifecycleEpoch) return
+    applyStatus(next)
     pushHistory(snapshot)
     show(`已写入: ${status.sigilName}`, 'success')
-  } catch (e) { show(String(e), 'error') }
-  finally { applying.value = false }
+  } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
+  finally { if (!disposed && epoch === lifecycleEpoch) applying.value = false }
 }
 async function write() { await performWrite() }
 
 async function oneClickMax() {
+  if (loading.value || applying.value) return
   if (!status.hooked || !status.selectedAddr) { show('请先启用读取，并在游戏内选中一个因子', 'error'); return }
   if (sigilMax.value != null) form.sigilLevel = sigilMax.value
-  if (form.primaryTraitHash) form.primaryTraitLevel = 15
-  if (form.secondaryTraitHash) form.secondaryTraitLevel = 15
+  if (primaryMax.value != null) form.primaryTraitLevel = primaryMax.value
+  if (secondaryMax.value != null) form.secondaryTraitLevel = secondaryMax.value
 }
 
 function onPickSigil(opt) {
   if (opt && opt.maxLevel != null) form.sigilLevel = opt.maxLevel
   else if (!opt) form.sigilLevel = 0
+  if (opt?.primaryTraitHash) {
+    form.primaryTraitHash = Number(opt.primaryTraitHash) >>> 0
+    const verifiedLevels = Array.isArray(opt.allowedPrimaryTraitLevels) ? opt.allowedPrimaryTraitLevels : []
+    const nextLevel = verifiedLevels.length ? Math.max(...verifiedLevels) : Number(opt.firstTraitMaxLevel || 0)
+    if (nextLevel > 0) form.primaryTraitLevel = nextLevel
+  }
+}
+function preferredOptionLevel(opt) {
+  const levels = Array.isArray(opt?.allowedLevels) ? opt.allowedLevels.filter(Number.isInteger) : []
+  if (levels.length) return Math.max(...levels)
+  return Number(opt?.maxLevel || 15)
 }
 function onPickPrimary(opt) {
-  if (opt) form.primaryTraitLevel = 15
+  if (opt) form.primaryTraitLevel = preferredOptionLevel(opt)
   else if (!opt) form.primaryTraitLevel = 0
 }
 function onPickSecondary(opt) {
-  if (opt) form.secondaryTraitLevel = 15
+  if (opt) form.secondaryTraitLevel = preferredOptionLevel(opt)
   else if (!opt) form.secondaryTraitLevel = 0
 }
 
@@ -142,7 +291,13 @@ const sigilMax = computed(() => sigilByHash.value.get(form.sigilHash)?.maxLevel 
 // Primary/secondary max come from the picked trait itself, not the sigil's default trait cap.
 // Prior bug: primaryMax fell back to sigil.firstTraitMaxLevel even when the picked trait had its own maxLevel,
 // so switching to a memory-only trait still showed the sigil's default primary max.
-const primaryMax = computed(() => form.primaryTraitHash ? 15 : null)
+const primaryMax = computed(() => {
+  if (!form.primaryTraitHash) return null
+  const sigil = sigilByHash.value.get(form.sigilHash)
+  const verifiedLevels = Array.isArray(sigil?.allowedPrimaryTraitLevels) ? sigil.allowedPrimaryTraitLevels : []
+  if (verifiedLevels.length) return Math.max(...verifiedLevels)
+  return sigil?.firstTraitMaxLevel ?? traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? null
+})
 const secondaryMax = computed(() => form.secondaryTraitHash ? 15 : null)
 const sigilWritableMax = computed(() => form.sigilHash ? 50 : null)
 const primaryWritableMax = computed(() => form.primaryTraitHash ? (traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? 50) : null)
@@ -175,7 +330,11 @@ const warnings = computed(() => {
   const secondary = traitByHash.value.get(form.secondaryTraitHash)
   if (Array.isArray(sigil?.allowedLevels) && sigil.allowedLevels.length && !sigil.allowedLevels.includes(form.sigilLevel)) out.push('因子等级不是已知自然等级')
   else if (sigilMax.value != null && form.sigilLevel > sigilMax.value) out.push(`因子等级超过上限 ${sigilMax.value}`)
-  if (Array.isArray(primary?.allowedLevels) && primary.allowedLevels.length && !primary.allowedLevels.includes(form.primaryTraitLevel)) out.push('主词条等级不是已知自然等级')
+  if (sigil?.primaryTraitHash && (Number(sigil.primaryTraitHash) >>> 0) !== (form.primaryTraitHash >>> 0)) out.push('主词条与该因子的固定主词条不匹配')
+  const allowedPrimaryLevels = Array.isArray(sigil?.allowedPrimaryTraitLevels) && sigil.allowedPrimaryTraitLevels.length
+    ? sigil.allowedPrimaryTraitLevels
+    : primary?.allowedLevels
+  if (Array.isArray(allowedPrimaryLevels) && allowedPrimaryLevels.length && !allowedPrimaryLevels.includes(form.primaryTraitLevel)) out.push('主词条等级不是已知自然等级')
   else if (primaryMax.value != null && form.primaryTraitLevel > primaryMax.value) out.push(`主词条等级超过上限 ${primaryMax.value}`)
   if (!form.secondaryTraitHash && form.secondaryTraitLevel) out.push('未选择副词条，但副词条等级不为 0')
   else if (Array.isArray(secondary?.allowedLevels) && secondary.allowedLevels.length && !secondary.allowedLevels.includes(form.secondaryTraitLevel)) out.push('副词条等级不是已知自然等级')
@@ -205,13 +364,16 @@ const legality = computed(() => {
   if (primaryWritableMax.value != null && form.primaryTraitLevel > primaryWritableMax.value) return { status: 'impossible', message: `主词条等级修改上限是 ${primaryWritableMax.value}` }
   if (secondaryWritableMax.value != null && form.secondaryTraitLevel > secondaryWritableMax.value) return { status: 'impossible', message: `副词条等级修改上限是 ${secondaryWritableMax.value}` }
   const reasons = [...warnings.value]
-  if (!sigilByHash.value.has(form.sigilHash >>> 0)) reasons.push('因子 Hash 不在本地资料库中')
-  if (!traitByHash.value.has(form.primaryTraitHash >>> 0)) reasons.push('主词条 Hash 不在本地资料库中')
-  if (form.secondaryTraitHash && !traitByHash.value.has(form.secondaryTraitHash >>> 0)) reasons.push('副词条 Hash 不在本地资料库中')
-  if (reasons.length) return { status: 'forced', message: `${reasons.join('；')}；仍会按所选数值写入` }
+  const selectedSigilOption = sigilByHash.value.get(form.sigilHash >>> 0)
+  const selectedPrimaryOption = traitByHash.value.get(form.primaryTraitHash >>> 0)
+  const selectedSecondaryOption = traitByHash.value.get(form.secondaryTraitHash >>> 0)
+  if (!selectedSigilOption || selectedSigilOption.source === 'runtime') reasons.push('因子 Hash 不在本地资料库中')
+  if (!selectedPrimaryOption || selectedPrimaryOption.source === 'runtime') reasons.push('主词条 Hash 不在本地资料库中')
+  if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) reasons.push('副词条 Hash 不在本地资料库中')
+  if (reasons.length) return { status: 'impossible', message: `${reasons.join('；')}；后端会拒绝这次写入` }
   const sigil = sigilByHash.value.get(form.sigilHash >>> 0)
   if (form.secondaryTraitHash && (!sigil || !Array.isArray(sigil.allowedSecondaryTraitHashes) || !sigil.allowedSecondaryTraitHashes.length)) {
-    return { status: 'unknown', message: '可写入；该因子的完整天然副词条池尚未完全验证' }
+    return { status: 'unknown', message: '可提交；该因子的完整天然副词条池尚未完全验证，写入前仍由后端校验' }
   }
   return { status: 'legal', message: '符合当前已验证的因子、词条与等级规则' }
 })
@@ -227,19 +389,22 @@ const changedCount = computed(() => {
   return n
 })
 const changeSummary = computed(() => changedCount.value ? `待写入 ${changedCount.value} 个字段` : '尚未修改')
-const canWrite = computed(() => !!status.selectedAddr && changedCount.value > 0 && legality.value.status !== 'impossible')
+const canWrite = computed(() => !!status.selectedAddr && changedCount.value > 0 &&
+  (legality.value.status === 'legal' || legality.value.status === 'unknown'))
 
 function revertToRead() { syncFormFromStatus() }
 
 function applyEntry(entry) {
+  if (loading.value || applying.value) return
   form.sigilHash = entry.sigilHash >>> 0
   form.sigilLevel = entry.sigilLevel >>> 0
   form.primaryTraitHash = entry.primaryTraitHash >>> 0
   form.primaryTraitLevel = entry.primaryTraitLevel >>> 0
-  form.secondaryTraitHash = entry.secondaryTraitHash >>> 0
-  form.secondaryTraitLevel = entry.secondaryTraitLevel >>> 0
+  form.secondaryTraitHash = normaliseSecondaryHash(entry.secondaryTraitHash)
+  form.secondaryTraitLevel = isEmptyTraitHash(entry.secondaryTraitHash) ? 0 : entry.secondaryTraitLevel >>> 0
 }
 async function applyAndWrite(entry) {
+  if (loading.value || applying.value) return
   applyEntry(entry)
   await performWrite()
 }
@@ -317,7 +482,15 @@ watch(renamingId, (v) => {
   if (v) document.addEventListener('mousedown', onRenameOutsideClick)
   else document.removeEventListener('mousedown', onRenameOutsideClick)
 })
-onBeforeUnmount(() => document.removeEventListener('mousedown', onRenameOutsideClick))
+onBeforeUnmount(() => {
+  disposed = true
+  lifecycleEpoch++
+  stopPolling()
+  document.removeEventListener('mousedown', onRenameOutsideClick)
+  const ownerToken = hookOwnerToken
+  hookOwnerToken = ''
+  if (ownerToken) queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, ownerToken, SigilMemoryRelease)
+})
 function fmtRelTime(ts) {
   const diffSec = Math.floor((Date.now() - ts) / 1000)
   if (diffSec < 60) return '刚刚'
@@ -334,307 +507,250 @@ const statusLabel = computed(() => {
 
 onMounted(async () => {
   await loadOptions()
+  if (disposed) return
   await refresh(true)
 })
 </script>
 
 <template>
-  <div class="memory-sigil">
-    <!-- Connection strip -->
-    <div class="section conn-section">
-      <div class="conn-row">
-        <div class="conn-left">
-          <span class="chip" :class="{ state: status.hooked, dim: !status.hooked }">● {{ statusLabel }}</span>
-          <span v-if="!status.hooked && status.found" class="hint-inline">点击启用读取，然后在游戏内选择因子</span>
-          <span v-else-if="status.hooked && !status.selectedAddr" class="hint-inline">等待游戏内因子选择</span>
+  <div class="sigil-memory-page ui-page is-wide ui-page-stack">
+    <section class="ui-card ui-panel is-compact connection-card">
+      <div class="ui-split connection-row">
+        <div class="ui-cluster">
+          <span class="ui-tag" :class="status.hooked ? 'is-ok' : status.found ? 'is-info' : ''">{{ statusLabel }}</span>
+          <span v-if="!status.hooked && status.found" class="ui-hint">点击启用读取，然后在游戏内选择因子</span>
+          <span v-else-if="status.hooked && !status.selectedAddr" class="ui-hint">等待游戏内因子选择</span>
+          <span v-else-if="status.selectedAddr" class="ui-hint">已锁定游戏内当前选中的因子</span>
         </div>
-        <div class="conn-right">
-          <button v-if="status.hooked" class="btn tiny" :disabled="loading" @click="refresh(true)">{{ loading ? '刷新中…' : '刷新' }}</button>
-          <button class="btn tiny btn-cyan" :disabled="loading" @click="enable">{{ status.hooked ? '重新连接' : '启用读取' }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Editor -->
-    <div class="section" :class="{ muted: !status.selectedAddr }">
-      <div class="editor-header">
-        <span class="section-title">因子编辑</span>
-        <div class="editor-actions">
-          <button class="ed-link" :disabled="!status.selectedAddr" @click="saveCurrentAsTemplate" title="保存当前目标为模板 (稍后可重命名)">＋ 保存为模板</button>
-          <button class="ed-link" :disabled="!status.selectedAddr || changedCount === 0" @click="revertToRead" title="放弃修改，恢复为游戏内当前值">↺ 还原</button>
+        <div class="ui-actions">
+          <button v-if="status.hooked" class="ui-btn is-sm is-ghost" :disabled="loading || applying" @click="refresh(true)">{{ loading ? '刷新中…' : '刷新' }}</button>
+          <button v-if="status.hooked" class="ui-btn is-sm is-ghost" :disabled="loading || applying" @click="disable">停止读取</button>
+          <button class="ui-btn is-sm is-primary" :disabled="loading || applying || status.hooked" @click="enable">启用读取</button>
         </div>
       </div>
+    </section>
 
-      <div class="ed-row">
-        <div class="ed-row-head">
-          <span class="ed-label">因子</span>
-          <div class="ed-current">
-          <span class="ed-current-prefix">当前：</span>
-          <span class="ed-current-name" :class="{ dim: sigilRead.dim }" :title="sigilRead.text">{{ sigilRead.text }}</span>
-          <span v-if="status.sigilHash" class="ed-current-lv">Lv {{ status.sigilLevel }}</span>
+    <section class="ui-card ui-panel editor-card" :aria-disabled="!status.selectedAddr">
+      <div class="ui-split editor-header">
+        <h2 class="ui-section-title">因子编辑 <small>当前值与待写入值并列核对</small></h2>
+        <div class="ui-actions">
+          <button class="ui-btn is-sm is-subtle" :disabled="!status.selectedAddr || loading || applying" @click="saveCurrentAsTemplate" title="保存当前目标为模板，稍后可重命名">保存为模板</button>
+          <button class="ui-btn is-sm is-ghost" :disabled="!status.selectedAddr || loading || applying || changedCount === 0" @click="revertToRead" title="放弃修改，恢复为游戏内当前值">还原当前值</button>
+        </div>
+      </div>
+
+      <div class="editor-fields">
+        <div class="editor-field">
+          <div class="editor-field-head">
+            <strong>因子</strong>
+            <span class="current-value" :class="{ 'is-dim': sigilRead.dim }" :title="sigilRead.text">当前：{{ sigilRead.text }} <b v-if="status.sigilHash">Lv {{ status.sigilLevel }}</b></span>
+          </div>
+          <div class="editor-control-grid">
+            <SigilMemoryPicker v-model="form.sigilHash" :options="allSigilOptions" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSigil" placeholder="选择因子" />
+            <label class="ui-field level-control">
+              <span class="ui-field-label">等级</span>
+              <input v-model.number="form.sigilLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="sigilWritableMax" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, sigilWritableMax)" />
+              <small v-if="sigilMax != null" class="ui-hint">合规 {{ sigilMax }} / 可写 {{ sigilWritableMax }}</small>
+            </label>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || sigilMax == null || sigilAtMax" @click="maxSigil" :title="sigilMax != null ? `设为上限 ${sigilMax}` : '无等级元数据'">设为上限</button>
           </div>
         </div>
-        <div class="ed-edit-line">
-          <SigilMemoryPicker v-model="form.sigilHash" :options="allSigilOptions" @pick="onPickSigil" placeholder="选择因子" />
-          <label class="ed-level-control">
-            <span>等级</span>
-            <input v-model.number="form.sigilLevel" type="number" min="0" :max="sigilWritableMax" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, sigilWritableMax)" />
-            <small v-if="sigilMax != null">合规上限 {{ sigilMax }} / 修改上限 {{ sigilWritableMax }}</small>
-          </label>
-          <button class="ed-max-btn" :disabled="sigilMax == null || sigilAtMax" @click="maxSigil" :title="sigilMax != null ? `设为上限 ${sigilMax}` : '无等级元数据'">设为上限</button>
-        </div>
-      </div>
 
-      <div class="ed-row">
-        <div class="ed-row-head">
-          <span class="ed-label">主词条</span>
-          <div class="ed-current">
-          <span class="ed-current-prefix">当前：</span>
-          <span class="ed-current-name" :class="{ dim: primaryRead.dim }" :title="primaryRead.text">{{ primaryRead.text }}</span>
-          <span v-if="status.primaryTraitHash" class="ed-current-lv">Lv {{ status.primaryTraitLevel }}</span>
+        <div class="editor-field">
+          <div class="editor-field-head">
+            <strong>主词条</strong>
+            <span class="trait-preview" aria-hidden="true">
+              <img v-if="traitIconByHash(status.primaryTraitHash, status.primaryTraitName)" :src="traitIconByHash(status.primaryTraitHash, status.primaryTraitName)" alt="" />
+              <span v-if="traitIconByHash(status.primaryTraitHash, status.primaryTraitName) && traitIconByHash(form.primaryTraitHash)">→</span>
+              <img v-if="traitIconByHash(form.primaryTraitHash)" :src="traitIconByHash(form.primaryTraitHash)" alt="" />
+            </span>
+            <span class="current-value" :class="{ 'is-dim': primaryRead.dim }" :title="primaryRead.text">当前：{{ primaryRead.text }} <b v-if="status.primaryTraitHash">Lv {{ status.primaryTraitLevel }}</b></span>
+          </div>
+          <div class="editor-control-grid">
+            <SigilMemoryPicker v-model="form.primaryTraitHash" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickPrimary" placeholder="选择主词条" />
+            <label class="ui-field level-control">
+              <span class="ui-field-label">等级</span>
+              <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
+              <small v-if="primaryMax != null" class="ui-hint">合规 {{ primaryMax }} / 可写 {{ primaryWritableMax }}</small>
+            </label>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || primaryMax == null || primaryAtMax" @click="maxPrimary" :title="primaryMax != null ? `设为上限 ${primaryMax}` : '无等级元数据'">设为上限</button>
           </div>
         </div>
-        <div class="ed-edit-line">
-          <SigilMemoryPicker v-model="form.primaryTraitHash" :options="allTraitOptions" @pick="onPickPrimary" placeholder="选择主词条" />
-          <label class="ed-level-control">
-            <span>等级</span>
-            <input v-model.number="form.primaryTraitLevel" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
-            <small v-if="primaryMax != null">合规上限 {{ primaryMax }} / 修改上限 {{ primaryWritableMax }}</small>
-          </label>
-          <button class="ed-max-btn" :disabled="primaryMax == null || primaryAtMax" @click="maxPrimary" :title="primaryMax != null ? `设为上限 ${primaryMax}` : '无等级元数据'">设为上限</button>
-        </div>
-      </div>
 
-      <div class="ed-row">
-        <div class="ed-row-head">
-          <span class="ed-label">副词条</span>
-          <div class="ed-current">
-          <span class="ed-current-prefix">当前：</span>
-          <span class="ed-current-name" :class="{ dim: secondaryRead.dim }" :title="secondaryRead.text">{{ secondaryRead.text }}</span>
-          <span v-if="status.secondaryTraitHash" class="ed-current-lv">Lv {{ status.secondaryTraitLevel }}</span>
+        <div class="editor-field">
+          <div class="editor-field-head">
+            <strong>副词条</strong>
+            <span class="trait-preview" aria-hidden="true">
+              <img v-if="traitIconByHash(status.secondaryTraitHash, status.secondaryTraitName)" :src="traitIconByHash(status.secondaryTraitHash, status.secondaryTraitName)" alt="" />
+              <span v-if="traitIconByHash(status.secondaryTraitHash, status.secondaryTraitName) && traitIconByHash(form.secondaryTraitHash)">→</span>
+              <img v-if="traitIconByHash(form.secondaryTraitHash)" :src="traitIconByHash(form.secondaryTraitHash)" alt="" />
+            </span>
+            <span class="current-value" :class="{ 'is-dim': secondaryRead.dim }" :title="secondaryRead.text">当前：{{ secondaryRead.text }} <b v-if="status.secondaryTraitHash">Lv {{ status.secondaryTraitLevel }}</b></span>
+          </div>
+          <div class="editor-control-grid">
+            <SigilMemoryPicker v-model="form.secondaryTraitHash" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSecondary" optional placeholder="未选择（可选）" />
+            <label class="ui-field level-control" :class="{ 'is-disabled': !form.secondaryTraitHash }">
+              <span class="ui-field-label">等级</span>
+              <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="secondaryWritableMax" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, secondaryWritableMax)" />
+              <span v-else class="empty-level">未选择</span>
+              <small v-if="secondaryMax != null" class="ui-hint">合规 {{ secondaryMax }} / 可写 {{ secondaryWritableMax }}</small>
+            </label>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || secondaryMax == null || secondaryAtMax" @click="maxSecondary" :title="secondaryMax != null ? `设为上限 ${secondaryMax}` : '请先选择副词条'">设为上限</button>
           </div>
         </div>
-        <div class="ed-edit-line">
-          <SigilMemoryPicker v-model="form.secondaryTraitHash" :options="allTraitOptions" @pick="onPickSecondary" optional placeholder="未选择（可选）" />
-          <label class="ed-level-control" :class="{ disabled: !form.secondaryTraitHash }">
-            <span>等级</span>
-            <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" type="number" min="0" :max="secondaryWritableMax" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, secondaryWritableMax)" />
-            <b v-else class="ed-level-empty">—</b>
-            <small v-if="secondaryMax != null">合规上限 {{ secondaryMax }} / 修改上限 {{ secondaryWritableMax }}</small>
-          </label>
-          <button class="ed-max-btn" :disabled="secondaryMax == null || secondaryAtMax" @click="maxSecondary" :title="secondaryMax != null ? `设为上限 ${secondaryMax}` : '请先选择副词条'">设为上限</button>
-        </div>
       </div>
 
-      <div class="warn-slot">
-        <div v-if="warnings.length" class="warn-list">
-          <div v-for="(w, i) in warnings" :key="i" class="warn-inline">⚠ {{ w }}</div>
-        </div>
+      <div v-if="warnings.length" class="ui-notice is-warn warning-list" role="alert">
+        <span v-for="(w, i) in warnings" :key="i">{{ w }}</span>
       </div>
 
-      <div class="ed-bar">
-        <div class="ed-summary">
-          <LegalityIndicator v-if="status.selectedAddr" class="ed-legality" :status="legality.status" :message="legality.message" />
-          <span v-else class="selection-note">在游戏内选中一个因子后，这里会显示合法性与写入状态</span>
-          <span class="ed-changed">{{ changeSummary }}</span>
+      <div class="ui-toolbar write-toolbar">
+        <div class="write-summary">
+          <LegalityIndicator v-if="status.selectedAddr" :status="legality.status" :message="legality.message" />
+          <span v-else class="ui-hint">在游戏内选中一个因子后，这里会显示合法性与写入状态</span>
+          <span class="ui-tag" :class="changedCount ? 'is-info' : ''">{{ changeSummary }}</span>
         </div>
-        <div class="ed-bar-actions">
-          <button class="ed-max-all" :disabled="applying || !canOneClickMax" @click="oneClickMax" title="只填写已知上限，不会立即写入">全部等级设为上限</button>
-          <button class="ed-write" :disabled="applying || !canWrite" @click="write">{{ applying ? '写入中…' : '写入修改' }}</button>
+        <div class="ui-actions write-actions">
+          <button class="ui-btn is-ghost" :disabled="loading || applying || !canOneClickMax" @click="oneClickMax" title="只填写已知上限，不会立即写入">全部设为上限</button>
+          <button class="ui-btn is-primary" :disabled="loading || applying || !canWrite" @click="write">{{ applying ? '写入中…' : '写入修改' }}</button>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Shared list: templates + history -->
-    <div class="section">
-      <div class="tabs-head">
-        <div class="tabs">
-          <span class="tab" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板 <span class="tab-count">{{ templates.length }}</span></span>
-          <span class="tab" :class="{ active: tab === 'history' }" @click="tab = 'history'">最近写入 <span class="tab-count">{{ history.length }}</span></span>
+    <section class="ui-card ui-panel library-card">
+      <div class="ui-split library-header">
+        <div class="ui-tabs" role="tablist" aria-label="因子模板与写入历史">
+          <button class="ui-tab" :class="{ 'is-on': tab === 'templates' }" role="tab" :aria-selected="tab === 'templates'" @click="tab = 'templates'">模板 <span class="ui-tag">{{ templates.length }}</span></button>
+          <button class="ui-tab" :class="{ 'is-on': tab === 'history' }" role="tab" :aria-selected="tab === 'history'" @click="tab = 'history'">最近写入 <span class="ui-tag">{{ history.length }}</span></button>
         </div>
         <div v-if="tab === 'templates'">
-          <input v-model="templateSearch" class="search-input" placeholder="搜索模板..." />
+          <input v-model="templateSearch" class="ui-input template-search" aria-label="搜索模板" placeholder="搜索模板…" />
         </div>
-        <button v-else-if="history.length" class="row-tool" title="清空最近写入" @click="clearWriteHistory">清空</button>
+        <button v-else-if="history.length" class="row-tool ui-btn is-sm is-ghost" title="清空最近写入" @click="clearWriteHistory">清空记录</button>
       </div>
 
       <div v-if="tab === 'templates'">
-        <div v-if="!filteredTemplates.length" class="tpl-empty">
+        <div v-if="!filteredTemplates.length" class="ui-empty">
           {{ templates.length ? '无匹配模板' : '尚无模板 · 在编辑器点击 "＋ 保存为模板"' }}
         </div>
-        <ul v-else class="row-list">
-          <li v-for="t in filteredTemplates" :key="t.id" class="row-item" @click="applyEntry(t)">
-            <span class="row-name">
+        <ul v-else class="ui-list template-list">
+          <li v-for="t in filteredTemplates" :key="t.id" class="ui-row template-entry" role="button" tabindex="0" @click="applyEntry(t)" @keydown.enter="applyEntry(t)" @keydown.space.prevent="applyEntry(t)">
+            <span class="entry-name">
               <template v-if="renamingId === t.id">
                 <span class="rename-group" ref="renameEl">
-                  <input v-model="renameBuffer" class="rename-input" @click.stop @keydown.enter="confirmRename" @keydown.escape="cancelRename" />
-                  <button class="rename-confirm" :disabled="!renameBuffer.trim()" @click.stop="confirmRename" title="保存 (Enter)">✓</button>
-                  <button class="rename-cancel" @click.stop="cancelRename" title="取消 (Esc)">✕</button>
+                  <input v-model="renameBuffer" class="ui-input rename-input" aria-label="模板名称" @click.stop @keydown.enter="confirmRename" @keydown.escape="cancelRename" />
+                  <button class="ui-btn is-icon is-sm" :disabled="!renameBuffer.trim()" @click.stop="confirmRename" title="保存名称">✓</button>
+                  <button class="ui-btn is-icon is-sm is-ghost" @click.stop="cancelRename" title="取消重命名">×</button>
                 </span>
               </template>
               <template v-else>
-                <span class="row-name-text">{{ t.name }}</span>
-                <span class="row-name-lv">Lv {{ t.sigilLevel }}</span>
+                <strong>{{ t.name }}</strong>
+                <span class="ui-tag">Lv {{ t.sigilLevel }}</span>
               </template>
             </span>
-            <span class="row-chip primary-chip">
-              <span class="row-chip-tag">主</span>
-              <span class="row-chip-name">{{ nameFor(traitByHash, t.primaryTraitHash, '—') }}</span>
-              <span class="row-chip-lv">Lv {{ t.primaryTraitLevel }}</span>
+            <span class="trait-line">
+              <img v-if="traitIconByHash(t.primaryTraitHash)" class="trait-line-icon" :src="traitIconByHash(t.primaryTraitHash)" alt="" />
+              <span class="ui-tag is-info">主</span>
+              <span>{{ nameFor(traitByHash, t.primaryTraitHash, '—') }}</span>
+              <b>Lv {{ t.primaryTraitLevel }}</b>
             </span>
-            <span class="row-chip secondary-chip" :class="{ 'empty-slot': !t.secondaryTraitHash }">
-              <span class="row-chip-tag">副</span>
-              <span class="row-chip-name">{{ t.secondaryTraitHash ? nameFor(traitByHash, t.secondaryTraitHash) : '—' }}</span>
-              <span class="row-chip-lv">Lv {{ t.secondaryTraitLevel }}</span>
+            <span class="trait-line" :class="{ 'is-empty': !t.secondaryTraitHash }">
+              <img v-if="traitIconByHash(t.secondaryTraitHash)" class="trait-line-icon" :src="traitIconByHash(t.secondaryTraitHash)" alt="" />
+              <span class="ui-tag">副</span>
+              <span>{{ t.secondaryTraitHash ? nameFor(traitByHash, t.secondaryTraitHash) : '无副词条' }}</span>
+              <b v-if="t.secondaryTraitHash">Lv {{ t.secondaryTraitLevel }}</b>
             </span>
-            <span class="row-tools" @click.stop>
-              <button class="row-tool" title="重命名" @click="startRename(t.id, t.name)">✎</button>
-              <button class="row-tool" title="删除" @click="deleteTemplate(t.id)">✕</button>
+            <span class="row-tools ui-actions" @click.stop>
+              <button class="row-tool ui-btn is-sm is-ghost" title="重命名" @click="startRename(t.id, t.name)">重命名</button>
+              <button class="row-tool ui-btn is-sm is-ghost" title="删除" @click="deleteTemplate(t.id)">删除</button>
             </span>
-            <button class="row-apply" :disabled="!status.selectedAddr || applying" @click.stop="applyAndWrite(t)" title="立即应用并写入">一键应用</button>
+            <button class="ui-btn is-sm is-primary entry-apply" :disabled="!status.selectedAddr || loading || applying" @click.stop="applyAndWrite(t)" title="立即应用并写入">一键应用</button>
           </li>
         </ul>
       </div>
 
       <div v-else>
-        <div v-if="!history.length" class="tpl-empty">尚无历史</div>
-        <ul v-else class="row-list">
-          <li v-for="h in history" :key="h.id" class="row-item" @click="applyEntry(h)">
-            <span class="row-name">
-              <span class="row-name-text">{{ nameFor(sigilByHash, h.sigilHash, '—') }}</span>
-              <span class="row-name-lv">Lv {{ h.sigilLevel }}</span>
+        <div v-if="!history.length" class="ui-empty">尚无历史</div>
+        <ul v-else class="ui-list template-list">
+          <li v-for="h in history" :key="h.id" class="ui-row template-entry" role="button" tabindex="0" @click="applyEntry(h)" @keydown.enter="applyEntry(h)" @keydown.space.prevent="applyEntry(h)">
+            <span class="entry-name">
+              <strong>{{ nameFor(sigilByHash, h.sigilHash, '—') }}</strong>
+              <span class="ui-tag">Lv {{ h.sigilLevel }}</span>
             </span>
-            <span class="row-chip primary-chip">
-              <span class="row-chip-tag">主</span>
-              <span class="row-chip-name">{{ nameFor(traitByHash, h.primaryTraitHash, '—') }}</span>
-              <span class="row-chip-lv">Lv {{ h.primaryTraitLevel }}</span>
+            <span class="trait-line">
+              <img v-if="traitIconByHash(h.primaryTraitHash)" class="trait-line-icon" :src="traitIconByHash(h.primaryTraitHash)" alt="" />
+              <span class="ui-tag is-info">主</span><span>{{ nameFor(traitByHash, h.primaryTraitHash, '—') }}</span><b>Lv {{ h.primaryTraitLevel }}</b>
             </span>
-            <span class="row-chip secondary-chip" :class="{ 'empty-slot': !h.secondaryTraitHash }">
-              <span class="row-chip-tag">副</span>
-              <span class="row-chip-name">{{ h.secondaryTraitHash ? nameFor(traitByHash, h.secondaryTraitHash) : '—' }}</span>
-              <span class="row-chip-lv">Lv {{ h.secondaryTraitLevel }}</span>
+            <span class="trait-line" :class="{ 'is-empty': !h.secondaryTraitHash }">
+              <img v-if="traitIconByHash(h.secondaryTraitHash)" class="trait-line-icon" :src="traitIconByHash(h.secondaryTraitHash)" alt="" />
+              <span class="ui-tag">副</span><span>{{ h.secondaryTraitHash ? nameFor(traitByHash, h.secondaryTraitHash) : '无副词条' }}</span><b v-if="h.secondaryTraitHash">Lv {{ h.secondaryTraitLevel }}</b>
             </span>
-            <span class="row-meta">{{ fmtRelTime(h.createdAt) }}</span>
-            <button class="row-apply" :disabled="!status.selectedAddr || applying" @click.stop="applyAndWrite(h)" title="立即应用并写入">一键应用</button>
+            <span class="entry-meta">{{ fmtRelTime(h.createdAt) }}</span>
+            <button class="ui-btn is-sm is-primary entry-apply" :disabled="!status.selectedAddr || loading || applying" @click.stop="applyAndWrite(h)" title="立即应用并写入">一键应用</button>
           </li>
         </ul>
       </div>
-    </div>
+    </section>
   </div>
   <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <style scoped>
-.memory-sigil { width:100%; display:flex; flex-direction:column; gap:16px; font-family:inherit; container-type:inline-size; }
-.section { padding:18px 20px; border:1px solid rgba(255,255,255,.08); border-radius:8px; background:rgba(255,255,255,.04); display:flex; flex-direction:column; gap:12px; font-family:inherit; }
-.section.muted { opacity:1; }
-.section-title { color:rgba(255,255,255,.4); font-size:.72rem; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
-.hint-inline { font-size:.72rem; color:rgba(255,255,255,.4); }
+.sigil-memory-page { padding-bottom:var(--space-9); }
+.connection-card { position:sticky; top:0; z-index:4; }
+.editor-header { padding-bottom:var(--space-4); border-bottom:1px solid var(--border-soft); }
+.editor-fields { display:flex; flex-direction:column; }
+.editor-field { display:flex; min-width:0; flex-direction:column; gap:var(--space-3); padding:var(--space-4) 0; }
+.editor-field + .editor-field { border-top:1px solid var(--border-soft); }
+.editor-field-head { display:flex; min-width:0; flex-wrap:wrap; align-items:baseline; gap:var(--space-2) var(--space-4); }
+.editor-field-head > strong { flex:0 0 74px; font-size:var(--fs-md); }
+.trait-preview { display:inline-flex; min-height:30px; align-items:center; gap:var(--space-1); color:var(--text-muted); font-family:var(--font-data); }
+.trait-preview img,.trait-line-icon { width:30px; height:30px; flex:0 0 30px; object-fit:cover; border:1px solid var(--line-soft); border-radius:6px; background:var(--surface-field); }
+.current-value { min-width:0; color:var(--text-secondary); font-size:var(--fs-sm); overflow-wrap:anywhere; }
+.current-value b { color:var(--text-primary); font-family:var(--font-data); }
+.current-value.is-dim { color:var(--text-muted); }
+.editor-control-grid { display:grid; min-width:0; max-width:760px; grid-template-columns:minmax(240px,520px) 124px 88px; align-items:start; gap:var(--space-3); }
+.level-control { display:grid; grid-template-rows:auto var(--control-height) auto; }
+.level-control .ui-input { text-align:center; }
+.level-control.is-disabled { opacity:var(--state-disabled-opacity); }
+.empty-level { display:flex; min-height:var(--control-height); align-items:center; justify-content:center; border:1px solid var(--border-soft); border-radius:var(--radius-sm); color:var(--text-muted); background:var(--surface-sunken); font-size:var(--fs-sm); }
+.limit-button { align-self:end; min-height:var(--control-height); }
+.warning-list { display:flex; flex-direction:column; gap:var(--space-1); }
+.write-toolbar { align-items:center; justify-content:space-between; }
+.write-summary { display:flex; min-width:0; flex:1 1 360px; flex-wrap:wrap; align-items:center; gap:var(--space-3); }
+.write-actions { margin-left:auto; }
+.library-header { align-items:center; }
+.template-search { width:clamp(190px,25cqi,280px); }
+.template-list { margin:0; padding:0; list-style:none; }
+.template-entry { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2) var(--space-4); cursor:pointer; }
+.template-entry:focus-visible { outline:var(--focus-outline); outline-offset:var(--focus-offset); }
+.entry-name { grid-column:1; display:flex; min-width:0; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.entry-name strong { overflow-wrap:anywhere; }
+.trait-line { grid-column:1; display:flex; min-width:0; flex-wrap:wrap; align-items:center; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-sm); }
+.trait-line b { color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-xs); }
+.trait-line.is-empty { color:var(--text-muted); }
+.trait-line-icon { width:26px; height:26px; flex-basis:26px; }
+.row-tools { grid-column:2; grid-row:1 / span 2; align-self:start; justify-self:end; }
+.entry-apply { grid-column:2; align-self:end; justify-self:end; }
+.entry-meta { grid-column:2; grid-row:1; color:var(--text-muted); font-size:var(--fs-sm); white-space:nowrap; }
+.rename-group { display:flex; min-width:0; flex:1; align-items:center; gap:var(--space-2); }
+.rename-input { flex:1 1 220px; }
 
-/* Connection */
-.conn-section { padding:14px 18px; }
-.conn-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
-.conn-left { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-.conn-right { display:flex; gap:8px; align-items:center; }
-.chip { padding:3px 10px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.05); font-size:.72rem; color:rgba(255,255,255,.55); font-family:inherit; }
-.chip.state { color:#4ade80; border-color:rgba(74,222,128,.3); background:rgba(74,222,128,.06); }
-.chip.dim { color:rgba(255,255,255,.4); }
+@container ui-page (max-width:760px) {
+  .editor-control-grid { max-width:none; grid-template-columns:minmax(0,1fr) 112px 84px; }
+  .template-entry { grid-template-columns:minmax(0,1fr); }
+  .row-tools,.entry-apply,.entry-meta { grid-column:1; grid-row:auto; justify-self:start; }
+  .entry-apply { width:100%; }
+}
 
-/* Button base */
-.btn { padding:8px 14px; border:1px solid rgba(255,255,255,.16); border-radius:6px; background:rgba(255,255,255,.06); color:rgba(255,255,255,.75); font-size:.8rem; font-weight:600; cursor:pointer; font-family:inherit; }
-.btn:disabled { opacity:.4; cursor:not-allowed; }
-.btn-cyan { border-color:rgba(154,116,64,.35); color:#9a7440; background:rgba(154,116,64,.1); }
-.btn.tiny { padding:4px 9px; font-size:.7rem; }
-
-/* Editor header */
-.editor-header { display:flex; justify-content:space-between; align-items:center; min-height:34px; margin-bottom:2px; padding-bottom:10px; border-bottom:1px solid rgba(126,91,43,.16); }
-.editor-actions { display:flex; gap:14px; }
-.ed-link { color:rgba(255,255,255,.5); font-size:.72rem; cursor:pointer; background:none; border:0; font-family:inherit; padding:0; }
-.ed-link:hover:not(:disabled) { color:#9a7440; }
-.ed-link:disabled { opacity:.35; cursor:not-allowed; }
-
-/* Each editor field is a small journal entry: current value first, editable controls below. */
-.ed-row { display:flex;flex-direction:column;gap:7px;min-width:0;padding:9px 0 11px; }
-.ed-row + .ed-row { border-top:1px solid rgba(126,91,43,.16); }
-.ed-row-head { display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:8px;min-width:0 }
-.ed-label { color:rgba(255,255,255,.4); font-size:.75rem; font-weight:800; }
-.ed-current { display:flex;align-items:baseline;gap:5px;min-width:0;flex-wrap:wrap;line-height:1.35 }
-.ed-current-prefix { color:rgba(255,255,255,.35);font-size:.67rem;font-weight:700;flex:0 0 auto }
-.ed-current-name { color:rgba(255,255,255,.85);font-weight:800;font-size:.75rem;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere }
-.ed-current-name.dim { color:rgba(255,255,255,.35); font-weight:400; }
-.ed-current-lv { color:rgba(255,255,255,.4); font-size:.68rem; font-family:var(--font-data); flex-shrink:0; }
-.ed-edit-line { display:grid;grid-template-columns:minmax(0,1fr) 78px 60px;align-items:stretch;gap:8px;min-width:0 }
-.ed-level-control { min-width:0;display:grid;grid-template-columns:26px minmax(0,1fr);grid-template-rows:24px 12px;align-items:center;column-gap:4px;color:rgba(255,255,255,.42);font-size:.63rem;font-weight:800 }
-.ed-level-control>span { text-align:right }
-.ed-level-control input { width:100%;height:24px;min-height:24px;padding:0 3px;border:1px solid rgba(255,255,255,.14);border-radius:2px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.92);font:800 .75rem var(--font-data);font-variant-numeric:tabular-nums lining-nums;text-align:center;outline:none }
-.ed-level-control small { grid-column:1 / -1;color:rgba(255,255,255,.35);font-size:.58rem;font-weight:700;text-align:right;white-space:nowrap }
-.ed-level-control.disabled { opacity:.58 }
-.ed-level-empty { display:grid;place-items:center;height:24px;color:rgba(255,255,255,.34);font-size:.75rem }
-.ed-level-control input[type=number]::-webkit-inner-spin-button,.ed-level-control input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none;margin:0 }
-.ed-level-control input[type=number] { -moz-appearance:textfield }
-.ed-max-btn { width:100%;min-height:32px;align-self:start;padding:4px 5px;border:1px solid rgba(154,116,64,.35);background:transparent;color:#9a7440;border-radius:2px;font:800 .62rem var(--font-ui);cursor:pointer;letter-spacing:0 }
-.ed-max-btn:hover:not(:disabled) { background:rgba(154,116,64,.08); }
-.ed-max-btn:disabled { opacity:.3; cursor:not-allowed; }
-
-/* Warnings + write bar */
-.warn-slot { min-height:0; }
-.warn-list { display:flex; flex-direction:column; gap:3px; padding:7px 9px; border-left:2px solid #9a7440; background:#edddba; }
-.warn-inline { color:#8a5d1b; font-size:.68rem; line-height:1.45; }
-.ed-bar { min-height:62px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px;padding-top:12px;margin-top:3px;border-top:1px solid rgba(126,91,43,.16) }
-.ed-summary { min-width:0;display:flex;flex-direction:column;gap:5px }
-.selection-note { color:#8a775d;font-size:.66rem;font-weight:650;line-height:1.45; }
-.ed-legality { margin:0 }
-.ed-changed { color:rgba(255,255,255,.4);font-size:.66rem;font-weight:700 }
-.ed-bar-actions { display:flex;align-items:center;gap:8px }
-.ed-max-all { min-height:32px;color:#9a7440;background:none;border:1px solid currentColor;border-radius:2px;font:750 .66rem var(--font-ui);cursor:pointer;padding:5px 9px;white-space:nowrap }
-.ed-max-all:hover:not(:disabled) { text-decoration:underline; }
-.ed-max-all:disabled { opacity:.35; cursor:not-allowed; text-decoration:none; }
-.ed-write { min-height:32px;background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.4);color:#4ade80;border-radius:2px;padding:6px 17px;font:750 .7rem var(--font-ui);cursor:pointer;letter-spacing:.02em;white-space:nowrap }
-.ed-write:hover:not(:disabled) { background:rgba(74,222,128,.22); }
-.ed-write:disabled { opacity:.4; cursor:not-allowed; }
-
-/* Tabs */
-.tabs-head { min-height:42px;display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:10px; }
-.tabs { display:flex; gap:18px; }
-.tab { color:rgba(255,255,255,.4); font-size:.75rem; font-weight:600; cursor:pointer; padding-bottom:6px; border-bottom:2px solid transparent; }
-.tab.active { color:rgba(255,255,255,.9); border-bottom-color:#9a7440; }
-.tab-count { color:rgba(255,255,255,.3); font-weight:400; margin-left:4px; }
-.search-input { padding:5px 10px; border:1px solid rgba(255,255,255,.12); border-radius:6px; background:rgba(255,255,255,.05); color:#fff; font:inherit; font-size:.72rem; width:170px; font-family:inherit; }
-
-.row-list { list-style:none; margin:0; padding:0; display:flex;flex-direction:column;gap:3px }
-.row-item { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;align-items:center;padding:8px 10px;border-radius:2px;cursor:pointer }
-.row-item:hover { background:rgba(154,116,64,.05); }
-
-.row-name { grid-column:1 / -1;display:inline-flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap }
-.row-name-text { color:rgba(255,255,255,.88);font-weight:600;font-size:.8rem;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere }
-.row-name-lv { color:rgba(255,255,255,.4); font-size:.66rem; font-family:var(--font-data); flex-shrink:0; }
-.rename-group { display:inline-flex; align-items:center; gap:4px; min-width:0; flex:1; }
-.rename-input { padding:2px 6px; border:1px solid rgba(154,116,64,.4); border-radius:4px; background:rgba(154,116,64,.06); color:#fff; font:inherit; font-size:.78rem; font-weight:600; min-width:0; flex:1; box-sizing:border-box; outline:none; font-family:inherit; }
-.rename-confirm, .rename-cancel { flex-shrink:0; background:transparent; border:1px solid transparent; padding:2px 7px; cursor:pointer; font-size:.7rem; border-radius:3px; font-family:inherit; line-height:1; }
-.rename-confirm { color:#4ade80; border-color:rgba(74,222,128,.35); background:rgba(74,222,128,.08); }
-.rename-confirm:hover:not(:disabled) { background:rgba(74,222,128,.18); }
-.rename-confirm:disabled { opacity:.35; cursor:not-allowed; }
-.rename-cancel { color:rgba(255,255,255,.5); }
-.rename-cancel:hover { color:#f87171; background:rgba(248,113,113,.1); border-color:rgba(248,113,113,.3); }
-
-.row-chip { min-width:0;display:inline-flex;align-items:baseline;gap:5px;padding:2px 8px;border:1px solid rgba(255,255,255,.08);border-radius:2px;background:rgba(255,255,255,.04);font-size:.72rem;max-width:none;flex-wrap:wrap }
-.primary-chip { grid-column:1;grid-row:2 }.secondary-chip { grid-column:1;grid-row:3 }
-.row-chip-tag { color:rgba(255,255,255,.35); font-size:.62rem; letter-spacing:.05em; font-weight:600; flex-shrink:0; }
-.row-chip-name { color:rgba(255,255,255,.78);font-weight:500;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere }
-.row-chip-lv { color:rgba(255,255,255,.42); font-size:.64rem; font-family:var(--font-data); flex-shrink:0; }
-.row-chip.empty-slot { visibility:hidden; }
-
-.row-meta { grid-column:2;grid-row:2;color:rgba(255,255,255,.35);font-size:.68rem;justify-self:end;white-space:nowrap }
-.row-tools { grid-column:2;grid-row:2;display:flex;gap:4px;opacity:0;transition:opacity .12s;justify-self:end }
-.row-item:hover .row-tools { opacity:1; }
-.row-tool { background:transparent; border:1px solid transparent; color:rgba(255,255,255,.5); padding:3px 7px; cursor:pointer; font-size:.7rem; border-radius:4px; font-family:inherit; line-height:1; }
-.row-tool:hover { color:#9a7440; background:rgba(154,116,64,.1); border-color:rgba(154,116,64,.3); }
-
-.row-apply { grid-column:2;grid-row:3;padding:4px 12px;border:1px solid rgba(74,222,128,.35);background:rgba(74,222,128,.1);color:#4ade80;border-radius:2px;font:750 .7rem var(--font-ui);cursor:pointer;letter-spacing:.02em }
-.row-apply:hover:not(:disabled) { background:rgba(74,222,128,.2); }
-.row-apply:disabled { opacity:.35; cursor:not-allowed; }
-
-.tpl-empty { padding:22px; text-align:center; color:rgba(255,255,255,.3); font-size:.75rem; }
-.memory-sigil{gap:13px}.section,.editor-card,.library-card{border-color:rgba(154,202,224,.14)!important;border-radius:4px 12px 4px 12px!important;background:rgba(8,31,53,.7)!important}.section-title,.editor-title{color:#eee7d8!important;font-family:Georgia,"Noto Serif SC","STSong",serif!important}.row-item{border-color:rgba(154,202,224,.1)!important;background:rgba(13,45,70,.46)!important}.row-item:hover{background:rgba(45,112,145,.12)!important}.row-chip{border-color:rgba(154,202,224,.13);background:rgba(12,43,68,.72)}.row-apply,.ed-apply-btn,.ed-max-all{border-color:rgba(218,187,115,.34)!important;background:rgba(218,187,115,.08)!important;color:#f0d99d!important}
-@container (max-width:520px){.ed-edit-line{grid-template-columns:minmax(0,1fr) 76px 58px;gap:6px}.ed-row-head{grid-template-columns:54px minmax(0,1fr)}.editor-actions{gap:8px}.warn-slot{padding-left:0}.ed-bar{grid-template-columns:1fr;align-items:start}.ed-bar-actions{justify-content:flex-end}}
+@container ui-page (max-width:560px) {
+  .connection-card { position:static; }
+  .editor-control-grid { grid-template-columns:minmax(0,1fr) 108px; }
+  .limit-button { grid-column:1 / -1; width:100%; }
+  .editor-field-head > strong { flex-basis:100%; }
+  .write-actions { width:100%; margin-left:0; }
+  .write-actions .ui-btn { flex:1 1 180px; }
+  .library-header { align-items:stretch; }
+  .template-search { width:100%; }
+}
 </style>

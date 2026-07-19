@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -105,8 +106,8 @@ type AppConfig struct {
 }
 
 const (
-	defaultAppWidth  = 1120
-	defaultAppHeight = 720
+	defaultAppWidth  = 1280
+	defaultAppHeight = 800
 	minAppWidth      = 960
 	minAppHeight     = 620
 	maxAppWidth      = 1320
@@ -116,47 +117,79 @@ const (
 // ── App ──
 
 type App struct {
-	ctx                 context.Context
-	exePath             string
-	hProcess            windows.Handle
-	moduleBase          uintptr
-	managerPtr          uintptr
-	charaListBase       uintptr
-	charaPID            uint32
-	countdownAddr       uintptr
-	faceAccessoryAddr   uintptr
-	overLimitHookAddr   uintptr
-	overLimitCaveAddr   uintptr
-	overLimitCommitAddr uintptr
-	unlockAllTrophyAddr uintptr
-	terminusDropAddr    uintptr
-	terminusDropOrig    []byte
-	collectibleTaskBase uintptr
-	sigilMemoryHookAddr uintptr
-	sigilMemoryCaveAddr uintptr
-	sigilMemoryOriginal []byte
-	currencyHookAddr    uintptr
-	currencyCaveAddr    uintptr
-	currencyOriginal    []byte
+	ctx           context.Context
+	exePath       string
+	hProcess      windows.Handle
+	moduleBase    uintptr
+	managerPtr    uintptr
+	charaListBase uintptr
+	charaPID      uint32
+	charaCreated  uint64
+	// Runtime acquire generations and owner tokens are protected by procMu. The
+	// request generation is global across features, so an older async Acquire
+	// cannot finish late and replace a newer page's owner or runtime resource.
+	latestRuntimeAcquireRequestID uint64
+	runtimeOwnerSequence          uint64
+	charaOwnerToken               string
+	sigilMemoryOwnerToken         string
+	wrightstoneMemoryOwnerToken   string
+	overLimitOwnerToken           string
+	// liveMemoryIndeterminateProcess poisons runtime item writes after a remote
+	// save thread times out. Creation time is part of the identity because
+	// Windows may reuse a PID after the old game process exits.
+	liveMemoryIndeterminateProcess processInstanceID
+	countdownAddr                  uintptr
+	faceAccessoryAddr              uintptr
+	overLimitHookAddr              uintptr
+	overLimitCaveAddr              uintptr
+	overLimitCommitAddr            uintptr
+	unlockAllTrophyAddr            uintptr
+	terminusDropAddr               uintptr
+	terminusDropOrig               []byte
+	collectibleTaskBase            uintptr
+	sigilMemoryHookAddr            uintptr
+	sigilMemoryCaveAddr            uintptr
+	sigilMemoryOriginal            []byte
+	wrightstoneMemoryHookAddr      uintptr
+	wrightstoneMemoryCaveAddr      uintptr
+	wrightstoneMemoryOriginal      []byte
+	currencyHookAddr               uintptr
+	currencyCaveAddr               uintptr
+	currencyOriginal               []byte
+	// monsterEnhanceOwned contains only patches installed and fully verified by
+	// this App instance. Exact entry bytes, rel32 cave and an in-cave marker are
+	// retained until restoration succeeds, so detach can fail closed and retry.
+	monsterEnhanceOwned map[string]monsterEnhanceOwnedPatch
 	materialConsumeAddr uintptr
+	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
+	// read/validate/write sequence must be atomic or concurrent Wails calls can
+	// both observe the original bytes and then overwrite each other.
+	runtimePatchMu sync.Mutex
 	// procMu serializes the game-process handle lifecycle (open/close/swap) so
 	// two Wails-dispatched goroutines cannot double-close the handle, leak a
 	// handle via a check-then-act race in ensureGameProcess, or observe a torn
-	// hProcess/moduleBase/charaPID transition. Held only by the three lifecycle
+	// hProcess/moduleBase/{PID, Created} transition. Held only by lifecycle
 	// transitions (CharaAttach/CharaDetach/ensureGameProcess); the unexported
 	// charaDetachLocked variant runs the detach body without re-locking.
 	procMu             sync.Mutex
 	damageMeterMapping windows.Handle
 	damageMeterView    uintptr
-	// damageMu guards the damage-meter shared-memory lifecycle and every deref
-	// of damageMeterView. Without it the frontend's status polling can
-	// dereference a view that shutdown/close just unmapped (a raw-pointer
-	// segfault, unlike a closed process handle which merely errors).
+	// damageMu guards the damage-meter shared-memory lifecycle and every mapped
+	// view read/write. Without it frontend polling could race shutdown after the
+	// view was unmapped.
 	damageMu      sync.Mutex
 	damageOverlay *damageOverlayWindow
 	config        AppConfig
 	configLoaded  bool
 }
+
+var (
+	liveMemoryWriteMu             sync.Mutex
+	errLiveMemoryRollbackUnproven = errors.New("实时内存事务回滚未能完成并回读验证")
+	errRuntimeAcquireRequestStale = errors.New("运行时连接请求已过期")
+	errRuntimeOwnerLeaseStale     = errors.New("运行时页面所有权已过期")
+	closeMessageDialog            = runtime.MessageDialog
+)
 
 func NewApp() *App { return &App{} }
 
@@ -172,6 +205,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if handleDetachBeforeClose(ctx, a.CharaDetach()) {
+		return true
+	}
 	a.saveWindowSize(ctx)
 	return false
 }
@@ -182,7 +218,28 @@ func (a *App) shutdown(ctx context.Context) {
 		a.damageOverlay.stop()
 	}
 	a.closeDamageMeter()
-	a.CharaDetach()
+	if err := a.CharaDetach(); err != nil {
+		logPath := appendDiagnosticError("shutdown hook restoration", err)
+		runtime.LogErrorf(ctx, "关闭时恢复运行时 Hook 失败；诊断日志：%s；错误：%v", logPath, err)
+	}
+}
+
+func handleDetachBeforeClose(ctx context.Context, detachErr error) bool {
+	if detachErr == nil {
+		return false
+	}
+	logPath := appendDiagnosticError("before-close hook restoration", detachErr)
+	_, _ = closeMessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:  runtime.ErrorDialog,
+		Title: "无法安全关闭 GBFR PE Patch Tool",
+		Message: fmt.Sprintf(
+			"工具未能恢复游戏进程中的运行时 Hook，因此已阻止关闭，以免游戏继续跳转到工具管理的内存。\n\n请保持工具开启，退出游戏后再关闭工具，或再次尝试关闭。\n\n错误：%v\n\n诊断日志：%s",
+			detachErr, logPath,
+		),
+		Buttons:       []string{"确定"},
+		DefaultButton: "确定",
+	})
+	return true
 }
 
 func (a *App) saveWindowSize(ctx context.Context) {
@@ -921,6 +978,7 @@ type CharaProcessInfo struct {
 	ModuleBase uint64 `json:"moduleBase"`
 	Manager    uint64 `json:"manager"`
 	Connected  bool   `json:"connected"`
+	OwnerToken string `json:"ownerToken,omitempty"`
 }
 
 type CharaInfo struct {
@@ -976,14 +1034,59 @@ var potionDefs = []potionDef{
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
-	// Close existing handle if any
-	if a.hProcess != 0 {
-		a.charaDetachLocked()
+	if len(a.monsterEnhanceOwned) != 0 {
+		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由当前页面持有，请先关闭或断开该页面")
 	}
+	info, err := a.charaAttachLocked()
+	if err == nil {
+		// Compatibility callers deliberately take an unowned connection. This
+		// invalidates any earlier owned cleanup without requiring a token.
+		a.charaOwnerToken = ""
+	}
+	return info, err
+}
 
+// CharaAcquire attaches to the game and rotates the frontend owner lease.
+func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
+		return CharaProcessInfo{}, err
+	}
+	if len(a.monsterEnhanceOwned) != 0 {
+		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由另一个页面持有，请等待该页面完成安全释放后重试")
+	}
+	info, err := a.charaAttachLocked()
+	if err != nil {
+		return CharaProcessInfo{}, err
+	}
+	return a.grantCharaOwner(info), nil
+}
+
+func (a *App) charaAttachLocked() (CharaProcessInfo, error) {
 	pid, err := findProcessByName(charaProcessName)
 	if err != nil {
 		return CharaProcessInfo{}, fmt.Errorf("未找到游戏进程，请先启动游戏")
+	}
+	if canReuseGameProcess(a.charaPID, pid, a.hProcess != 0, a.moduleBase != 0, processHandleAlive(a.hProcess)) {
+		manager, err := a.charaManager()
+		if err != nil {
+			return CharaProcessInfo{}, err
+		}
+		a.managerPtr = manager
+		return CharaProcessInfo{
+			PID:        pid,
+			ModuleBase: uint64(a.moduleBase),
+			Manager:    uint64(manager),
+			Connected:  true,
+		}, nil
+	}
+	// A repeated connection to the same live PID is intentionally idempotent.
+	// Only a dead/replaced process tears down hooks and address-derived state.
+	if a.hProcess != 0 || a.moduleBase != 0 || a.charaPID != 0 {
+		if err := a.charaDetachLocked(); err != nil {
+			return CharaProcessInfo{}, fmt.Errorf("cannot safely replace the current game-process connection: %w", err)
+		}
 	}
 
 	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
@@ -996,16 +1099,23 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 		windows.CloseHandle(h)
 		return CharaProcessInfo{}, fmt.Errorf("无法获取模块基址 (ptrSize=%d): %v", unsafe.Sizeof(uintptr(0)), err)
 	}
+	created, err := processCreationTime(h)
+	if err != nil {
+		windows.CloseHandle(h)
+		return CharaProcessInfo{}, fmt.Errorf("无法读取游戏进程创建时间: %v", err)
+	}
 
 	a.hProcess = h
 	a.moduleBase = modBase
 	a.charaPID = pid
+	a.charaCreated = created
 	manager, err := a.charaManager()
 	if err != nil {
-		a.charaDetachLocked()
+		_ = a.charaDetachLocked()
 		return CharaProcessInfo{}, err
 	}
 	a.managerPtr = manager
+	a.clearLiveMemoryPoisonForNewProcess(a.currentProcessInstance())
 
 	return CharaProcessInfo{
 		PID:        pid,
@@ -1088,25 +1198,104 @@ const (
 )
 
 func (a *App) CollectibleTaskComplete() (CollectibleTaskStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
 		return CollectibleTaskStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return CollectibleTaskStatus{}, err
+	}
+	return a.collectibleTaskCompleteLocked()
+}
+
+func (a *App) CollectibleTaskCompleteOwned(token string) (CollectibleTaskStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return CollectibleTaskStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return CollectibleTaskStatus{}, err
+	}
+	return a.collectibleTaskCompleteLocked()
+}
+
+func (a *App) collectibleTaskCompleteLocked() (CollectibleTaskStatus, error) {
 	base, err := a.collectibleTaskAddress()
 	if err != nil {
 		return CollectibleTaskStatus{}, err
 	}
 
-	flags := make([]byte, collectibleTaskEntries*int(collectibleTaskStride))
-	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&flags[0]), uintptr(len(flags))); err != nil {
+	original := make([]byte, collectibleTaskEntries*int(collectibleTaskStride))
+	if err := readProcessMemory(a.hProcess, base, unsafe.Pointer(&original[0]), uintptr(len(original))); err != nil {
 		return CollectibleTaskStatus{}, fmt.Errorf("读取收集任务列表失败: %w", err)
 	}
+	desired := append([]byte(nil), original...)
 	for i := 0; i < collectibleTaskEntries; i++ {
-		flags[i*int(collectibleTaskStride)+int(collectibleTaskFlag)] = 1
+		desired[i*int(collectibleTaskStride)+int(collectibleTaskFlag)] = 1
 	}
-	if err := writeProcessMemory(a.hProcess, base, unsafe.Pointer(&flags[0]), uintptr(len(flags))); err != nil {
-		return CollectibleTaskStatus{}, fmt.Errorf("写入收集任务完成标记失败: %w", err)
+	if err := snapshotBeforeLiveSaveChange("小钳蟹收集任务写入前自动备份"); err != nil {
+		return CollectibleTaskStatus{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
+	}
+	confirmedBase, err := a.collectibleTaskAddress()
+	if err != nil {
+		return CollectibleTaskStatus{}, fmt.Errorf("自动备份后复核收集任务列表失败: %w", err)
+	}
+	confirmed := make([]byte, len(original))
+	if err := readProcessMemory(a.hProcess, confirmedBase, unsafe.Pointer(&confirmed[0]), uintptr(len(confirmed))); err != nil {
+		return CollectibleTaskStatus{}, fmt.Errorf("自动备份后复核收集任务内容失败: %w", err)
+	}
+	if confirmedBase != base || !bytesEqual(confirmed, original) {
+		return CollectibleTaskStatus{}, fmt.Errorf("自动备份期间收集任务列表已变化，请刷新后重试")
+	}
+	if err := a.writeBytesTransactionalLocked(base, original, desired, "小钳蟹收集任务"); err != nil {
+		return CollectibleTaskStatus{}, err
 	}
 	return CollectibleTaskStatus{Found: true, Address: uint64(base), Completed: collectibleTaskEntries, Total: collectibleTaskEntries}, nil
+}
+
+func (a *App) writeBytesTransactionalLocked(addr uintptr, original, desired []byte, label string) error {
+	if len(original) == 0 || len(original) != len(desired) {
+		return fmt.Errorf("%s写入参数无效", label)
+	}
+	write := func(data []byte) error {
+		return writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&data[0]), uintptr(len(data)))
+	}
+	read := func() ([]byte, error) {
+		data := make([]byte, len(original))
+		err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&data[0]), uintptr(len(data)))
+		return data, err
+	}
+	rollback := func(cause error) error {
+		rollbackErr := write(original)
+		rolledBack, verifyErr := read()
+		if rollbackErr == nil && verifyErr == nil && bytesEqual(rolledBack, original) {
+			return fmt.Errorf("%s写入未获确认，已恢复原记录: %w", label, cause)
+		}
+		a.poisonCurrentLiveMemoryWrites()
+		if verifyErr == nil && !bytesEqual(rolledBack, original) {
+			verifyErr = fmt.Errorf("回滚后的完整记录不一致")
+		}
+		return errors.Join(
+			fmt.Errorf("%s写入状态无法确认，已隔离当前游戏进程的后续写入: %w", label, cause),
+			rollbackErr,
+			verifyErr,
+		)
+	}
+	if err := write(desired); err != nil {
+		return rollback(fmt.Errorf("写入失败: %w", err))
+	}
+	actual, err := read()
+	if err != nil {
+		return rollback(fmt.Errorf("写后回读失败: %w", err))
+	}
+	if !bytesEqual(actual, desired) {
+		return rollback(fmt.Errorf("写后完整记录不一致"))
+	}
+	return nil
 }
 
 func (a *App) collectibleTaskAddress() (uintptr, error) {
@@ -1215,21 +1404,102 @@ func isCharaListData(data []byte, countIndex int) bool {
 	return active >= 20 && positive >= 3
 }
 
-// CharaDetach closes the process handle.
-func (a *App) CharaDetach() {
+// CharaDetach restores owned runtime hooks before closing the process handle.
+func (a *App) CharaDetach() error {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
-	a.charaDetachLocked()
+	err := a.charaDetachLocked()
+	if err == nil {
+		a.charaOwnerToken = ""
+	}
+	return err
+}
+
+// CharaRelease detaches only when token still owns the logical connection.
+// A stale cleanup is an idempotent no-op and cannot close a newer page's lease.
+func (a *App) CharaRelease(token string) error {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	if !runtimeOwnerTokenMatches(a.charaOwnerToken, token) {
+		return nil
+	}
+	processLive := a.hProcess != 0 && processHandleAlive(a.hProcess)
+	if processLive {
+		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
+			return fmt.Errorf("monster-enhance hook restoration failed; connection remains owned: %w", err)
+		}
+	} else {
+		// Once the game process is gone there is no executable jump left to
+		// restore. Consume only this page's monster recovery records; unrelated
+		// runtime owners keep their existing detach semantics below.
+		for id, record := range a.monsterEnhanceOwned {
+			if record.OwnerToken == token {
+				delete(a.monsterEnhanceOwned, id)
+			}
+		}
+		if len(a.monsterEnhanceOwned) == 0 {
+			a.monsterEnhanceOwned = nil
+		}
+	}
+	// Currency capture is installed by the misc-tools page under this exact
+	// Chara owner. Restore it before consuming the token; on any proof failure
+	// retain both token and process handle so the lease manager can retry.
+	if processLive &&
+		(a.currencyHookAddr != 0 || a.currencyCaveAddr != 0 || len(a.currencyOriginal) != 0) {
+		if err := a.releaseCurrencyHook(); err != nil {
+			return fmt.Errorf("currency hook restoration failed; connection remains owned: %w", err)
+		}
+	}
+	// A character page owns only the shared process connection. Once another
+	// runtime page has installed a hook (or retained recovery state for one), a
+	// delayed character cleanup must not use that broader connection lease to
+	// tear the newer hook down. Consume this token so it cannot be replayed after
+	// the hook is later released.
+	if a.hasActiveRuntimeHookLeaseLocked() {
+		a.charaOwnerToken = ""
+		return nil
+	}
+	err := a.charaDetachLocked()
+	if err == nil {
+		a.charaOwnerToken = ""
+	}
+	return err
 }
 
 // charaDetachLocked runs the detach body assuming the caller already holds
 // procMu (ensureGameProcess/CharaAttach call it during a handle swap).
-func (a *App) charaDetachLocked() {
+func (a *App) charaDetachLocked() error {
 	// Restore hooks while the target process is still available. Leaving the
 	// jump installed makes a later tool instance mistake it for an unsupported
 	// game build and can also leave the game executing tool-owned code.
-	_ = a.releaseSigilMemoryHook()
-	_ = a.releaseCurrencyHook()
+	if a.hProcess != 0 && processHandleAlive(a.hProcess) {
+		var releaseErr error
+		if err := a.releaseOverLimitHook(); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("OverLimit hook: %w", err))
+		}
+		if err := a.releaseSigilMemoryHook(); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("sigil-memory hook: %w", err))
+		}
+		if err := a.releaseWrightstoneMemoryHook(); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("wrightstone-memory hook: %w", err))
+		}
+		if err := a.releaseCurrencyHook(); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("currency hook: %w", err))
+		}
+		if err := a.restoreMonsterEnhanceOwned("", "all", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("monster-enhance hook: %w", err))
+		}
+		if releaseErr != nil {
+			// Keep the live handle and every unresolved address so a later detach
+			// can retry. Closing now would discard our only recovery lease while
+			// the game may still jump into tool-owned memory.
+			return fmt.Errorf("runtime hook restoration failed; process remains attached: %w", releaseErr)
+		}
+	}
 	if a.hProcess != 0 {
 		windows.CloseHandle(a.hProcess)
 		a.hProcess = 0
@@ -1238,6 +1508,7 @@ func (a *App) charaDetachLocked() {
 	a.managerPtr = 0
 	a.charaListBase = 0
 	a.charaPID = 0
+	a.charaCreated = 0
 	a.countdownAddr = 0
 	a.faceAccessoryAddr = 0
 	a.overLimitHookAddr = 0
@@ -1250,10 +1521,19 @@ func (a *App) charaDetachLocked() {
 	a.sigilMemoryHookAddr = 0
 	a.sigilMemoryCaveAddr = 0
 	a.sigilMemoryOriginal = nil
+	a.wrightstoneMemoryHookAddr = 0
+	a.wrightstoneMemoryCaveAddr = 0
+	a.wrightstoneMemoryOriginal = nil
 	a.currencyHookAddr = 0
 	a.currencyCaveAddr = 0
 	a.currencyOriginal = nil
+	a.monsterEnhanceOwned = nil
 	a.materialConsumeAddr = 0
+	a.charaOwnerToken = ""
+	a.sigilMemoryOwnerToken = ""
+	a.wrightstoneMemoryOwnerToken = ""
+	a.overLimitOwnerToken = ""
+	return nil
 }
 
 // CharaGetAll reads all character counts, returns valid characters (skipping empty slots).
@@ -1386,6 +1666,35 @@ func (a *App) readCurrency(def currencyDef) (CurrencyInfo, error) {
 // CurrencyGetAll reads all supported currency values from the DLC 2.0.2
 // resource structure captured through a validated AOB hook.
 func (a *App) CurrencyGetAll() ([]CurrencyInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return nil, err
+	}
+	return a.currencyGetAllLocked()
+}
+
+// CurrencyGetAllOwned pins the current character-page lease before installing
+// or reading the currency capture hook. A stale page cannot reopen the process
+// or leave a hook behind after a newer runtime page has taken ownership.
+func (a *App) CurrencyGetAllOwned(token string) ([]CurrencyInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return nil, err
+	}
+	return a.currencyGetAllLocked()
+}
+
+func (a *App) currencyGetAllLocked() ([]CurrencyInfo, error) {
 	result := make([]CurrencyInfo, 0, len(currencyDefs))
 	for _, def := range currencyDefs {
 		info, err := a.readCurrency(def)
@@ -1399,6 +1708,34 @@ func (a *App) CurrencyGetAll() ([]CurrencyInfo, error) {
 
 // CurrencySetOne writes one supported currency value by id.
 func (a *App) CurrencySetOne(id string, value int) (CurrencyInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return CurrencyInfo{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return CurrencyInfo{}, err
+	}
+	return a.currencySetOneLocked(id, value)
+}
+
+// CurrencySetOneOwned performs the complete backup/revalidate/write/readback
+// transaction under the current character-page ownership lease.
+func (a *App) CurrencySetOneOwned(token, id string, value int) (CurrencyInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return CurrencyInfo{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return CurrencyInfo{}, err
+	}
+	return a.currencySetOneLocked(id, value)
+}
+
+func (a *App) currencySetOneLocked(id string, value int) (CurrencyInfo, error) {
 	id = strings.TrimSpace(id)
 	if value < 0 || value > math.MaxInt32 {
 		return CurrencyInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
@@ -1407,27 +1744,86 @@ func (a *App) CurrencySetOne(id string, value int) (CurrencyInfo, error) {
 		if def.ID != id {
 			continue
 		}
-		addr, err := a.currencyAddress(def)
+		root, err := a.currencyRoot()
 		if err != nil {
 			return CurrencyInfo{}, err
+		}
+		addr := root + def.Offset
+		var originalValue int32
+		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
+			return CurrencyInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
 		}
 		if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
 			return CurrencyInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 		}
-		newVal := int32(value)
-		if err := writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&newVal), unsafe.Sizeof(newVal)); err != nil {
-			return CurrencyInfo{}, fmt.Errorf("写入%s失败: %w", def.Name, err)
-		}
-		updated, err := a.readCurrency(def)
+		confirmedRoot, err := a.currencyRoot()
 		if err != nil {
+			return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s资源根指针失败: %w", def.Name, err)
+		}
+		confirmedAddr := confirmedRoot + def.Offset
+		if confirmedRoot != root || confirmedAddr != addr {
+			return CurrencyInfo{}, fmt.Errorf("自动备份期间%s资源结构已重建，请刷新后重试", def.Name)
+		}
+		var confirmedValue int32
+		if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
+			return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
+		}
+		if confirmedValue != originalValue {
+			return CurrencyInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
+		}
+		newVal := int32(value)
+		if err := a.writeInt32TransactionalLocked(confirmedAddr, confirmedValue, newVal, def.Name); err != nil {
 			return CurrencyInfo{}, err
 		}
-		if updated.Value != newVal {
-			return CurrencyInfo{}, fmt.Errorf("%s写入后回读不一致: 期望 %d，实际 %d", def.Name, newVal, updated.Value)
+		rva := uint64(0)
+		if a.currencyHookAddr >= a.moduleBase {
+			rva = uint64(a.currencyHookAddr - a.moduleBase)
 		}
-		return updated, nil
+		return CurrencyInfo{ID: def.ID, Name: def.Name, RVA: rva, Offset: uint64(def.Offset), Address: uint64(confirmedAddr), Value: newVal}, nil
 	}
 	return CurrencyInfo{}, fmt.Errorf("未知货币: %s", id)
+}
+
+// writeInt32TransactionalLocked proves either the requested value or the exact
+// original value. An unprovable rollback quarantines the current process from
+// further live writes. The caller holds liveMemoryWriteMu and procMu.
+func (a *App) writeInt32TransactionalLocked(addr uintptr, original, next int32, label string) error {
+	writeValue := func(value int32) error {
+		return writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value))
+	}
+	readValue := func() (int32, error) {
+		var value int32
+		err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value))
+		return value, err
+	}
+	rollback := func(cause error) error {
+		rollbackErr := writeValue(original)
+		rolledBack, verifyErr := readValue()
+		if rollbackErr == nil && verifyErr == nil && rolledBack == original {
+			return fmt.Errorf("%s写入未获确认，已恢复原值: %w", label, cause)
+		}
+		a.poisonCurrentLiveMemoryWrites()
+		proofErr := verifyErr
+		if proofErr == nil && rolledBack != original {
+			proofErr = fmt.Errorf("回滚回读为 %d，期望 %d", rolledBack, original)
+		}
+		return errors.Join(
+			fmt.Errorf("%s写入状态无法确认，已隔离当前游戏进程的后续写入: %w", label, cause),
+			rollbackErr,
+			proofErr,
+		)
+	}
+	if err := writeValue(next); err != nil {
+		return rollback(fmt.Errorf("写入失败: %w", err))
+	}
+	actual, err := readValue()
+	if err != nil {
+		return rollback(fmt.Errorf("写后回读失败: %w", err))
+	}
+	if actual != next {
+		return rollback(fmt.Errorf("写后回读为 %d，期望 %d", actual, next))
+	}
+	return nil
 }
 
 func (a *App) potionAddress(def potionDef) (uintptr, error) {
@@ -1482,6 +1878,24 @@ func (a *App) readPotion(def potionDef) (PotionInfo, error) {
 
 // PotionGetAll reads all supported potion values from stable pointer chains.
 func (a *App) PotionGetAll() ([]PotionInfo, error) {
+	if err := a.acquireGameProcessLease(); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+	return a.potionGetAllLocked()
+}
+
+// PotionGetAllOwned pins reads to the page that acquired the shared character
+// connection, preventing a stale async refresh from reopening a released one.
+func (a *App) PotionGetAllOwned(token string) ([]PotionInfo, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+	return a.potionGetAllLocked()
+}
+
+func (a *App) potionGetAllLocked() ([]PotionInfo, error) {
 	result := make([]PotionInfo, 0, len(potionDefs))
 	for _, def := range potionDefs {
 		info, err := a.readPotion(def)
@@ -1495,6 +1909,33 @@ func (a *App) PotionGetAll() ([]PotionInfo, error) {
 
 // PotionSetOne writes one supported potion value by id.
 func (a *App) PotionSetOne(id string, value int) (PotionInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return PotionInfo{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return PotionInfo{}, err
+	}
+	return a.potionSetOneLocked(id, value)
+}
+
+// PotionSetOneOwned applies the potion transaction only for the current page.
+func (a *App) PotionSetOneOwned(token, id string, value int) (PotionInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return PotionInfo{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return PotionInfo{}, err
+	}
+	return a.potionSetOneLocked(id, value)
+}
+
+func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 	id = strings.TrimSpace(id)
 	if value < 0 || value > math.MaxInt32 {
 		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
@@ -1507,21 +1948,32 @@ func (a *App) PotionSetOne(id string, value int) (PotionInfo, error) {
 		if err != nil {
 			return PotionInfo{}, err
 		}
+		var originalValue int32
+		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
+			return PotionInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
+		}
 		if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
 			return PotionInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 		}
-		newVal := int32(value)
-		if err := writeProcessMemory(a.hProcess, addr, unsafe.Pointer(&newVal), unsafe.Sizeof(newVal)); err != nil {
-			return PotionInfo{}, fmt.Errorf("写入%s失败: %w", def.Name, err)
-		}
-		updated, err := a.readPotion(def)
+		confirmedAddr, err := a.potionAddress(def)
 		if err != nil {
+			return PotionInfo{}, fmt.Errorf("自动备份后复核%s指针失败: %w", def.Name, err)
+		}
+		if confirmedAddr != addr {
+			return PotionInfo{}, fmt.Errorf("自动备份期间%s指针链已变化，请刷新后重试", def.Name)
+		}
+		var confirmedValue int32
+		if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
+			return PotionInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
+		}
+		if confirmedValue != originalValue {
+			return PotionInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
+		}
+		newVal := int32(value)
+		if err := a.writeInt32TransactionalLocked(confirmedAddr, confirmedValue, newVal, def.Name); err != nil {
 			return PotionInfo{}, err
 		}
-		if updated.Value != newVal {
-			return PotionInfo{}, fmt.Errorf("%s写入后回读不一致: 期望 %d，实际 %d", def.Name, newVal, updated.Value)
-		}
-		return updated, nil
+		return PotionInfo{ID: def.ID, Name: def.Name, RVA: uint64(def.RVA), Offsets: potionOffsetsJSON(def.Offsets), Address: uint64(confirmedAddr), Value: newVal}, nil
 	}
 	return PotionInfo{}, fmt.Errorf("未知药水: %s", id)
 }
@@ -1691,9 +2143,24 @@ var (
 )
 
 func (a *App) MaterialConsumeGetStatus() (MaterialConsumeStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return MaterialConsumeStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.materialConsumeGetStatusLocked()
+}
+
+func (a *App) MaterialConsumeGetStatusOwned(token string) (MaterialConsumeStatus, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	return a.materialConsumeGetStatusLocked()
+}
+
+func (a *App) materialConsumeGetStatusLocked() (MaterialConsumeStatus, error) {
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
 	if _, err := a.locateMaterialConsume(); err != nil {
 		return MaterialConsumeStatus{}, err
 	}
@@ -1701,9 +2168,34 @@ func (a *App) MaterialConsumeGetStatus() (MaterialConsumeStatus, error) {
 }
 
 func (a *App) MaterialConsumeSetEnabled(enabled bool) (MaterialConsumeStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
 		return MaterialConsumeStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	return a.materialConsumeSetEnabledLocked(enabled)
+}
+
+func (a *App) MaterialConsumeSetEnabledOwned(token string, enabled bool) (MaterialConsumeStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	return a.materialConsumeSetEnabledLocked(enabled)
+}
+
+func (a *App) materialConsumeSetEnabledLocked(enabled bool) (MaterialConsumeStatus, error) {
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
 	patch := materialConsumeOrig
 	if enabled {
 		patch = materialConsumePatch
@@ -1712,7 +2204,20 @@ func (a *App) MaterialConsumeSetEnabled(enabled bool) (MaterialConsumeStatus, er
 	if err != nil {
 		return MaterialConsumeStatus{}, err
 	}
-	if err := writeCodeMemory(a.hProcess, addr, patch); err != nil {
+	current, err := a.readSharedRuntimePatch(addr)
+	if err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	if err := validateSharedRuntimePatchTransition(current, sharedRuntimePatchOwnerMaterialConsume, enabled); err != nil {
+		return MaterialConsumeStatus{}, err
+	}
+	writer := func(data []byte) error { return writeCodeMemory(a.hProcess, addr, data) }
+	reader := func() ([]byte, error) { return a.readSharedRuntimePatch(addr) }
+	canRestore, err := installCodeHookAtomic(current, patch, writer, reader)
+	if err != nil {
+		if !canRestore {
+			a.poisonCurrentLiveMemoryWrites()
+		}
 		return MaterialConsumeStatus{}, fmt.Errorf("写入升级/强化材料消耗失败: %w", err)
 	}
 	return a.readMaterialConsumeStatus()
@@ -1723,18 +2228,30 @@ func (a *App) readMaterialConsumeStatus() (MaterialConsumeStatus, error) {
 	if err != nil {
 		return MaterialConsumeStatus{}, err
 	}
-	buf := make([]byte, len(materialConsumeOrig))
-	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
-		return MaterialConsumeStatus{}, fmt.Errorf("读取升级/强化材料消耗指令失败: %w", err)
+	buf, err := a.readSharedRuntimePatch(addr)
+	if err != nil {
+		return MaterialConsumeStatus{}, err
 	}
-	if !bytesEqual(buf, materialConsumeOrig) && !bytesEqual(buf, materialConsumePatch) {
-		return MaterialConsumeStatus{}, fmt.Errorf("升级/强化材料消耗指令字节异常: %s", bytesToHex(buf))
+	owner := classifySharedRuntimePatch(buf)
+	if owner != sharedRuntimePatchOwnerNone && owner != sharedRuntimePatchOwnerMaterialConsume {
+		if owner == sharedRuntimePatchOwnerUnknown {
+			return MaterialConsumeStatus{}, fmt.Errorf("升级/强化材料消耗指令字节异常: %s", bytesToHex(buf))
+		}
+		return MaterialConsumeStatus{}, fmt.Errorf("共享补丁地址正由%s占用，请先恢复后再读取素材状态", sharedRuntimePatchOwnerLabel(owner))
 	}
 	return MaterialConsumeStatus{
 		RVA:          uint64(addr - a.moduleBase),
-		Enabled:      bytesEqual(buf, materialConsumePatch),
+		Enabled:      owner == sharedRuntimePatchOwnerMaterialConsume,
 		CurrentBytes: bytesToHex(buf),
 	}, nil
+}
+
+func (a *App) readSharedRuntimePatch(addr uintptr) ([]byte, error) {
+	buf := make([]byte, len(sharedInventoryMaterialOriginal))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
+		return nil, fmt.Errorf("读取素材/小钳蟹共享指令失败: %w", err)
+	}
+	return buf, nil
 }
 
 func (a *App) locateMaterialConsume() (uintptr, error) {
@@ -1742,10 +2259,15 @@ func (a *App) locateMaterialConsume() (uintptr, error) {
 		return a.materialConsumeAddr, nil
 	}
 	fixed := a.moduleBase + materialConsumeRVA
-	buf := make([]byte, len(materialConsumeOrig))
-	if err := readProcessMemory(a.hProcess, fixed, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err == nil && (bytesEqual(buf, materialConsumeOrig) || bytesEqual(buf, materialConsumePatch)) {
-		a.materialConsumeAddr = fixed
-		return fixed, nil
+	if buf, err := a.readSharedRuntimePatch(fixed); err == nil {
+		owner := classifySharedRuntimePatch(buf)
+		if owner == sharedRuntimePatchOwnerNone || owner == sharedRuntimePatchOwnerMaterialConsume {
+			a.materialConsumeAddr = fixed
+			return fixed, nil
+		}
+		if owner == sharedRuntimePatchOwnerInventoryQuantity {
+			return 0, fmt.Errorf("共享补丁地址正由%s占用，请先恢复", sharedRuntimePatchOwnerLabel(owner))
+		}
 	}
 	mask := make([]bool, len(materialConsumeOrig))
 	for i := range mask {
@@ -1935,9 +2457,22 @@ var terminusDropMask = []bool{
 var terminusDropPatch = []byte{0x90, 0x90}
 
 func (a *App) TerminusDropScan() (TerminusDropStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return TerminusDropStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.terminusDropScanLocked()
+}
+
+func (a *App) TerminusDropScanOwned(token string) (TerminusDropStatus, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	return a.terminusDropScanLocked()
+}
+
+func (a *App) terminusDropScanLocked() (TerminusDropStatus, error) {
 	addr, err := a.scanPatternUnique(terminusDropPattern, terminusDropMask, "巴武掉落特征")
 	if err != nil {
 		a.terminusDropAddr = 0
@@ -1948,22 +2483,61 @@ func (a *App) TerminusDropScan() (TerminusDropStatus, error) {
 }
 
 func (a *App) TerminusDropGetStatus() (TerminusDropStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return TerminusDropStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.terminusDropGetStatusLocked()
+}
+
+func (a *App) TerminusDropGetStatusOwned(token string) (TerminusDropStatus, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	return a.terminusDropGetStatusLocked()
+}
+
+func (a *App) terminusDropGetStatusLocked() (TerminusDropStatus, error) {
 	if a.terminusDropAddr == 0 {
-		return a.TerminusDropScan()
+		return a.terminusDropScanLocked()
 	}
 	status, err := a.readTerminusDropStatus(a.terminusDropAddr)
 	if err != nil {
 		a.terminusDropAddr = 0
-		return a.TerminusDropScan()
+		return a.terminusDropScanLocked()
 	}
 	return status, nil
 }
 
 func (a *App) TerminusDropSetEnabled(enabled bool) (TerminusDropStatus, error) {
-	status, err := a.TerminusDropGetStatus()
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	return a.terminusDropSetEnabledLocked(enabled)
+}
+
+func (a *App) TerminusDropSetEnabledOwned(token string, enabled bool) (TerminusDropStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return TerminusDropStatus{}, err
+	}
+	return a.terminusDropSetEnabledLocked(enabled)
+}
+
+func (a *App) terminusDropSetEnabledLocked(enabled bool) (TerminusDropStatus, error) {
+	status, err := a.terminusDropGetStatusLocked()
 	if err != nil {
 		return TerminusDropStatus{}, err
 	}
@@ -1977,7 +2551,21 @@ func (a *App) TerminusDropSetEnabled(enabled bool) (TerminusDropStatus, error) {
 	if len(patch) != len(terminusDropPatch) {
 		return TerminusDropStatus{}, fmt.Errorf("未保存巴武掉落原始跳转，请重启游戏后重新扫描")
 	}
-	if err := writeCodeMemory(a.hProcess, a.terminusDropAddr, patch); err != nil {
+	current := make([]byte, len(terminusDropPatch))
+	if err := readProcessMemory(a.hProcess, a.terminusDropAddr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {
+		return TerminusDropStatus{}, fmt.Errorf("写入前读取巴武掉落指令失败: %w", err)
+	}
+	writer := func(data []byte) error { return writeCodeMemory(a.hProcess, a.terminusDropAddr, data) }
+	reader := func() ([]byte, error) {
+		data := make([]byte, len(current))
+		err := readProcessMemory(a.hProcess, a.terminusDropAddr, unsafe.Pointer(&data[0]), uintptr(len(data)))
+		return data, err
+	}
+	canRestore, err := installCodeHookAtomic(current, patch, writer, reader)
+	if err != nil {
+		if !canRestore {
+			a.poisonCurrentLiveMemoryWrites()
+		}
 		return TerminusDropStatus{}, fmt.Errorf("写入巴武掉落失败: %w", err)
 	}
 	return a.readTerminusDropStatus(a.terminusDropAddr)
@@ -2084,19 +2672,27 @@ func (a *App) CountdownSet(value float64) (CountdownStatus, error) {
 }
 
 func (a *App) ensureGameProcess() error {
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	return a.ensureGameProcessLocked()
+}
+
+// ensureGameProcessLocked opens or replaces the shared game connection while
+// the caller holds procMu.
+func (a *App) ensureGameProcessLocked() error {
 	pid, err := findProcessByName(charaProcessName)
 	if err != nil {
 		return fmt.Errorf("未找到游戏进程，请先启动游戏")
 	}
-	a.procMu.Lock()
-	defer a.procMu.Unlock()
-	if a.hProcess != 0 && a.moduleBase != 0 && a.charaPID == pid {
+	if canReuseGameProcess(a.charaPID, pid, a.hProcess != 0, a.moduleBase != 0, processHandleAlive(a.hProcess)) {
 		return nil
 	}
 	// The game was restarted while the tool stayed open. Drop every address
 	// derived from the old process before attaching to the new PID.
 	if a.hProcess != 0 || a.moduleBase != 0 || a.charaPID != 0 {
-		a.charaDetachLocked()
+		if err := a.charaDetachLocked(); err != nil {
+			return fmt.Errorf("cannot safely replace the current game-process connection: %w", err)
+		}
 	}
 	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
 	if err != nil {
@@ -2107,10 +2703,229 @@ func (a *App) ensureGameProcess() error {
 		windows.CloseHandle(h)
 		return fmt.Errorf("无法获取模块基址: %v", err)
 	}
+	created, err := processCreationTime(h)
+	if err != nil {
+		windows.CloseHandle(h)
+		return fmt.Errorf("无法读取游戏进程创建时间: %v", err)
+	}
 	a.hProcess = h
 	a.moduleBase = modBase
 	a.charaPID = pid
+	a.charaCreated = created
+	a.clearLiveMemoryPoisonForNewProcess(a.currentProcessInstance())
 	return nil
+}
+
+// acquireGameProcessLease pins hProcess/moduleBase/{PID, Created} until the caller
+// unlocks procMu. It closes the gap between an idempotent ensure and the first
+// Read/WriteProcessMemory call, where a concurrent detach used to close the
+// handle underneath a live editor.
+func (a *App) acquireGameProcessLease() error {
+	a.procMu.Lock()
+	if err := a.ensureGameProcessLocked(); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
+	if a.hProcess == 0 || a.moduleBase == 0 || a.charaPID == 0 || a.charaCreated == 0 || !processHandleAlive(a.hProcess) {
+		a.procMu.Unlock()
+		return fmt.Errorf("游戏进程连接已失效，请重新连接")
+	}
+	return nil
+}
+
+// acquireOwnedGameProcessLease validates the global frontend request generation
+// before opening, replacing or mutating any process resource. It returns with
+// procMu held on success, matching acquireGameProcessLease.
+func (a *App) acquireOwnedGameProcessLease(requestID uint64) error {
+	a.procMu.Lock()
+	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
+	if err := a.ensureGameProcessLocked(); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
+	if a.hProcess == 0 || a.moduleBase == 0 || a.charaPID == 0 || a.charaCreated == 0 || !processHandleAlive(a.hProcess) {
+		a.procMu.Unlock()
+		return fmt.Errorf("游戏进程连接已失效，请重新连接")
+	}
+	return nil
+}
+
+type runtimeOwnerScope uint8
+
+const (
+	runtimeOwnerChara runtimeOwnerScope = iota + 1
+	runtimeOwnerSigil
+	runtimeOwnerWrightstone
+	runtimeOwnerOverLimit
+)
+
+func (a *App) runtimeOwnerTokenLocked(scope runtimeOwnerScope) string {
+	switch scope {
+	case runtimeOwnerChara:
+		return a.charaOwnerToken
+	case runtimeOwnerSigil:
+		return a.sigilMemoryOwnerToken
+	case runtimeOwnerWrightstone:
+		return a.wrightstoneMemoryOwnerToken
+	case runtimeOwnerOverLimit:
+		return a.overLimitOwnerToken
+	default:
+		return ""
+	}
+}
+
+// acquireOwnedRuntimeWriteLease validates the page token before any process IO
+// and returns with procMu held. Keeping the lock through the caller's complete
+// read/validate/write transaction prevents a concurrent Acquire from rotating
+// the owner between validation and the final write.
+func (a *App) acquireOwnedRuntimeWriteLease(scope runtimeOwnerScope, token string) error {
+	a.procMu.Lock()
+	if !runtimeOwnerTokenMatches(a.runtimeOwnerTokenLocked(scope), token) {
+		a.procMu.Unlock()
+		return errRuntimeOwnerLeaseStale
+	}
+	if err := a.ensureGameProcessLocked(); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
+	// A process replacement clears every resource owner. Recheck after ensuring
+	// the connection so a lease from the old game instance cannot write the new.
+	if !runtimeOwnerTokenMatches(a.runtimeOwnerTokenLocked(scope), token) {
+		a.procMu.Unlock()
+		return errRuntimeOwnerLeaseStale
+	}
+	if a.hProcess == 0 || a.moduleBase == 0 || a.charaPID == 0 || a.charaCreated == 0 || !processHandleAlive(a.hProcess) {
+		a.procMu.Unlock()
+		return fmt.Errorf("游戏进程连接已失效，请重新连接")
+	}
+	return nil
+}
+
+func canReuseGameProcess(cachedPID, discoveredPID uint32, hasHandle, hasModule, live bool) bool {
+	return cachedPID != 0 && cachedPID == discoveredPID && hasHandle && hasModule && live
+}
+
+func runtimeOwnerTokenMatches(current, presented string) bool {
+	return current != "" && presented != "" && current == presented
+}
+
+// acceptRuntimeAcquireRequestLocked enforces one strictly increasing request
+// generation across every owned runtime feature. The caller holds procMu.
+func (a *App) acceptRuntimeAcquireRequestLocked(requestID uint64) error {
+	if requestID == 0 || requestID <= a.latestRuntimeAcquireRequestID {
+		return fmt.Errorf("%w: requestID=%d, latest=%d", errRuntimeAcquireRequestStale, requestID, a.latestRuntimeAcquireRequestID)
+	}
+	a.latestRuntimeAcquireRequestID = requestID
+	return nil
+}
+
+// hasActiveRuntimeHookLeaseLocked reports every hook or unresolved recovery
+// lease that CharaDetach would otherwise restore. The caller holds procMu.
+func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
+	return a.sigilMemoryHookAddr != 0 ||
+		a.sigilMemoryCaveAddr != 0 ||
+		len(a.sigilMemoryOriginal) != 0 ||
+		a.wrightstoneMemoryHookAddr != 0 ||
+		a.wrightstoneMemoryCaveAddr != 0 ||
+		len(a.wrightstoneMemoryOriginal) != 0 ||
+		a.overLimitHookAddr != 0 ||
+		a.overLimitCaveAddr != 0 ||
+		a.currencyHookAddr != 0 ||
+		a.currencyCaveAddr != 0 ||
+		len(a.currencyOriginal) != 0 ||
+		len(a.monsterEnhanceOwned) != 0
+}
+
+// nextRuntimeOwnerToken is called only while procMu is held.
+func (a *App) nextRuntimeOwnerToken(scope string) string {
+	a.runtimeOwnerSequence++
+	return fmt.Sprintf("%s-%016X", scope, a.runtimeOwnerSequence)
+}
+
+func (a *App) grantCharaOwner(info CharaProcessInfo) CharaProcessInfo {
+	token := a.nextRuntimeOwnerToken("chara")
+	a.charaOwnerToken = token
+	info.OwnerToken = token
+	return info
+}
+
+type processInstanceID struct {
+	PID     uint32
+	Created uint64
+}
+
+func sameProcessInstance(left, right processInstanceID) bool {
+	return left.PID != 0 && left.Created != 0 && left == right
+}
+
+func liveMemoryWritePoisoned(poison, current processInstanceID) bool {
+	if poison.PID == 0 || current.PID == 0 {
+		return false
+	}
+	if poison.Created == 0 || current.Created == 0 {
+		// Missing creation metadata is an invariant failure. Fall back to the
+		// safer PID-only quarantine instead of accidentally permitting a retry.
+		return poison.PID == current.PID
+	}
+	return sameProcessInstance(poison, current)
+}
+
+func (a *App) currentProcessInstance() processInstanceID {
+	return processInstanceID{PID: a.charaPID, Created: a.charaCreated}
+}
+
+// clearLiveMemoryPoisonForNewProcess must be called while procMu is held and
+// only after the replacement handle, module base and creation time are known.
+func (a *App) clearLiveMemoryPoisonForNewProcess(current processInstanceID) {
+	if current.PID == 0 || current.Created == 0 {
+		return
+	}
+	if a.liveMemoryIndeterminateProcess.PID != 0 && !sameProcessInstance(a.liveMemoryIndeterminateProcess, current) {
+		a.liveMemoryIndeterminateProcess = processInstanceID{}
+	}
+}
+
+// poisonCurrentLiveMemoryWrites is called while a game-process lease holds
+// procMu, making the whole {PID, Created} assignment atomic to lifecycle swaps.
+func (a *App) poisonCurrentLiveMemoryWrites() {
+	a.liveMemoryIndeterminateProcess = a.currentProcessInstance()
+}
+
+func (a *App) ensureLiveMemoryWritesSafe() error {
+	if liveMemoryWritePoisoned(a.liveMemoryIndeterminateProcess, a.currentProcessInstance()) {
+		return fmt.Errorf("此前远程保存线程状态不确定，已锁定当前游戏进程的实时物品写入；请完全退出并重新启动游戏后再试")
+	}
+	return nil
+}
+
+func processCreationTime(handle windows.Handle) (uint64, error) {
+	if handle == 0 {
+		return 0, fmt.Errorf("process handle is empty")
+	}
+	var creation, exit, kernel, user windows.Filetime
+	if err := windows.GetProcessTimes(handle, &creation, &exit, &kernel, &user); err != nil {
+		return 0, err
+	}
+	created := uint64(creation.HighDateTime)<<32 | uint64(creation.LowDateTime)
+	if created == 0 {
+		return 0, fmt.Errorf("process creation time is empty")
+	}
+	return created, nil
+}
+
+func processHandleAlive(handle windows.Handle) bool {
+	if handle == 0 {
+		return false
+	}
+	var exitCode uint32
+	if err := windows.GetExitCodeProcess(handle, &exitCode); err != nil {
+		return false
+	}
+	const stillActive = 259
+	return exitCode == stillActive
 }
 
 func (a *App) scanCountdownPattern() (uintptr, error) {
@@ -2319,8 +3134,12 @@ func (a *App) DamageMeterGetStatus() (DamageMeterStatus, error) {
 	if err := a.ensureDamageMeterLocked(); err != nil {
 		return DamageMeterStatus{}, err
 	}
-	monsterDamage := uint64(*(*int64)(unsafe.Pointer(a.damageMeterView)))
-	crocodileDamage := uint64(*(*int64)(unsafe.Pointer(a.damageMeterView + 8)))
+	var values [2]int64
+	if err := readProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&values[0]), damageMeterSize); err != nil {
+		return DamageMeterStatus{}, fmt.Errorf("读取伤害统计共享内存失败: %w", err)
+	}
+	monsterDamage := uint64(values[0])
+	crocodileDamage := uint64(values[1])
 	return DamageMeterStatus{Connected: true, TotalDamage: monsterDamage + crocodileDamage, MonsterDamage: monsterDamage, CrocodileDamage: crocodileDamage}, nil
 }
 
@@ -2330,8 +3149,16 @@ func (a *App) DamageMeterReset() (DamageMeterStatus, error) {
 	if err := a.ensureDamageMeterLocked(); err != nil {
 		return DamageMeterStatus{}, err
 	}
-	for i := 0; i < damageMeterSize; i++ {
-		*(*byte)(unsafe.Pointer(a.damageMeterView + uintptr(i))) = 0
+	zeros := [damageMeterSize]byte{}
+	if err := writeProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&zeros[0]), damageMeterSize); err != nil {
+		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计共享内存失败: %w", err)
+	}
+	var verified [damageMeterSize]byte
+	if err := readProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&verified[0]), damageMeterSize); err != nil {
+		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计后回读失败: %w", err)
+	}
+	if verified != zeros {
+		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计后回读不一致")
 	}
 	return DamageMeterStatus{Connected: true}, nil
 }
@@ -2373,9 +3200,22 @@ func (a *App) closeDamageMeter() {
 }
 
 func (a *App) MonsterEnhanceGetStatus() (MonsterEnhanceResult, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return MonsterEnhanceResult{}, err
 	}
+	defer a.procMu.Unlock()
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	return a.readMonsterEnhanceStatus("")
+}
+
+func (a *App) MonsterEnhanceGetStatusOwned(token string) (MonsterEnhanceResult, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
+	defer a.procMu.Unlock()
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
 	return a.readMonsterEnhanceStatus("")
 }
 
@@ -2388,9 +3228,32 @@ func (a *App) MonsterEnhanceSetPatchEnabled(id string, enabled bool) (MonsterEnh
 }
 
 func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMultiplier float64) (MonsterEnhanceResult, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
 		return MonsterEnhanceResult{}, err
 	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
+	return a.monsterEnhanceSetPatchValueEnabledLocked(a.monsterEnhanceOwnerForCompatibilityCall(), id, enabled, hpMultiplier)
+}
+
+func (a *App) MonsterEnhanceSetPatchValueEnabledOwned(token, id string, enabled bool, hpMultiplier float64) (MonsterEnhanceResult, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
+	return a.monsterEnhanceSetPatchValueEnabledLocked(token, id, enabled, hpMultiplier)
+}
+
+func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, enabled bool, hpMultiplier float64) (MonsterEnhanceResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return MonsterEnhanceResult{}, fmt.Errorf("怪物增强项目为空")
@@ -2405,6 +3268,18 @@ func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMult
 	if pointID != "all" && point == nil {
 		return MonsterEnhanceResult{}, fmt.Errorf("未知怪物增强项目: %s", id)
 	}
+	if pointID == "all" || (point != nil && point.ID == "inventory_set_45") {
+		a.runtimePatchMu.Lock()
+		defer a.runtimePatchMu.Unlock()
+		addr := a.moduleBase + materialConsumeRVA
+		current, err := a.readSharedRuntimePatch(addr)
+		if err != nil {
+			return MonsterEnhanceResult{}, err
+		}
+		if err := validateSharedRuntimePatchTransition(current, sharedRuntimePatchOwnerInventoryQuantity, enabled); err != nil {
+			return MonsterEnhanceResult{}, err
+		}
+	}
 	if enabled && point != nil && needsMonsterValue(point.ID) && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
 		return MonsterEnhanceResult{}, fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
 	}
@@ -2416,9 +3291,20 @@ func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMult
 	}
 
 	if enabled {
+		if pointID == "all" {
+			return MonsterEnhanceResult{}, fmt.Errorf("怪物增强批量 Hook 无法证明逐项所有权，请分别开启需要的功能")
+		}
+		original, err := a.prepareMonsterEnhanceEnable(ownerToken, point)
+		if err != nil {
+			return MonsterEnhanceResult{}, err
+		}
 		if point != nil && point.ID == "sba_chain_timer" {
 			if err := a.setSBAChainTimer(point, hpMultiplier); err != nil {
 				return MonsterEnhanceResult{}, err
+			}
+			if err := a.claimMonsterEnhancePatch(ownerToken, point, original); err != nil {
+				rollbackErr := a.writeAndVerifyMonsterEnhanceEntry(a.moduleBase+point.RVA, original, point.Name+" rollback")
+				return MonsterEnhanceResult{}, errors.Join(err, rollbackErr)
 			}
 			return a.readMonsterEnhanceStatus("")
 		}
@@ -2442,30 +3328,45 @@ func (a *App) MonsterEnhanceSetPatchValueEnabled(id string, enabled bool, hpMult
 		if err := injectDLL(a.hProcess, dllPath); err != nil {
 			return MonsterEnhanceResult{}, fmt.Errorf("注入怪物增强 DLL 失败: %w", err)
 		}
-		if applyOnce {
-			if _, err := a.waitMonsterEnhanceApplied(pointID, dllPath); err != nil {
-				return MonsterEnhanceResult{}, err
-			}
-			time.Sleep(150 * time.Millisecond)
-			if err := a.restoreMonsterEnhance(pointID); err != nil {
-				return MonsterEnhanceResult{}, err
-			}
-			status, err := a.readMonsterEnhanceStatus(dllPath)
-			if err != nil {
-				return MonsterEnhanceResult{}, err
-			}
-			status.Injected = true
-			return status, nil
-		}
 		status, err := a.waitMonsterEnhanceApplied(pointID, dllPath)
 		if err != nil {
 			return MonsterEnhanceResult{}, err
+		}
+		if err := a.claimMonsterEnhancePatch(ownerToken, point, original); err != nil {
+			restoreErr := a.restoreMonsterEnhanceOwned(ownerToken, pointID, false)
+			return MonsterEnhanceResult{}, errors.Join(err, restoreErr)
+		}
+		if applyOnce {
+			time.Sleep(150 * time.Millisecond)
+			if err := a.restoreMonsterEnhanceOwned(ownerToken, pointID, false); err != nil {
+				return MonsterEnhanceResult{}, err
+			}
+			status, err = a.readMonsterEnhanceStatus(dllPath)
+			if err != nil {
+				return MonsterEnhanceResult{}, err
+			}
 		}
 		status.Injected = true
 		return status, nil
 	}
 
-	if err := a.restoreMonsterEnhance(id); err != nil {
+	if pointID != "all" {
+		record, owned := a.monsterEnhanceOwned[pointID]
+		if !owned {
+			current, err := a.readMonsterEnhanceEntry(a.moduleBase+point.RVA, len(point.Original))
+			if err != nil {
+				return MonsterEnhanceResult{}, fmt.Errorf("读取%s失败: %w", point.Name, err)
+			}
+			if !bytesEqual(current, point.Original) {
+				return MonsterEnhanceResult{}, fmt.Errorf("%s不是本页面拥有的 Patch，已拒绝覆盖: %s", point.Name, bytesToHex(current))
+			}
+			return a.readMonsterEnhanceStatus("")
+		}
+		if record.OwnerToken != ownerToken {
+			return MonsterEnhanceResult{}, fmt.Errorf("%s由另一个运行时页面持有", point.Name)
+		}
+	}
+	if err := a.restoreMonsterEnhanceOwned(ownerToken, pointID, false); err != nil {
 		return MonsterEnhanceResult{}, err
 	}
 	return a.readMonsterEnhanceStatus("")
@@ -2522,7 +3423,7 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 		if point.ID == "sba_chain_timer" {
 			enabled = !bytesEqual(current, point.Original)
 		} else if point.Hook {
-			enabled = len(current) > 0 && current[0] == 0xE9
+			enabled = a.monsterEnhanceHookMarked(&point, current)
 		} else {
 			enabled = bytesEqual(current, point.Patch)
 		}
@@ -2546,47 +3447,6 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 	}, nil
 }
 
-func (a *App) restoreMonsterEnhance(id string) error {
-	for _, point := range monsterPatchPoints {
-		if id != "all" && point.ID != id {
-			continue
-		}
-		current := make([]byte, len(point.Original))
-		addr := a.moduleBase + point.RVA
-		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {
-			return fmt.Errorf("读取%s失败: %w", point.Name, err)
-		}
-		if bytesEqual(current, point.Original) {
-			continue
-		}
-		currentIsPatch := false
-		if point.ID == "sba_chain_timer" {
-			currentIsPatch = len(current) >= 2 && current[0] == 0x48 && current[1] == 0xB8
-		} else if point.Hook {
-			currentIsPatch = len(current) > 0 && current[0] == 0xE9
-		} else {
-			currentIsPatch = bytesEqual(current, point.Patch)
-		}
-		if !currentIsPatch {
-			if id == "all" && isMonsterPatchBytesAtRVA(point.RVA, current) {
-				continue
-			}
-			return fmt.Errorf("%s指令字节未知: %s", point.Name, bytesToHex(current))
-		}
-		if err := writeCodeMemory(a.hProcess, addr, point.Original); err != nil {
-			return fmt.Errorf("恢复%s失败: %w", point.Name, err)
-		}
-		if point.ID == "crocodile_damage" {
-			no1hpAddr := a.moduleBase + 0x23FD463
-			no1hpOrig := []byte{0x83, 0xF8, 0x02, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x4D, 0xD0}
-			if err := writeCodeMemory(a.hProcess, no1hpAddr, no1hpOrig); err != nil {
-				return fmt.Errorf("恢复鳄鱼多倍血1HP保底失败: %w", err)
-			}
-		}
-	}
-	return nil
-}
-
 func (a *App) setSBAChainTimer(point *monsterPatchPoint, value float64) error {
 	addr := a.moduleBase + point.RVA
 	current := make([]byte, len(point.Original))
@@ -2604,24 +3464,6 @@ func (a *App) setSBAChainTimer(point *monsterPatchPoint, value float64) error {
 		return fmt.Errorf("写入%s失败: %w", point.Name, err)
 	}
 	return nil
-}
-
-func isMonsterPatchBytesAtRVA(rva uintptr, data []byte) bool {
-	for _, point := range monsterPatchPoints {
-		if point.RVA != rva {
-			continue
-		}
-		if point.ID == "sba_chain_timer" && len(data) >= 2 && data[0] == 0x48 && data[1] == 0xB8 {
-			return true
-		}
-		if point.Hook && len(data) > 0 && data[0] == 0xE9 {
-			return true
-		}
-		if !point.Hook && bytesEqual(data, point.Patch) {
-			return true
-		}
-	}
-	return false
 }
 
 func needsMonsterValue(id string) bool {
@@ -2810,12 +3652,25 @@ func getModuleBase(hProcess windows.Handle) (uintptr, error) {
 
 func readProcessMemory(h windows.Handle, addr uintptr, buf unsafe.Pointer, size uintptr) error {
 	var read uintptr
-	return windows.ReadProcessMemory(h, addr, (*byte)(buf), size, &read)
+	if err := windows.ReadProcessMemory(h, addr, (*byte)(buf), size, &read); err != nil {
+		return err
+	}
+	return validateProcessTransfer("读取进程内存", size, read)
 }
 
 func writeProcessMemory(h windows.Handle, addr uintptr, buf unsafe.Pointer, size uintptr) error {
 	var written uintptr
-	return windows.WriteProcessMemory(h, addr, (*byte)(buf), size, &written)
+	if err := windows.WriteProcessMemory(h, addr, (*byte)(buf), size, &written); err != nil {
+		return err
+	}
+	return validateProcessTransfer("写入进程内存", size, written)
+}
+
+func validateProcessTransfer(operation string, expected, actual uintptr) error {
+	if actual != expected {
+		return fmt.Errorf("%s不完整: %d/%d 字节", operation, actual, expected)
+	}
+	return nil
 }
 
 func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
@@ -2827,18 +3682,28 @@ func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
 		return err
 	}
 	writeErr := writeProcessMemory(h, addr, unsafe.Pointer(&data[0]), uintptr(len(data)))
+	if writeErr == nil {
+		ret, _, callErr := procFlushInstructionCache.Call(uintptr(h), addr, uintptr(len(data)))
+		if ret == 0 {
+			if callErr == nil || callErr == windows.ERROR_SUCCESS {
+				callErr = fmt.Errorf("FlushInstructionCache 失败")
+			}
+			writeErr = callErr
+		}
+	}
 	var restoreProtect uint32
-	_ = windows.VirtualProtectEx(h, addr, uintptr(len(data)), oldProtect, &restoreProtect)
-	return writeErr
+	restoreErr := windows.VirtualProtectEx(h, addr, uintptr(len(data)), oldProtect, &restoreProtect)
+	return errors.Join(writeErr, restoreErr)
 }
 
 var (
-	modKernel32            = windows.NewLazySystemDLL("kernel32.dll")
-	procVirtualAllocEx     = modKernel32.NewProc("VirtualAllocEx")
-	procVirtualFreeEx      = modKernel32.NewProc("VirtualFreeEx")
-	procVirtualQueryEx     = modKernel32.NewProc("VirtualQueryEx")
-	procLoadLibraryW       = modKernel32.NewProc("LoadLibraryW")
-	procCreateRemoteThread = modKernel32.NewProc("CreateRemoteThread")
+	modKernel32               = windows.NewLazySystemDLL("kernel32.dll")
+	procVirtualAllocEx        = modKernel32.NewProc("VirtualAllocEx")
+	procVirtualFreeEx         = modKernel32.NewProc("VirtualFreeEx")
+	procVirtualQueryEx        = modKernel32.NewProc("VirtualQueryEx")
+	procFlushInstructionCache = modKernel32.NewProc("FlushInstructionCache")
+	procLoadLibraryW          = modKernel32.NewProc("LoadLibraryW")
+	procCreateRemoteThread    = modKernel32.NewProc("CreateRemoteThread")
 )
 
 type memoryBasicInformation struct {

@@ -85,63 +85,163 @@ scanSaves()
 <template>
   <div class="root">
     <div class="slots">
-      <button v-for="s in slots" :key="s.index" class="slot-btn" :class="{ on: savePath === s.path }" @click="load(s.path)">{{ saveSlotLabel(s) }}</button>
-      <button class="plain-btn" @click="scanSaves">刷新</button>
+      <button v-for="s in slots" :key="s.index" class="slot-btn ui-btn is-sm" :class="{ on: savePath === s.path }" @click="load(s.path)">{{ saveSlotLabel(s) }}</button>
+      <button class="plain-btn ui-btn is-sm" @click="scanSaves">刷新</button>
     </div>
 
-    <div v-if="loading" class="loading">解析中…</div>
-    <div v-else-if="quests.length" class="quests">
+    <div v-if="loading" class="loading empty ui-empty">解析中…</div>
+    <div v-else-if="quests.length" class="quests ui-card">
       <div class="head">
         <span>{{ quests.length }} 个任务 · {{ total }} 次挑战</span>
-        <input v-model="search" class="search" placeholder="搜索任务或 ID">
-        <button class="plain-btn" @click="sortDesc = !sortDesc">{{ sortDesc ? '次数排序' : '默认顺序' }}</button>
+        <input v-model="search" class="search ui-input" placeholder="搜索任务或 ID">
+        <button class="plain-btn ui-btn is-sm" @click="sortDesc = !sortDesc">{{ sortDesc ? '次数排序' : '默认顺序' }}</button>
       </div>
-      <div class="batch">
+      <div class="batch ui-card">
         <label><input type="checkbox" :checked="allVisibleSelected" @change="toggleVisible"> 选择当前结果</label>
-        <input v-model.number="batchCount" class="number-input" type="number" min="0" max="99999999">
-        <button class="plain-btn max-btn" @click="batchCount=99999999">最大</button>
-        <button class="plain-btn" :disabled="!selected.size" @click="applyBatch">填入已选</button>
+        <input v-model.number="batchCount" class="number-input ui-input" type="number" min="0" max="99999999">
+        <button class="plain-btn max-btn ui-btn is-sm" @click="batchCount=99999999">最大</button>
+        <button class="plain-btn ui-btn is-sm" :disabled="!selected.size" @click="applyBatch">填入已选</button>
         <span>已选 {{ selected.size }} 项</span>
-        <button class="save-btn" :disabled="saving || !selected.size" @click="saveSelected">{{ saving ? '写入中…' : '保存已选' }}</button>
+        <button class="save-btn ui-btn is-primary" :disabled="saving || !selected.size" @click="saveSelected">{{ saving ? '写入中…' : '保存已选' }}</button>
       </div>
       <div class="list">
-        <label v-for="q in visibleQuests" :key="q.index" class="row">
+        <label v-for="q in visibleQuests" :key="q.index" class="row ui-row">
           <input type="checkbox" :checked="selected.has(q.index)" @change="toggle(q.index)">
           <span class="id">{{ q.questCode || q.questId }}</span>
           <span class="name">{{ q.questNameCn || q.questName }}</span>
-          <input v-model.number="q.clears" class="number-input count" type="number" min="0" max="99999999" @focus="selected.add(q.index)">
+          <input v-model.number="q.clears" class="number-input count ui-input" type="number" min="0" max="99999999" @focus="selected.add(q.index)">
         </label>
       </div>
-      <div class="foot">写入前请完全退出游戏；每次保存都会创建时间戳备份并回读验证。</div>
     </div>
+    <div v-else-if="!savePath" class="empty ui-empty">选择存档后读取任务完成次数</div>
+    <div v-else class="empty ui-empty">当前存档没有可编辑的任务记录</div>
   </div>
 </template>
 
 <style scoped>
-.root { display:flex; flex-direction:column; gap:10px; width:100%; max-width:720px; height:100%; min-height:0; margin:0 auto; container-type:inline-size; }
-.slots { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
-.slot-btn,.plain-btn,.save-btn { padding:7px 13px; border-radius:7px; border:1px solid rgba(255,255,255,.11); background:rgba(255,255,255,.045); color:rgba(255,255,255,.5); font:inherit; font-size:.74rem; cursor:pointer; }
-.slot-btn { padding:9px 17px; }
-.slot-btn.on { border-color:rgba(154,116,64,.42); background:rgba(154,116,64,.1); color:#9a7440; }
-button:hover:not(:disabled) { color:rgba(255,255,255,.78); background:rgba(255,255,255,.08); }
-button:disabled { opacity:.35; cursor:not-allowed; }
-.loading { text-align:center; color:#9a7440; font-size:.82rem; padding:16px; }
-.quests { border-radius:12px; border:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.025); overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
-.head,.batch { display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.055); }
-.head>span { flex:1; font-size:.72rem; color:rgba(255,255,255,.38); }
-.search,.number-input { box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.055); color:#d8f6fb; outline:none; font:inherit; font-size:.73rem; }
-.search { width:180px; }
-.search:focus,.number-input:focus { border-color:rgba(154,116,64,.45); }
-.batch { background:rgba(255,255,255,.018); font-size:.7rem; color:rgba(255,255,255,.35); }
-.batch .number-input { width:100px; margin-left:auto; }
-.save-btn { border-color:rgba(74,222,128,.28); background:rgba(34,197,94,.11); color:#4ade80; }
-.list { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.1) transparent; }
-.row { min-height:39px; display:flex; align-items:center; gap:9px; padding:4px 12px; border-bottom:1px solid rgba(255,255,255,.03); box-sizing:border-box; }
-.row:hover { background:rgba(255,255,255,.025); }
-.id { width:52px; font-size:.66rem; color:rgba(255,255,255,.24); font-family:var(--font-data); }
-.name { flex:1; font-size:.78rem; color:rgba(255,255,255,.58); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.count { width:86px; text-align:right; color:#8be9f7; font-family:var(--font-data); }
-.foot { padding:8px 12px; border-top:1px solid rgba(255,255,255,.05); font-size:.65rem; color:rgba(74,222,128,.58); }
-input[type=checkbox] { accent-color:#9a7440; }
-@container (max-width:460px) { .head,.batch { flex-wrap:wrap; } .search { width:100%; order:3; } .batch .number-input { margin-left:0; flex:1; min-width:90px; } .batch .save-btn { flex:1; } }
+.root {
+  width:100%;
+  max-width:840px;
+  height:100%;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  gap:var(--space-4);
+  margin:0 auto;
+  color:var(--text-secondary);
+  container-type:inline-size;
+}
+.slots {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:var(--space-2);
+}
+.slot-btn.on {
+  border-color:var(--selected-border);
+  background:var(--selected-bg);
+  color:var(--selected-fg);
+}
+.quests {
+  min-width:0;
+  min-height:0;
+  flex:1;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.head,
+.batch {
+  display:flex;
+  align-items:center;
+  gap:var(--space-3);
+  padding:var(--space-3) var(--space-4);
+  border-bottom:1px solid var(--border-soft);
+}
+.head > span {
+  min-width:140px;
+  flex:1;
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+}
+.search { width:210px; }
+.batch {
+  flex-wrap:wrap;
+  border:0;
+  border-bottom:1px solid var(--border-soft);
+  border-radius:0;
+  background:var(--surface-sunken);
+  box-shadow:none;
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+}
+.batch label { display:flex; align-items:center; gap:var(--space-2); }
+.batch .number-input { width:112px; margin-left:auto; }
+.list {
+  min-height:0;
+  flex:1;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border-default) transparent;
+}
+.row {
+  min-height:42px;
+  display:grid;
+  grid-template-columns:20px minmax(54px,72px) minmax(0,1fr) 100px;
+  align-items:center;
+  gap:var(--space-3);
+  padding:var(--space-2) var(--space-4);
+  border:0;
+  border-bottom:1px solid var(--border-soft);
+  border-radius:0;
+  background:transparent;
+  box-sizing:border-box;
+}
+.row:last-child { border-bottom:0; }
+.id {
+  overflow:hidden;
+  color:var(--text-secondary);
+  font-family:var(--font-data);
+  font-size:var(--fs-xs);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.name {
+  min-width:0;
+  overflow:hidden;
+  color:var(--text-primary);
+  font-size:var(--fs-md);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.count {
+  width:100%;
+  text-align:right;
+  font-family:var(--font-data);
+  font-variant-numeric:tabular-nums;
+}
+.loading { color:var(--info-ink); }
+input[type="checkbox"] { accent-color:var(--accent); }
+
+@container (max-width:620px) {
+  .head,
+  .batch { align-items:stretch; flex-wrap:wrap; }
+  .head > span { width:100%; flex-basis:100%; }
+  .search { min-width:0; flex:1; width:auto; }
+  .batch .number-input { min-width:90px; flex:1; width:auto; margin-left:0; }
+  .batch .save-btn { flex:1; }
+  .row {
+    grid-template-columns:20px minmax(48px,62px) minmax(0,1fr) 88px;
+    padding-inline:var(--space-3);
+    gap:var(--space-2);
+  }
+}
+
+@container (max-width:420px) {
+  .slots .ui-btn { flex:1; }
+  .head .search,
+  .head .ui-btn { width:100%; flex-basis:100%; }
+  .row { grid-template-columns:18px 48px minmax(0,1fr) 78px; }
+}
 </style>

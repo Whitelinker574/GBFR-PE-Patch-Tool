@@ -18,7 +18,7 @@ const confirmDialog = ref(null)
 const latest = computed(() => snapshots.value[0] || null)
 const triggerDetail = computed(() => {
   if (loading.value) return '读取中'
-  if (!latest.value) return '写入前将自动创建恢复点'
+  if (!latest.value) return '暂无恢复点'
   return `${snapshots.value.length} 个恢复点 · ${shortTime(latest.value.displayTime)}`
 })
 
@@ -104,10 +104,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div class="save-protection">
     <button
-      class="protection-trigger"
+      class="protection-trigger ui-btn is-subtle"
       :class="{ active: open }"
       type="button"
       aria-label="打开存档保护时间线"
+      aria-controls="save-backup-flyout"
+      :aria-expanded="open"
+      aria-haspopup="dialog"
       data-testid="save-protection-trigger"
       @click="toggle"
     >
@@ -121,27 +124,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <Teleport to="body">
       <Transition name="backup-drawer">
         <div v-if="open" class="drawer-catcher" @mousedown.self="open = false">
-          <section class="backup-drawer" role="dialog" aria-modal="false" aria-label="存档保护时间线" data-testid="save-backup-drawer">
+          <section id="save-backup-flyout" class="backup-drawer ui-card" role="dialog" aria-modal="false" aria-label="存档保护时间线" data-testid="save-backup-drawer">
             <header class="drawer-head">
               <div class="drawer-emblem" aria-hidden="true">存</div>
               <div>
                 <small>SAFE ARCHIVE · DATA 1–3</small>
                 <h2>存档保护时间线</h2>
-                <p>写入前自动备份已启用</p>
+                <p>创建、查看和恢复存档快照</p>
               </div>
-              <button class="drawer-close" type="button" aria-label="关闭备份时间线" @click="open = false">×</button>
+              <button class="drawer-close ui-btn is-subtle is-icon" type="button" aria-label="关闭备份时间线" @click="open = false">×</button>
             </header>
 
-            <div class="protection-note">
-              <span class="note-mark">✓</span>
-              <p><strong>每次写入前，自动保存所有实际存在的存档。</strong><br>恢复旧版本前还会再备份当前状态，不会覆盖唯一的回退路径。</p>
-            </div>
-
-            <div class="drawer-actions">
-              <button class="manual-backup" type="button" :disabled="creating" @click="createManualBackup">
+            <div class="drawer-actions ui-actions">
+              <button class="manual-backup ui-btn is-primary" type="button" :disabled="creating" @click="createManualBackup">
                 <span>＋</span>{{ creating ? '正在备份…' : '立即备份' }}
               </button>
-              <button class="refresh-backups" type="button" :disabled="loading" @click="refresh()">{{ loading ? '读取中…' : '刷新' }}</button>
+              <button class="refresh-backups ui-btn is-ghost" type="button" :disabled="loading" @click="refresh()">{{ loading ? '读取中…' : '刷新' }}</button>
             </div>
 
             <div class="timeline-heading">
@@ -149,13 +147,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <small>{{ snapshots.length }} 份 · 新到旧</small>
             </div>
 
-            <div class="timeline" :class="{ loading }" data-testid="save-backup-timeline">
+            <div class="timeline ui-scroll-region" :class="{ loading }" data-testid="save-backup-timeline">
               <div v-if="!loading && snapshots.length === 0" class="timeline-empty">
                 <span>◇</span><strong>暂无存档备份</strong>
-                <p>首次执行写入时，会在这里留下带日期和分钟的恢复点。</p>
+                <p>创建备份后，会在这里显示带日期和时间的恢复点。</p>
               </div>
 
-              <article v-for="(snapshot, index) in snapshots" :key="snapshot.id" class="snapshot-card" :class="{ latest: index === 0 }">
+              <article v-for="(snapshot, index) in snapshots" :key="snapshot.id" class="snapshot-card ui-card" :class="{ latest: index === 0 }">
                 <span class="timeline-dot" aria-hidden="true"></span>
                 <div class="snapshot-main">
                   <div class="snapshot-time">
@@ -168,7 +166,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                     <small>{{ formatSize(snapshot.totalSize) }}</small>
                   </div>
                 </div>
-                <button class="restore-point" type="button" :disabled="Boolean(restoringID)" @click="restore(snapshot)">
+                <button class="restore-point ui-btn is-ghost is-sm" type="button" :disabled="Boolean(restoringID)" @click="restore(snapshot)">
                   {{ restoringID === snapshot.id ? '恢复中…' : '恢复到这里' }}
                 </button>
               </article>
@@ -187,27 +185,294 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped>
-.save-protection{position:relative;display:flex;align-items:center}
-.protection-trigger{height:32px;display:flex;align-items:center;gap:7px;padding:3px 7px;border:0;border-left:1px solid rgba(123,91,42,.2);border-radius:0;color:#5f523f;background:transparent;box-shadow:none;cursor:pointer;transition:color .1s ease,background-color .1s ease}
-.protection-trigger:hover,.protection-trigger.active{color:#4d402e;background:#eee0c1;box-shadow:none}
-.shield{width:22px;height:22px;display:grid;place-items:center;color:#765528;background:transparent}.shield svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.trigger-copy{display:block;text-align:left;line-height:1.05}.trigger-copy strong,.trigger-copy small{display:block;white-space:nowrap}.trigger-copy strong{font-size:10px;font-weight:800}.trigger-copy small{margin-top:3px;color:#8a7961;font-size:8px;font-weight:650}.trigger-arrow{margin-left:2px;color:#8d7651;font:900 13px/1 Georgia,serif;transition:transform .12s ease}.trigger-arrow.open{transform:rotate(180deg)}
-.drawer-catcher{position:fixed;z-index:4200;inset:38px 0 0;background:transparent}
-.backup-drawer{position:absolute;top:45px;right:17px;width:min(445px,calc(100vw - 34px));max-height:calc(100vh - 100px);display:flex;flex-direction:column;overflow:hidden;border:1px solid #9f7a45;border-radius:1px;color:#55493a;background:#f4e6c6;box-shadow:0 24px 60px rgba(40,26,8,.42),0 4px 16px rgba(40,26,8,.28);font-family:var(--font-ui,"Microsoft YaHei UI",sans-serif)}
-.drawer-head{position:relative;display:flex;align-items:center;gap:12px;padding:17px 20px 13px;border-bottom:1px solid rgba(134,96,45,.26);background:#f7ebd0}
-.drawer-emblem{width:37px;height:37px;display:grid;place-items:center;flex:0 0 37px;border:1px solid #8b6737;border-radius:50%;color:#765528;background:transparent;font:800 16px/1 var(--font-ui,"Microsoft YaHei UI",sans-serif);box-shadow:none}
-.drawer-head small{display:block;color:#8f6a36;font-size:8px;font-weight:800;letter-spacing:.13em}.drawer-head h2{margin:3px 0 0;color:#4b4135;font-size:18px;font-weight:800;letter-spacing:0}.drawer-head p{margin:3px 0 0;color:#76572e;font-size:10px;font-weight:750}
-.drawer-close{position:absolute;top:8px;right:9px;width:27px;height:27px;border:0;color:#765f42;background:transparent;font:400 24px/1 Georgia,serif;cursor:pointer;box-shadow:none}.drawer-close:hover{color:#4c3b28;background:#ead8b2}
-.protection-note{display:flex;gap:10px;margin:13px 18px 0;padding:10px 11px;border:1px solid rgba(127,91,42,.3);border-left:3px solid #8b6737;background:#edddba}.note-mark{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px;border:1px solid rgba(126,91,42,.45);border-radius:50%;color:#765528;background:transparent;font-size:11px;font-weight:800}.protection-note p{margin:0;color:#645541;font-size:10px;font-weight:650;line-height:1.6}.protection-note strong{color:#4f493a;font-weight:800}
-.drawer-actions{display:flex;gap:8px;padding:12px 18px}.drawer-actions button{min-height:32px;border-radius:1px;font:800 10px/1 var(--font-ui,"Microsoft YaHei UI",sans-serif);cursor:pointer;box-shadow:none}.manual-backup{flex:1;color:#fff9e9;border:1px solid #765126;background:#8b6737}.manual-backup:hover:not(:disabled){background:#76552d}.manual-backup span{margin-right:5px;font-size:14px}.refresh-backups{width:70px;color:#66543c;border:1px solid rgba(130,92,40,.38);background:#ead8b2}.refresh-backups:hover:not(:disabled){border-color:#8a6635;background:#f2e4c5}.drawer-actions button:disabled{opacity:.58;cursor:wait}
-.timeline-heading{display:flex;align-items:center;justify-content:space-between;margin:0 18px 7px;padding:0 2px 7px;border-bottom:1px solid rgba(124,88,40,.28)}.timeline-heading span{color:#574b3d;font-size:11px;font-weight:800}.timeline-heading small{color:#89755a;font-size:9px;font-weight:700}
-.timeline{position:relative;min-height:150px;max-height:370px;overflow-y:auto;padding:2px 18px 8px 33px;scrollbar-width:thin;scrollbar-color:rgba(137,96,44,.62) transparent}.timeline::-webkit-scrollbar{width:7px}.timeline::-webkit-scrollbar-track{background:transparent}.timeline::-webkit-scrollbar-thumb{border:2px solid transparent;border-radius:999px;background:rgba(137,96,44,.62) padding-box}.timeline::-webkit-scrollbar-button{display:none;width:0;height:0}.timeline.loading{opacity:.62}
-.timeline::before{content:"";position:absolute;left:22px;top:5px;bottom:12px;width:1px;background:rgba(137,96,44,.35)}
-.snapshot-card{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-height:82px;margin-bottom:6px;padding:10px 10px 10px 12px;border:1px solid rgba(132,96,45,.28);border-radius:0;background:#f8edcf;box-shadow:none;transition:border-color .1s ease,background-color .1s ease}.snapshot-card:nth-child(even){background:#f0dfba}.snapshot-card:hover{border-color:rgba(126,91,42,.52);background:#f5e7c7}.snapshot-card.latest{border-left:3px solid #8b6737}.timeline-dot{position:absolute;left:-16px;top:34px;width:7px;height:7px;border:1px solid #9a8058;border-radius:50%;background:#f4e6c6;box-shadow:none}.snapshot-card.latest .timeline-dot{background:#8b6737;box-shadow:none}
-.snapshot-main{min-width:0}.snapshot-time{display:flex;align-items:center;gap:7px}.snapshot-time time{color:#493f34;font:800 12px/1.2 var(--font-number,"Microsoft YaHei UI",sans-serif);font-variant-numeric:tabular-nums}.snapshot-time span{padding:2px 5px;border-radius:1px;color:#fff9e9;background:#8b6737;font-size:8px;font-weight:800}.snapshot-reason{display:block;margin-top:6px;overflow:hidden;color:#79664b;font-size:10px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}.slot-row{display:flex;align-items:center;gap:4px;margin-top:7px}.slot-chip{padding:3px 5px;border:1px solid rgba(126,91,42,.28);border-radius:1px;color:#6e5738;background:#ead8b2;font:800 8px/1 var(--font-number,"Microsoft YaHei UI",sans-serif)}.slot-row small{margin-left:3px;color:#8c785e;font:750 8px/1 var(--font-number,"Microsoft YaHei UI",sans-serif)}
-.restore-point{min-width:78px;min-height:31px;padding:0 9px;border:1px solid rgba(132,94,41,.38);border-radius:1px;color:#665338;background:#ead8b2;font:800 9px/1 var(--font-ui,"Microsoft YaHei UI",sans-serif);cursor:pointer;box-shadow:none}.restore-point:hover:not(:disabled){color:#4d3d28;border-color:#8a6635;background:#f3e5c5}.restore-point:disabled{opacity:.55;cursor:wait}
-.timeline-empty{display:grid;place-items:center;padding:28px 20px;color:#8e7b5f;text-align:center}.timeline-empty>span{color:#765528;font-size:22px}.timeline-empty strong{margin-top:6px;color:#665744;font-size:12px}.timeline-empty p{max-width:280px;margin:7px 0 0;font-size:9px;font-weight:650;line-height:1.6}
-.drawer-foot{display:flex;justify-content:space-between;gap:10px;padding:10px 18px;border-top:1px solid rgba(128,92,43,.24);color:#806f57;background:#ead8b2;font-size:8px;font-weight:700}
-.backup-drawer-enter-active,.backup-drawer-leave-active{transition:opacity .12s ease}.backup-drawer-enter-from,.backup-drawer-leave-to{opacity:0}
-@media (max-width:720px){.trigger-copy small{display:none}.backup-drawer{right:8px;width:calc(100vw - 16px)}.snapshot-card{grid-template-columns:1fr}.restore-point{width:100%}}
+.save-protection {
+  position:relative;
+  display:flex;
+  align-items:center;
+}
+.protection-trigger {
+  height:var(--control-height-sm);
+  max-width:260px;
+  gap:var(--space-2);
+  padding-inline:var(--space-3);
+  border-left:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);
+}
+.protection-trigger.active {
+  color:var(--accent-hover);
+  background:var(--state-active);
+}
+.shield {
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  display:grid;
+  place-items:center;
+  color:var(--accent);
+}
+.shield svg {
+  width:18px;
+  height:18px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.trigger-copy {
+  min-width:0;
+  display:block;
+  text-align:left;
+  line-height:var(--lh-tight);
+}
+.trigger-copy strong,.trigger-copy small { display:block; }
+.trigger-copy strong { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
+.trigger-copy small {
+  margin-top:1px;
+  overflow:hidden;
+  color:var(--text-muted);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-normal);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.trigger-arrow {
+  margin-left:auto;
+  color:var(--text-muted);
+  font-size:var(--fs-base);
+  line-height:1;
+  transition:transform var(--dur-fast) var(--ease-out);
+}
+.trigger-arrow.open { transform:rotate(180deg); }
+
+.drawer-catcher {
+  position:fixed;
+  z-index:var(--z-drawer);
+  inset:0;
+  background:transparent;
+}
+.backup-drawer {
+  position:fixed;
+  top:94px;
+  right:12px;
+  width:min(420px,calc(100vw - 24px));
+  max-height:calc(100dvh - 106px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  color:var(--text-primary);
+  background:var(--surface-card);
+  box-shadow:var(--shadow-3);
+  font-family:var(--font-ui);
+}
+.drawer-head {
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:var(--space-4);
+  padding:var(--space-6) 52px var(--space-5) var(--space-6);
+  border-bottom:1px solid var(--border-soft);
+  background:var(--surface-card-pop);
+}
+.drawer-emblem {
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--accent-border);
+  border-radius:var(--radius-md);
+  color:var(--text-on-accent);
+  background:var(--accent);
+  font-size:var(--fs-base);
+  font-weight:var(--fw-bold);
+}
+.drawer-head > div:nth-child(2) { min-width:0; }
+.drawer-head small {
+  display:block;
+  color:var(--accent);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
+  letter-spacing:.08em;
+}
+.drawer-head h2 {
+  margin:2px 0 0;
+  color:var(--text-primary);
+  font-family:var(--font-display);
+  font-size:var(--fs-lg);
+  font-weight:var(--fw-bold);
+  line-height:var(--lh-tight);
+}
+.drawer-head p {
+  margin:2px 0 0;
+  color:var(--text-muted);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-normal);
+}
+.drawer-close {
+  position:absolute;
+  top:var(--space-3);
+  right:var(--space-3);
+  color:var(--text-secondary);
+  font-size:20px;
+}
+.drawer-actions {
+  flex:0 0 auto;
+  padding:var(--space-5) var(--space-6);
+}
+.manual-backup { flex:1 1 180px; }
+.refresh-backups { flex:0 0 auto; }
+.drawer-actions button:disabled { cursor:wait; }
+
+.timeline-heading {
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--space-4);
+  margin:0 var(--space-6);
+  padding:0 var(--space-1) var(--space-3);
+  border-bottom:1px solid var(--border-soft);
+}
+.timeline-heading span { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
+.timeline-heading small { color:var(--text-muted); font-size:var(--fs-xs); }
+.timeline {
+  position:relative;
+  min-height:138px;
+  flex:1 1 auto;
+  overflow-y:auto;
+  padding:var(--space-3) var(--space-6) var(--space-4);
+}
+.timeline.loading { opacity:.62; }
+.snapshot-card {
+  position:relative;
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:var(--space-3);
+  margin-bottom:var(--space-2);
+  padding:var(--space-4);
+  background:var(--surface-card-pop);
+  box-shadow:none;
+}
+.snapshot-card:hover { border-color:var(--border-strong); background:var(--surface-field-hover); }
+.snapshot-card.latest {
+  border-left:4px solid var(--selected-bar);
+  background:color-mix(in srgb,var(--accent-soft) 28%,var(--surface-card-pop));
+}
+.timeline-dot { display:none; }
+.snapshot-main { min-width:0; }
+.snapshot-time {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:var(--space-2);
+}
+.snapshot-time time {
+  color:var(--text-primary);
+  font-family:var(--font-data);
+  font-size:var(--fs-sm);
+  font-weight:var(--fw-bold);
+  font-variant-numeric:tabular-nums;
+}
+.snapshot-time span {
+  padding:2px var(--space-2);
+  border-radius:var(--radius-pill);
+  color:var(--selected-fg);
+  background:var(--selected-bg);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-semibold);
+}
+.snapshot-reason {
+  display:block;
+  margin-top:var(--space-2);
+  overflow:hidden;
+  color:var(--text-secondary);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-semibold);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.slot-row {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:var(--space-1);
+  margin-top:var(--space-2);
+}
+.slot-chip {
+  padding:2px var(--space-2);
+  border:1px solid var(--border-default);
+  border-radius:var(--radius-pill);
+  color:var(--text-secondary);
+  background:var(--surface-field);
+  font-family:var(--font-data);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-semibold);
+}
+.slot-row small {
+  margin-left:var(--space-1);
+  color:var(--text-muted);
+  font-family:var(--font-data);
+  font-size:var(--fs-xs);
+}
+.restore-point { min-width:96px; }
+.timeline-empty {
+  display:grid;
+  place-items:center;
+  padding:var(--space-8) var(--space-6);
+  color:var(--text-muted);
+  text-align:center;
+}
+.timeline-empty > span { color:var(--accent); font-size:var(--fs-xl); }
+.timeline-empty strong { margin-top:var(--space-2); color:var(--text-primary); font-size:var(--fs-sm); }
+.timeline-empty p {
+  max-width:280px;
+  margin:var(--space-2) 0 0;
+  font-size:var(--fs-xs);
+  line-height:var(--lh-normal);
+}
+.drawer-foot {
+  flex:0 0 auto;
+  display:flex;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:var(--space-2) var(--space-4);
+  padding:var(--space-4) var(--space-6);
+  border-top:1px solid var(--border-soft);
+  color:var(--text-muted);
+  background:var(--surface-field);
+  font-size:var(--fs-xs);
+}
+.backup-drawer-enter-active,.backup-drawer-leave-active {
+  transition:opacity var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out);
+}
+.backup-drawer-enter-from,.backup-drawer-leave-to { opacity:0; transform:translateY(-4px); }
+
+@media (max-width:720px) {
+  .trigger-copy small { display:none; }
+  .protection-trigger { max-width:150px; }
+}
+@media (max-width:520px) {
+  .backup-drawer {
+    top:76px;
+    right:12px;
+    left:12px;
+    width:auto;
+    max-height:calc(100dvh - 88px);
+  }
+  .snapshot-card { grid-template-columns:minmax(0,1fr); }
+  .restore-point { width:100%; }
+  .drawer-actions > * { flex:1 1 140px; }
+}
+@media (max-height:620px) {
+  .backup-drawer { top:76px; max-height:calc(100dvh - 88px); }
+  .drawer-head { padding-block:var(--space-4); }
+  .timeline { min-height:104px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .backup-drawer-enter-active,.backup-drawer-leave-active,.trigger-arrow { transition:none; }
+}
 </style>

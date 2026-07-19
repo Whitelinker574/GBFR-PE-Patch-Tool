@@ -5,13 +5,14 @@ import { language, storeLanguage } from '../i18n'
 
 const applying = ref(false)
 const current = computed(() => language.value)
+const isActive = id => current.value === id
 
 const text = computed(() => current.value === 'zh' ? {
   title: '语言设置',
   hint: '选择界面语言。更改后界面会自动重新加载。',
   current: '当前语言',
   english: 'English',
-  englishDescription: '使用完整英文界面（默认）',
+  englishDescription: '使用英文界面（部分新增专业术语仍保留中文）',
   chinese: '简体中文',
   chineseDescription: '使用原始中文界面',
   active: '已启用',
@@ -23,7 +24,7 @@ const text = computed(() => current.value === 'zh' ? {
   hint: 'Choose the interface language. The interface reloads automatically after a change.',
   current: 'Current language',
   english: 'English',
-  englishDescription: 'Use the complete English interface (default)',
+  englishDescription: 'Use the English interface (some newly added technical terms remain Chinese)',
   chinese: 'Simplified Chinese',
   chineseDescription: 'Use the original Chinese interface',
   active: 'Active',
@@ -47,31 +48,28 @@ async function selectLanguage(next) {
 </script>
 
 <template>
-  <section class="language-panel">
-    <div class="section-header">
-      <div>
-        <h2>{{ text.title }}</h2>
-        <p>{{ text.hint }}</p>
-      </div>
-      <span class="current-language">{{ text.current }}: {{ current === 'en' ? text.english : text.chinese }}</span>
+  <section class="language-panel ui-page-stack" :aria-label="text.title" :aria-busy="applying">
+    <div class="language-summary ui-notice">
+      <p>{{ text.hint }}</p>
+      <span class="current-language ui-tag">{{ text.current }}: {{ current === 'en' ? text.english : text.chinese }}</span>
     </div>
 
-    <div class="language-grid">
-      <article class="language-card" :class="{ active: current === 'en' }">
+    <div class="language-grid ui-card-grid" role="group" :aria-label="text.title">
+      <article class="language-card ui-card" :class="{ active: isActive('en') }">
         <div class="language-icon">EN</div>
         <div class="language-copy">
           <div class="language-title-row">
             <h3>{{ text.english }}</h3>
-            <span class="default-badge">{{ text.defaultLabel }}</span>
+            <span class="default-badge ui-tag">{{ text.defaultLabel }}</span>
           </div>
           <p>{{ text.englishDescription }}</p>
         </div>
-        <button class="language-button" :disabled="applying || current === 'en'" @click="selectLanguage('en')">
+        <button class="language-button ui-btn" :class="isActive('en') ? 'is-ghost' : 'is-primary'" :aria-pressed="isActive('en')" :disabled="applying || isActive('en')" @click="selectLanguage('en')">
           {{ current === 'en' ? text.active : applying ? text.switching : text.switch }}
         </button>
       </article>
 
-      <article class="language-card" :class="{ active: current === 'zh' }">
+      <article class="language-card ui-card" :class="{ active: isActive('zh') }">
         <div class="language-icon">中</div>
         <div class="language-copy">
           <div class="language-title-row">
@@ -79,7 +77,7 @@ async function selectLanguage(next) {
           </div>
           <p>{{ text.chineseDescription }}</p>
         </div>
-        <button class="language-button" :disabled="applying || current === 'zh'" @click="selectLanguage('zh')">
+        <button class="language-button ui-btn" :class="isActive('zh') ? 'is-ghost' : 'is-primary'" :aria-pressed="isActive('zh')" :disabled="applying || isActive('zh')" @click="selectLanguage('zh')">
           {{ current === 'zh' ? text.active : applying ? text.switching : text.switch }}
         </button>
       </article>
@@ -89,86 +87,100 @@ async function selectLanguage(next) {
 
 <style scoped>
 .language-panel {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  container-type: inline-size;
+  width:min(100%,780px);
+  margin-inline:auto;
+  container:language-panel / inline-size;
 }
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid rgba(145,108,51,0.22);
-  border-radius: 8px 16px 8px 16px;
-  background: rgba(255,250,236,0.76);
+.language-summary {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--space-5);
 }
-h2 { margin: 0; color: #51483e; font-size: 1.1rem; font-weight: 900; }
-.section-header p { margin: 7px 0 0; color: #87765f; font-size: 0.8rem; line-height: 1.5; }
+.language-summary p {
+  margin:0;
+  color:inherit;
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+}
 .current-language {
-  flex-shrink: 0;
-  padding: 5px 10px;
-  border-radius: 999px;
-  color: #1f5c61;
-  background: rgba(91,190,201,0.15);
-  border: 1px solid rgba(48,137,145,0.28);
-  font-size: 0.72rem;
-  font-weight: 700;
+  flex:0 0 auto;
+  color:var(--accent-hover);
+  background:var(--accent-soft);
 }
-.language-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.language-grid {
+  --ui-grid-min:280px;
+  align-items:stretch;
+}
 .language-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: 1fr auto;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 7px 15px 7px 15px;
-  border: 1px solid rgba(145,108,51,0.22);
-  background: linear-gradient(145deg, #fffaf0, #f5ead1);
-  transition: border-color 0.2s, transform 0.2s, background 0.2s;
+  position:relative;
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  grid-template-rows:minmax(66px,1fr) auto;
+  gap:var(--space-5);
+  padding:var(--space-6);
+  overflow:hidden;
+  transition:var(--transition-control);
 }
-.language-card:hover { transform: translateY(-2px); border-color: rgba(48,137,145,0.42); }
-.language-card.active { border-color: rgba(48,137,145,0.58); background: linear-gradient(145deg, #e7f5ef, #f4ecd5); }
+.language-card.active {
+  border-color:var(--selected-border);
+  background:color-mix(in srgb,var(--accent-soft) 42%,var(--surface-card-pop));
+  box-shadow:4px 0 0 var(--selected-bar),var(--shadow-1);
+}
 .language-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: rgba(91,190,201,0.18);
-  color: #1f5c61;
-  font-weight: 800;
-  font-size: 1rem;
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  color:var(--accent-hover);
+  background:var(--surface-field);
+  font-family:var(--font-data);
+  font-size:var(--fs-base);
+  font-weight:var(--fw-bold);
 }
-.language-copy { min-width: 0; }
-.language-title-row { display: flex; align-items: center; gap: 8px; }
-h3 { margin: 2px 0 0; font-size: 0.92rem; color: #51483e; font-weight: 900; }
-.language-copy p { margin: 7px 0 0; color: #87765f; font-size: 0.76rem; line-height: 1.45; }
-.default-badge { font-size: 0.62rem; padding: 2px 7px; border-radius: 999px; color: #6e4a14; background: rgba(218,187,115,0.23); font-weight: 800; }
-.language-button {
-  grid-column: 1 / -1;
-  width: 100%;
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(48,137,145,0.34);
-  color: #286e75;
-  background: rgba(91,190,201,0.11);
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
+.language-card.active .language-icon {
+  color:var(--selected-fg);
+  border-color:var(--selected-border);
+  background:var(--selected-bg);
 }
-.language-button:not(:disabled):hover { background: rgba(91,190,201,0.2); }
-.language-button:disabled { cursor: default; opacity: 1; color:#5b4930; border-color:rgba(126,91,42,.34); background:#e6d2a5; }
-.language-card.active .language-button { color:#5b4930; border-color:rgba(126,91,42,.34); background:#e6d2a5; }
-@media (max-width: 650px) {
-  .language-grid { grid-template-columns: 1fr; }
-  .section-header { flex-direction: column; }
+.language-copy { min-width:0; }
+.language-title-row {
+  min-width:0;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:var(--space-2);
 }
-@container (max-width:560px) {
-  .language-grid { grid-template-columns:1fr; }
-  .section-header { flex-direction:column; }
+.language-title-row h3 {
+  margin:0;
+  color:var(--text-primary);
+  font-family:var(--font-display);
+  font-size:var(--fs-base);
+  font-weight:var(--fw-bold);
+}
+.language-copy p {
+  margin:var(--space-2) 0 0;
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+}
+.default-badge { color:var(--text-secondary); background:var(--surface-field); }
+.language-button { grid-column:1 / -1; width:100%; }
+.language-card.active .language-button:disabled {
+  opacity:1;
+  color:var(--accent-hover);
+  border-color:var(--border-strong);
+  background:transparent;
+}
+
+@container language-panel (max-width:640px) {
+  .language-summary { align-items:flex-start; flex-direction:column; }
+  .language-grid { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-height:620px) {
+  .language-card { grid-template-rows:auto auto; padding:var(--space-4); }
 }
 </style>

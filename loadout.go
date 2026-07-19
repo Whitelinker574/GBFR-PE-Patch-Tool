@@ -129,11 +129,13 @@ var skillNamesJSON []byte
 type LoadoutSkill struct {
 	Hash string `json:"hash"`
 	Name string `json:"name"`
+	Key  string `json:"key,omitempty"`
 }
 
 var (
 	skillNamesOnce   sync.Once
 	skillNameByHash  map[uint32]string
+	skillKeyByHash   map[uint32]string
 	skillOwnerByHash map[uint32]string
 	skillPoolByOwner map[string][]LoadoutPickSkill
 )
@@ -148,6 +150,7 @@ func loadSkillNameCatalog() {
 			} `json:"skills"`
 		}
 		skillNameByHash = map[uint32]string{}
+		skillKeyByHash = map[uint32]string{}
 		skillOwnerByHash = map[uint32]string{}
 		skillPoolByOwner = map[string][]LoadoutPickSkill{}
 		if err := json.Unmarshal(skillNamesJSON, &payload); err != nil {
@@ -156,6 +159,7 @@ func loadSkillNameCatalog() {
 		for hex, s := range payload.Skills {
 			if h, err := ParseHashHex(hex); err == nil {
 				skillNameByHash[h] = s.Name
+				skillKeyByHash[h] = s.Key
 				skillOwnerByHash[h] = s.Char
 				if s.Char != "" {
 					skillPoolByOwner[s.Char] = append(skillPoolByOwner[s.Char], LoadoutPickSkill{Hash: fmt.Sprintf("%08X", h), Name: s.Name, Key: s.Key})
@@ -173,6 +177,11 @@ func skillNameForHash(hash uint32) string {
 	return skillNameByHash[hash]
 }
 
+func skillKeyForHash(hash uint32) string {
+	loadSkillNameCatalog()
+	return skillKeyByHash[hash]
+}
+
 func skillPoolForOwnerCode(ownerCode string) []LoadoutPickSkill {
 	loadSkillNameCatalog()
 	source := skillPoolByOwner[ownerCode]
@@ -187,12 +196,19 @@ func skillBelongsToOwner(hash uint32, ownerCode string) bool {
 }
 
 type LoadoutSigil struct {
-	SlotID  uint32 `json:"slotId"`  // 1403 里存的值
-	UnitID  uint32 `json:"unitId"`  // 对应的因子槽 UnitID（30000+）
-	Hash    string `json:"hash"`    // 因子 hash
-	Name    string `json:"name"`    // 中文名
-	Level   int    `json:"level"`   // 因子等级
-	Missing bool   `json:"missing"` // SlotID 在存档里找不到对应因子
+	Index               int    `json:"index"`  // 1403 原始 0 基位置；中间空槽不能压缩
+	SlotID              uint32 `json:"slotId"` // 1403 里存的值
+	UnitID              uint32 `json:"unitId"` // 对应的因子槽 UnitID（30000+）
+	Hash                string `json:"hash"`   // 因子 hash
+	Name                string `json:"name"`   // 中文名
+	Level               int    `json:"level"`  // 因子等级
+	PrimaryTraitHash    string `json:"primaryTraitHash"`
+	PrimaryTraitName    string `json:"primaryTraitName"`
+	PrimaryTraitLevel   int    `json:"primaryTraitLevel"`
+	SecondaryTraitHash  string `json:"secondaryTraitHash"`
+	SecondaryTraitName  string `json:"secondaryTraitName"`
+	SecondaryTraitLevel int    `json:"secondaryTraitLevel"`
+	Missing             bool   `json:"missing"` // SlotID 在存档里找不到对应因子
 }
 
 type LoadoutEntry struct {
@@ -283,6 +299,10 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 	if _, err := loadProgressionCatalog(); err != nil {
 		return nil, err
 	}
+	cat, err := LoadCatalog()
+	if err != nil {
+		return nil, err
+	}
 	save, err := LoadSave(path)
 	if err != nil {
 		return nil, err
@@ -299,6 +319,8 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 
 	gemHash := entriesByUnitID(save.findAllUnitsByType(GemIDType))
 	gemLevel := entriesByUnitID(save.findAllUnitsByType(GemLevelIDType))
+	traitHashByUnit := entriesByUnitID(save.findAllUnitsByType(TraitHashIDType))
+	traitLevelByUnit := entriesByUnitID(save.findAllUnitsByType(TraitLevelIDType))
 
 	// 因子 SlotID -> 因子槽 UnitID。
 	// 跳过已清空的因子记录（2703==EmptyHash 但 2702 仍残留旧 SlotID，
@@ -357,17 +379,11 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 			}
 		}
 
-		// 因子：1403 = 因子 SlotID ×12(+1 填充)
+		// 因子：1403 = 因子 SlotID ×12(+1 填充)。保留每颗因子的原始
+		// 0 基位置；不能把第 1、4 格压缩成前两格，否则编辑器回写会换槽。
 		if e := sigils[u]; e != nil {
-			for i, n := 0, vecLen(e); i < n; i++ {
-				sid, err := e.Uint32At(i)
-				if err != nil {
-					break // 越界即整条记录截断，继续读只会空转
-				}
-				if sid == 0 || sid == EmptyHash {
-					continue
-				}
-				s := LoadoutSigil{SlotID: sid}
+			for _, s := range readLoadoutSigilSlots(e) {
+				sid := s.SlotID
 				gu, ok := gemBySlotID[sid]
 				if !ok {
 					s.Missing = true
@@ -375,14 +391,26 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 					continue
 				}
 				s.UnitID = gu
+				var sigilHash uint32
 				if h := gemHash[gu]; h != nil {
-					hv := h.Uint32()
-					s.Hash = fmt.Sprintf("%08X", hv)
-					s.Name = sigilDisplayName(hv)
+					sigilHash = h.Uint32()
+					s.Hash = fmt.Sprintf("%08X", sigilHash)
 				}
 				if l := gemLevel[gu]; l != nil {
 					s.Level = int(l.Int32())
 				}
+				primaryHash, primaryLevel, secondaryHash, secondaryLevel := indexedSigilTraits(traitHashByUnit, traitLevelByUnit, gu)
+				if primaryHash != 0 && primaryHash != EmptyHash {
+					s.PrimaryTraitHash = fmt.Sprintf("%08X", primaryHash)
+				}
+				s.PrimaryTraitName = loadoutTraitDisplayName(cat, primaryHash)
+				s.PrimaryTraitLevel = primaryLevel
+				if secondaryHash != 0 && secondaryHash != EmptyHash {
+					s.SecondaryTraitHash = fmt.Sprintf("%08X", secondaryHash)
+				}
+				s.SecondaryTraitName = loadoutTraitDisplayName(cat, secondaryHash)
+				s.SecondaryTraitLevel = secondaryLevel
+				s.Name = loadoutSigilDisplayNameFromTraits(sigilHash, s.PrimaryTraitName, s.SecondaryTraitName)
 				lo.Sigils = append(lo.Sigils, s)
 			}
 		}
@@ -400,6 +428,7 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 				lo.Skills = append(lo.Skills, LoadoutSkill{
 					Hash: fmt.Sprintf("%08X", v),
 					Name: skillNameForHash(v),
+					Key:  skillKeyForHash(v),
 				})
 			}
 		}
@@ -439,10 +468,79 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 	return result, nil
 }
 
+// readLoadoutSigilSlots 只解析 1403 的 12 个可装备槽，跳过空值但保留
+// 原始 Index。第 13 项是游戏固定填充位，绝不能暴露成可编辑槽。
+func readLoadoutSigilSlots(e *unitEntry) []LoadoutSigil {
+	if e == nil {
+		return nil
+	}
+	n := vecLen(e)
+	if n > loadoutMaxSigils {
+		n = loadoutMaxSigils
+	}
+	result := make([]LoadoutSigil, 0, n)
+	for i := 0; i < n; i++ {
+		sid, err := e.Uint32At(i)
+		if err != nil {
+			break
+		}
+		if sid == 0 || sid == EmptyHash {
+			continue
+		}
+		result = append(result, LoadoutSigil{Index: i, SlotID: sid})
+	}
+	return result
+}
+
 // sigilDisplayName 尽量给出因子名（跟随界面语言，复用 ctName 的中/英表）。
 func sigilDisplayName(hash uint32) string {
 	if hash == EmptyHash {
 		return ""
 	}
 	return ctName(hash)
+}
+
+func indexedSigilTraits(hashByUnit, levelByUnit map[uint32]*unitEntry, gemUnitID uint32) (primaryHash uint32, primaryLevel int, secondaryHash uint32, secondaryLevel int) {
+	gemIndex := int(gemUnitID) - GemSlotBaseID
+	if gemIndex < 0 {
+		return
+	}
+	primaryUnit := uint32(TraitSlotBase + gemIndex*100)
+	secondaryUnit := primaryUnit + 1
+	if entry := hashByUnit[primaryUnit]; entry != nil {
+		primaryHash = entry.Uint32()
+	}
+	if entry := levelByUnit[primaryUnit]; entry != nil {
+		primaryLevel = int(entry.Int32())
+	}
+	if entry := hashByUnit[secondaryUnit]; entry != nil {
+		secondaryHash = entry.Uint32()
+	}
+	if entry := levelByUnit[secondaryUnit]; entry != nil {
+		secondaryLevel = int(entry.Int32())
+	}
+	return
+}
+
+func loadoutTraitDisplayName(cat *Catalog, hash uint32) string {
+	if hash == 0 || hash == EmptyHash {
+		return ""
+	}
+	if trait := cat.LookupTraitByHash(hash); trait != nil {
+		return cnTrait(trait.DisplayName)
+	}
+	if name := ctName(hash); name != "" {
+		return name
+	}
+	if useChinese() {
+		return "未收录词条"
+	}
+	return "Uncatalogued Trait"
+}
+
+func loadoutOptionalHash(hash uint32) string {
+	if hash == 0 || hash == EmptyHash {
+		return ""
+	}
+	return fmt.Sprintf("%08X", hash)
 }

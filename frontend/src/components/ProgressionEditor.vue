@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { FindSaveFiles, ProgressionGetCatalog, ProgressionLoad, ProgressionApply, SelectProgressionSave } from '../../wailsjs/go/main/App'
 import { language } from '../i18n'
 import { backendLanguageReady } from '../backendLanguage'
+import { itemAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
@@ -47,6 +48,9 @@ const weaponTranscendenceSkills = [
   { hash: '3F682593', name: '超凡奥秘' },
   { hash: '79027FC8', name: '超凡破限' },
 ]
+
+function itemIcon(item) { return itemAssetIcon(item) }
+function weaponIcon(weapon) { return weaponAssetIcon(weapon) }
 
 const collator = computed(() => new Intl.Collator(language.value === 'zh' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' }))
 const ownerNames = {
@@ -298,105 +302,109 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
 
 <template>
   <div class="root">
-    <section class="save-card">
+    <section class="save-card ui-card compact-save-bar">
       <div class="save-title">
         <div><strong>2.0.2 养成编辑（离线）</strong><small>用于添加具体物品、素材和武器；请完全退出游戏后修改存档</small></div>
         <span v-if="inventory" class="capacity">物品空位 {{ inventory.emptyItems }} · 武器空位 {{ inventory.emptyWeapons }}</span>
       </div>
       <div class="slots">
-        <button v-for="slot in slots" :key="slot.index" class="slot-btn" :class="{ on: savePath === slot.path }" @click="load(slot.path)">{{ saveSlotLabel(slot) }}</button>
-        <button class="plain-btn" @click="browse">浏览…</button>
-        <button class="plain-btn" :disabled="!savePath" @click="load(savePath)">刷新</button>
+        <button v-for="slot in slots" :key="slot.index" class="slot-btn ui-btn is-sm" :class="{ on: savePath === slot.path }" @click="load(slot.path)">{{ saveSlotLabel(slot) }}</button>
+        <button class="plain-btn ui-btn is-sm" @click="browse">浏览…</button>
+        <button class="plain-btn ui-btn is-sm" :disabled="!savePath" @click="load(savePath)">刷新</button>
       </div>
       <div v-if="savePath" class="path" :title="savePath">{{ savePath }}</div>
     </section>
 
-    <div class="section-tabs">
-      <button :class="{ on: section === 'items' }" @click="switchSection('items')">物品</button>
-      <button :class="{ on: section === 'weapons' }" @click="switchSection('weapons')">武器养成</button>
-      <button :class="{ on: section === 'resources' }" @click="switchSection('resources')">资源（离线备用）</button>
+    <div class="section-tabs ui-seg">
+      <button class="ui-seg-btn" :class="{ on: section === 'items', 'is-on': section === 'items' }" @click="switchSection('items')">物品</button>
+      <button class="ui-seg-btn" :class="{ on: section === 'weapons', 'is-on': section === 'weapons' }" @click="switchSection('weapons')">武器养成</button>
+      <button class="ui-seg-btn" :class="{ on: section === 'resources', 'is-on': section === 'resources' }" @click="switchSection('resources')">资源（离线备用）</button>
     </div>
 
-    <div v-if="loading" class="empty">正在解析存档…</div>
-    <div v-else-if="!inventory" class="empty">先选择一个存档。修改前请完全退出游戏。</div>
+    <div v-if="loading" class="empty ui-empty">正在解析存档…</div>
+    <div v-else-if="!inventory" class="empty ui-empty">先选择一个存档。修改前请完全退出游戏。</div>
 
-    <section v-else-if="section === 'resources'" class="editor-card resource-grid">
+    <section v-else-if="section === 'resources'" class="editor-card resource-grid ui-card ui-panel">
       <p class="offline-note">游戏运行中请优先使用“养成工坊 → 旅途实时助手”；这里只用于游戏已退出时的存档补救。</p>
-      <label><span>金币</span><span class="number-combo"><input v-model.number="resources.rupees" type="number" min="0" max="999999999"><button @click="resources.rupees=999999999">最大</button></span></label>
-      <label><span>强化点数 MSP</span><span class="number-combo"><input v-model.number="resources.mastery" type="number" min="0" max="999999999"><button @click="resources.mastery=999999999">最大</button></span></label>
-      <label><span>达成章</span><span class="number-combo"><input v-model.number="resources.commendations" type="number" min="0" max="999999999"><button @click="resources.commendations=999999999">最大</button></span></label>
-      <button class="plain-btn wide subtle" @click="maxResources">三项全部设为最大</button>
-      <button class="primary-btn wide" :disabled="applying" @click="saveResources">{{ applying ? '写入并验证中…' : '保存三项资源' }}</button>
+      <label><span>金币</span><span class="number-combo"><input v-model.number="resources.rupees" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.rupees=999999999">最大</button></span></label>
+      <label><span>强化点数 MSP</span><span class="number-combo"><input v-model.number="resources.mastery" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.mastery=999999999">最大</button></span></label>
+      <label><span>达成章</span><span class="number-combo"><input v-model.number="resources.commendations" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.commendations=999999999">最大</button></span></label>
+      <button class="plain-btn wide subtle ui-btn is-subtle" @click="maxResources">三项全部设为最大</button>
+      <button class="primary-btn wide ui-btn is-primary" :disabled="applying" @click="saveResources">{{ applying ? '写入并验证中…' : '保存三项资源' }}</button>
     </section>
 
     <template v-else-if="section === 'items'">
-      <section class="editor-card toolbar">
-        <input v-model="search" class="search" placeholder="搜索中文、英文、Hash 或分类">
-        <select v-model="itemCategory" aria-label="物品分类"><option v-for="category in itemCategories" :key="category">{{ category }}</option></select>
-        <select v-model="itemSort" aria-label="物品排序"><option value="name">按名称排序</option><option value="category">按分类排序</option><option value="quantity">按持有数量</option></select>
+      <section class="editor-card toolbar ui-card">
+        <input v-model="search" class="search ui-input" placeholder="搜索中文、英文、Hash 或分类">
+        <select v-model="itemCategory" class="ui-select" aria-label="物品分类"><option v-for="category in itemCategories" :key="category">{{ category }}</option></select>
+        <select v-model="itemSort" class="ui-select" aria-label="物品排序"><option value="name">按名称排序</option><option value="category">按分类排序</option><option value="quantity">按持有数量</option></select>
         <label class="owned-toggle"><input v-model="ownedOnly" type="checkbox"> 仅已拥有</label>
         <label class="experimental"><input v-model="showExperimental" type="checkbox"> 显示 8 个疑似坏档条目</label>
         <span class="result-count">显示 {{ itemResults.length }} 项</span>
       </section>
       <div class="workspace">
-        <div class="catalog-list">
-          <button v-for="item in itemResults" :key="item.hash" class="catalog-row" :class="{ on: selectedItem?.hash === item.hash, danger: item.dangerous }" @click="pickItem(item)">
+        <div class="catalog-list ui-card">
+          <button v-for="item in itemResults" :key="item.hash" class="catalog-row ui-row" :class="{ on: selectedItem?.hash === item.hash, danger: item.dangerous }" @click="pickItem(item)">
+            <img v-if="itemIcon(item)" class="catalog-asset-icon item-icon" :src="itemIcon(item)" alt="" />
             <span><strong>{{ itemDisplayName(item) }}</strong><small>{{ item.hash }}</small></span>
             <em v-if="inventory.items.some(i => i.hash === item.hash)">已有 {{ inventory.items.find(i => i.hash === item.hash).quantity }}</em>
           </button>
-          <div v-if="!itemResults.length" class="empty small">没有匹配的安全条目</div>
+          <div v-if="!itemResults.length" class="empty small ui-empty">没有匹配的安全条目</div>
         </div>
-        <aside class="detail-panel">
+        <aside class="detail-panel ui-card ui-panel">
           <template v-if="selectedItem">
+            <img v-if="itemIcon(selectedItem)" class="detail-asset-icon item-icon" :src="itemIcon(selectedItem)" alt="" />
             <h3>{{ itemDisplayName(selectedItem) }}</h3>
             <p>{{ itemCategoryName(selectedItem.category) }}</p><code>{{ selectedItem.hash }}</code>
-            <label class="field"><span>操作</span><select v-model="itemMode"><option value="add">在现有数量上增加</option><option value="set">设置为指定数量</option></select></label>
-            <label class="field"><span>数量（0–999）</span><span class="number-combo"><input v-model.number="itemQuantity" type="number" min="0" max="999"><button @click="itemQuantity=999">最大</button></span></label>
+            <label class="field ui-field"><span class="ui-field-label">操作</span><select v-model="itemMode" class="ui-select"><option value="add">在现有数量上增加</option><option value="set">设置为指定数量</option></select></label>
+            <label class="field ui-field"><span class="ui-field-label">数量（0–999）</span><span class="number-combo"><input v-model.number="itemQuantity" class="ui-input" type="number" min="0" max="999"><button class="ui-btn is-sm" @click="itemQuantity=999">最大</button></span></label>
             <p v-if="selectedOwnedQuantity !== null" class="current">当前数量：{{ selectedOwnedQuantity }}</p>
             <label v-if="selectedItem.dangerous" class="danger-confirm"><input v-model="allowDangerous" type="checkbox"> 我知道此条目来源表标记为可能坏档，仍要实验写入</label>
-            <button class="primary-btn" :disabled="applying || (selectedItem.dangerous && !allowDangerous)" @click="saveItem">{{ applying ? '写入并验证中…' : '应用物品修改' }}</button>
+            <button class="primary-btn ui-btn is-primary" :disabled="applying || (selectedItem.dangerous && !allowDangerous)" @click="saveItem">{{ applying ? '写入并验证中…' : '应用物品修改' }}</button>
           </template>
-          <div v-else class="empty small">从左侧选择物品</div>
+          <div v-else class="empty small ui-empty">从左侧选择物品</div>
         </aside>
       </div>
     </template>
 
     <template v-else-if="section === 'weapons'">
-      <section class="editor-card toolbar">
-        <div class="mini-tabs"><button :class="{ on: weaponView === 'owned' }" @click="switchWeaponView('owned')">修改已有</button><button :class="{ on: weaponView === 'catalog' }" @click="switchWeaponView('catalog')">添加武器</button></div>
-        <input v-model="search" class="search" placeholder="搜索中文角色、英文武器名、编号或 Hash">
-        <select v-model="weaponOwner" aria-label="所属角色"><option v-for="owner in weaponOwners" :key="owner">{{ owner }}</option></select>
-        <select v-model="weaponSort" aria-label="武器排序"><option value="owner">按角色与编号</option><option value="name">按名称排序</option><option v-if="weaponView==='owned'" value="level">按等级从高到低</option></select>
+      <section class="editor-card toolbar ui-card">
+        <div class="mini-tabs ui-seg"><button class="ui-seg-btn" :class="{ on: weaponView === 'owned', 'is-on': weaponView === 'owned' }" @click="switchWeaponView('owned')">修改已有</button><button class="ui-seg-btn" :class="{ on: weaponView === 'catalog', 'is-on': weaponView === 'catalog' }" @click="switchWeaponView('catalog')">添加武器</button></div>
+        <input v-model="search" class="search ui-input" placeholder="搜索中文角色、英文武器名、编号或 Hash">
+        <select v-model="weaponOwner" class="ui-select" aria-label="所属角色"><option v-for="owner in weaponOwners" :key="owner">{{ owner }}</option></select>
+        <select v-model="weaponSort" class="ui-select" aria-label="武器排序"><option value="owner">按角色与编号</option><option value="name">按名称排序</option><option v-if="weaponView==='owned'" value="level">按等级从高到低</option></select>
         <span class="result-count">显示 {{ weaponResults.length }} 把</span>
       </section>
       <div class="workspace">
-        <div class="catalog-list">
-          <button v-for="weapon in weaponResults" :key="weaponView === 'owned' ? weapon.unitId : weapon.hash" class="catalog-row" :class="{ on: selectedWeapon === weapon, owned: weaponView === 'catalog' && ownedWeaponBases.has(weapon.baseHash || weapon.hash) }" :disabled="weaponView === 'catalog' && ownedWeaponBases.has(weapon.baseHash || weapon.hash)" @click="pickWeapon(weapon)">
+        <div class="catalog-list ui-card">
+          <button v-for="weapon in weaponResults" :key="weaponView === 'owned' ? weapon.unitId : weapon.hash" class="catalog-row ui-row" :class="{ on: selectedWeapon === weapon, owned: weaponView === 'catalog' && ownedWeaponBases.has(weapon.baseHash || weapon.hash) }" :disabled="weaponView === 'catalog' && ownedWeaponBases.has(weapon.baseHash || weapon.hash)" @click="pickWeapon(weapon)">
+            <img v-if="weaponIcon(weapon)" class="catalog-asset-icon weapon-icon" :src="weaponIcon(weapon)" alt="" />
             <span><span class="weapon-name-line"><strong>{{ weapon.displayName }}</strong><i class="weapon-type" :data-type="weapon.weaponType">{{ weaponTypeLabel(weapon) }}</i></span><small>{{ weapon.hash }}<template v-if="weapon.internalId"> · {{ weapon.internalId }}</template></small></span>
             <em v-if="weaponView === 'owned'" class="weapon-progress">Lv.{{ weapon.level }}<small v-if="weapon.canAwaken">觉醒 {{ weapon.awakening }}</small><small>超凡 {{ weapon.transcendence || 0 }}</small></em>
             <em v-else-if="ownedWeaponBases.has(weapon.baseHash || weapon.hash)">已拥有</em>
             <em v-else>{{ weapon.ownerName }}</em>
           </button>
         </div>
-        <aside class="detail-panel">
+        <aside class="detail-panel ui-card ui-panel">
           <template v-if="selectedWeapon">
+            <img v-if="weaponIcon(selectedWeapon)" class="detail-asset-icon weapon-icon" :src="weaponIcon(selectedWeapon)" alt="" />
             <h3>{{ selectedWeapon.displayName }}</h3><code>{{ selectedWeapon.hash }}</code>
             <div class="weapon-kind"><b>{{ weaponKind.label }}</b><span>{{ weaponKind.detail }}</span></div>
             <div class="weapon-fields">
-              <label class="field"><span>等级</span><select v-model.number="weaponLevel"><option v-for="value in weaponLevelOptions" :key="value" :value="value">{{ value }}</option></select></label>
-              <label class="field"><span>等级上限解锁</span><select v-model.number="weaponUncap"><option v-for="value in weaponUncapOptions" :key="value" :value="value">{{ value }} / 6{{ value === 6 ? '（可升至 150）' : '' }}</option></select></label>
-              <label class="field"><span>幻晶</span><select v-model.number="weaponMirage"><option v-for="value in weaponMirageOptions" :key="value" :value="value">{{ value }}</option></select></label>
-              <label class="field"><span>武器觉醒</span><select v-model.number="weaponAwakening" :disabled="!selectedWeapon.canAwaken"><option v-for="value in weaponAwakeningOptions" :key="value" :value="value">{{ value }} / 10</option></select></label>
-              <label class="field"><span>DLC 超凡突破</span><select v-model.number="weaponTranscendence"><option v-for="value in weaponTranscendenceOptions" :key="value" :value="value">{{ value }} / 7</option></select></label>
-              <label v-if="weaponTranscendence >= 7" class="field"><span>第 7 阶超凡效果</span><select v-model="weaponTranscendenceSkill"><option v-for="skill in weaponTranscendenceSkills" :key="skill.hash" :value="skill.hash">{{ skill.name }}</option></select></label>
+              <label class="field ui-field"><span class="ui-field-label">等级</span><select v-model.number="weaponLevel" class="ui-select"><option v-for="value in weaponLevelOptions" :key="value" :value="value">{{ value }}</option></select></label>
+              <label class="field ui-field"><span class="ui-field-label">等级上限解锁</span><select v-model.number="weaponUncap" class="ui-select"><option v-for="value in weaponUncapOptions" :key="value" :value="value">{{ value }} / 6{{ value === 6 ? '（可升至 150）' : '' }}</option></select></label>
+              <label class="field ui-field"><span class="ui-field-label">幻晶</span><select v-model.number="weaponMirage" class="ui-select"><option v-for="value in weaponMirageOptions" :key="value" :value="value">{{ value }}</option></select></label>
+              <label class="field ui-field"><span class="ui-field-label">武器觉醒</span><select v-model.number="weaponAwakening" class="ui-select" :disabled="!selectedWeapon.canAwaken"><option v-for="value in weaponAwakeningOptions" :key="value" :value="value">{{ value }} / 10</option></select></label>
+              <label class="field ui-field"><span class="ui-field-label">DLC 超凡突破</span><select v-model.number="weaponTranscendence" class="ui-select"><option v-for="value in weaponTranscendenceOptions" :key="value" :value="value">{{ value }} / 7</option></select></label>
+              <label v-if="weaponTranscendence >= 7" class="field ui-field"><span class="ui-field-label">第 7 阶超凡效果</span><select v-model="weaponTranscendenceSkill" class="ui-select"><option v-for="skill in weaponTranscendenceSkills" :key="skill.hash" :value="skill.hash">{{ skill.name }}</option></select></label>
             </div>
-            <div class="weapon-actions"><button class="plain-btn subtle" @click="maxWeapon">等级与幻晶最大</button><button class="plain-btn subtle" @click="maxWeaponProgression">全部养成最大</button></div>
+            <div class="weapon-actions"><button class="plain-btn subtle ui-btn is-subtle" @click="maxWeapon">等级与幻晶最大</button><button class="plain-btn subtle ui-btn is-subtle" @click="maxWeaponProgression">全部养成最大</button></div>
             <p class="current">“等级上限解锁 6”“武器觉醒 10”“DLC 超凡突破 7”是三个独立字段。觉醒跨阶段时会同步切换 2.0.2 对应武器 Hash；超凡 7 阶效果会写入独立效果槽。</p>
             <LegalityIndicator :status="weaponLegality.status" :message="weaponLegality.message" />
             <label v-if="weaponUnlockRisk" class="unlock-risk"><input v-model="allowWeaponUnlockRisk" type="checkbox"> 我已确认游戏内任务/觉醒解锁状态，仍按当前数值写入</label>
-            <button class="primary-btn" :disabled="applying || !weaponLegality.writable || (!!weaponUnlockRisk && !allowWeaponUnlockRisk)" @click="saveWeapon">{{ applying ? '写入并验证中…' : weaponView === 'owned' ? '保存武器养成' : '添加这把武器' }}</button>
+            <button class="primary-btn ui-btn is-primary" :disabled="applying || !weaponLegality.writable || (!!weaponUnlockRisk && !allowWeaponUnlockRisk)" @click="saveWeapon">{{ applying ? '写入并验证中…' : weaponView === 'owned' ? '保存武器养成' : '添加这把武器' }}</button>
           </template>
-          <div v-else class="empty small">从左侧选择武器</div>
+          <div v-else class="empty small ui-empty">从左侧选择武器</div>
         </aside>
       </div>
     </template>
@@ -405,40 +413,249 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
 </template>
 
 <style scoped>
-.root { width:100%; max-width:940px; display:flex; flex-direction:column; gap:11px; color:rgba(255,255,255,.7); container-type:inline-size; }
-.save-card,.editor-card,.detail-panel,.catalog-list { border:1px solid rgba(255,255,255,.075); background:rgba(255,255,255,.026); border-radius:12px; }
-.save-card { padding:14px 16px; display:flex; flex-direction:column; gap:9px; }
-.save-title { display:flex; justify-content:space-between; gap:12px; }
-.save-title strong { display:block; font-size:.9rem; letter-spacing:.5px; }.save-title small { display:block; margin-top:3px; color:rgba(255,255,255,.3); font-size:.66rem; }
-.capacity { font-size:.68rem; color:rgba(74,222,128,.7); white-space:nowrap; }
-.slots,.toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }.toolbar { padding:10px; }
-.slot-btn,.plain-btn,.section-tabs button,.mini-tabs button { padding:7px 12px; border-radius:7px; border:1px solid rgba(255,255,255,.11); background:rgba(255,255,255,.045); color:rgba(255,255,255,.5); font:inherit; font-size:.72rem; cursor:pointer; }
-.slot-btn.on,.section-tabs button.on,.mini-tabs button.on { color:#9a7440; border-color:rgba(154,116,64,.4); background:rgba(154,116,64,.11); }.path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:750 .64rem var(--font-data); font-variant-numeric:tabular-nums lining-nums; color:rgba(255,255,255,.24); }
-.section-tabs,.mini-tabs { display:flex; gap:5px; }.section-tabs { justify-content:center; }.section-tabs button { min-width:105px; }
-.search,input,select { box-sizing:border-box; padding:8px 10px; border-radius:7px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.055); color:#e5f7fa; outline:none; font:inherit; font-size:.74rem; }.search { flex:1; min-width:220px; }.search:focus,input:focus,select:focus { border-color:rgba(154,116,64,.45); }select option { background:#152132; }
-.experimental { font-size:.67rem; color:rgba(251,191,36,.7); }.workspace { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(250px,.8fr); gap:11px; min-height:360px; }.catalog-list { max-height:430px; overflow-y:auto; padding:5px; }.catalog-row { width:100%; min-height:48px; padding:7px 10px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid transparent; border-bottom-color:rgba(255,255,255,.035); border-radius:7px; background:transparent; color:inherit; text-align:left; cursor:pointer; }.catalog-row:hover { background:rgba(255,255,255,.035); }.catalog-row.on { border-color:rgba(154,116,64,.35); background:rgba(154,116,64,.09); }.catalog-row.danger { color:#fbbf24; }.catalog-row strong { display:block; font-size:.76rem; font-weight:600; }.catalog-row small { display:block; margin-top:3px; color:rgba(255,255,255,.25); font:750 .62rem var(--font-data); font-variant-numeric:tabular-nums lining-nums; }.catalog-row em { font-style:normal; font-size:.67rem; color:#9a7440; white-space:nowrap; }
-.detail-panel { padding:16px; display:flex; flex-direction:column; gap:11px; align-self:start; position:sticky; top:0; }.detail-panel h3 { margin:0; font-size:.92rem; color:rgba(255,255,255,.78); }.detail-panel p { margin:0; font-size:.68rem; color:rgba(255,255,255,.33); line-height:1.55; }.detail-panel code { color:#9a7440; font-size:.7rem; }.field { display:flex; flex-direction:column; gap:5px; font-size:.68rem; color:rgba(255,255,255,.4); }.field input,.field select { width:100%; }.weapon-fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }.current { color:rgba(154,116,64,.57)!important; }.danger-confirm { padding:8px; border-radius:7px; background:rgba(245,158,11,.08); color:#fbbf24; font-size:.67rem; line-height:1.4; }
-.primary-btn { padding:9px 14px; border-radius:8px; border:1px solid rgba(74,222,128,.3); background:rgba(34,197,94,.12); color:#4ade80; font:inherit; font-size:.76rem; font-weight:600; cursor:pointer; }.primary-btn:hover:not(:disabled) { background:rgba(34,197,94,.19); }.primary-btn:disabled,button:disabled { opacity:.35; cursor:not-allowed; }.resource-grid { padding:16px; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }.resource-grid label { display:flex; flex-direction:column; gap:6px; font-size:.7rem; color:rgba(255,255,255,.42); }.offline-note { grid-column:1/-1; margin:0; padding:8px 10px; border:1px solid rgba(251,191,36,.18); border-radius:7px; background:rgba(245,158,11,.06); color:rgba(251,191,36,.7); font-size:.66rem; line-height:1.45; }.wide { grid-column:1/-1; }
-.empty { padding:34px 12px; text-align:center; color:rgba(255,255,255,.3); font-size:.76rem; }.empty.small { padding:24px 8px; }input[type=checkbox] { accent-color:#9a7440; }
-@media (max-width:720px) { .workspace { grid-template-columns:1fr; }.detail-panel { position:static; }.resource-grid { grid-template-columns:1fr; }.wide { grid-column:auto; } }
-
-/* Field notes catalog layout */
-.root { gap:13px;color:var(--text-secondary) }.save-card,.editor-card,.detail-panel,.catalog-list { border-color:rgba(154,202,224,.14);background:rgba(8,31,53,.7);border-radius:4px 12px 4px 12px }.save-card { padding:14px 17px;border-top-color:rgba(218,187,115,.27) }.capacity { color:var(--green) }.slots { gap:7px }.slot-btn,.plain-btn,.section-tabs button,.mini-tabs button { border-color:rgba(154,202,224,.16);border-radius:3px 8px 3px 8px;background:rgba(16,52,79,.58);color:#91a9b5 }.slot-btn.on,.section-tabs button.on,.mini-tabs button.on { color:#f0d99d;border-color:rgba(218,187,115,.38);background:rgba(218,187,115,.09) }.path { color:#5f7b89 }.section-tabs { justify-content:flex-start;padding:3px;border-bottom:1px solid rgba(218,187,115,.12) }.section-tabs button { min-width:120px;border-color:transparent;background:transparent }.section-tabs button.on { box-shadow:inset 0 -1px var(--gold) }
-.toolbar { display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:8px;padding:11px 12px }.toolbar .mini-tabs { grid-column:auto }.toolbar:has(.mini-tabs) { grid-template-columns:auto minmax(220px,1fr) auto auto auto }.search,input,select { border-color:rgba(154,202,224,.18);border-radius:4px;background:rgba(12,43,68,.78);color:#edf4f6 }.toolbar select { min-width:122px }.owned-toggle,.experimental { display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:9px;color:#7f9aa7 }.experimental { color:#c9a964 }.result-count { grid-column:1/-1;color:#648291;font-size:9px;text-align:right }
-.workspace { grid-template-columns:minmax(0,1.55fr) minmax(280px,.8fr);gap:12px }.catalog-list { max-height:470px;padding:6px }.catalog-row { min-height:57px;padding:9px 11px;border-bottom-color:rgba(154,202,224,.065);border-radius:3px 8px 3px 8px }.catalog-row:hover { background:rgba(84,166,201,.07) }.catalog-row.on { border-color:rgba(218,187,115,.29);background:linear-gradient(90deg,rgba(218,187,115,.09),rgba(87,171,205,.05));box-shadow:inset 2px 0 var(--gold) }.catalog-row strong { color:#dce8ec;font-size:12px }.catalog-row small { color:#607c8a;font-size:9px }.catalog-row em { color:#8bdcf3 }.detail-panel { padding:18px;border-top-color:rgba(218,187,115,.25);box-shadow:0 14px 36px rgba(0,7,17,.17) }.detail-panel h3 { color:#f0e8d7;font:700 16px var(--font-ui);letter-spacing:.04em }.detail-panel code { color:#8bdcf3 }.weapon-fields { gap:10px }.field { color:#8099a6 }.number-combo { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px }.number-combo input { min-width:0 }.number-combo button { min-width:45px;padding:0 9px;border:1px solid rgba(218,187,115,.27);border-radius:3px 7px 3px 7px;background:rgba(218,187,115,.07);color:#d9bd7c;font:inherit;font-size:9px;cursor:pointer }.number-combo button:hover { border-color:var(--gold);background:rgba(218,187,115,.14) }.plain-btn.subtle { color:#cdb574;border-color:rgba(218,187,115,.21);background:rgba(218,187,115,.045) }.primary-btn { border-color:rgba(218,187,115,.38);background:linear-gradient(135deg,rgba(184,142,61,.24),rgba(91,65,24,.15));color:#f0d99d }.resource-grid { border-top-color:rgba(218,187,115,.24) }.offline-note { border-color:rgba(218,187,115,.22);background:rgba(218,187,115,.055);color:#c4ad76 }
-.catalog-row.owned { opacity:.58;cursor:not-allowed }.catalog-row.owned em { color:#a36f4c }.weapon-kind { display:flex;align-items:flex-start;gap:8px;margin:10px 0 2px;padding:8px 10px;border:1px solid rgba(218,187,115,.22);background:rgba(218,187,115,.06) }.weapon-kind b { flex:0 0 auto;color:#d2b36c;font-size:10px }.weapon-kind span { color:#8fa5ae;font-size:9px;line-height:1.5 }.unlock-risk { display:flex;align-items:flex-start;gap:7px;padding:9px 10px;border:1px solid rgba(207,139,76,.28);background:rgba(207,139,76,.08);color:#c5a676;font-size:9px;line-height:1.55 }
-.weapon-name-line{display:flex;align-items:center;gap:7px;min-width:0}.weapon-name-line strong{min-width:0}.weapon-type{flex:0 0 auto;padding:2px 6px;border:1px solid rgba(188,151,78,.28);border-radius:999px;background:rgba(188,151,78,.07);color:#cdb574;font-style:normal;font-size:8px;line-height:1.2}.weapon-type[data-type="terminus"]{border-color:rgba(170,112,71,.35);color:#d3a06f}.weapon-type[data-type="ascension"],.weapon-type[data-type="special"]{border-color:rgba(197,162,90,.38);color:#e0c27f}.weapon-progress{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:#d9bd7c!important;font-family:var(--font-data);font-variant-numeric:tabular-nums}.weapon-progress small{font-size:8px;color:#77909b}.weapon-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.weapon-actions button{width:100%}
-.capacity{display:inline!important;align-self:center!important;padding:0!important;border:0!important;border-radius:0!important;color:#75654d!important;background:transparent!important;box-shadow:none!important;font-size:9px!important;font-weight:650!important}
-.weapon-kind{display:block!important;margin:9px 0 2px!important;padding:8px 9px!important;border:1px solid rgba(133,96,44,.26)!important;border-left:3px solid #8b6737!important;border-radius:0!important;background:#edddba!important;box-shadow:none!important}.weapon-kind b{display:block!important;color:#6d4f27!important;font-size:10px!important;font-weight:750!important}.weapon-kind span{display:block!important;margin-top:3px!important;color:#6d604e!important;font-size:9px!important;line-height:1.5!important}
-@container (max-width:680px){
-  .toolbar,.toolbar:has(.mini-tabs){grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch}
-  .toolbar>*{min-width:0;max-width:100%}
-  .toolbar .mini-tabs,.toolbar .search,.toolbar .result-count{grid-column:1/-1}
-  .toolbar .mini-tabs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  .toolbar .mini-tabs button,.toolbar select{width:100%;min-width:0}
-  .owned-toggle,.experimental{min-height:31px;white-space:normal}
-  .section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
-  .section-tabs button{width:100%;min-width:0;padding-left:6px;padding-right:6px;white-space:normal}
+.root {
+  width:100%;
+  max-width:1000px;
+  display:flex;
+  flex-direction:column;
+  gap:var(--space-5);
+  color:var(--text-secondary);
+  container-type:inline-size;
 }
-@media(max-width:900px){.toolbar,.toolbar:has(.mini-tabs){grid-template-columns:1fr 1fr}.toolbar .search{grid-column:1/-1}.result-count{grid-column:1/-1}.workspace{grid-template-columns:1fr}.detail-panel{position:static}}
+
+.compact-save-bar {
+  display:flex;
+  flex-direction:column;
+  gap:var(--space-3);
+  padding:var(--space-4) var(--space-5);
+}
+.save-title { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-5); min-width:0; }
+.save-title > div { min-width:0; }
+.save-title strong { display:block; color:var(--text-primary); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
+.save-title small { display:block; margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
+.capacity { flex:0 0 auto; color:var(--success-ink); font-size:var(--fs-sm); white-space:nowrap; }
+.slots { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.slot-btn.on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); }
+.path {
+  overflow:hidden;
+  color:var(--text-secondary);
+  font-family:var(--font-data);
+  font-size:var(--fs-xs);
+  font-variant-numeric:tabular-nums lining-nums;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.section-tabs { align-self:flex-start; }
+.editor-card { min-width:0; }
+.toolbar {
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto auto auto;
+  align-items:center;
+  gap:var(--space-3);
+  padding:var(--space-4);
+}
+.toolbar:has(.mini-tabs) { grid-template-columns:auto minmax(220px,1fr) auto auto auto; }
+.toolbar .search { min-width:0; width:100%; }
+.toolbar .ui-select { min-width:128px; }
+.owned-toggle,
+.experimental {
+  display:flex;
+  align-items:center;
+  gap:var(--space-2);
+  min-height:var(--control-height-sm);
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+  white-space:nowrap;
+}
+.experimental { color:var(--warning-ink); }
+.result-count {
+  grid-column:1 / -1;
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+  text-align:right;
+}
+
+.workspace {
+  display:grid;
+  grid-template-columns:minmax(0,1.6fr) minmax(300px,.9fr);
+  gap:var(--space-5);
+  min-height:360px;
+}
+.catalog-list {
+  min-width:0;
+  max-height:500px;
+  overflow-y:auto;
+  padding:var(--space-2);
+}
+.catalog-row {
+  width:100%;
+  min-height:54px;
+  justify-content:space-between;
+  border-color:transparent;
+  border-bottom-color:var(--border-soft);
+  background:transparent;
+  color:var(--text-secondary);
+  text-align:left;
+  cursor:pointer;
+}
+.catalog-row.on {
+  border-color:var(--selected-border);
+  background:var(--surface-row);
+  box-shadow:3px 0 0 var(--selected-bar) inset;
+}
+.catalog-row.danger { color:var(--warning-ink); }
+.catalog-row.owned { opacity:var(--state-disabled-opacity); cursor:not-allowed; }
+.catalog-asset-icon { width:44px; height:44px; flex:0 0 44px; border:1px solid var(--line-soft); border-radius:7px; background:var(--surface-field); object-fit:contain; }
+.catalog-asset-icon.weapon-icon { width:64px; flex-basis:64px; }
+.catalog-row strong { display:block; color:var(--text-primary); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
+.catalog-row small {
+  display:block;
+  margin-top:var(--space-1);
+  color:var(--text-secondary);
+  font-family:var(--font-data);
+  font-size:var(--fs-xs);
+  font-variant-numeric:tabular-nums lining-nums;
+}
+.catalog-row em {
+  flex:0 0 auto;
+  color:var(--info-ink);
+  font-size:var(--fs-sm);
+  font-style:normal;
+  white-space:nowrap;
+}
+
+.detail-panel {
+  position:sticky;
+  top:0;
+  align-self:start;
+  min-width:0;
+  gap:var(--space-4);
+  padding:var(--space-6);
+}
+.detail-asset-icon { width:112px; height:84px; float:right; margin:0 0 var(--space-3) var(--space-3); border:1px solid var(--line-soft); border-radius:9px; background:var(--surface-field); object-fit:contain; }
+.detail-asset-icon.item-icon { width:72px; height:72px; }
+.detail-panel h3 { margin:0; color:var(--text-primary); font-size:var(--fs-lg); }
+.detail-panel p { margin:0; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
+.detail-panel code { color:var(--info-ink); font-family:var(--font-data); font-size:var(--fs-sm); overflow-wrap:anywhere; }
+.field { min-width:0; }
+.field .ui-input,
+.field .ui-select { width:100%; }
+.weapon-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); }
+.current { color:var(--info-ink); }
+.danger-confirm,
+.unlock-risk {
+  display:flex;
+  align-items:flex-start;
+  gap:var(--space-2);
+  padding:var(--space-3);
+  border:1px solid var(--warning);
+  border-radius:var(--radius-sm);
+  background:var(--warning-bg);
+  color:var(--warning-ink);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+}
+
+.number-combo { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); }
+.number-combo .ui-input { min-width:0; }
+.resource-grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:var(--space-5);
+  padding:var(--space-6);
+}
+.resource-grid label { display:flex; min-width:0; flex-direction:column; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-sm); }
+.offline-note {
+  grid-column:1 / -1;
+  margin:0;
+  padding:var(--space-3) var(--space-4);
+  border-left:3px solid var(--warning);
+  border-radius:var(--radius-sm);
+  background:var(--warning-bg);
+  color:var(--warning-ink);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+}
+.wide { grid-column:1 / -1; width:100%; }
+
+.weapon-kind {
+  display:flex;
+  flex-direction:column;
+  gap:var(--space-1);
+  padding:var(--space-3) var(--space-4);
+  border-left:3px solid var(--accent);
+  border-radius:var(--radius-sm);
+  background:var(--accent-soft);
+}
+.weapon-kind b { color:var(--accent-hover); font-size:var(--fs-sm); }
+.weapon-kind span { color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
+.weapon-name-line { display:flex; min-width:0; align-items:center; gap:var(--space-2); }
+.weapon-name-line strong { min-width:0; }
+.weapon-type {
+  flex:0 0 auto;
+  padding:1px var(--space-2);
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-pill);
+  background:var(--accent-soft);
+  color:var(--accent-hover);
+  font-size:var(--fs-xs);
+  font-style:normal;
+  line-height:var(--lh-tight);
+}
+.weapon-progress {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:var(--space-1);
+  color:var(--accent-hover);
+  font-family:var(--font-data);
+  font-variant-numeric:tabular-nums;
+}
+.weapon-progress small { color:var(--text-secondary); font-size:var(--fs-xs); }
+.weapon-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
+.weapon-actions button { width:100%; }
+
+.empty.small { padding:var(--space-7) var(--space-3); }
+
+@container (max-width:760px) {
+  .workspace { grid-template-columns:1fr; }
+  .detail-panel { position:static; }
+  .resource-grid { grid-template-columns:1fr; }
+  .wide { grid-column:auto; }
+}
+
+@container (max-width:680px) {
+  .save-title { flex-direction:column; gap:var(--space-2); }
+  .capacity { white-space:normal; }
+  .section-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; }
+  .section-tabs .ui-seg-btn { min-width:0; padding-inline:var(--space-2); white-space:normal; }
+  .toolbar,
+  .toolbar:has(.mini-tabs) { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; }
+  .toolbar > * { min-width:0; max-width:100%; }
+  .toolbar .mini-tabs,
+  .toolbar .search,
+  .toolbar .result-count { grid-column:1 / -1; }
+  .toolbar .mini-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .toolbar .ui-select { width:100%; min-width:0; }
+  .owned-toggle,
+  .experimental { white-space:normal; }
+}
+
+@container (max-width:460px) {
+  .compact-save-bar,
+  .resource-grid,
+  .detail-panel { padding:var(--space-4); }
+  .section-tabs { grid-template-columns:1fr; }
+  .toolbar,
+  .toolbar:has(.mini-tabs) { grid-template-columns:1fr; }
+  .toolbar > *,
+  .toolbar .mini-tabs,
+  .toolbar .search,
+  .toolbar .result-count { grid-column:1; }
+  .weapon-fields,
+  .weapon-actions { grid-template-columns:1fr; }
+  .catalog-row { align-items:flex-start; }
+}
 </style>

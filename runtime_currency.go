@@ -1,15 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"unsafe"
 )
 
 const (
-	currencyHookSize       = 5
-	currencyCaveDataOffset = uintptr(0x40)
+	currencyHookSize         = 5
+	currencyCaveMarkerOffset = 0x30
+	currencyCaveDataOffset   = uintptr(0x40)
 )
+
+var currencyCaveMarker = [...]byte{'G', 'B', 'F', 'R', 'C', 'U', 'R', '1'}
+
+var currencyInstallRemoteCodeHook = installRemoteCodeHook
 
 // DLC 2.0.2 CT v0.7.4 captures RCX at this instruction and then reads the
 // resource fields at +30/+34/+98/+9C. The wildcards are relocation- and
@@ -81,6 +87,16 @@ func (a *App) ensureCurrencyHook() error {
 		if a.currencyCaveAddr == 0 {
 			return fmt.Errorf("检测到未知来源的资源定位 Hook；请完全退出游戏后重试")
 		}
+		if len(a.currencyOriginal) != currencyHookSize || !isCurrencyCaptureOriginal(a.currencyOriginal) {
+			return fmt.Errorf("缺少可验证的资源定位原始指令，拒绝接管现有 Hook")
+		}
+		cave := relJumpTarget(a.currencyHookAddr, current)
+		if cave != a.currencyCaveAddr {
+			return fmt.Errorf("资源定位入口已被其他 Hook 替换：目标 0x%X，当前租约 0x%X", cave, a.currencyCaveAddr)
+		}
+		if err := a.validateCurrencyCaptureCave(cave, a.currencyOriginal); err != nil {
+			return fmt.Errorf("资源定位代码洞所有权校验失败: %w", err)
+		}
 		return nil
 	}
 	if !isCurrencyCaptureOriginal(current) {
@@ -99,17 +115,30 @@ func (a *App) installCurrencyHook(original []byte) error {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
 	}
-	if err := writeProcessMemory(a.hProcess, cave, unsafe.Pointer(&code[0]), uintptr(len(code))); err != nil {
+	if err := writeCodeMemory(a.hProcess, cave, code); err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return fmt.Errorf("写入实时资源定位代码洞失败: %w", err)
+	}
+	if err := a.validateCurrencyCaptureCave(cave, original); err != nil {
+		_ = virtualFreeRemote(a.hProcess, cave)
+		return fmt.Errorf("实时资源定位代码洞写后校验失败: %w", err)
 	}
 	patch, err := makeRelJump(a.currencyHookAddr, cave, currencyHookSize)
 	if err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
 	}
-	if err := writeCodeMemory(a.hProcess, a.currencyHookAddr, patch); err != nil {
-		_ = virtualFreeRemote(a.hProcess, cave)
+	canFree, err := currencyInstallRemoteCodeHook(a.hProcess, a.currencyHookAddr, original, patch)
+	if err != nil {
+		if canFree {
+			_ = virtualFreeRemote(a.hProcess, cave)
+		} else {
+			// The entry write may have reached the process while its rollback
+			// could not be proven. Keep the cave and ownership evidence so a
+			// later detach can inspect and recover it fail-closed.
+			a.currencyCaveAddr = cave
+			a.currencyOriginal = append(a.currencyOriginal[:0], original...)
+		}
 		return fmt.Errorf("写入实时资源定位 Hook 失败: %w", err)
 	}
 	a.currencyCaveAddr = cave
@@ -125,14 +154,37 @@ func (a *App) releaseCurrencyHook() error {
 	if err := readProcessMemory(a.hProcess, a.currencyHookAddr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {
 		return err
 	}
-	if !isCurrencyCaptureJump(current) {
-		return nil
-	}
 	if len(a.currencyOriginal) != currencyHookSize || !isCurrencyCaptureOriginal(a.currencyOriginal) {
 		return fmt.Errorf("缺少可验证的资源定位原始指令，拒绝恢复")
 	}
+	if bytes.Equal(current, a.currencyOriginal) {
+		a.currencyHookAddr = 0
+		a.currencyCaveAddr = 0
+		a.currencyOriginal = nil
+		return nil
+	}
+	if !isCurrencyCaptureJump(current) {
+		return fmt.Errorf("资源定位入口既不是自有跳转也不是原始指令: %s", bytesToHex(current))
+	}
+	if a.currencyCaveAddr == 0 {
+		return fmt.Errorf("资源定位代码洞地址为空，拒绝恢复未知跳转")
+	}
+	cave := relJumpTarget(a.currencyHookAddr, current)
+	if cave != a.currencyCaveAddr {
+		return fmt.Errorf("资源定位入口属于其他 Hook：目标 0x%X，当前租约 0x%X", cave, a.currencyCaveAddr)
+	}
+	if err := a.validateCurrencyCaptureCave(cave, a.currencyOriginal); err != nil {
+		return fmt.Errorf("资源定位代码洞所有权校验失败: %w", err)
+	}
 	if err := writeCodeMemory(a.hProcess, a.currencyHookAddr, a.currencyOriginal); err != nil {
 		return fmt.Errorf("恢复实时资源定位指令失败: %w", err)
+	}
+	restored := make([]byte, currencyHookSize)
+	if err := readProcessMemory(a.hProcess, a.currencyHookAddr, unsafe.Pointer(&restored[0]), uintptr(len(restored))); err != nil {
+		return fmt.Errorf("恢复实时资源定位指令后回读失败: %w", err)
+	}
+	if !bytes.Equal(restored, a.currencyOriginal) {
+		return fmt.Errorf("恢复实时资源定位指令后回读不一致: %s", bytesToHex(restored))
 	}
 	a.currencyHookAddr = 0
 	a.currencyCaveAddr = 0
@@ -168,5 +220,48 @@ func buildCurrencyCaptureCave(cave, returnAddr uintptr, original []byte) ([]byte
 	for len(code) < int(currencyCaveDataOffset)+8 {
 		code = append(code, 0)
 	}
+	copy(code[currencyCaveMarkerOffset:], currencyCaveMarker[:])
 	return code, nil
+}
+
+func validateCurrencyCaptureCaveBytes(cave, hookAddr uintptr, original, code []byte) error {
+	const (
+		dataAddressOffset = 2
+		captureOffset     = 10
+		originalOffset    = 13
+		jumpOffset        = originalOffset + currencyHookSize
+		instructionSize   = jumpOffset + 5
+		minimumSize       = currencyCaveMarkerOffset + len(currencyCaveMarker)
+	)
+	if len(original) != currencyHookSize || !isCurrencyCaptureOriginal(original) {
+		return fmt.Errorf("原始指令长度或签名异常")
+	}
+	if len(code) < minimumSize {
+		return fmt.Errorf("代码洞过短: %d", len(code))
+	}
+	if code[0] != 0x48 || code[1] != 0xBA || binary.LittleEndian.Uint64(code[dataAddressOffset:captureOffset]) != uint64(cave+currencyCaveDataOffset) {
+		return fmt.Errorf("数据地址指令不匹配")
+	}
+	if !bytes.Equal(code[captureOffset:originalOffset], []byte{0x48, 0x89, 0x0A}) {
+		return fmt.Errorf("RCX 捕获指令不匹配")
+	}
+	if !bytes.Equal(code[originalOffset:jumpOffset], original) {
+		return fmt.Errorf("代码洞内原始指令不匹配")
+	}
+	if code[jumpOffset] != 0xE9 || relJumpTarget(cave+jumpOffset, code[jumpOffset:instructionSize]) != hookAddr+currencyHookSize {
+		return fmt.Errorf("代码洞回跳地址不匹配")
+	}
+	if !bytes.Equal(code[currencyCaveMarkerOffset:minimumSize], currencyCaveMarker[:]) {
+		return fmt.Errorf("代码洞所有权标记不匹配")
+	}
+	return nil
+}
+
+func (a *App) validateCurrencyCaptureCave(cave uintptr, original []byte) error {
+	const codeSize = currencyCaveMarkerOffset + len(currencyCaveMarker)
+	code := make([]byte, codeSize)
+	if err := readProcessMemory(a.hProcess, cave, unsafe.Pointer(&code[0]), uintptr(len(code))); err != nil {
+		return fmt.Errorf("读取代码洞失败: %w", err)
+	}
+	return validateCurrencyCaptureCaveBytes(cave, a.currencyHookAddr, original, code)
 }

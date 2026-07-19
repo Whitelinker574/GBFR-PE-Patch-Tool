@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -10,7 +12,8 @@ import (
 //
 // 安全优先的预设槽写入：把用户从「该存档已有资源」里拼出的一套配装原地写入
 // 指定预设槽（UnitID 20000..20614）。只引用存档里真实存在、且已被游戏判为合法
-// 的资源，绝不新造因子、绝不生成专精、绝不跨角色搬运。任何引用无法解析或归属
+// 的资源；构造模式提交的因子则只允许在同一次配装事务中按自然目录规则生成，
+// 生成后立即绑定目标槽。绝不生成专精、绝不跨角色搬运。任何引用无法解析或归属
 // 存疑一律拒绝写入。落地依据见 配装写入实现计划.md。
 //
 // 字段填充语义（实测，务必区分）：
@@ -30,24 +33,36 @@ const (
 
 // LoadoutWrite 是一次预设槽写入请求。
 type LoadoutWrite struct {
-	UnitID          uint32   `json:"unitId"`          // 目标预设槽 20000..20614
-	ExpectCharaHash string   `json:"expectCharaHash"` // 前端认定的槽位归属角色（8 位 hex），写前与块内实测比对
-	Op              string   `json:"op"`              // "write" | "clone" | "clear"
-	Name            string   `json:"name"`            // 配装名称 UTF-8，≤63 字节
-	WeaponSlotID    uint32   `json:"weaponSlotId"`    // 1402
-	SigilSlotIDs    []uint32 `json:"sigilSlotIds"`    // 1403，≤12
-	SkillHashes     []string `json:"skillHashes"`     // 1404，≤4，8 位 hex
-	MasteryHashes   []string `json:"masteryHashes"`   // 3007，≤50，8 位 hex
-	CloneFromUnitID uint32   `json:"cloneFromUnitId"` // Op=="clone" 时的源槽
+	UnitID            uint32                    `json:"unitId"`                      // 目标预设槽 20000..20614
+	ExpectCharaHash   string                    `json:"expectCharaHash"`             // 前端认定的槽位归属角色（8 位 hex），写前与块内实测比对
+	Op                string                    `json:"op"`                          // "write" | "clone" | "clear"
+	Name              string                    `json:"name"`                        // 配装名称 UTF-8，≤63 字节
+	WeaponSlotID      uint32                    `json:"weaponSlotId"`                // 1402
+	SigilSlotIDs      []uint32                  `json:"sigilSlotIds"`                // 1403，≤12
+	SkillHashes       []string                  `json:"skillHashes"`                 // 1404，≤4，8 位 hex
+	MasteryHashes     []string                  `json:"masteryHashes"`               // 3007，≤50，8 位 hex
+	SummonSlotIDs     []uint32                  `json:"summonSlotIds,omitempty"`     // 可选的全局 1451 四召唤石配置；仅 Op=="write" 生效
+	ConstructedSigils []LoadoutConstructedSigil `json:"constructedSigils,omitempty"` // 写入时原子创建并替换 0 基因子槽
+	CloneFromUnitID   uint32                    `json:"cloneFromUnitId"`             // Op=="clone" 时的源槽
+}
+
+// LoadoutConstructedSigil describes one factor draft that must be created and
+// bound as part of the same LoadoutApply transaction. Index is 0 based.
+type LoadoutConstructedSigil struct {
+	Index int       `json:"index"`
+	Item  QueueItem `json:"item"`
 }
 
 // LoadoutApplyResult 汇报写入结果。
 type LoadoutApplyResult struct {
-	OutputPath     string `json:"outputPath"`
-	BackupPath     string `json:"backupPath"`
-	SlotsWritten   int    `json:"slotsWritten"`
-	SlotsCleared   int    `json:"slotsCleared"`
-	VerifiedFields int    `json:"verifiedFields"` // 回读后逐字段命中的数量
+	OutputPath     string   `json:"outputPath"`
+	BackupPath     string   `json:"backupPath"`
+	SlotsWritten   int      `json:"slotsWritten"`
+	SlotsCleared   int      `json:"slotsCleared"`
+	VerifiedFields int      `json:"verifiedFields"` // 回读后逐字段命中的数量
+	CreatedCount   int      `json:"createdCount"`
+	VerifiedCount  int      `json:"verifiedCount"`
+	SlotIDs        []uint32 `json:"slotIds,omitempty"`
 }
 
 // ── 只读编辑上下文：给前端一份「该角色可安全引用的资源池」──────────────
@@ -71,8 +86,10 @@ type LoadoutPickSigil struct {
 	Hash                string `json:"hash"`
 	Name                string `json:"name"`
 	Level               int    `json:"level"`
+	PrimaryTraitHash    string `json:"primaryTraitHash"`
 	PrimaryTraitName    string `json:"primaryTraitName"`
 	PrimaryTraitLevel   int    `json:"primaryTraitLevel"`
+	SecondaryTraitHash  string `json:"secondaryTraitHash"`
 	SecondaryTraitName  string `json:"secondaryTraitName"`
 	SecondaryTraitLevel int    `json:"secondaryTraitLevel"`
 	Generic             bool   `json:"generic"` // true = 非角色因子（任意角色可装）
@@ -102,6 +119,42 @@ type LoadoutEditContext struct {
 	Sigils         []LoadoutPickSigil     `json:"sigils"`
 	Skills         []LoadoutPickSkill     `json:"skills"`
 	MasterySources []LoadoutMasterySource `json:"masterySources"`
+}
+
+var loadoutFindProcessByName = findProcessByName
+var loadoutApplyMu sync.Mutex
+
+// LoadoutConstructSigil creates one catalog-validated sigil in the save that is
+// currently open in the loadout editor. A fresh generator is used deliberately:
+// the editor must never consume or mutate the queue owned by the standalone
+// sigil generator screen. SaveData.Write performs an atomic in-place write,
+// creates a timestamped backup, fixes checksums and is verified by ApplyQueue.
+func (a *App) LoadoutConstructSigil(path string, item QueueItem) (*ApplyResult, error) {
+	loadoutApplyMu.Lock()
+	defer loadoutApplyMu.Unlock()
+
+	if path == "" {
+		return nil, fmt.Errorf("存档路径不能为空")
+	}
+	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+		return nil, fmt.Errorf("因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
+	}
+	if _, err := loadoutFindProcessByName(charaProcessName); err == nil {
+		return nil, fmt.Errorf("写入存档前请先完全退出游戏，避免游戏把旧数据写回")
+	}
+	item.Quantity = 1
+	gen := NewSigilGen()
+	if _, err := gen.LoadSaveFile(path); err != nil {
+		return nil, fmt.Errorf("读取配装存档失败: %w", err)
+	}
+	if err := gen.AddToQueue(item); err != nil {
+		return nil, fmt.Errorf("因子配置不合法: %w", err)
+	}
+	result, err := gen.ApplyQueue(path)
+	if err != nil {
+		return nil, fmt.Errorf("创建配装因子失败: %w", err)
+	}
+	return result, nil
 }
 
 // ── 存档索引：一次解析、读写共用（"所见即所写"）────────────────────────
@@ -269,17 +322,6 @@ func (ix *loadoutIndex) charaPrecedent(save *SaveData, charaHash uint32) (sigils
 	return sigils, skills
 }
 
-// isCharacterSigil 判断因子是否是「角色专属因子」（只有某角色能装）。
-func isCharacterSigil(cat *Catalog, hash uint32) bool {
-	if cat == nil {
-		return false
-	}
-	if def := cat.LookupSigilByHash(hash); def != nil && def.Category != nil {
-		return *def.Category == "character_sigil"
-	}
-	return false
-}
-
 // ── 字段写入原语 ──────────────────────────────────────────────────────
 
 // writeLoadoutName 写 3002 名称：断言 ValueCnt==64，UTF-8 编码 + NUL 填满 64 字节。
@@ -326,15 +368,192 @@ func (s *SaveData) writeLoadoutVector(idType, unitID uint32, vals []uint32, want
 
 // resolvedWrite 是一条 LoadoutWrite 经完整预校验后的、可直接落盘的结果。
 type resolvedWrite struct {
-	unitID     uint32
-	op         string
-	charaHash  uint32   // 写入 3003 的实测推导值
-	name       string   // Op=="write"
-	weaponSID  uint32   // 1402
-	sigilSIDs  []uint32 // 1403（≤12）
-	skills     []uint32 // 1404（≤4）
-	mastery    []uint32 // 3007（≤50）
-	keepWeapon bool     // clear 时保持 1402 原值
+	unitID      uint32
+	op          string
+	charaHash   uint32   // 写入 3003 的实测推导值
+	name        string   // Op=="write"
+	weaponSID   uint32   // 1402
+	sigilSIDs   []uint32 // 1403（≤12）
+	skills      []uint32 // 1404（≤4）
+	mastery     []uint32 // 3007（≤50）
+	keepWeapon  bool     // clear 时保持 1402 原值
+	constructed []*preparedLoadoutSigil
+}
+
+type preparedLoadoutSigil struct {
+	index          int
+	item           QueueItem
+	owner          *resolvedWrite
+	gemUnitID      int
+	newSlotID      uint32
+	sigilHash      uint32
+	primaryHash    uint32
+	secondaryHash  uint32
+	secondaryLevel int
+	hasSecondary   bool
+}
+
+func containsNaturalLevel(levels []int, selected int) bool {
+	for _, level := range levels {
+		if level == selected {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if draft.Index < 0 || draft.Index >= loadoutMaxSigils {
+		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
+	}
+	item := draft.Item
+	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+		return nil, fmt.Errorf("因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
+	}
+	sigil, err := cat.RequireSigil(item.SigilID)
+	if err != nil {
+		return nil, err
+	}
+	if !cat.IsSigilConstructible(sigil) {
+		return nil, fmt.Errorf("因子 %s 缺少可信的自然生成与兼容性依据，拒绝构造", sigil.InternalID)
+	}
+	sigilLevels, err := cat.RequireSigilLevels(sigil)
+	if err != nil {
+		return nil, err
+	}
+	if item.Level < 1 || item.Level > 15 {
+		return nil, fmt.Errorf("因子「%s」等级 %d 超出自然范围 1..15", displaySigilName(sigil), item.Level)
+	}
+	if !containsNaturalLevel(sigilLevels, item.Level) {
+		return nil, fmt.Errorf("因子「%s」等级 %d 不在自然目录等级中", displaySigilName(sigil), item.Level)
+	}
+	primary, err := cat.RequireTrait(sigil.PrimaryTraitID)
+	if err != nil {
+		return nil, err
+	}
+	primaryLevels, err := cat.RequirePrimaryTraitLevels(sigil)
+	if err != nil {
+		return nil, err
+	}
+	if item.PrimaryLevel < 1 || item.PrimaryLevel > 15 {
+		return nil, fmt.Errorf("因子「%s」主词条等级 %d 超出自然范围 1..15", displaySigilName(sigil), item.PrimaryLevel)
+	}
+	if !containsNaturalLevel(primaryLevels, item.PrimaryLevel) {
+		return nil, fmt.Errorf("因子「%s」主词条等级 %d 不在自然目录等级中", displaySigilName(sigil), item.PrimaryLevel)
+	}
+	sigilHash, err := ParseHashHex(sigil.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("因子「%s」哈希无效: %w", displaySigilName(sigil), err)
+	}
+	primaryHash, err := ParseHashHex(primary.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("主词条「%s」哈希无效: %w", cnTrait(primary.DisplayName), err)
+	}
+
+	item.Quantity = 1
+	item.SigilName = displaySigilName(sigil)
+	item.PrimaryTraitID = primary.InternalID
+	item.PrimaryTraitName = cnTrait(primary.DisplayName)
+	prepared := &preparedLoadoutSigil{
+		index: draft.Index, item: item, sigilHash: sigilHash,
+		primaryHash: primaryHash, secondaryHash: EmptyHash,
+		hasSecondary: supportsGeneratedPlusSigil(sigil),
+	}
+	if item.SecondaryTraitID == "" {
+		if requiresCharacterSigilSecondary(sigil) {
+			return nil, fmt.Errorf("角色因子「%s」必须使用本地 2.0.2 gem/lot 白名单中的副词条，不能留空", item.SigilName)
+		}
+		if item.SecondaryLevel != 0 {
+			return nil, fmt.Errorf("未选择副词条时副词条等级必须为 0")
+		}
+		prepared.item.SecondaryLevel = 0
+		return prepared, nil
+	}
+	if !prepared.hasSecondary {
+		return nil, fmt.Errorf("因子「%s」没有副词条槽", item.SigilName)
+	}
+	secondary, err := cat.RequireTrait(item.SecondaryTraitID)
+	if err != nil {
+		return nil, err
+	}
+	if secondary.InternalID == primary.InternalID {
+		return nil, fmt.Errorf("因子主副词条不能同为「%s」", cnTrait(primary.DisplayName))
+	}
+	explicitlyCompatible := false
+	for _, traitID := range sigil.AllowedSecondaryTraitIDs {
+		if traitID == secondary.InternalID {
+			explicitlyCompatible = true
+			break
+		}
+	}
+	if !explicitlyCompatible {
+		return nil, fmt.Errorf("因子「%s」没有把副词条「%s」列入已验证的兼容白名单", item.SigilName, cnTrait(secondary.DisplayName))
+	}
+	allowed, err := cat.GetAllowedSecondaryTraits(sigil)
+	if err != nil {
+		return nil, err
+	}
+	compatible := false
+	for _, candidate := range allowed {
+		if candidate.InternalID == secondary.InternalID {
+			compatible = true
+			break
+		}
+	}
+	if !compatible {
+		return nil, fmt.Errorf("副词条「%s」不是因子「%s」的自然兼容词条", cnTrait(secondary.DisplayName), item.SigilName)
+	}
+	secondaryLevels, err := cat.RequireSecondaryTraitLevels(sigil, secondary)
+	if err != nil {
+		return nil, err
+	}
+	if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
+		return nil, fmt.Errorf("副词条「%s」等级 %d 超出自然范围 1..15", cnTrait(secondary.DisplayName), item.SecondaryLevel)
+	}
+	if !containsNaturalLevel(secondaryLevels, item.SecondaryLevel) {
+		return nil, fmt.Errorf("副词条「%s」等级 %d 不在自然目录等级中", cnTrait(secondary.DisplayName), item.SecondaryLevel)
+	}
+	secondaryHash, err := ParseHashHex(secondary.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("副词条「%s」哈希无效: %w", cnTrait(secondary.DisplayName), err)
+	}
+	prepared.secondaryHash = secondaryHash
+	prepared.secondaryLevel = item.SecondaryLevel
+	prepared.item.SecondaryTraitName = cnTrait(secondary.DisplayName)
+	return prepared, nil
+}
+
+func validateLoadoutSigilDestination(save *SaveData, prepared *preparedLoadoutSigil) error {
+	gemUnitID := prepared.gemUnitID
+	gemIndex := gemUnitID - GemSlotBaseID
+	primaryTraitUnit := TraitSlotBase + gemIndex*100
+	secondaryTraitUnit := primaryTraitUnit + 1
+	for _, field := range []struct {
+		idType uint32
+		unitID int
+		name   string
+	}{
+		{GemSlotIDType, gemUnitID, "因子 SlotID"},
+		{GemIDType, gemUnitID, "因子哈希"},
+		{GemWornByIDType, gemUnitID, "装备角色"},
+		{GemFlagsIDType, gemUnitID, "因子标记"},
+		{GemLevelIDType, gemUnitID, "因子等级"},
+		{TraitHashIDType, primaryTraitUnit, "主词条哈希"},
+		{TraitLevelIDType, primaryTraitUnit, "主词条等级"},
+	} {
+		if _, ok := save.findUnit(field.idType, uint32(field.unitID)); !ok {
+			return fmt.Errorf("因子空槽 %d 缺少%s字段", gemUnitID, field.name)
+		}
+	}
+	if prepared.hasSecondary {
+		if _, ok := save.findUnit(TraitHashIDType, uint32(secondaryTraitUnit)); !ok {
+			return fmt.Errorf("因子空槽 %d 缺少副词条哈希字段", gemUnitID)
+		}
+		if _, ok := save.findUnit(TraitLevelIDType, uint32(secondaryTraitUnit)); !ok {
+			return fmt.Errorf("因子空槽 %d 缺少副词条等级字段", gemUnitID)
+		}
+	}
+	return nil
 }
 
 // validateLoadoutWrite 对一条写入请求做完整预校验，返回可落盘的 resolvedWrite。
@@ -379,11 +598,17 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 	rw := &resolvedWrite{unitID: w.UnitID, op: w.Op, charaHash: blockChara}
 
 	if w.Op == "clear" {
+		if len(w.ConstructedSigils) != 0 {
+			return nil, fmt.Errorf("clear 操作不能携带构造因子草稿")
+		}
 		rw.keepWeapon = true
 		return rw, nil
 	}
 
 	if w.Op == "clone" {
+		if len(w.ConstructedSigils) != 0 {
+			return nil, fmt.Errorf("clone 操作不能携带构造因子草稿")
+		}
 		src := w.CloneFromUnitID
 		sc, ok := resolveBlockChara(save, src)
 		if !ok || sc != blockChara {
@@ -392,7 +617,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if e, ok := save.findUnitExact(loadoutWeaponIDType, src); ok {
 			rw.weaponSID = e.Uint32()
 		}
-		rw.sigilSIDs = readVec(save, loadoutSigilsIDType, src, loadoutMaxSigils)
+		rw.sigilSIDs = readLoadoutSigilVector(save, src)
 		rw.skills = readVec(save, loadoutSkillsIDType, src, loadoutMaxSkills)
 		rw.mastery = readVec(save, loadoutMasteryIDType, src, loadoutMaxMastery)
 		rw.name = entryTextAt(save, src)
@@ -415,7 +640,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 	ownerCode := ix.deriveOwnerCode(save, blockChara)
 
 	// 武器（1402）：SlotID -> 现存武器，hash 非空，ownerCode 须匹配该角色或通用
-	if _, present := ix.wepBySlotID[w.WeaponSlotID]; present || w.WeaponSlotID != 0 {
+	if w.WeaponSlotID != 0 {
 		wu, ok := ix.wepBySlotID[w.WeaponSlotID]
 		if !ok {
 			return nil, fmt.Errorf("武器 SlotID %d 在存档里找不到对应武器", w.WeaponSlotID)
@@ -424,24 +649,47 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if h == nil || h.Uint32() == EmptyHash || h.Uint32() == 0 {
 			return nil, fmt.Errorf("武器 SlotID %d 指向空武器槽", w.WeaponSlotID)
 		}
-		if def, ok := progressionWeaponDefForHash(h.Uint32()); ok && def.OwnerCode != "" {
-			if ownerCode == "" {
-				return nil, fmt.Errorf("无法确定该角色的武器归属码，只能装备通用武器；「%s」是角色专属武器", progressionWeaponName(def))
-			}
-			if def.OwnerCode != ownerCode {
-				return nil, fmt.Errorf("武器「%s」属于 %s，不能装到该角色（%s）", progressionWeaponName(def), def.OwnerCode, ownerCode)
-			}
+		if _, err := validateLoadoutWeaponDefinition(h.Uint32(), ownerCode); err != nil {
+			return nil, fmt.Errorf("武器 SlotID %d 写入校验失败: %w", w.WeaponSlotID, err)
 		}
 		rw.weaponSID = w.WeaponSlotID
 	}
 
-	// 因子（1403）：≤12，各 SlotID 解析到现存非空因子，不得重复；角色因子走 precedent 白名单
+	// 因子（1403）：≤12。已有 SlotID 与按 0 基索引提交的构造草稿先共同
+	// 形成最终向量；草稿占用的位置不再要求旧 SlotID 仍有效。
 	if len(w.SigilSlotIDs) > loadoutMaxSigils {
 		return nil, fmt.Errorf("因子最多 %d 个，收到 %d", loadoutMaxSigils, len(w.SigilSlotIDs))
 	}
 	precSigils, precSkills := ix.charaPrecedent(save, blockChara)
+	constructedIndexes := make(map[int]bool, len(w.ConstructedSigils))
+	for _, draft := range w.ConstructedSigils {
+		if constructedIndexes[draft.Index] {
+			return nil, fmt.Errorf("因子槽位索引 %d 被重复提交构造草稿", draft.Index)
+		}
+		prepared, err := prepareLoadoutSigil(cat, draft)
+		if err != nil {
+			return nil, fmt.Errorf("构造第 %d 个因子失败: %w", draft.Index+1, err)
+		}
+		if _, allowed := loadoutSigilAccess(cat, prepared.sigilHash, precSigils); !allowed {
+			return nil, fmt.Errorf("因子「%s」是角色专属或未收录因子，但该角色现有配装没有可验证的使用先例", prepared.item.SigilName)
+		}
+		constructedIndexes[draft.Index] = true
+		rw.constructed = append(rw.constructed, prepared)
+	}
+	finalLen := len(w.SigilSlotIDs)
+	for index := range constructedIndexes {
+		if index+1 > finalLen {
+			finalLen = index + 1
+		}
+	}
+	rw.sigilSIDs = make([]uint32, finalLen)
+	copy(rw.sigilSIDs, w.SigilSlotIDs)
 	seenSID := map[uint32]bool{}
-	for _, sid := range w.SigilSlotIDs {
+	for index, sid := range rw.sigilSIDs {
+		if constructedIndexes[index] {
+			rw.sigilSIDs[index] = 0 // 分配空槽后替换为新 SlotID
+			continue
+		}
 		if sid == 0 {
 			continue
 		}
@@ -458,16 +706,16 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 			return nil, fmt.Errorf("因子 SlotID %d 无 hash", sid)
 		}
 		hv := h.Uint32()
-		if isCharacterSigil(cat, hv) && !precSigils[hv] {
-			return nil, fmt.Errorf("因子「%s」是角色专属因子，且该角色的现有配装从未用过它，无法确认可装（v1 保守拒绝）", sigilDisplayNameOr(hv))
+		if _, allowed := loadoutSigilAccess(cat, hv, precSigils); !allowed {
+			return nil, fmt.Errorf("因子「%s」是角色专属或未收录因子，且该角色的现有配装从未用过它，无法确认可装", sigilDisplayNameOr(hv))
 		}
-		rw.sigilSIDs = append(rw.sigilSIDs, sid)
 	}
 
 	// 技能（1404）：≤4，优先按解包 skill_names 的角色归属校验；旧档未知项再回退 precedent。
 	if len(w.SkillHashes) > loadoutMaxSkills {
 		return nil, fmt.Errorf("技能最多 %d 个，收到 %d", loadoutMaxSkills, len(w.SkillHashes))
 	}
+	seenSkill := map[uint32]bool{}
 	for _, hx := range w.SkillHashes {
 		v, err := ParseHashHex(hx)
 		if err != nil {
@@ -476,6 +724,10 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if v == EmptyHash || v == 0 {
 			continue
 		}
+		if seenSkill[v] {
+			return nil, fmt.Errorf("技能 %08X 被重复配置", v)
+		}
+		seenSkill[v] = true
 		if !skillBelongsToOwner(v, ownerCode) && !precSkills[v] {
 			return nil, fmt.Errorf("技能 %08X 不属于该角色（%s）", v, ownerCode)
 		}
@@ -532,6 +784,18 @@ func readVec(save *SaveData, idType, unitID uint32, maxN int) []uint32 {
 		out = append(out, v)
 	}
 	return out
+}
+
+func readLoadoutSigilVector(save *SaveData, unitID uint32) []uint32 {
+	result := make([]uint32, loadoutMaxSigils)
+	e, ok := save.findUnitExact(loadoutSigilsIDType, unitID)
+	if !ok {
+		return result
+	}
+	for _, sigil := range readLoadoutSigilSlots(e) {
+		result[sigil.Index] = sigil.SlotID
+	}
+	return result
 }
 
 func entryTextAt(save *SaveData, unitID uint32) string {
@@ -593,16 +857,18 @@ func applyResolvedWrite(save *SaveData, rw *resolvedWrite) error {
 // verifyResolvedWrite 回读逐字段比对，返回命中的字段数。
 func verifyResolvedWrite(save *SaveData, rw *resolvedWrite) (int, error) {
 	hit := 0
-	if e, ok := save.findUnitExact(loadoutCharIDType, rw.unitID); ok {
-		want := rw.charaHash
-		if rw.op == "clear" {
-			want = EmptyHash
-		}
-		if e.Uint32() != want {
-			return hit, fmt.Errorf("回读 3003 不符")
-		}
-		hit++
+	e, ok := save.findUnitExact(loadoutCharIDType, rw.unitID)
+	if !ok {
+		return hit, fmt.Errorf("回读缺少 3003 角色字段")
 	}
+	wantChara := rw.charaHash
+	if rw.op == "clear" {
+		wantChara = EmptyHash
+	}
+	if e.Uint32() != wantChara {
+		return hit, fmt.Errorf("回读 3003 不符")
+	}
+	hit++
 	if got := entryTextAt(save, rw.unitID); got == rw.name || (rw.op == "clear" && got == "") {
 		hit++
 	} else {
@@ -648,16 +914,198 @@ func vecMatches(save *SaveData, idType, unitID uint32, vals []uint32, wantCnt in
 	return true
 }
 
+// sharedLoadoutSummonSlotIDs resolves the optional global summon configuration
+// for one atomic apply. 1451 is global rather than per preset, so two write
+// operations cannot safely request different orders in the same transaction.
+// clone/clear operations intentionally never change it.
+func sharedLoadoutSummonSlotIDs(changes []LoadoutWrite) ([]uint32, error) {
+	var shared []uint32
+	found := false
+	for _, change := range changes {
+		if !strings.EqualFold(strings.TrimSpace(change.Op), "write") || change.SummonSlotIDs == nil {
+			continue
+		}
+		if !found {
+			shared = make([]uint32, len(change.SummonSlotIDs))
+			copy(shared, change.SummonSlotIDs)
+			found = true
+			continue
+		}
+		if len(shared) != len(change.SummonSlotIDs) {
+			return nil, fmt.Errorf("同一批 write 请求了不同的召唤石配置")
+		}
+		for index := range shared {
+			if shared[index] != change.SummonSlotIDs[index] {
+				return nil, fmt.Errorf("同一批 write 请求了不同的召唤石配置")
+			}
+		}
+	}
+	if !found {
+		return nil, nil
+	}
+	return shared, nil
+}
+
+func typedSlotDataFromSave(save *SaveData) (*SaveDataBinary, error) {
+	if save == nil {
+		return nil, fmt.Errorf("存档为空")
+	}
+	parsed, err := ParseSaveData(save.data)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.SlotData == nil {
+		return nil, fmt.Errorf("存档没有 SlotData")
+	}
+	return parsed.SlotData, nil
+}
+
+func validateLoadoutEquippedSummonTyped(data *SaveDataBinary) error {
+	if data == nil {
+		return fmt.Errorf("存档没有 SlotData")
+	}
+	matches := 0
+	for _, unit := range data.UIntTable {
+		if unit.IDType != 1451 || unit.UnitID != 0 {
+			continue
+		}
+		matches++
+		if len(unit.ValueData) != 4 {
+			return fmt.Errorf("1451 UInt UnitID 0 的值数量为 %d，期望 4", len(unit.ValueData))
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("1451 必须恰好有一条 UInt UnitID 0 vec4，实际 %d 条", matches)
+	}
+	return nil
+}
+
+// validateLoadoutSummonSlotIDs validates references only. It never edits the
+// 1456..1460 summon instances themselves.
+func validateLoadoutSummonSlotIDs(save *SaveData, slotIDs []uint32) ([]uint32, error) {
+	if len(slotIDs) != 4 {
+		return nil, fmt.Errorf("召唤石配置必须恰好包含 4 个 SlotID")
+	}
+	data, err := typedSlotDataFromSave(save)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateLoadoutEquippedSummonTyped(data); err != nil {
+		return nil, err
+	}
+	types := uintUnitMap(data, 1457)
+	realSlots := map[uint32]int{}
+	for _, unit := range uintUnitsByType(data, 1456) {
+		if len(unit.ValueData) != 1 {
+			continue
+		}
+		slotID := unit.ValueData[0]
+		typeUnit, ok := types[unit.UnitID]
+		if !ok || len(typeUnit.ValueData) != 1 {
+			continue
+		}
+		typeHash := typeUnit.ValueData[0]
+		if slotID != 0 && slotID != EmptyHash && typeHash != 0 && typeHash != EmptyHash && typeHash != summonInvalidTypeHash {
+			realSlots[slotID]++
+		}
+	}
+	seen := map[uint32]bool{}
+	for _, slotID := range slotIDs {
+		if slotID == 0 || slotID == EmptyHash {
+			return nil, fmt.Errorf("召唤石 SlotID 必须为非零有效值")
+		}
+		if seen[slotID] {
+			return nil, fmt.Errorf("召唤石 SlotID %d 重复", slotID)
+		}
+		seen[slotID] = true
+		if realSlots[slotID] == 0 {
+			return nil, fmt.Errorf("召唤石 SlotID %d 不存在", slotID)
+		}
+		if realSlots[slotID] > 1 {
+			return nil, fmt.Errorf("召唤石 SlotID %d 对应多个实例，拒绝歧义写入", slotID)
+		}
+	}
+	return append([]uint32(nil), slotIDs...), nil
+}
+
+func readLoadoutEquippedSummonSlotIDsStrict(save *SaveData) ([]uint32, error) {
+	data, err := typedSlotDataFromSave(save)
+	if err != nil {
+		return nil, err
+	}
+	unit, ok := uintUnitExact(data, 1451, 0)
+	if !ok {
+		return nil, fmt.Errorf("回读缺少 1451 UnitID 0")
+	}
+	if len(unit.ValueData) != 4 {
+		return nil, fmt.Errorf("回读 1451 值数量为 %d，期望 4", len(unit.ValueData))
+	}
+	return append([]uint32(nil), unit.ValueData...), nil
+}
+
+// readLoadoutEquippedSummonSlotIDs is kept small for tests and callers that
+// only need a best-effort snapshot; the write path uses the strict variant.
+func readLoadoutEquippedSummonSlotIDs(save *SaveData) []uint32 {
+	values, _ := readLoadoutEquippedSummonSlotIDsStrict(save)
+	return values
+}
+
+func writeLoadoutEquippedSummonSlotIDs(save *SaveData, slotIDs []uint32) error {
+	if len(slotIDs) != 4 {
+		return fmt.Errorf("写入 1451 需要恰好 4 个 SlotID")
+	}
+	var target *unitEntry
+	for _, entry := range save.findAllUnitsByType(1451) {
+		if entry.UnitID != 0 || entry.ValueCnt != 4 {
+			continue
+		}
+		if target != nil && target.ValueOff != entry.ValueOff {
+			return fmt.Errorf("1451 UnitID 0 存在多个候选记录，拒绝歧义写入")
+		}
+		target = entry
+	}
+	if target == nil {
+		return fmt.Errorf("找不到四值的 1451 UnitID 0")
+	}
+	for index, slotID := range slotIDs {
+		if err := target.SetUint32At(index, slotID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func equalUint32Slice(left, right []uint32) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 // LoadoutApply 是配装写入闸门：全量预校验通过后统一落盘，任一失败即在触碰磁盘前返回。
 func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite) (*LoadoutApplyResult, error) {
+	// Serialise all in-process save transactions so two editor actions cannot
+	// allocate the same empty gem slot/max SlotID from the same stale snapshot.
+	loadoutApplyMu.Lock()
+	defer loadoutApplyMu.Unlock()
+
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("没有要写入的配装")
+	}
+	summonSlotIDs, err := sharedLoadoutSummonSlotIDs(changes)
+	if err != nil {
+		return nil, err
 	}
 	if outputPath == "" {
 		outputPath = inputPath
 	}
 	if samePath(inputPath, outputPath) {
-		if _, err := findProcessByName(charaProcessName); err == nil {
+		if _, err := loadoutFindProcessByName(charaProcessName); err == nil {
 			return nil, fmt.Errorf("写入存档前请先完全退出游戏，避免游戏把旧数据写回")
 		}
 	}
@@ -673,6 +1121,12 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 		return nil, err
 	}
 	ix := buildLoadoutIndex(save)
+	if summonSlotIDs != nil {
+		summonSlotIDs, err = validateLoadoutSummonSlotIDs(save, summonSlotIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// 第一段：全量预校验（不触碰缓冲区）
 	seen := map[uint32]bool{}
@@ -689,8 +1143,54 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 		resolved = append(resolved, rw)
 	}
 
-	// 第二段：统一落盘
+	// 第二段：仍在触碰缓冲区之前，为全部构造草稿一次性分配空因子槽，
+	// 并验证 PatchSigil 将访问的每个字段都存在。
+	constructed := make([]*preparedLoadoutSigil, 0)
+	for _, rw := range resolved {
+		for _, prepared := range rw.constructed {
+			prepared.owner = rw
+			constructed = append(constructed, prepared)
+		}
+	}
+	oldMaxSlotID := 0
+	if len(constructed) > 0 {
+		emptySlots, err := save.FindEmptyGemSlots(len(constructed))
+		if err != nil {
+			return nil, err
+		}
+		oldMaxSlotID, err = save.GetMaxSlotID()
+		if err != nil {
+			return nil, err
+		}
+		for i, prepared := range constructed {
+			prepared.gemUnitID = emptySlots[i]
+			prepared.newSlotID = uint32(oldMaxSlotID + i + 1)
+			if err := validateLoadoutSigilDestination(save, prepared); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// 第三段：在同一个 SaveData 缓冲里先创建因子，再把新 SlotID 放入
+	// 对应 1403 位置，最后只做一次校验和修复和磁盘写入。
 	result := &LoadoutApplyResult{}
+	if len(constructed) > 0 {
+		if err := save.SetMaxSlotID(oldMaxSlotID + len(constructed)); err != nil {
+			return nil, err
+		}
+		for _, prepared := range constructed {
+			if err := save.PatchSigil(
+				prepared.gemUnitID, int(prepared.newSlotID), prepared.sigilHash, prepared.item.Level,
+				prepared.primaryHash, prepared.item.PrimaryLevel,
+				prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary,
+			); err != nil {
+				return nil, fmt.Errorf("写入构造因子「%s」失败: %w", prepared.item.SigilName, err)
+			}
+			prepared.owner.sigilSIDs[prepared.index] = prepared.newSlotID
+			result.CreatedCount++
+			result.SlotIDs = append(result.SlotIDs, prepared.newSlotID)
+		}
+	}
 	for _, rw := range resolved {
 		if err := applyResolvedWrite(save, rw); err != nil {
 			return nil, fmt.Errorf("写入槽 %d 失败: %w", rw.unitID, err)
@@ -699,6 +1199,11 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 			result.SlotsCleared++
 		} else {
 			result.SlotsWritten++
+		}
+	}
+	if summonSlotIDs != nil {
+		if err := writeLoadoutEquippedSummonSlotIDs(save, summonSlotIDs); err != nil {
+			return nil, fmt.Errorf("写入召唤石配置失败: %w", err)
 		}
 	}
 	if err := save.FixChecksums(); err != nil {
@@ -720,6 +1225,39 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 			return nil, fmt.Errorf("配装已写入，但槽 %d 回读验证失败（%v）；请用备份恢复", rw.unitID, err)
 		}
 		result.VerifiedFields += n
+	}
+	if summonSlotIDs != nil {
+		got, err := readLoadoutEquippedSummonSlotIDsStrict(verify)
+		if err != nil {
+			return nil, fmt.Errorf("配装已写入，但召唤石配置回读失败（%v）；请用备份恢复", err)
+		}
+		if !equalUint32Slice(got, summonSlotIDs) {
+			return nil, fmt.Errorf("配装已写入，但召唤石配置回读为 %v，期望 %v；请用备份恢复", got, summonSlotIDs)
+		}
+		result.VerifiedFields++
+	}
+	if len(constructed) > 0 {
+		gotMaxSlotID, err := verify.GetMaxSlotID()
+		if err != nil {
+			return nil, fmt.Errorf("配装已写入，但因子最大 SlotID 回读失败: %w；请用备份恢复", err)
+		}
+		wantMaxSlotID := oldMaxSlotID + len(constructed)
+		if gotMaxSlotID != wantMaxSlotID {
+			return nil, fmt.Errorf("配装已写入，但因子最大 SlotID 回读为 %d，期望 %d；请用备份恢复", gotMaxSlotID, wantMaxSlotID)
+		}
+	}
+	for i, prepared := range constructed {
+		if err := verify.VerifySigil(
+			prepared.gemUnitID, prepared.newSlotID, prepared.sigilHash, prepared.item.Level,
+			prepared.primaryHash, prepared.item.PrimaryLevel,
+			prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary,
+		); err != nil {
+			return nil, fmt.Errorf("配装已写入，但第 %d 个新因子回读验证失败: %w；请用备份恢复", i+1, err)
+		}
+		result.VerifiedCount++
+	}
+	if result.VerifiedCount != result.CreatedCount {
+		return nil, fmt.Errorf("配装已写入，但新因子回读数量不符: 已创建 %d，已验证 %d；请用备份恢复", result.CreatedCount, result.VerifiedCount)
 	}
 	return result, nil
 }
@@ -797,13 +1335,12 @@ func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, er
 		if hv == EmptyHash || hv == 0 {
 			continue
 		}
-		def, ok := progressionWeaponDefForHash(hv)
-		oc := ""
-		nm := fmt.Sprintf("%08X", hv)
-		if ok {
-			oc = def.OwnerCode
-			nm = progressionWeaponName(def)
+		def, ok := progressionWeaponDefForLoadout(hv)
+		if !ok {
+			continue
 		}
+		oc := def.OwnerCode
+		nm := progressionWeaponName(def)
 		if oc != "" && oc != ownerCode {
 			continue
 		}
@@ -820,60 +1357,27 @@ func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, er
 	// 词条表先按 UnitID 建索引，避免对背包每颗因子反复全表扫描。
 	traitHashByUnit := entriesByUnitID(save.findAllUnitsByType(TraitHashIDType))
 	traitLevelByUnit := entriesByUnitID(save.findAllUnitsByType(TraitLevelIDType))
-	indexedTraits := func(gemUnitID uint32) (uint32, int, uint32, int) {
-		gemIndex := int(gemUnitID) - GemSlotBaseID
-		if gemIndex < 0 {
-			return 0, 0, 0, 0
-		}
-		primaryUnit := uint32(TraitSlotBase + gemIndex*100)
-		secondaryUnit := primaryUnit + 1
-		var primaryHash, secondaryHash uint32
-		var primaryLevel, secondaryLevel int
-		if entry := traitHashByUnit[primaryUnit]; entry != nil {
-			primaryHash = entry.Uint32()
-		}
-		if entry := traitLevelByUnit[primaryUnit]; entry != nil {
-			primaryLevel = int(entry.Int32())
-		}
-		if entry := traitHashByUnit[secondaryUnit]; entry != nil {
-			secondaryHash = entry.Uint32()
-		}
-		if entry := traitLevelByUnit[secondaryUnit]; entry != nil {
-			secondaryLevel = int(entry.Int32())
-		}
-		return primaryHash, primaryLevel, secondaryHash, secondaryLevel
-	}
 	for sid, gu := range ix.gemBySlotID {
 		h := ix.gemHash[gu]
 		if h == nil {
 			continue
 		}
 		hv := h.Uint32()
-		generic := !isCharacterSigil(cat, hv)
-		if !generic && !precSigils[hv] {
+		generic, allowed := loadoutSigilAccess(cat, hv, precSigils)
+		if !allowed {
 			continue
 		}
 		lvl := 0
 		if l := ix.gemLevel[gu]; l != nil {
 			lvl = int(l.Int32())
 		}
-		primaryHash, primaryLevel, secondaryHash, secondaryLevel := indexedTraits(gu)
-		traitName := func(hash uint32) string {
-			if hash == 0 || hash == EmptyHash {
-				return ""
-			}
-			if trait := cat.LookupTraitByHash(hash); trait != nil {
-				return cnTrait(trait.DisplayName)
-			}
-			if name := ctName(hash); name != "" {
-				return name
-			}
-			return fmt.Sprintf("%08X", hash)
-		}
+		primaryHash, primaryLevel, secondaryHash, secondaryLevel := indexedSigilTraits(traitHashByUnit, traitLevelByUnit, gu)
+		primaryName := loadoutTraitDisplayName(cat, primaryHash)
+		secondaryName := loadoutTraitDisplayName(cat, secondaryHash)
 		ctx.Sigils = append(ctx.Sigils, LoadoutPickSigil{
-			SlotID: sid, Hash: fmt.Sprintf("%08X", hv), Name: sigilDisplayNameOr(hv),
-			Level: lvl, PrimaryTraitName: traitName(primaryHash), PrimaryTraitLevel: primaryLevel,
-			SecondaryTraitName: traitName(secondaryHash), SecondaryTraitLevel: secondaryLevel, Generic: generic,
+			SlotID: sid, Hash: fmt.Sprintf("%08X", hv), Name: loadoutSigilDisplayNameFromTraits(hv, primaryName, secondaryName),
+			Level: lvl, PrimaryTraitHash: loadoutOptionalHash(primaryHash), PrimaryTraitName: primaryName, PrimaryTraitLevel: primaryLevel,
+			SecondaryTraitHash: loadoutOptionalHash(secondaryHash), SecondaryTraitName: secondaryName, SecondaryTraitLevel: secondaryLevel, Generic: generic,
 		})
 	}
 	sort.Slice(ctx.Weapons, func(i, j int) bool {

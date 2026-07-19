@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -15,6 +17,9 @@ type SigilInfo struct {
 	InternalID              string `json:"internalId"`
 	Hash                    string `json:"hash"`
 	DisplayName             string `json:"displayName"`
+	Category                string `json:"category"`
+	Verified                bool   `json:"verified"`
+	Constructible           bool   `json:"constructible"`
 	SupportsSecondaryTrait  bool   `json:"supportsSecondaryTrait"`
 	AllowedSigilLevels      []int  `json:"allowedSigilLevels"`
 	DefaultSigilLevel       int    `json:"defaultSigilLevel"`
@@ -54,22 +59,58 @@ type QueueItem struct {
 }
 
 type ApplyResult struct {
-	CreatedCount  int    `json:"createdCount"`
-	VerifiedCount int    `json:"verifiedCount"`
-	OutputPath    string `json:"outputPath"`
+	CreatedCount  int      `json:"createdCount"`
+	VerifiedCount int      `json:"verifiedCount"`
+	OutputPath    string   `json:"outputPath"`
+	BackupPath    string   `json:"backupPath,omitempty"`
+	SlotIDs       []uint32 `json:"slotIds,omitempty"`
 }
 
 // ── SigilGen 主体 ──
 
 type SigilGen struct {
-	ctx      context.Context
-	catalog  *Catalog
-	save     *SaveData
-	savePath string
-	queue    []QueueItem
+	mu                      sync.Mutex
+	ctx                     context.Context
+	catalog                 *Catalog
+	save                    *SaveData
+	savePath                string
+	queue                   []QueueItem
+	loadSaveForVerification func(string) (*SaveData, error)
 }
 
-const sigilWritableLevelMax = 50
+var generatorFindProcessByName = findProcessByName
+
+func isDefaultManagedSavePath(path string) bool {
+	path = strings.TrimSpace(path)
+	slot, ok := managedSaveSlot(path)
+	if !ok {
+		return false
+	}
+	target, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	expected, err := filepath.Abs(filepath.Join(defaultSaveGamesDir(), fmt.Sprintf("SaveData%d.dat", slot)))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(filepath.Clean(target), filepath.Clean(expected))
+}
+
+func ensureGeneratorWriteAllowed(outputPath string) error {
+	if !isDefaultManagedSavePath(outputPath) {
+		return nil
+	}
+	if _, err := generatorFindProcessByName(charaProcessName); err == nil {
+		return fmt.Errorf("写入默认存档前请先完全退出游戏，避免游戏把旧数据写回")
+	}
+	return nil
+}
+
+const (
+	sigilWritableLevelMax = 50
+	generatorQuantityMax  = 999
+)
 
 func highestLevel(levels []int, fallback int) int {
 	max := fallback
@@ -82,13 +123,23 @@ func highestLevel(levels []int, fallback int) int {
 }
 
 func NewSigilGen() *SigilGen {
-	return &SigilGen{}
+	return &SigilGen{loadSaveForVerification: LoadSave}
 }
 
-func (sg *SigilGen) startup(ctx context.Context) { sg.ctx = ctx }
+func (sg *SigilGen) startup(ctx context.Context) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	sg.ctx = ctx
+}
 
 // LoadCatalog 加载数据目录（从嵌入的 JSON 文件）
 func (sg *SigilGen) LoadCatalog() error {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	return sg.loadCatalogLocked()
+}
+
+func (sg *SigilGen) loadCatalogLocked() error {
 	c, err := LoadCatalog()
 	if err != nil {
 		return err
@@ -99,34 +150,49 @@ func (sg *SigilGen) LoadCatalog() error {
 
 // GetSigilList 返回排序后的因子列表
 func (sg *SigilGen) GetSigilList() ([]SigilInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
 	sorted := sg.catalog.GetSigilSortedList()
-	result := make([]SigilInfo, len(sorted))
-	for i, s := range sorted {
-		result[i] = SigilInfo{
+	result := make([]SigilInfo, 0, len(sorted))
+	for _, s := range sorted {
+		sigilLevels, _ := sg.catalog.RequireSigilLevels(s)
+		primaryLevels, _ := sg.catalog.RequirePrimaryTraitLevels(s)
+		naturalSigil := naturalSigilLevels(sigilLevels)
+		naturalPrimary := naturalSigilLevels(primaryLevels)
+		defaultLevel := derefInt(s.DefaultSigilLevel)
+		if defaultLevel < 1 || defaultLevel > 15 {
+			defaultLevel = maxNaturalSigilLevel(naturalSigil)
+		}
+		result = append(result, SigilInfo{
 			InternalID:              s.InternalID,
 			Hash:                    s.Hash,
 			DisplayName:             displaySigilName(s),
+			Category:                derefStr(s.Category),
+			Verified:                isVerifiedSigilDefinition(s),
+			Constructible:           sg.catalog.IsSigilConstructible(s),
 			SupportsSecondaryTrait:  supportsGeneratedPlusSigil(s),
-			AllowedSigilLevels:      s.AllowedSigilLevels,
-			DefaultSigilLevel:       derefInt(s.DefaultSigilLevel),
+			AllowedSigilLevels:      naturalSigil,
+			DefaultSigilLevel:       defaultLevel,
 			PrimaryTraitID:          s.PrimaryTraitID,
-			PrimaryTraitName:        derefStr(s.PrimaryTraitName),
-			AllowedFirstTraitLevels: s.AllowedFirstTraitLevels,
-			FirstTraitMaxLevel:      derefInt(s.FirstTraitMaxLevel),
-		}
+			PrimaryTraitName:        cnTrait(derefStr(s.PrimaryTraitName)),
+			AllowedFirstTraitLevels: naturalPrimary,
+			FirstTraitMaxLevel:      maxNaturalSigilLevel(naturalPrimary),
+		})
 	}
 	return result, nil
 }
 
 // GetTraitList 返回所有特性
 func (sg *SigilGen) GetTraitList() ([]TraitInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -148,8 +214,10 @@ func (sg *SigilGen) GetTraitList() ([]TraitInfo, error) {
 
 // GetCompatibleSecondaryTraits 返回可选副特性列表
 func (sg *SigilGen) GetCompatibleSecondaryTraits(sigilID string) ([]TraitInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -157,29 +225,49 @@ func (sg *SigilGen) GetCompatibleSecondaryTraits(sigilID string) ([]TraitInfo, e
 	if err != nil {
 		return nil, err
 	}
+	if !sg.catalog.IsSigilConstructible(sigil) || len(sigil.AllowedSecondaryTraitIDs) == 0 {
+		return []TraitInfo{}, nil
+	}
 
 	secondaries, err := sg.catalog.GetAllowedSecondaryTraits(sigil)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]TraitInfo, len(secondaries))
-	for i, t := range secondaries {
-		result[i] = TraitInfo{
+	explicit := make(map[string]bool, len(sigil.AllowedSecondaryTraitIDs))
+	for _, id := range sigil.AllowedSecondaryTraitIDs {
+		explicit[id] = true
+	}
+	result := make([]TraitInfo, 0, len(secondaries))
+	for _, t := range secondaries {
+		if !explicit[t.InternalID] || t.InternalID == sigil.PrimaryTraitID {
+			continue
+		}
+		levels, err := sg.catalog.RequireSecondaryTraitLevels(sigil, t)
+		if err != nil {
+			continue
+		}
+		naturalLevels := naturalSigilLevels(levels)
+		if len(naturalLevels) == 0 {
+			continue
+		}
+		result = append(result, TraitInfo{
 			InternalID:    t.InternalID,
 			Hash:          t.Hash,
 			DisplayName:   cnTrait(t.DisplayName),
-			MaxLevel:      derefInt(t.MaxLevel),
-			AllowedLevels: t.AllowedLevels,
-		}
+			MaxLevel:      maxNaturalSigilLevel(naturalLevels),
+			AllowedLevels: naturalLevels,
+		})
 	}
 	return result, nil
 }
 
 // GetAllowedLevels 返回因子可选等级
 func (sg *SigilGen) GetAllowedLevels(sigilID string) ([]int, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -192,8 +280,10 @@ func (sg *SigilGen) GetAllowedLevels(sigilID string) ([]int, error) {
 
 // GetPrimaryTraitLevels 返回主特性可选等级
 func (sg *SigilGen) GetPrimaryTraitLevels(sigilID string) ([]int, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -206,8 +296,10 @@ func (sg *SigilGen) GetPrimaryTraitLevels(sigilID string) ([]int, error) {
 
 // GetSecondaryTraitLevels 返回副特性可选等级
 func (sg *SigilGen) GetSecondaryTraitLevels(sigilID, traitID string) ([]int, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -224,8 +316,10 @@ func (sg *SigilGen) GetSecondaryTraitLevels(sigilID, traitID string) ([]int, err
 
 // GetDefaultSecondaryTrait 返回因子的默认副特性
 func (sg *SigilGen) GetDefaultSecondaryTrait(sigilID string) (*TraitInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -248,8 +342,10 @@ func (sg *SigilGen) GetDefaultSecondaryTrait(sigilID string) (*TraitInfo, error)
 
 // GetPrimaryTrait 返回因子的主特性
 func (sg *SigilGen) GetPrimaryTrait(sigilID string) (*TraitInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -271,6 +367,8 @@ func (sg *SigilGen) GetPrimaryTrait(sigilID string) (*TraitInfo, error) {
 }
 
 func (sg *SigilGen) SelectSigilInputSave() (string, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.ctx == nil {
 		return "", fmt.Errorf("Wails 上下文未初始化")
 	}
@@ -284,6 +382,8 @@ func (sg *SigilGen) SelectSigilInputSave() (string, error) {
 }
 
 func (sg *SigilGen) SelectSigilOutputSave(defaultPath string) (string, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.ctx == nil {
 		return "", fmt.Errorf("Wails 上下文未初始化")
 	}
@@ -307,6 +407,8 @@ func (sg *SigilGen) SelectSigilOutputSave(defaultPath string) (string, error) {
 // ── 存档操作 ──
 
 func (sg *SigilGen) LoadSaveFile(path string) (*SaveInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	s, err := LoadSave(path)
 	if err != nil {
 		return nil, err
@@ -322,6 +424,8 @@ func (sg *SigilGen) LoadSaveFile(path string) (*SaveInfo, error) {
 }
 
 func (sg *SigilGen) GetLoadedSaveInfo() (*SaveInfo, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.save == nil {
 		return nil, fmt.Errorf("未加载存档")
 	}
@@ -335,13 +439,17 @@ func (sg *SigilGen) GetLoadedSaveInfo() (*SaveInfo, error) {
 // ── 队列操作 ──
 
 func (sg *SigilGen) GetQueue() []QueueItem {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.queue == nil {
 		return []QueueItem{}
 	}
-	return sg.queue
+	return append([]QueueItem(nil), sg.queue...)
 }
 
 func (sg *SigilGen) AddToQueue(item QueueItem) error {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	normalized, report, err := sg.normalizeQueueItem(item)
 	if err != nil {
 		return err
@@ -359,18 +467,28 @@ func (sg *SigilGen) AddToQueue(item QueueItem) error {
 // CheckLegality reports natural-game compatibility without changing or
 // suppressing any writable value selected by the user.
 func (sg *SigilGen) CheckLegality(item QueueItem) (LegalityReport, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	_, report, err := sg.normalizeQueueItem(item)
 	return report, err
 }
 
 func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityReport, error) {
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return item, LegalityReport{}, err
 		}
 	}
 	if item.Quantity <= 0 {
 		report := newLegalityReport(LegalityImpossible, false, "数量至少为 1")
+		return item, report, nil
+	}
+	if item.Quantity > generatorQuantityMax {
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("数量不能超过 %d", generatorQuantityMax))
+		return item, report, nil
+	}
+	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+		report := newLegalityReport(LegalityImpossible, false, "因子 GEEN_142_02 缺少可信的游戏内名称与自然生成依据，拒绝写入")
 		return item, report, nil
 	}
 
@@ -418,6 +536,10 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		// Keep the slot in the record and write EmptyHash/0 later; do not invent
 		// a secondary trait or reject the user's explicit "none" choice.
 		if item.SecondaryTraitID == "" {
+			if requiresCharacterSigilSecondary(sigil) {
+				report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("角色因子「%s」必须使用本地 2.0.2 gem/lot 白名单中的副特性，不能留空", item.SigilName))
+				return item, report, nil
+			}
 			item.SecondaryTraitName = ""
 			item.SecondaryLevel = 0
 		} else {
@@ -449,6 +571,10 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 				}
 			}
 			if !found {
+				if strings.EqualFold(derefStr(sigil.Category), "character_sigil") {
+					report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」不在角色因子「%s」的本地 2.0.2 gem/lot 白名单中，拒绝写入", item.SecondaryTraitName, item.SigilName))
+					return item, report, nil
+				}
 				reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」不属于因子「%s」的自然组合，写入后可能不生效", item.PrimaryTraitName, item.SecondaryTraitName, item.SigilName))
 			}
 
@@ -479,6 +605,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 }
 
 func (sg *SigilGen) RemoveFromQueue(index int) error {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if index < 0 || index >= len(sg.queue) {
 		return fmt.Errorf("无效的队列索引: %d", index)
 	}
@@ -487,12 +615,19 @@ func (sg *SigilGen) RemoveFromQueue(index int) error {
 }
 
 func (sg *SigilGen) ClearQueue() {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	sg.queue = nil
 }
 
 // ── 写入 ──
 
 func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
+		return nil, err
+	}
 	if len(sg.queue) == 0 {
 		return nil, fmt.Errorf("队列为空，请先添加因子")
 	}
@@ -562,6 +697,22 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	}
 
 	// 更新 max slot ID
+	// Mutating SaveData is the beginning of the transaction, not its commit.
+	// Keep an exact in-memory snapshot so a failed write or strict readback can
+	// be retried without advancing to another empty slot and creating a duplicate.
+	originalData := append([]byte(nil), sg.save.data...)
+	originalQueue := append([]QueueItem(nil), sg.queue...)
+	originalBackupPath := sg.save.lastBackupPath
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		sg.save.data = originalData
+		sg.save.lastBackupPath = originalBackupPath
+		sg.queue = originalQueue
+	}()
+
 	newMaxSlotID := firstNewSlotID + len(expanded) - 1
 	if err := sg.save.SetMaxSlotID(newMaxSlotID); err != nil {
 		return nil, err
@@ -615,47 +766,67 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		return nil, fmt.Errorf("写入输出文件失败: %w", err)
 	}
 
-	// 验证
+	// 严格回读验证：加载失败或任一字段不符都必须向调用方返回错误。
+	verifyLoader := sg.loadSaveForVerification
+	if verifyLoader == nil {
+		verifyLoader = LoadSave
+	}
+	verifySave, err := verifyLoader(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("因子已写入，但重新读取失败: %w", err)
+	}
 	verified := 0
-	verifySave, err := LoadSave(outputPath)
-	if err == nil {
-		for i, item := range expanded {
-			gemUnitID := emptySlots[i]
-			sigil, _ := sg.catalog.RequireSigil(item.SigilID)
-			sigilHash, _ := ParseHashHex(sigil.Hash)
-			primaryTrait, _ := sg.catalog.RequireTrait(sigil.PrimaryTraitID)
-			primaryHash, _ := ParseHashHex(primaryTrait.Hash)
+	for i, item := range expanded {
+		gemUnitID := emptySlots[i]
+		expectedSlotID := uint32(firstNewSlotID + i)
+		sigil, _ := sg.catalog.RequireSigil(item.SigilID)
+		sigilHash, _ := ParseHashHex(sigil.Hash)
+		primaryTrait, _ := sg.catalog.RequireTrait(sigil.PrimaryTraitID)
+		primaryHash, _ := ParseHashHex(primaryTrait.Hash)
 
-			secondaryHash := EmptyHash
-			var secondaryLevel int
-			hasSecondary := supportsGeneratedPlusSigil(sigil)
-			if hasSecondary && item.SecondaryTraitID != "" {
-				secondaryTrait, _ := sg.catalog.RequireTrait(item.SecondaryTraitID)
-				secondaryHash, _ = ParseHashHex(secondaryTrait.Hash)
-				secondaryLevel = item.SecondaryLevel
-			}
-
-			if verifySave.VerifySigil(gemUnitID, sigilHash, item.Level,
-				primaryHash, item.PrimaryLevel,
-				secondaryHash, secondaryLevel, hasSecondary) == nil {
-				verified++
-			}
+		secondaryHash := EmptyHash
+		var secondaryLevel int
+		hasSecondary := supportsGeneratedPlusSigil(sigil)
+		if hasSecondary && item.SecondaryTraitID != "" {
+			secondaryTrait, _ := sg.catalog.RequireTrait(item.SecondaryTraitID)
+			secondaryHash, _ = ParseHashHex(secondaryTrait.Hash)
+			secondaryLevel = item.SecondaryLevel
 		}
+
+		if err := verifySave.VerifySigil(gemUnitID, expectedSlotID, sigilHash, item.Level,
+			primaryHash, item.PrimaryLevel,
+			secondaryHash, secondaryLevel, hasSecondary); err != nil {
+			return nil, fmt.Errorf("因子已写入，但第 %d 个因子回读验证失败: %w", i+1, err)
+		}
+		verified++
+	}
+	if verified != created {
+		return nil, fmt.Errorf("因子已写入，但回读验证数量不符: 已创建 %d，已验证 %d", created, verified)
 	}
 
-	// 清空队列
-	sg.queue = nil
-
 	absPath, _ := filepath.Abs(outputPath)
+	createdSlotIDs := make([]uint32, created)
+	for i := range createdSlotIDs {
+		createdSlotIDs[i] = uint32(firstNewSlotID + i)
+	}
+	sg.queue = nil
+	committed = true
 	return &ApplyResult{
 		CreatedCount:  created,
 		VerifiedCount: verified,
 		OutputPath:    absPath,
+		BackupPath:    sg.save.LastBackupPath(),
+		SlotIDs:       createdSlotIDs,
 	}, nil
 }
 
 // RemoveAllSigils 清除输出的存档中所有因子
 func (sg *SigilGen) RemoveAllSigils(inputPath, outputPath string) (*ApplyResult, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
+		return nil, err
+	}
 	s, err := LoadSave(inputPath)
 	if err != nil {
 		return nil, err
@@ -715,6 +886,8 @@ type ExistingSigil struct {
 }
 
 func (sg *SigilGen) DebugSave() (string, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.save == nil {
 		return "no save loaded", nil
 	}
@@ -745,11 +918,13 @@ func (sg *SigilGen) DebugSave() (string, error) {
 }
 
 func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
 	if sg.save == nil {
 		return nil, fmt.Errorf("请先加载存档")
 	}
 	if sg.catalog == nil {
-		if err := sg.LoadCatalog(); err != nil {
+		if err := sg.loadCatalogLocked(); err != nil {
 			return nil, err
 		}
 	}
@@ -841,6 +1016,11 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 
 // DeleteSelectedSigils 删除选中的因子并写入输出文件
 func (sg *SigilGen) DeleteSelectedSigils(gemUnitIDs []int, outputPath string) (*ApplyResult, error) {
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
+		return nil, err
+	}
 	if sg.save == nil {
 		return nil, fmt.Errorf("请先加载存档")
 	}

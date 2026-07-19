@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"math"
 	"unsafe"
 )
 
@@ -15,7 +17,16 @@ const (
 	summonMaxRecords      = 1000
 	summonInvalidTypeHash = 0x887AE0B0
 	summonSaveFunctionRVA = 0x79D820
+
+	// The bundled, game-derived catalogs currently top out at 65 for a main
+	// trait and 9 for a sub-parameter table index. Keep independent safety
+	// ceilings so malformed or replaced catalog data cannot expand the writable
+	// runtime range.
+	summonMainTraitSafetyMaxLevel uint32 = 65
+	summonSubParamSafetyMaxLevel  uint32 = 9
 )
+
+var errSummonMemoryRollbackUnproven = errLiveMemoryRollbackUnproven
 
 type SummonInfo struct {
 	Index          int    `json:"index"`
@@ -136,24 +147,168 @@ func (a *App) SummonGetOptions() (SummonOptions, error) {
 	return options, nil
 }
 
-func (a *App) summonSubParamMaxLevel(hash uint32) (int, bool) {
-	var subParams summonSubParamFile
-	if err := json.Unmarshal(summonSubParamsJSON, &subParams); err != nil {
-		return 0, false
+func validateSummonMemoryUpdate(catalog *summonStatCatalog, item SummonUpdate) error {
+	if catalog == nil {
+		return fmt.Errorf("召唤石目录为空")
 	}
-	for _, item := range subParams.SubParams {
-		h, err := ParseHashHex(item.Hash)
-		if err == nil && h == hash {
-			return item.MaxLevel, true
-		}
+	if item.Index < 0 || item.Index >= summonMaxRecords {
+		return fmt.Errorf("无效召唤石索引: %d", item.Index)
 	}
-	return 0, false
+	if _, ok := catalog.types[item.TypeHash]; !ok {
+		return fmt.Errorf("未知召唤石种类哈希 0x%08X", item.TypeHash)
+	}
+	mainTrait, ok := catalog.main[item.MainTraitHash]
+	if !ok {
+		return fmt.Errorf("未知召唤石主因子哈希 0x%08X", item.MainTraitHash)
+	}
+	if mainTrait.MaxLevel <= 0 {
+		return fmt.Errorf("召唤石主因子 0x%08X 的目录等级上限无效", item.MainTraitHash)
+	}
+	mainLimit := uint32(mainTrait.MaxLevel)
+	if mainLimit > summonMainTraitSafetyMaxLevel {
+		mainLimit = summonMainTraitSafetyMaxLevel
+	}
+	if item.MainTraitLevel > mainLimit {
+		return fmt.Errorf("召唤石主因子等级 %d 超出自然/安全上限 %d", item.MainTraitLevel, mainLimit)
+	}
+
+	subParam, ok := catalog.sub[item.SubParamHash]
+	if !ok {
+		return fmt.Errorf("未知召唤石副参数哈希 0x%08X", item.SubParamHash)
+	}
+	if subParam.MaxLevel < 0 || len(subParam.Values) == 0 || subParam.MaxLevel >= len(subParam.Values) {
+		return fmt.Errorf("召唤石副参数 0x%08X 的目录等级表无效", item.SubParamHash)
+	}
+	subLimit := uint32(subParam.MaxLevel)
+	if subLimit > summonSubParamSafetyMaxLevel {
+		subLimit = summonSubParamSafetyMaxLevel
+	}
+	if item.SubParamLevel > subLimit {
+		return fmt.Errorf("召唤石副参数等级 %d 超出自然/安全上限 %d", item.SubParamLevel, subLimit)
+	}
+	if item.Rank > 3 {
+		return fmt.Errorf("召唤石阶级必须为 0 到 3")
+	}
+	return nil
 }
 
-func (a *App) summonInventoryAddress() (uintptr, error) {
-	if err := a.ensureGameProcess(); err != nil {
-		return 0, err
+func encodeSummonMemoryRecord(original []byte, item SummonUpdate) ([]byte, error) {
+	if len(original) != summonRecordSize {
+		return nil, fmt.Errorf("召唤石记录长度 %d，预期 %d", len(original), summonRecordSize)
 	}
+	encoded := append([]byte(nil), original...)
+	binary.LittleEndian.PutUint32(encoded[0x00:0x04], item.TypeHash)
+	// +0x04 is the stable inventory Slot ID and is not user-editable.
+	binary.LittleEndian.PutUint32(encoded[0x08:0x0C], item.MainTraitHash)
+	binary.LittleEndian.PutUint32(encoded[0x0C:0x10], item.SubParamHash)
+	binary.LittleEndian.PutUint32(encoded[0x10:0x14], item.MainTraitLevel)
+	binary.LittleEndian.PutUint32(encoded[0x14:0x18], item.SubParamLevel)
+	binary.LittleEndian.PutUint32(encoded[0x18:0x1C], item.Rank)
+	return encoded, nil
+}
+
+func decodeSummonMemoryRecord(index int, address uintptr, record []byte) (SummonInfo, error) {
+	if len(record) != summonRecordSize {
+		return SummonInfo{}, fmt.Errorf("召唤石记录长度 %d，预期 %d", len(record), summonRecordSize)
+	}
+	return SummonInfo{
+		Index:          index,
+		Address:        uint64(address),
+		TypeHash:       binary.LittleEndian.Uint32(record[0x00:0x04]),
+		Slot:           binary.LittleEndian.Uint32(record[0x04:0x08]),
+		MainTraitHash:  binary.LittleEndian.Uint32(record[0x08:0x0C]),
+		SubParamHash:   binary.LittleEndian.Uint32(record[0x0C:0x10]),
+		MainTraitLevel: binary.LittleEndian.Uint32(record[0x10:0x14]),
+		SubParamLevel:  binary.LittleEndian.Uint32(record[0x14:0x18]),
+		Rank:           binary.LittleEndian.Uint32(record[0x18:0x1C]),
+	}, nil
+}
+
+func validateSummonMemorySnapshot(expectedInventory, currentInventory uintptr, expectedType uint32, original, current []byte) error {
+	if expectedInventory == 0 || currentInventory == 0 || currentInventory != expectedInventory {
+		return fmt.Errorf("自动备份期间召唤石背包根指针已变化，请刷新后重试")
+	}
+	if len(original) != summonRecordSize || len(current) != summonRecordSize {
+		return fmt.Errorf("自动备份后召唤石记录长度异常")
+	}
+	if binary.LittleEndian.Uint32(original[0:4]) != expectedType {
+		return fmt.Errorf("备份前目标索引的召唤石种类已不匹配 0x%08X", expectedType)
+	}
+	if binary.LittleEndian.Uint32(current[0:4]) != expectedType {
+		return fmt.Errorf("自动备份期间目标索引的召唤石种类已变化")
+	}
+	if !bytes.Equal(original, current) {
+		return fmt.Errorf("自动备份期间目标召唤石的完整记录已变化，请刷新后重试")
+	}
+	return nil
+}
+
+type summonMemoryRecordWriter func([]byte) error
+type summonMemoryRecordCommitter func() error
+type summonMemoryRecordReader func() ([]byte, error)
+
+func verifySummonMemoryRecord(want []byte, reader summonMemoryRecordReader) error {
+	got, err := reader()
+	if err != nil {
+		return fmt.Errorf("召唤石记录回读失败: %w", err)
+	}
+	if len(got) != summonRecordSize {
+		return fmt.Errorf("召唤石记录回读长度 %d，预期 %d", len(got), summonRecordSize)
+	}
+	if !bytes.Equal(got, want) {
+		return fmt.Errorf("召唤石完整记录回读不一致")
+	}
+	return nil
+}
+
+func rollbackSummonMemoryRecord(original []byte, persist bool, writer summonMemoryRecordWriter, committer summonMemoryRecordCommitter, reader summonMemoryRecordReader) error {
+	if err := writer(original); err != nil {
+		return fmt.Errorf("恢复原召唤石记录内存失败: %w", err)
+	}
+	if persist {
+		if err := committer(); err != nil {
+			return fmt.Errorf("重新保存原召唤石记录失败: %w", err)
+		}
+	}
+	if err := verifySummonMemoryRecord(original, reader); err != nil {
+		return fmt.Errorf("恢复原召唤石记录后验证失败: %w", err)
+	}
+	return nil
+}
+
+func summonMemoryTransactionError(cause, rollback error) error {
+	if rollback == nil {
+		return cause
+	}
+	return errors.Join(cause, errSummonMemoryRollbackUnproven, fmt.Errorf("召唤石回滚失败: %w", rollback))
+}
+
+func writeSummonMemoryRecordAtomic(original, desired []byte, writer summonMemoryRecordWriter, committer summonMemoryRecordCommitter, reader summonMemoryRecordReader) error {
+	if len(original) != summonRecordSize || len(desired) != summonRecordSize || writer == nil || committer == nil || reader == nil {
+		return fmt.Errorf("召唤石事务写入参数无效")
+	}
+	if err := writer(desired); err != nil {
+		return summonMemoryTransactionError(err, rollbackSummonMemoryRecord(original, false, writer, committer, reader))
+	}
+	if err := verifySummonMemoryRecord(desired, reader); err != nil {
+		return summonMemoryTransactionError(err, rollbackSummonMemoryRecord(original, false, writer, committer, reader))
+	}
+	if err := committer(); err != nil {
+		if isRemoteCallIndeterminate(err) {
+			// The remote thread may still be reading the desired record. A rollback
+			// here could race that thread and persist a mixed state. callRemoteOneArg
+			// has already poisoned this process instance, so fail closed until restart.
+			return err
+		}
+		return summonMemoryTransactionError(err, rollbackSummonMemoryRecord(original, true, writer, committer, reader))
+	}
+	if err := verifySummonMemoryRecord(desired, reader); err != nil {
+		return summonMemoryTransactionError(err, rollbackSummonMemoryRecord(original, true, writer, committer, reader))
+	}
+	return nil
+}
+
+func (a *App) summonInventoryAddressLocked() (uintptr, error) {
 	var inventory uintptr
 	root := a.moduleBase + summonInventoryPtrRVA
 	if err := readProcessMemory(a.hProcess, root, unsafe.Pointer(&inventory), unsafe.Sizeof(inventory)); err != nil {
@@ -175,16 +330,9 @@ func (a *App) readSummonRecords(inventory uintptr) ([]SummonInfo, error) {
 	result := make([]SummonInfo, 0, summonMaxRecords)
 	for i := 0; i < summonMaxRecords; i++ {
 		base := i * summonRecordSize
-		item := SummonInfo{
-			Index:          i,
-			Address:        uint64(start + uintptr(base)),
-			TypeHash:       readUint32LE(buf[base:]),
-			Slot:           readUint32LE(buf[base+4:]),
-			MainTraitHash:  readUint32LE(buf[base+8:]),
-			SubParamHash:   readUint32LE(buf[base+12:]),
-			MainTraitLevel: readUint32LE(buf[base+16:]),
-			SubParamLevel:  readUint32LE(buf[base+20:]),
-			Rank:           readUint32LE(buf[base+24:]),
+		item, err := decodeSummonMemoryRecord(i, start+uintptr(base), buf[base:base+summonRecordSize])
+		if err != nil {
+			return nil, err
 		}
 		if item.TypeHash != 0 && item.TypeHash != summonInvalidTypeHash {
 			result = append(result, item)
@@ -193,8 +341,20 @@ func (a *App) readSummonRecords(inventory uintptr) ([]SummonInfo, error) {
 	return result, nil
 }
 
+func (a *App) readSummonRecord(address uintptr) ([]byte, error) {
+	record := make([]byte, summonRecordSize)
+	if err := readProcessMemory(a.hProcess, address, unsafe.Pointer(&record[0]), uintptr(len(record))); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
 func (a *App) SummonGetAll() ([]SummonInfo, error) {
-	inventory, err := a.summonInventoryAddress()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+	inventory, err := a.summonInventoryAddressLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -202,89 +362,115 @@ func (a *App) SummonGetAll() ([]SummonInfo, error) {
 }
 
 func (a *App) SummonUpdate(item SummonUpdate) (SummonInfo, error) {
-	if item.Index < 0 || item.Index >= summonMaxRecords {
-		return SummonInfo{}, fmt.Errorf("无效召唤石索引: %d", item.Index)
-	}
-	if item.TypeHash == 0 {
-		return SummonInfo{}, fmt.Errorf("召唤石种类不能为空")
-	}
-	// 游戏记录存在阶级 0 的合法召唤石。
-	if item.Rank > 3 {
-		return SummonInfo{}, fmt.Errorf("阶级必须为 0 到 3")
-	}
-	if item.MainTraitLevel > math.MaxInt32 || item.SubParamLevel > math.MaxInt32 {
-		return SummonInfo{}, fmt.Errorf("召唤石等级或副参数等级超出范围")
-	}
-	// 副参数等级是档位索引(0~maxLevel), 超出会越界读到相邻档位表导致数值溢出, 按该副参数上限钳制。
-	if item.SubParamHash != 0 {
-		if max, ok := a.summonSubParamMaxLevel(item.SubParamHash); ok && item.SubParamLevel > uint32(max) {
-			return SummonInfo{}, fmt.Errorf("副参数等级超出上限，应为 0 到 %d", max)
+	return a.summonUpdate("", false, item)
+}
+
+func (a *App) SummonUpdateOwned(token string, item SummonUpdate) (SummonInfo, error) {
+	return a.summonUpdate(token, true, item)
+}
+
+func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonInfo, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if owned {
+		if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+			return SummonInfo{}, err
 		}
+		defer a.procMu.Unlock()
+	}
+	catalog, err := loadSummonStatCatalog()
+	if err != nil {
+		return SummonInfo{}, fmt.Errorf("加载召唤石写入目录失败: %w", err)
+	}
+	if err := validateSummonMemoryUpdate(catalog, item); err != nil {
+		return SummonInfo{}, fmt.Errorf("召唤石写入参数无效: %w", err)
 	}
 
-	inventory, err := a.summonInventoryAddress()
+	if !owned {
+		if err := a.acquireGameProcessLease(); err != nil {
+			return SummonInfo{}, err
+		}
+		defer a.procMu.Unlock()
+	}
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return SummonInfo{}, err
+	}
+	saveFn := a.moduleBase + summonSaveFunctionRVA
+	if err := a.validateRemoteFunctionStart(saveFn, "游戏内召唤石保存函数"); err != nil {
+		return SummonInfo{}, err
+	}
+	inventory, err := a.summonInventoryAddressLocked()
 	if err != nil {
 		return SummonInfo{}, err
 	}
-	items, err := a.readSummonRecords(inventory)
+	address := inventory + summonRecordsOffset + uintptr(item.Index*summonRecordSize)
+	original, err := a.readSummonRecord(address)
+	if err != nil {
+		return SummonInfo{}, fmt.Errorf("读取目标召唤石原记录失败: %w", err)
+	}
+	existing, err := decodeSummonMemoryRecord(item.Index, address, original)
 	if err != nil {
 		return SummonInfo{}, err
 	}
-	found := false
-	for _, existing := range items {
-		if existing.Index != item.Index {
-			continue
-		}
-		if item.TypeHash != existing.TypeHash {
-			return SummonInfo{}, fmt.Errorf("召唤石种类不支持修改")
-		}
-		found = true
-		break
-	}
-	if !found {
+	if existing.TypeHash == 0 || existing.TypeHash == summonInvalidTypeHash {
 		return SummonInfo{}, fmt.Errorf("召唤石索引不存在于当前背包: %d", item.Index)
+	}
+	if item.TypeHash != existing.TypeHash {
+		return SummonInfo{}, fmt.Errorf("召唤石种类不支持修改：索引 %d 当前为 0x%08X", item.Index, existing.TypeHash)
+	}
+	desired, err := encodeSummonMemoryRecord(original, item)
+	if err != nil {
+		return SummonInfo{}, err
 	}
 	if err := snapshotBeforeLiveSaveChange("召唤石写入前自动备份"); err != nil {
 		return SummonInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 	}
 
-	address := inventory + summonRecordsOffset + uintptr(item.Index*summonRecordSize)
-	values := []struct {
-		offset uintptr
-		value  uint32
-	}{
-		{0x00, item.TypeHash},
-		{0x08, item.MainTraitHash},
-		{0x0C, item.SubParamHash},
-		{0x10, item.MainTraitLevel},
-		{0x14, item.SubParamLevel},
-		{0x18, item.Rank},
+	// The filesystem backup can be slow enough for the game to rebuild its
+	// inventory. Re-read the root, the target type and every byte in the 0x1C
+	// record before using the captured address.
+	confirmedInventory, err := a.summonInventoryAddressLocked()
+	if err != nil {
+		return SummonInfo{}, fmt.Errorf("自动备份后复核召唤石背包失败: %w", err)
 	}
-	for _, field := range values {
-		if err := writeUint32Remote(a.hProcess, address+field.offset, field.value); err != nil {
-			return SummonInfo{}, fmt.Errorf("写入召唤石字段 +0x%02X 失败: %w", field.offset, err)
-		}
+	confirmed, err := a.readSummonRecord(address)
+	if err != nil {
+		return SummonInfo{}, fmt.Errorf("自动备份后复核召唤石记录失败: %w", err)
+	}
+	if err := validateSummonMemorySnapshot(inventory, confirmedInventory, item.TypeHash, original, confirmed); err != nil {
+		return SummonInfo{}, err
 	}
 
-	saveFn := a.moduleBase + summonSaveFunctionRVA
-	for _, offset := range []uintptr{0x08, 0x0C, 0x10, 0x14, 0x18} {
-		if err := a.callRemoteOneArg(saveFn, address+offset); err != nil {
-			return SummonInfo{}, fmt.Errorf("调用召唤石保存函数失败: %w", err)
+	writer := func(record []byte) error {
+		if len(record) != summonRecordSize {
+			return fmt.Errorf("召唤石记录长度异常: %d", len(record))
 		}
+		return writeProcessMemory(a.hProcess, address, unsafe.Pointer(&record[0]), uintptr(len(record)))
+	}
+	reader := func() ([]byte, error) {
+		return a.readSummonRecord(address)
+	}
+	committer := func() error {
+		for _, offset := range []uintptr{0x08, 0x0C, 0x10, 0x14, 0x18} {
+			if err := a.callRemoteOneArg(saveFn, address+offset); err != nil {
+				return fmt.Errorf("保存召唤石字段 +0x%02X 失败: %w", offset, err)
+			}
+		}
+		return nil
+	}
+	if err := writeSummonMemoryRecordAtomic(original, desired, writer, committer, reader); err != nil {
+		if isRemoteCallIndeterminate(err) || errors.Is(err, errSummonMemoryRollbackUnproven) {
+			// Either a save thread may still be running or the original record could
+			// not be restored and proven. Block every further live item write for
+			// this process instance; only a full game-process restart clears it.
+			a.poisonCurrentLiveMemoryWrites()
+		}
+		return SummonInfo{}, fmt.Errorf("召唤石事务写入失败: %w", err)
 	}
 
-	items, err = a.SummonGetAll()
+	updated, err := decodeSummonMemoryRecord(item.Index, address, desired)
 	if err != nil {
 		return SummonInfo{}, err
 	}
-	for _, updated := range items {
-		if updated.Index == item.Index {
-			return updated, nil
-		}
-	}
-	return SummonInfo{}, fmt.Errorf("召唤石写入后未找到索引 %d", item.Index)
-}
-
-func readUint32LE(data []byte) uint32 {
-	return uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24
+	return updated, nil
 }

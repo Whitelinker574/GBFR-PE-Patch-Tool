@@ -1343,7 +1343,7 @@
     {
       "internalId": "SKILL_120_00",
       "hash": "0xD908223D",
-      "displayName": "Phantasm's Concord",
+      "displayName": "Phantasm's Harmony",
       "category": "character_trait",
       "maxLevel": 15,
       "allowedLevels": null,
@@ -1360,7 +1360,7 @@
     {
       "internalId": "SKILL_120_01",
       "hash": "0x7351D602",
-      "displayName": "Phantasm's Harmony",
+      "displayName": "Phantasm's Concord",
       "category": "character_trait",
       "maxLevel": 15,
       "allowedLevels": null,
@@ -2301,6 +2301,21 @@
       "confidence": "high"
     },
     {
+      "internalId": "SKILL_023_00",
+      "hash": "0xCAC6AFF2",
+      "displayName": "Potent Greens",
+      "category": null,
+      "maxLevel": 30,
+      "allowedLevels": null,
+      "observedLevels": [],
+      "canAppearAsPrimary": true,
+      "canAppearAsSecondary": false,
+      "bannedAsSecondaryOnPlusSigils": true,
+      "notes": "Local 2.0.2 gem.tbl uses this exact SkillId1 for GEEN_156_24.",
+      "source": "local 2.0.2 gem.tbl; GBFRDataTools.Database/Data/ids.txt",
+      "confidence": "high"
+    },
+    {
       "internalId": "SKILL_156_00",
       "hash": "0xCD18A77D",
       "displayName": "Potent Greens",
@@ -2443,7 +2458,7 @@
       "confidence": "low"
     },
     {
-      "internalId": "SKILL_166_50",
+      "internalId": "SKILL_143_00",
       "hash": "0x40223C28",
       "displayName": "Catastrophe",
       "category": null,
@@ -2453,9 +2468,9 @@
       "canAppearAsPrimary": true,
       "canAppearAsSecondary": true,
       "bannedAsSecondaryOnPlusSigils": false,
-      "notes": "Added from in-game hash verification and CT hash-name mapping. Distinct from Less Is More (0x82CE278D / 身无长技). Exact internalId still needs authoritative table export verification.",
-      "source": "Cheat Engine live memory verification; sigil_ctdata.go hash-name mapping; user in-game validation",
-      "confidence": "low"
+      "notes": "Distinct from Less Is More (0x82CE278D / 身无长技). The internal ID is independently fixed by the local GBFRDataTools ID table and the local 2.0.2 weapon-table-derived traitIds mapping.",
+      "source": "local GBFRDataTools ids.txt; local 2.0.2 weapon.tbl-derived traitIds; in-game hash verification",
+      "confidence": "high"
     },
     {
       "internalId": "SKILL_167_00",
@@ -2720,7 +2735,24 @@
       "notes": "Added from current sigil pool base-trait mapping. Max level is null unless present in public trait max-level tables.",
       "source": "Nenkai Trait/Skill IDs; public trait max-level tables; temporary broad secondary pool",
       "confidence": "low"
-    }
+    },
+    {"internalId":"SKILL_173_00","hash":"0x1DE14C65","displayName":"Gladiator's Frenzy","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_173_01","hash":"0x26956F25","displayName":"Gladiator's Top","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_173_02","hash":"0xDBA19768","displayName":"Gladiator's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_174_00","hash":"0x7B5B081D","displayName":"Bladequeen's Serenade","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_174_01","hash":"0x9ACE140B","displayName":"Bladequeen's Circuit","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_174_02","hash":"0x79266456","displayName":"Bladequeen's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_175_00","hash":"0xD176D262","displayName":"Ultramarine's Flash","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_175_01","hash":"0x461A8E07","displayName":"Ultramarine's Adversity","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_175_02","hash":"0xB953CC1E","displayName":"Ultramarine's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_176_00","hash":"0x7D75D904","displayName":"Thunderwolf's Recharge","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_176_01","hash":"0xBE3404B9","displayName":"Thunderwolf's Acuity","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_176_02","hash":"0x3EB345D7","displayName":"Thunderwolf's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_177_00","hash":"0x47384248","displayName":"Enchantress's Blessing","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_177_01","hash":"0x30773197","displayName":"Enchantress's Rhythm","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_177_02","hash":"0x807B6684","displayName":"Enchantress's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_178_01","hash":"0xED8D8AD8","displayName":"The Black's Impulse","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"},
+    {"internalId":"SKILL_178_02","hash":"0x5559232F","displayName":"The Black's Warpath","category":"character_trait","maxLevel":15,"allowedLevels":null,"observedLevels":[15],"canAppearAsPrimary":true,"canAppearAsSecondary":true,"bannedAsSecondaryOnPlusSigils":false,"notes":"DLC 2.0.2 trait with locally verified ID/hash and level data; no factor-item pairing is inferred.","source":"local GBFRDataTools ids.txt; local skill_status-derived trait_values; observed game data","confidence":"high"}
   ],
   "todos": [
     "If future game patches add new sigils or traits, rerun the ID/hash/max-level audit before publishing a new build.",

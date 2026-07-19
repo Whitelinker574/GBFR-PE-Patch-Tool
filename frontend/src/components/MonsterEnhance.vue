@@ -1,8 +1,10 @@
 <script setup>
-import { reactive, ref } from 'vue'
-import { MonsterEnhanceGetStatus, MonsterEnhanceSetPatchValueEnabled, DamageMeterGetStatus } from '../../wailsjs/go/main/App'
+import { onBeforeUnmount, reactive, ref } from 'vue'
+import { CharaAcquire, CharaRelease, MonsterEnhanceGetStatusOwned, MonsterEnhanceSetPatchValueEnabledOwned, DamageMeterGetStatus } from '../../wailsjs/go/main/App'
+import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])
+const RUNTIME_LEASE_SCOPE = 'monster-enhance'
 
 const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage: '1', crocodile_damage: '1', sba_chain_timer: '3' }
 const sessionMultipliers = window.gbfrMonsterEnhanceMultipliers || (window.gbfrMonsterEnhanceMultipliers = { ...defaultMultipliers })
@@ -11,6 +13,9 @@ const loading = ref(false)
 const result = reactive({ pid: 0, dllPath: '', injected: false, enabled: false, currentBytes: '', items: [] })
 const multipliers = reactive(sessionMultipliers)
 const overdriveState = ref('1')
+let disposed = false
+let lifecycleEpoch = 0
+let connectionOwnerToken = ''
 
 function applyResult(res) {
   const previous = new Map((result.items || []).map(item => [item.id, item]))
@@ -23,12 +28,59 @@ function applyResult(res) {
   result.items = incoming.filter(item => item.id !== 'inventory_set_45').map((item) => Object.assign(previous.get(item.id) || {}, item))
 }
 
-function refreshStatus() {
+async function refreshStatus() {
+  if (loading.value) return
+  const epoch = ++lifecycleEpoch
   loading.value = true
-  MonsterEnhanceGetStatus()
-    .then((res) => applyResult(res))
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { loading.value = false })
+  let acquiredOwnerToken = ''
+  try {
+    if (!connectionOwnerToken) {
+      const info = await CharaAcquire(nextRuntimeAcquireRequestID())
+      acquiredOwnerToken = String(info?.ownerToken || '')
+      if (!acquiredOwnerToken) throw new Error('后端未返回怪物增强连接所有权令牌')
+      if (disposed || epoch !== lifecycleEpoch) {
+        queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, CharaRelease)
+        return
+      }
+      connectionOwnerToken = acquiredOwnerToken
+    }
+    const ownerToken = connectionOwnerToken
+    if (!ownerToken) throw new Error('当前页面不再持有怪物增强连接所有权')
+    const res = await MonsterEnhanceGetStatusOwned(ownerToken)
+    if (!disposed && epoch === lifecycleEpoch) applyResult(res)
+  } catch (err) {
+    let cleanupError = null
+    if (acquiredOwnerToken) {
+      try {
+        await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, CharaRelease)
+        if (connectionOwnerToken === acquiredOwnerToken) connectionOwnerToken = ''
+      } catch (nextError) { cleanupError = nextError }
+    }
+    if (!disposed && epoch === lifecycleEpoch) {
+      emit('status', cleanupError ? `${String(err)}；释放怪物增强连接也失败：${String(cleanupError)}` : String(err), 'error')
+    }
+  } finally {
+    if (!disposed && epoch === lifecycleEpoch) loading.value = false
+  }
+}
+
+async function disconnect() {
+  if (loading.value) return
+  const epoch = ++lifecycleEpoch
+  const ownerToken = connectionOwnerToken
+  if (!ownerToken) return
+  loading.value = true
+  try {
+    await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, ownerToken, CharaRelease)
+    if (disposed || epoch !== lifecycleEpoch) return
+    if (connectionOwnerToken === ownerToken) connectionOwnerToken = ''
+    applyResult(null)
+    emit('status', '怪物增强 Hook 已恢复并断开连接', 'success')
+  } catch (err) {
+    if (!disposed && epoch === lifecycleEpoch) emit('status', String(err), 'error')
+  } finally {
+    if (!disposed && epoch === lifecycleEpoch) loading.value = false
+  }
 }
 
 function needsMultiplier(item) {
@@ -68,7 +120,7 @@ function ensureDamageMeter() {
   return DamageMeterGetStatus().catch((err) => emit('status', `伤害记录开启失败: ${String(err)}`, 'error'))
 }
 
-function setOne(item, enabled, id = item.id) {
+async function setOne(item, enabled, id = item.id) {
   if (enabled && needsMultiplier(item)) {
     const v = getMultiplier(item)
     if (isNaN(v) || v <= 0 || v > 9999) { emit('status', '倍率请输入 0 到 9999 之间的数值', 'error'); return }
@@ -79,158 +131,135 @@ function setOne(item, enabled, id = item.id) {
   }
   const previous = item.enabled
   item.enabled = enabled
+  const epoch = ++lifecycleEpoch
   loading.value = true
-  MonsterEnhanceSetPatchValueEnabled(id, enabled, patchValue(item))
-    .then((res) => {
-      if (enabled && startsDamageMeter(item)) ensureDamageMeter()
-      applyResult(res)
-      const verb = id === 'overdrive_state_apply' || (item.id === 'sba_chain_timer' && enabled) ? '已应用' : (enabled ? '已开启' : '已关闭')
-      emit('status', `${item.name}${verb}`, 'success')
-    })
-    .catch((err) => {
-      item.enabled = previous
-      emit('status', String(err), 'error')
-    })
-    .finally(() => { loading.value = false })
+  try {
+    const ownerToken = connectionOwnerToken
+    if (!ownerToken) throw new Error('当前页面不再持有怪物增强连接所有权')
+    const res = await MonsterEnhanceSetPatchValueEnabledOwned(ownerToken, id, enabled, patchValue(item))
+    if (disposed || epoch !== lifecycleEpoch) return
+    if (enabled && startsDamageMeter(item)) await ensureDamageMeter()
+    applyResult(res)
+    const verb = id === 'overdrive_state_apply' || (item.id === 'sba_chain_timer' && enabled) ? '已应用' : (enabled ? '已开启' : '已关闭')
+    emit('status', `${item.name}${verb}`, 'success')
+  } catch (err) {
+    item.enabled = previous
+    if (!disposed && epoch === lifecycleEpoch) emit('status', String(err), 'error')
+  } finally {
+    if (!disposed && epoch === lifecycleEpoch) loading.value = false
+  }
 }
 
 refreshStatus()
+
+onBeforeUnmount(() => {
+  disposed = true
+  lifecycleEpoch += 1
+  const ownerToken = connectionOwnerToken
+  connectionOwnerToken = ''
+  if (ownerToken) queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, ownerToken, CharaRelease)
+})
 </script>
 
 <template>
-  <div class="root">
-    <div class="section">
-      <div class="header">
-        <span class="title">怪物倍率与伤害记录</span>
-        <span class="info-dot" title="开启时释放内置 patch_core.dll 到临时目录并注入；关闭时 Go 侧恢复原始字节。">!</span>
-        <span class="hint">DLL 注入开启 · Go 恢复关闭</span>
+  <div class="monster-page ui-page is-wide ui-page-stack">
+    <section class="monster-shell ui-card ui-panel">
+      <header class="ui-split">
+        <div class="title-copy">
+          <h2 class="ui-section-title">怪物倍率与伤害记录</h2>
+          <p class="ui-section-copy">统一查看运行状态，按功能分别设置倍率或开关。</p>
+        </div>
+        <span class="ui-tag" :class="result.injected ? 'is-ok' : 'is-info'">{{ result.injected ? 'DLL 已注入' : '等待注入' }}</span>
+      </header>
+
+      <div class="process-toolbar ui-toolbar">
+        <div class="process-info">
+          <span class="ui-field-label">目标进程</span>
+          <strong>granblue_fantasy_relink.exe</strong>
+        </div>
+        <span v-if="result.pid" class="ui-tag is-info">PID {{ result.pid }}</span>
+        <button type="button" class="ui-btn" @click="refreshStatus" :disabled="loading">{{ loading ? '刷新中...' : '刷新状态' }}</button>
+        <button v-if="result.pid" type="button" class="ui-btn is-ghost" @click="disconnect" :disabled="loading">安全断开</button>
       </div>
 
-      <div class="process-card">
-        <div class="memory-info">
-          <span>目标进程: granblue_fantasy_relink.exe</span>
-          <span v-if="result.pid">PID: {{ result.pid }}</span>
-          <button class="btn-refresh compact" @click="refreshStatus" :disabled="loading">刷新</button>
-        </div>
+      <div class="usage-notice ui-notice is-warn">
+        <strong>本页功能仅在主机端使用时生效，开启前请告知队友。</strong>
+        倍率、霸体、OD 与团队伤害记录属于实验性功能。
       </div>
 
-      <div class="card-grid">
-        <div v-for="item in result.items" :key="item.id" class="memory-card" :class="{ active: item.enabled }">
-        <div class="memory-header">
-          <span class="memory-title">{{ item.name }}</span>
-          <span class="state" :class="{ on: item.enabled }">{{ item.enabled ? '开启' : '关闭' }}</span>
-          <span class="memory-hint">RVA: 0x{{ Number(item.rva).toString(16).toUpperCase() }}</span>
-        </div>
-        <div v-if="needsMultiplier(item)" class="memory-row">
-          <input v-model="multipliers[item.id]" type="number" min="0.1" max="9999" step="0.1" class="batch-input" placeholder="倍率" />
-          <span class="memory-hint">{{ multiplierHint(item) }}</span>
-        </div>
-        <div v-if="needsOverdriveState(item)" class="memory-row">
-          <select v-model="overdriveState" class="batch-input od-select">
-            <option value="1">1 满红条</option>
-            <option value="4">4 满黄条</option>
-            <option value="9">自动OD</option>
-          </select>
-          <span class="memory-hint">锁定=持续写入；自动OD=非红条时写一次满黄条</span>
-        </div>
-        <div class="memory-row" v-if="needsOverdriveState(item)">
-          <button class="btn-batch" @click="setOne(item, true)" :disabled="loading || item.enabled">锁定</button>
-          <button class="btn-batch" @click="setOne(item, true, 'overdrive_state_apply')" :disabled="loading || overdriveState === '9'">应用</button>
-          <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
-        </div>
-        <div class="memory-row" v-else-if="needsSbaTimer(item)">
-          <button class="btn-batch" @click="setOne(item, true)" :disabled="loading">应用</button>
-          <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">恢复默认</button>
-        </div>
-        <div class="memory-row" v-else>
-          <button class="btn-batch" @click="setOne(item, true)" :disabled="loading || item.enabled">开启</button>
-          <button class="btn-refresh" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
-        </div>
-        <div class="memory-bytes">{{ item.currentBytes }}</div>
-        </div>
-        <div class="memory-card custom-note-card">
-          <div class="memory-header">
-            <span class="memory-title">使用说明</span>
+      <div v-if="result.items.length" class="card-grid ui-card-grid">
+        <article v-for="item in result.items" :key="item.id" class="feature-card ui-card ui-panel is-compact" :class="{ 'is-active': item.enabled }">
+          <header class="feature-head ui-split">
+            <h3 class="ui-section-title">{{ item.name }}</h3>
+            <span class="ui-tag" :class="item.enabled ? 'is-ok' : ''">{{ item.enabled ? '已开启' : '已关闭' }}</span>
+          </header>
+
+          <label v-if="needsMultiplier(item)" class="ui-field">
+            <span class="ui-field-label">参数值 <em>{{ multiplierHint(item) }}</em></span>
+            <input v-model="multipliers[item.id]" type="number" min="0.1" max="9999" step="0.1" class="ui-input" placeholder="倍率" />
+          </label>
+
+          <label v-if="needsOverdriveState(item)" class="ui-field">
+            <span class="ui-field-label">Overdrive 状态 <em>锁定会持续写入；自动 OD 会在非红条时写入一次满黄条</em></span>
+            <select v-model="overdriveState" class="ui-select">
+              <option value="1">1 · 满红条</option>
+              <option value="4">4 · 满黄条</option>
+              <option value="9">自动 OD</option>
+            </select>
+          </label>
+
+          <div v-if="needsOverdriveState(item)" class="feature-actions ui-actions">
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || item.enabled">锁定</button>
+            <button type="button" class="ui-btn" @click="setOne(item, true, 'overdrive_state_apply')" :disabled="loading || overdriveState === '9'">应用一次</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
           </div>
-          <div class="custom-note-text">
-            <strong class="note-warn">本页功能需要在主机端使用才生效，开启前也请告知队友。</strong>
-            倍率、霸体、OD 与团队伤害记录属实验性功能，改动较大时请先在安全环境测试。
+          <div v-else-if="needsSbaTimer(item)" class="feature-actions ui-actions">
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading">应用</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">恢复默认</button>
           </div>
-        </div>
+          <div v-else class="feature-actions ui-actions">
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || item.enabled">开启</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
+          </div>
+
+          <details class="ui-disclosure diagnostics">
+            <summary>定位诊断</summary>
+            <dl class="diagnostic-data">
+              <div><dt>RVA</dt><dd>0x{{ Number(item.rva).toString(16).toUpperCase() }}</dd></div>
+              <div><dt>当前字节</dt><dd>{{ item.currentBytes || '未读取' }}</dd></div>
+            </dl>
+          </details>
+        </article>
       </div>
 
-      <div v-if="!result.items.length" class="empty">请启动游戏后刷新状态</div>
-    </div>
+      <p v-else class="ui-empty">请启动游戏后刷新状态。</p>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.root { display:flex; flex-direction:column; gap:10px; width:100%; max-width:720px; margin:0 auto; padding-bottom:40px; container-type:inline-size; }
-.section {
-  border-radius:16px; padding:16px 18px;
-  background:linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(154,116,64,0.06) 100%);
-  border:1px solid rgba(154,116,64,0.15);
-  display:flex; flex-direction:column; gap:10px;
+.monster-page { padding-bottom:var(--space-8); }
+.title-copy { display:flex; min-width:0; flex-direction:column; gap:var(--space-2); }
+.process-toolbar { align-items:center; }
+.process-info { display:flex; min-width:0; flex:1 1 280px; flex-direction:column; gap:var(--space-1); }
+.process-info strong { min-width:0; color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-sm); overflow-wrap:anywhere; }
+.usage-notice { display:flex; flex-wrap:wrap; gap:var(--space-1) var(--space-2); }
+.card-grid { --ui-grid-min:320px; }
+.feature-card { align-content:start; }
+.feature-card.is-active { border-color:var(--success); background:var(--success-bg); }
+.feature-head { align-items:flex-start; }
+.feature-actions { margin-top:auto; }
+.feature-actions .ui-btn { flex:1 1 96px; }
+.diagnostics { margin-top:var(--space-1); }
+.diagnostic-data { display:flex; min-width:0; flex-direction:column; gap:var(--space-3); }
+.diagnostic-data div { min-width:0; }
+.diagnostic-data dt { color:var(--text-muted); font-size:var(--fs-xs); }
+.diagnostic-data dd { margin:var(--space-1) 0 0; color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-sm); overflow-wrap:anywhere; }
+
+@container ui-page (max-width:720px) {
+  .card-grid { --ui-grid-min:100%; grid-template-columns:minmax(0,1fr); }
 }
-.header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.title { font-size:0.88rem; font-weight:600; color:rgba(255,255,255,0.65); letter-spacing:1px; }
-.info-dot { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid rgba(154,116,64,0.35); color:#9a7440; background:rgba(154,116,64,0.08); font-size:0.68rem; font-weight:700; cursor:help; flex-shrink:0; }
-.hint { font-size:0.68rem; color:rgba(255,255,255,0.25); margin-left:auto; }
-.process-card {
-  border-radius:10px; padding:8px 10px;
-  background:rgba(255,255,255,0.035); border:1px solid rgba(154,116,64,0.12);
+@container ui-page (max-width:420px) {
+  .feature-actions .ui-btn { flex-basis:100%; }
 }
-.card-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-.memory-card {
-  position:relative; overflow:hidden; z-index:0;
-  border-radius:12px; padding:12px;
-  background:rgba(255,255,255,0.045); border:1px solid rgba(165,180,252,0.16);
-  box-shadow:0 10px 26px rgba(0,0,0,0.18);
-  display:flex; flex-direction:column; gap:8px;
-  transition:border-color 0.3s, box-shadow 0.3s, transform 0.3s;
-}
-.memory-card::after {
-  content:""; position:absolute; inset:0; z-index:-1; border-radius:12px;
-  background:#abd373; transform:translateY(calc(-100% - 2px));
-  transition:transform 0.5s ease;
-}
-.memory-card.active { border-color:rgba(171,211,115,0.55); box-shadow:0 14px 34px rgba(171,211,115,0.18); }
-.memory-card.active::after { transform:translateY(0); }
-.memory-card.active .memory-title { color:#1f2937; }
-.memory-card.active .memory-hint,
-.memory-card.active .memory-info,
-.memory-card.active .memory-bytes,
-.memory-card.active .custom-note-text { color:rgba(31,41,55,0.72); }
-.memory-card.active .state { color:#1f2937; background:rgba(255,255,255,0.2); border-color:rgba(31,41,55,0.18); }
-.memory-card.active .btn-batch { border-color:rgba(31,41,55,0.22); background:rgba(31,41,55,0.12); color:#1f2937; }
-.memory-card.active .btn-refresh { border-color:rgba(31,41,55,0.16); background:rgba(255,255,255,0.18); color:rgba(31,41,55,0.72); }
-.memory-card.active .batch-input { border-color:rgba(31,41,55,0.22); background:rgba(255,255,255,0.22); color:#1f2937; color-scheme:light; }
-.custom-note-card { min-height:96px; }
-.custom-note-text { font-size:0.76rem; line-height:1.55; color:rgba(255,255,255,0.46); }
-.memory-header, .memory-info, .memory-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.memory-header { justify-content:flex-start; }
-.memory-header .memory-hint { margin-left:auto; }
-.memory-title { font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.62); }
-.memory-hint, .memory-info { font-size:0.68rem; color:rgba(255,255,255,0.32); }
-.batch-input { width:80px; padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#fff; font-size:0.82rem; outline:none; color-scheme:dark; }
-.batch-input::-webkit-inner-spin-button, .batch-input::-webkit-outer-spin-button { filter:invert(1) opacity(0.7); }
-.od-select { width:120px; }
-.od-select option { background:#111827; color:#e5e7eb; }
-.memory-bytes { font-size:0.66rem; color:rgba(255,255,255,0.24); font-family:var(--font-data); word-break:break-all; }
-.btn-batch, .btn-refresh {
-  padding:6px 14px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer;
-  transition:background 0.2s; white-space:nowrap;
-}
-.btn-batch { border:1px solid rgba(165,180,252,0.3); background:rgba(165,180,252,0.1); color:#a5b4fc; }
-.btn-refresh { border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.5); }
-.btn-batch:not(:disabled):hover { background:rgba(165,180,252,0.2); }
-.btn-refresh:not(:disabled):hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); }
-.btn-batch:disabled, .btn-refresh:disabled { opacity:0.4; cursor:not-allowed; }
-.btn-refresh.compact { padding:4px 10px; font-size:0.72rem; }
-.state { font-size:0.68rem; padding:2px 8px; border-radius:999px; color:#f87171; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.22); }
-.state.on { color:#4ade80; background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.22); }
-.empty { font-size:0.78rem; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
-@media (max-width: 640px) { .card-grid { grid-template-columns:1fr; } }
-@container (max-width:520px) { .card-grid { grid-template-columns:1fr; } }
-.note-warn { color:#9a7440; }
 </style>

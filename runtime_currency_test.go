@@ -46,6 +46,9 @@ func TestBuildCurrencyCaptureCave(t *testing.T) {
 	if target := relJumpTarget(cave+18, code[18:23]); target != returnAddr {
 		t.Fatalf("return jump target = 0x%X, want 0x%X", target, returnAddr)
 	}
+	if string(code[currencyCaveMarkerOffset:currencyCaveMarkerOffset+len(currencyCaveMarker)]) != string(currencyCaveMarker[:]) {
+		t.Fatalf("currency cave ownership marker is missing: % X", code[currencyCaveMarkerOffset:currencyCaveMarkerOffset+len(currencyCaveMarker)])
+	}
 }
 
 func TestCurrencyFieldsMatchDLC202CT(t *testing.T) {

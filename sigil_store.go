@@ -583,7 +583,7 @@ func copyFile(source, destination string) error {
 }
 
 // VerifySigil re-reads a sigil slot and checks all fields match expected values.
-func (s *SaveData) VerifySigil(gemUnitID int, sigilHash uint32, level int,
+func (s *SaveData) VerifySigil(gemUnitID int, expectedSlotID, sigilHash uint32, level int,
 	primaryHash uint32, primaryLevel int,
 	secondaryHash uint32, secondaryLevel int, hasSecondary bool) error {
 
@@ -614,6 +614,9 @@ func (s *SaveData) VerifySigil(gemUnitID int, sigilHash uint32, level int,
 		return nil
 	}
 
+	if err := check(GemSlotIDType, uint32(gemUnitID), expectedSlotID, "因子槽位ID"); err != nil {
+		return err
+	}
 	if err := check(GemIDType, uint32(gemUnitID), sigilHash, "因子哈希"); err != nil {
 		return err
 	}

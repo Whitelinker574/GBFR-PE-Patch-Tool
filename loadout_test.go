@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 // 槽位号只能取块内偏移。曾用 20000+(角色序号-1)*15 反推块基址，被实测推翻：
 // SaveData1 的伊欧在 20060，而 SaveData2 的 20060 属于欧根（存档有转换/DLC
@@ -66,5 +69,27 @@ func TestVecLenClampsHostileValueCnt(t *testing.T) {
 	}
 	if n := vecLen(&unitEntry{ValueCnt: -1}); n != 0 {
 		t.Errorf("vecLen(-1) = %d, 期望 0", n)
+	}
+}
+
+func TestReadLoadoutSigilSlotsPreservesSparse1403Indexes(t *testing.T) {
+	values := []uint32{3311, 0, EmptyHash, 3314, 0, 0, 0, 0, 0, 0, 3321, 0, 0}
+	data := make([]byte, len(values)*4)
+	for i, value := range values {
+		binary.LittleEndian.PutUint32(data[i*4:], value)
+	}
+	entry := &unitEntry{ValueCnt: len(values), data: data}
+
+	got := readLoadoutSigilSlots(entry)
+	if len(got) != 3 {
+		t.Fatalf("读取到 %d 个有效因子，期望 3 个: %+v", len(got), got)
+	}
+	wantIndexes := []int{0, 3, 10}
+	wantSlotIDs := []uint32{3311, 3314, 3321}
+	for i := range got {
+		if got[i].Index != wantIndexes[i] || got[i].SlotID != wantSlotIDs[i] {
+			t.Fatalf("因子 %d = index %d / SlotID %d，期望 index %d / SlotID %d",
+				i, got[i].Index, got[i].SlotID, wantIndexes[i], wantSlotIDs[i])
+		}
 	}
 }

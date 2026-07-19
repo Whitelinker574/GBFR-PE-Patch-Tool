@@ -11,14 +11,16 @@ import (
 )
 
 const (
-	loadoutShareFormat  = "gbfr-loadout"
-	loadoutShareVersion = 1
-	loadoutShareMaxSize = 1024 * 1024
+	loadoutShareFormat        = "gbfr-loadout"
+	loadoutShareLegacyVersion = 1
+	loadoutShareVersion       = 2
+	loadoutShareMaxSize       = 1024 * 1024
 )
 
 // LoadoutShareSigil 使用“因子本体 + 等级 + 主副词条 + 词条等级”指纹。
 // 分享文件不保存 SlotID；导入时在目标存档背包内寻找完全相同的真实物品。
 type LoadoutShareSigil struct {
+	Index               *int   `json:"index,omitempty"`
 	Hash                string `json:"hash"`
 	Name                string `json:"name"`
 	Level               int    `json:"level"`
@@ -28,18 +30,32 @@ type LoadoutShareSigil struct {
 	SecondaryTraitLevel int    `json:"secondaryTraitLevel,omitempty"`
 }
 
+// LoadoutShareSummon deliberately excludes UnitID and SlotID: those values are
+// local to one save. Import resolves this stable fingerprint against the target
+// save's real summon inventory.
+type LoadoutShareSummon struct {
+	TypeHash       string `json:"typeHash"`
+	Name           string `json:"name"`
+	MainTraitHash  string `json:"mainTraitHash"`
+	MainTraitLevel int    `json:"mainTraitLevel"`
+	SubParamHash   string `json:"subParamHash"`
+	SubParamLevel  int    `json:"subParamLevel"`
+	Rank           int    `json:"rank"`
+}
+
 type LoadoutShare struct {
-	Format        string              `json:"format"`
-	Version       int                 `json:"version"`
-	CharaHash     string              `json:"charaHash"`
-	CharaName     string              `json:"charaName"`
-	OwnerCode     string              `json:"ownerCode"`
-	Name          string              `json:"name"`
-	WeaponHash    string              `json:"weaponHash,omitempty"`
-	WeaponName    string              `json:"weaponName,omitempty"`
-	Sigils        []LoadoutShareSigil `json:"sigils"`
-	Skills        []LoadoutSkill      `json:"skills"`
-	MasteryHashes []string            `json:"masteryHashes"`
+	Format        string               `json:"format"`
+	Version       int                  `json:"version"`
+	CharaHash     string               `json:"charaHash"`
+	CharaName     string               `json:"charaName"`
+	OwnerCode     string               `json:"ownerCode"`
+	Name          string               `json:"name"`
+	WeaponHash    string               `json:"weaponHash,omitempty"`
+	WeaponName    string               `json:"weaponName,omitempty"`
+	Sigils        []LoadoutShareSigil  `json:"sigils"`
+	Summons       []LoadoutShareSummon `json:"summons,omitempty"`
+	Skills        []LoadoutSkill       `json:"skills"`
+	MasteryHashes []string             `json:"masteryHashes"`
 }
 
 // LoadoutImportDraft 是导入文件在当前存档中解析后的“草稿”，不会自动写档。
@@ -47,6 +63,7 @@ type LoadoutImportDraft struct {
 	Name          string   `json:"name"`
 	WeaponSlotID  uint32   `json:"weaponSlotId"`
 	SigilSlotIDs  []uint32 `json:"sigilSlotIds"`
+	SummonSlotIDs []uint32 `json:"summonSlotIds,omitempty"`
 	SkillHashes   []string `json:"skillHashes"`
 	MasteryHashes []string `json:"masteryHashes"`
 	Missing       []string `json:"missing"`
@@ -57,6 +74,42 @@ func shareHex(value uint32) string {
 		return ""
 	}
 	return fmt.Sprintf("%08X", value)
+}
+
+func buildLoadoutShareSummons(context *LoadoutStatContext) ([]LoadoutShareSummon, error) {
+	if context == nil || len(context.EquippedSummonSlotIDs) != 4 {
+		count := 0
+		if context != nil {
+			count = len(context.EquippedSummonSlotIDs)
+		}
+		return nil, fmt.Errorf("当前召唤石配置不完整：需要 4 个槽位，得到 %d 个", count)
+	}
+	bySlot := make(map[uint32]LoadoutSummon, len(context.Summons))
+	for _, summon := range context.Summons {
+		bySlot[summon.SlotID] = summon
+	}
+	seen := make(map[uint32]bool, 4)
+	result := make([]LoadoutShareSummon, 0, 4)
+	for index, slotID := range context.EquippedSummonSlotIDs {
+		if slotID == 0 || slotID == EmptyHash {
+			return nil, fmt.Errorf("当前召唤石配置不完整：第 %d 槽为空", index+1)
+		}
+		if seen[slotID] {
+			return nil, fmt.Errorf("当前召唤石配置重复引用 SlotID %d", slotID)
+		}
+		seen[slotID] = true
+		summon, ok := bySlot[slotID]
+		if !ok {
+			return nil, fmt.Errorf("当前召唤石配置不完整：第 %d 槽 SlotID %d 没有真实实例", index+1, slotID)
+		}
+		result = append(result, LoadoutShareSummon{
+			TypeHash: summon.TypeHash, Name: summon.Name,
+			MainTraitHash: summon.MainTraitHash, MainTraitLevel: summon.MainTraitLevel,
+			SubParamHash: summon.SubParamHash, SubParamLevel: summon.SubParamLevel,
+			Rank: summon.Rank,
+		})
+	}
+	return result, nil
 }
 
 func buildLoadoutShare(path string, unitID uint32) (*LoadoutShare, error) {
@@ -104,11 +157,20 @@ func buildLoadoutShare(path string, unitID uint32) (*LoadoutShare, error) {
 			return nil, fmt.Errorf("因子 %s 的存档槽引用 %d 已失效，无法导出", sigil.Name, sigil.SlotID)
 		}
 		primaryHash, primaryLevel, secondaryHash, secondaryLevel := readSigilTraits(save, gemUnitID)
+		index := sigil.Index
 		share.Sigils = append(share.Sigils, LoadoutShareSigil{
-			Hash: sigil.Hash, Name: sigil.Name, Level: sigil.Level,
+			Index: &index, Hash: sigil.Hash, Name: sigil.Name, Level: sigil.Level,
 			PrimaryTraitHash: shareHex(primaryHash), PrimaryTraitLevel: primaryLevel,
 			SecondaryTraitHash: shareHex(secondaryHash), SecondaryTraitLevel: secondaryLevel,
 		})
+	}
+	statContext, err := app.LoadoutStatContext(path, source.CharaHash)
+	if err != nil {
+		return nil, fmt.Errorf("读取召唤石配置失败: %w", err)
+	}
+	share.Summons, err = buildLoadoutShareSummons(statContext)
+	if err != nil {
+		return nil, err
 	}
 	return share, nil
 }
@@ -126,9 +188,40 @@ func sameSharedSigil(save *SaveData, ix *loadoutIndex, pick LoadoutPickSigil, wa
 		strings.EqualFold(shareHex(secondaryHash), want.SecondaryTraitHash) && secondaryLevel == want.SecondaryTraitLevel
 }
 
+func sameSharedSummon(pick LoadoutSummon, want LoadoutShareSummon) bool {
+	return strings.EqualFold(pick.TypeHash, want.TypeHash) &&
+		strings.EqualFold(pick.MainTraitHash, want.MainTraitHash) && pick.MainTraitLevel == want.MainTraitLevel &&
+		strings.EqualFold(pick.SubParamHash, want.SubParamHash) && pick.SubParamLevel == want.SubParamLevel &&
+		pick.Rank == want.Rank
+}
+
 func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*LoadoutImportDraft, error) {
-	if share == nil || share.Format != loadoutShareFormat || share.Version != loadoutShareVersion {
-		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d）", loadoutShareFormat, loadoutShareVersion)
+	if share == nil || share.Format != loadoutShareFormat ||
+		(share.Version != loadoutShareLegacyVersion && share.Version != loadoutShareVersion) {
+		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d 或 v%d）", loadoutShareFormat, loadoutShareLegacyVersion, loadoutShareVersion)
+	}
+	if len(share.Summons) > 0 && len(share.Summons) != 4 {
+		return nil, fmt.Errorf("分享文件的召唤石指纹需要恰好 4 个，得到 %d 个", len(share.Summons))
+	}
+	indexedSigils := share.Version == loadoutShareVersion
+	if indexedSigils {
+		if len(share.Sigils) > loadoutMaxSigils {
+			return nil, fmt.Errorf("v%d 配装含 %d 个因子，超过 %d 格上限", share.Version, len(share.Sigils), loadoutMaxSigils)
+		}
+		seenIndices := make(map[int]bool, len(share.Sigils))
+		for i, sigil := range share.Sigils {
+			if sigil.Index == nil {
+				return nil, fmt.Errorf("v%d 配装的第 %d 个因子缺少原始槽位索引", share.Version, i+1)
+			}
+			index := *sigil.Index
+			if index < 0 || index >= loadoutMaxSigils {
+				return nil, fmt.Errorf("v%d 配装的因子槽位索引 %d 越界（应为 0..%d）", share.Version, index, loadoutMaxSigils-1)
+			}
+			if seenIndices[index] {
+				return nil, fmt.Errorf("v%d 配装的因子槽位索引 %d 重复", share.Version, index)
+			}
+			seenIndices[index] = true
+		}
 	}
 	app := &App{}
 	ctx, err := app.LoadoutEditContext(path, expectCharaHash)
@@ -143,6 +236,40 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	}
 
 	draft := &LoadoutImportDraft{Name: share.Name}
+	if len(share.Summons) > 0 {
+		summonContext, err := app.LoadoutStatContext(path, expectCharaHash)
+		if err != nil {
+			return nil, fmt.Errorf("读取当前召唤石背包失败: %w", err)
+		}
+		draft.SummonSlotIDs = make([]uint32, len(share.Summons))
+		usedSummons := make(map[uint32]bool, len(share.Summons))
+		for index, want := range share.Summons {
+			matches := make([]LoadoutSummon, 0, 2)
+			for _, summon := range summonContext.Summons {
+				if usedSummons[summon.SlotID] || !sameSharedSummon(summon, want) {
+					continue
+				}
+				matches = append(matches, summon)
+			}
+			if len(matches) == 1 {
+				draft.SummonSlotIDs[index] = matches[0].SlotID
+				usedSummons[matches[0].SlotID] = true
+				continue
+			}
+			label := strings.TrimSpace(want.Name)
+			if label == "" {
+				label = want.TypeHash
+			}
+			if len(matches) == 0 {
+				draft.Missing = append(draft.Missing, fmt.Sprintf("召唤石第 %d 槽：%s", index+1, label))
+			} else {
+				draft.Missing = append(draft.Missing, fmt.Sprintf("召唤石第 %d 槽：%s（存在多个相同实例，映射歧义）", index+1, label))
+			}
+		}
+	}
+	if indexedSigils {
+		draft.SigilSlotIDs = make([]uint32, loadoutMaxSigils)
+	}
 	if share.WeaponHash != "" {
 		for _, weapon := range ctx.Weapons {
 			if strings.EqualFold(weapon.Hash, share.WeaponHash) {
@@ -175,7 +302,11 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 			continue
 		}
 		used[matched] = true
-		draft.SigilSlotIDs = append(draft.SigilSlotIDs, matched)
+		if indexedSigils {
+			draft.SigilSlotIDs[*want.Index] = matched
+		} else {
+			draft.SigilSlotIDs = append(draft.SigilSlotIDs, matched)
+		}
 	}
 
 	for _, skill := range share.Skills {

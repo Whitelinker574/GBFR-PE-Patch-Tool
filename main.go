@@ -70,17 +70,7 @@ func main() {
 // user (issue #19). Keep a small local log as well so WebView2/graphics/runtime
 // failures can be diagnosed without guessing.
 func reportStartupError(runErr error) {
-	logDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "GBFR-PE-Patch-Tool")
-	if logDir == "GBFR-PE-Patch-Tool" {
-		logDir = filepath.Join(os.TempDir(), "GBFR-PE-Patch-Tool")
-	}
-	_ = os.MkdirAll(logDir, 0o755)
-	logPath := filepath.Join(logDir, "startup.log")
-	message := fmt.Sprintf("[%s] %s: %v\n", time.Now().Format(time.RFC3339), appVersion, runErr)
-	if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-		_, _ = file.WriteString(message)
-		_ = file.Close()
-	}
+	logPath := appendDiagnosticError("startup", runErr)
 
 	text, _ := windows.UTF16PtrFromString(fmt.Sprintf(
 		"GBFR PE Patch Tool 启动失败：\n\n%v\n\n诊断日志：\n%s\n\n请检查 Microsoft Edge WebView2 Runtime 和安全软件拦截记录。",
@@ -88,6 +78,25 @@ func reportStartupError(runErr error) {
 	))
 	caption, _ := windows.UTF16PtrFromString("GBFR PE Patch Tool")
 	_, _ = windows.MessageBox(0, text, caption, 0x00000010) // MB_ICONERROR
+}
+
+func appendDiagnosticError(scope string, reportErr error) string {
+	logDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "GBFR-PE-Patch-Tool")
+	if logDir == "GBFR-PE-Patch-Tool" {
+		logDir = filepath.Join(os.TempDir(), "GBFR-PE-Patch-Tool")
+	}
+	_ = os.MkdirAll(logDir, 0o755)
+	logPath := filepath.Join(logDir, "startup.log")
+	label := appVersion
+	if scope != "" {
+		label += " " + scope
+	}
+	message := fmt.Sprintf("[%s] %s: %v\n", time.Now().Format(time.RFC3339), label, reportErr)
+	if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		_, _ = file.WriteString(message)
+		_ = file.Close()
+	}
+	return logPath
 }
 
 func runWrightstoneCLI(args []string) error {

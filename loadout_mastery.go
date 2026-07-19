@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // ── 专精配置器：自由配置一套合法专精盘 ────────────────────────────────
@@ -10,8 +11,8 @@ import (
 // 规则（经研究工作流对抗验证，数据源 skillboard_unlock/group/rank_adjust）：
 // 一套满级(50级)合法盘 = 精确 10/10/10/20 = 50 个节点，四档由 grp 区分：
 //   68DE92AC=Rank1(上限10) A96D9EBC=Rank2(10) 4A5DDC7B=Rank3(10) 3B99904D=RankEX(20)
-// **节点间无前置依赖、无连通性要求**，各档配额内 category(攻/防/界) 自由混搭。
-// 因此可让用户自由选，只要每档不超配额即可（满级需正好点满 10/10/10/20）。
+// 节点间无连通性要求，但 2 阶必须有一个方向达到 6 项，3 阶继续沿用该方向。
+// 主方向之外仍可混搭普通子词条；若解包数据出现 2/3 阶具名专精技能，则只能属于主方向。
 
 const (
 	masteryGrpR1 = "68DE92AC"
@@ -44,11 +45,12 @@ func masteryRankOfGrp(grp string) (rank string, cap int, ok bool) {
 
 // MasteryNode 是配置器里一个可选节点。
 type MasteryNode struct {
-	Hash     string `json:"hash"`
-	Cat      string `json:"cat"`      // SB_ATK/SB_DEF/SB_LIMIT
-	CatLabel string `json:"catLabel"` // 真谛（攻击盘）等
-	Name     string `json:"name"`     // 具名节点名（可空）
-	Desc     string `json:"desc"`     // 效果说明（数值已填充）
+	Hash           string `json:"hash"`
+	Cat            string `json:"cat"`            // SB_ATK/SB_DEF/SB_LIMIT
+	CatLabel       string `json:"catLabel"`       // 真谛（攻击盘）等
+	Name           string `json:"name"`           // 1阶具名节点名（可空）
+	Desc           string `json:"desc"`           // 效果说明（数值已填充）
+	Specialization bool   `json:"specialization"` // 专精主技能；2/3阶由原始 layout 的100-MSP节点确认
 }
 
 // MasteryRankPool 是某一档的可选节点池 + 配额。
@@ -132,12 +134,20 @@ func (a *App) MasteryNodePool(ownerCode string) ([]MasteryRankPool, error) {
 		if n.Char != ownerCode {
 			continue
 		}
+		// A selectable node must have a verified, user-readable effect. The
+		// unpacked table contains at least one placeholder row (F2D81718) with
+		// no effect text; exposing it would let users write an unexplained node.
+		if strings.TrimSpace(n.Desc) == "" {
+			continue
+		}
 		rank, _, ok := masteryRankOfGrp(n.Grp)
 		if !ok {
 			continue
 		}
+		hash, _ := ParseHashHex(n.Hash)
 		byRank[rank] = append(byRank[rank], MasteryNode{
 			Hash: n.Hash, Cat: n.Cat, CatLabel: catLabelOf(n.Cat), Name: n.Name, Desc: n.Desc,
+			Specialization: strings.TrimSpace(n.Name) != "" || isMasterySpecializationHash(hash),
 		})
 	}
 	var out []MasteryRankPool
@@ -147,6 +157,10 @@ func (a *App) MasteryNodePool(ownerCode string) ([]MasteryRankPool, error) {
 		sort.SliceStable(nodes, func(i, j int) bool {
 			if nodes[i].Cat != nodes[j].Cat {
 				return nodes[i].Cat < nodes[j].Cat
+			}
+			si, sj := nodes[i].Specialization, nodes[j].Specialization
+			if si != sj {
+				return si
 			}
 			ni, nj := nodes[i].Name != "", nodes[j].Name != ""
 			if ni != nj {
@@ -185,8 +199,10 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 	}
 	catOrder := []string{"SB_ATK", "SB_DEF", "SB_LIMIT"}
 	counts := map[string]map[string]int{}
+	stageSkillSelected := map[string]map[string]bool{}
 	for _, rank := range masteryRanks {
 		counts[rank.Rank] = map[string]int{}
+		stageSkillSelected[rank.Rank] = map[string]bool{}
 	}
 
 	result := &MasteryBuildSummary{}
@@ -206,12 +222,15 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 			return nil, fmt.Errorf("专精节点 %08X 阶级未知", hash)
 		}
 		counts[rank][node.Cat]++
+		if (rank == "R1" && strings.TrimSpace(node.Name) != "") || isMasterySpecializationHash(hash) {
+			stageSkillSelected[rank][node.Cat] = true
+		}
 		result.Total++
 	}
 
 	r2Primary := ""
 	for _, cat := range catOrder {
-		if counts["R2"][cat] >= 6 {
+		if counts["R2"][cat] >= 6 && stageSkillSelected["R2"][cat] {
 			r2Primary = cat
 			break
 		}
@@ -233,19 +252,25 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 			}
 			switch rank.Rank {
 			case "R1":
-				cs.Active = count >= threshold
-				if !cs.Active {
+				cs.Active = count >= threshold && stageSkillSelected[rank.Rank][cat]
+				if !stageSkillSelected[rank.Rank][cat] {
+					cs.Reason = "未选择1阶专精技能"
+				} else if !cs.Active {
 					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
 				}
 			case "R2":
-				cs.Active = count >= threshold
-				if !cs.Active {
+				cs.Active = r2Primary == cat && count >= threshold && stageSkillSelected[rank.Rank][cat]
+				if !stageSkillSelected[rank.Rank][cat] {
+					cs.Reason = "未选择2阶专精技能"
+				} else if !cs.Active {
 					cs.Reason = fmt.Sprintf("未达到2阶方向门槛（%d/%d）", count, threshold)
 				}
 			case "R3":
-				cs.Active = r2Primary == cat && count >= threshold
+				cs.Active = r2Primary == cat && count >= threshold && stageSkillSelected[rank.Rank][cat]
 				if r2Primary != cat {
 					cs.Reason = "未沿用2阶主方向"
+				} else if !stageSkillSelected[rank.Rank][cat] {
+					cs.Reason = "未选择3阶专精技能"
 				} else if !cs.Active {
 					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
 				}
@@ -290,10 +315,19 @@ func (a *App) MasterySummarize(ownerCode string, hexes []string) (*MasteryBuildS
 func validateMasteryQuota(hashes []uint32, ownerCode string, requireFull bool) (map[string]int, error) {
 	loadSkillboard()
 	counts := map[string]int{"R1": 0, "R2": 0, "R3": 0, "EX": 0}
+	categoryCounts := map[string]map[string]int{
+		"R1": {}, "R2": {}, "R3": {}, "EX": {},
+	}
+	selectedRoots := map[string]map[string]SkillboardNode{"R2": {}, "R3": {}}
+	seen := map[uint32]bool{}
 	for _, h := range hashes {
 		if h == EmptyHash || h == 0 {
 			continue
 		}
+		if seen[h] {
+			return counts, fmt.Errorf("专精节点 %08X 被重复配置", h)
+		}
+		seen[h] = true
 		n, ok := skillboardNodeForHash(h)
 		if !ok {
 			return counts, fmt.Errorf("专精节点 %08X 未收录", h)
@@ -306,14 +340,52 @@ func validateMasteryQuota(hashes []uint32, ownerCode string, requireFull bool) (
 			return counts, fmt.Errorf("专精节点 %08X 档位未知", h)
 		}
 		counts[rank]++
+		categoryCounts[rank][n.Cat]++
+		if (rank == "R2" || rank == "R3") && isMasterySpecializationHash(h) {
+			selectedRoots[rank][n.Cat] = n
+		}
 		if counts[rank] > cap {
 			return counts, fmt.Errorf("%s 档专精超过上限 %d 个", masteryRankLabel(rank), cap)
+		}
+	}
+	fullBuild := true
+	for _, r := range masteryRanks {
+		if counts[r.Rank] != r.Cap {
+			fullBuild = false
+			break
 		}
 	}
 	if requireFull {
 		for _, r := range masteryRanks {
 			if counts[r.Rank] != r.Cap {
 				return counts, fmt.Errorf("满级专精盘需正好 10/10/10/20，%s 档当前 %d/%d", r.Label, counts[r.Rank], r.Cap)
+			}
+		}
+	}
+	// 前端只允许 0 或完整 50 节点写入，但后端也必须独立保护方向规则。
+	// 这里同时覆盖 requireFull=false 的写入 API，避免绕过 UI 写出 4/3/3 的伪满盘。
+	if requireFull || fullBuild {
+		primary := ""
+		for _, cat := range []string{"SB_ATK", "SB_DEF", "SB_LIMIT"} {
+			if categoryCounts["R2"][cat] >= 6 {
+				primary = cat
+				break
+			}
+		}
+		if primary == "" {
+			return counts, fmt.Errorf("2阶专精必须选择一个主方向并达到 6 个节点")
+		}
+		if categoryCounts["R3"][primary] < 6 {
+			return counts, fmt.Errorf("3阶专精必须沿用2阶主方向 %s 并达到 6 个节点", catLabelOf(primary))
+		}
+		// 100-MSP 专精技能是可选节点：真实满级存档可以只点满该
+		// 方向的子词条。摘要会把这类配置标成“未选择专精技能”，
+		// 因而不会错误计入专精效果，但分享和原样回写必须保留它。
+		for _, rank := range []string{"R2", "R3"} {
+			for cat, node := range selectedRoots[rank] {
+				if cat != primary {
+					return counts, fmt.Errorf("%s 的非主方向专精技能节点 %s（%s）不可选择", masteryRankLabel(rank), node.Desc, catLabelOf(cat))
+				}
 			}
 		}
 	}
