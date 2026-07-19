@@ -18,8 +18,10 @@ import { language, translateText } from '../i18n'
 import progressionArt from '../assets/gbfr/cutouts/progression-official-edge-safe.webp'
 import sigilArt from '../assets/gbfr/cutouts/sigil-official-edge-safe.webp'
 import sigilMemoryArt from '../assets/gbfr/cutouts/sigil-memory-official-edge-safe.webp'
-import loadoutArt from '../assets/gbfr/cutouts/loadout-official-edge-safe.webp'
+import loadoutLiveArt from '../assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'
+import loadoutPresetsArt from '../assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'
 import wrightstoneArt from '../assets/gbfr/cutouts/wrightstone-official-edge-safe.webp'
+import wrightstoneMemoryArt from '../assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'
 import summonArt from '../assets/gbfr/cutouts/summon-official-edge-safe.webp'
 import overlimitArt from '../assets/gbfr/cutouts/overlimit-official-edge-safe.webp'
 import runtimeArt from '../assets/gbfr/cutouts/runtime-official-edge-safe.webp'
@@ -34,7 +36,9 @@ import progressionSticker from '../assets/gbfr/stickers/progression.webp'
 import sigilSticker from '../assets/gbfr/stickers/sigil.webp'
 import sigilMemorySticker from '../assets/gbfr/stickers/sigil-memory.webp'
 import loadoutSticker from '../assets/gbfr/stickers/loadout.webp'
+import loadoutPresetsSticker from '../assets/gbfr/stickers/loadout-presets.webp'
 import wrightstoneSticker from '../assets/gbfr/stickers/wrightstone.webp'
+import wrightstoneMemorySticker from '../assets/gbfr/stickers/wrightstone-memory.webp'
 import summonSticker from '../assets/gbfr/stickers/summon.webp'
 import overlimitSticker from '../assets/gbfr/stickers/overlimit.webp'
 import runtimeSticker from '../assets/gbfr/stickers/runtime.webp'
@@ -282,10 +286,10 @@ const functionArt = {
   progression: progressionArt,
   sigil: sigilArt,
   sigilMemory: sigilMemoryArt,
-  loadout: loadoutArt,
-  loadoutPresets: loadoutArt,
+  loadout: loadoutLiveArt,
+  loadoutPresets: loadoutPresetsArt,
   wrightstone: wrightstoneArt,
-  wrightstoneMemory: wrightstoneArt,
+  wrightstoneMemory: wrightstoneMemoryArt,
   summon: summonArt,
   overlimit: overlimitArt,
   runtime: runtimeArt,
@@ -306,9 +310,9 @@ const functionStickers = {
   sigil: sigilSticker,
   sigilMemory: sigilMemorySticker,
   loadout: loadoutSticker,
-  loadoutPresets: loadoutSticker,
+  loadoutPresets: loadoutPresetsSticker,
   wrightstone: wrightstoneSticker,
-  wrightstoneMemory: wrightstoneSticker,
+  wrightstoneMemory: wrightstoneMemorySticker,
   summon: summonSticker,
   overlimit: overlimitSticker,
   runtime: runtimeSticker,
@@ -1593,23 +1597,23 @@ button,input,select { font:inherit; }
 }
 @media (max-width:1439px) {
   .tool-switcher[data-group="memory"] {
-    min-height:0;
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-    flex:0 0 auto;
+    display:flex;
+    min-height:46px;
+    flex:0 0 46px;
     align-items:stretch;
     gap:var(--space-1);
-    padding-block:var(--space-1);
-    overflow:visible;
+    padding-block:0;
+    overflow-x:auto;
+    overflow-y:hidden;
   }
   .tool-switcher[data-group="memory"] .ui-tab {
-    min-width:0;
-    min-height:38px;
-    height:auto;
+    min-width:max-content;
+    flex:0 0 auto;
+    min-height:46px;
     justify-content:center;
-    padding:var(--space-1) var(--space-3);
+    padding:0 var(--space-3);
     line-height:1.25;
-    white-space:normal;
+    white-space:nowrap;
   }
 }
 @media (min-width:1280px) and (max-width:1399px) {
@@ -1675,7 +1679,6 @@ button,input,select { font:inherit; }
   .app-window { --titlebar-size:38px; }
   .workspace-bar { min-height:40px; flex-basis:40px; }
   .tool-switcher { min-height:42px; flex-basis:42px; }
-  .tool-switcher[data-group="memory"] { min-height:0; flex-basis:auto; }
   .tool-switcher .ui-tab { min-height:42px; }
   .sidebar { padding-top:var(--space-5); padding-bottom:var(--space-3); }
   .sidebar-heading { padding-block:var(--space-2) var(--space-3); }

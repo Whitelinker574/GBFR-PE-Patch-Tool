@@ -9,6 +9,7 @@ import {
   CT084SetEnabledOwned,
 } from '../../wailsjs/go/main/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
+import { language } from '../i18n.js'
 import {
   buildCT084Groups,
   buildCT084StatusIndex,
@@ -17,6 +18,11 @@ import {
   validateCT084StatusSet,
 } from '../ct084FeatureView.js'
 import { createCT084OperationGate } from '../ct084OperationGate.js'
+import {
+  translateCT084FeatureName,
+  translateCT084GroupName,
+  translateCT084Text,
+} from '../ct084Translations.js'
 
 const props = defineProps({
   mode: {
@@ -37,9 +43,10 @@ const searchQuery = ref('')
 const activeGroupKey = ref('')
 const catalogLoading = ref(true)
 const activeOperation = ref(null)
+const releasePending = ref(false)
 const connected = ref(false)
 const processInfo = ref({ pid: 0, moduleBase: 0 })
-const liveMessage = ref('正在读取 CT 0.8.4 功能目录…')
+const liveMessage = ref(tr('正在读取 CT 0.8.4 功能目录…'))
 const liveTone = ref('info')
 const pendingConfirmationFeature = ref(null)
 const confirmationCancelButton = ref(null)
@@ -53,26 +60,37 @@ const operationGate = createCT084OperationGate((operation) => {
   activeOperation.value = operation
 })
 
-const modeCopy = computed(() => ({
-  combat: {
-    label: '战斗规则',
-    summary: '闪避、格挡、Link、召唤限制与部位破坏等通用战斗规则。',
-  },
-  characters: {
-    label: '角色机制',
-    summary: '按真实角色分组的专属机制；搜索后只显示匹配角色与功能。',
-  },
-  quest: {
-    label: '任务与便利',
-    summary: '任务倒计时、宝箱、结算、支线奖励与养成便利。',
-  },
-})[props.mode])
+function tr(value) {
+  return translateCT084Text(value, language.value)
+}
+
+const modeCopy = computed(() => {
+  const copy = ({
+    combat: {
+      label: '战斗规则',
+      summary: '闪避、格挡、Link、召唤限制与部位破坏等通用战斗规则。',
+    },
+    characters: {
+      label: '角色机制',
+      summary: '按真实角色分组的专属机制；搜索后只显示匹配角色与功能。',
+    },
+    quest: {
+      label: '任务与便利',
+      summary: '任务倒计时、宝箱、结算、支线奖励与养成便利。',
+    },
+  })[props.mode]
+  return { label: tr(copy.label), summary: tr(copy.summary) }
+})
 const statusIndex = computed(() => buildCT084StatusIndex(statuses.value))
-const groups = computed(() => buildCT084Groups(catalog.value, props.mode, searchQuery.value))
+const groups = computed(() => buildCT084Groups(catalog.value, props.mode, searchQuery.value, {
+  featureLabel: feature => translateCT084FeatureName(feature, language.value),
+  groupLabel: group => translateCT084GroupName(group, language.value),
+}))
 const currentGroup = computed(() => groups.value.find(group => group.key === activeGroupKey.value) || groups.value[0] || null)
 const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0))
 const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length)
 const operationBusy = computed(() => activeOperation.value !== null)
+const interactionLocked = computed(() => operationBusy.value || releasePending.value)
 const connectionLoading = computed(() => ['connect', 'disconnect'].includes(activeOperation.value?.kind))
 const statusLoading = computed(() => activeOperation.value?.kind === 'refresh')
 const busyFeatureID = computed(() => activeOperation.value?.kind === 'feature' ? activeOperation.value.featureID : '')
@@ -96,31 +114,20 @@ function normalizeCatalog(value) {
   }))
 }
 
-function normalizeStatuses(value) {
-  if (!Array.isArray(value)) throw new Error('CT 0.8.4 回读状态格式无效')
-  return value.map((status) => ({
-    ...status,
-    enabled: !!status?.enabled,
-    available: !!status?.available,
-    rvas: Array.isArray(status?.rvas) ? status.rvas : [],
-    currentBytes: Array.isArray(status?.currentBytes) ? status.currentBytes : [],
-    error: String(status?.error || ''),
-  }))
-}
-
 function errorMessage(error) {
   const message = error instanceof Error ? error.message : String(error || '未知错误')
-  return replaceCT084FeatureIDs(message.replace(/^Error:\s*/i, ''), catalog.value)
+  return tr(replaceCT084FeatureIDs(message.replace(/^Error:\s*/i, ''), catalog.value))
 }
 
 function announce(message, tone = 'info') {
-  liveMessage.value = String(message || '')
+  const translatedMessage = tr(message)
+  liveMessage.value = translatedMessage
   liveTone.value = tone
-  if (message) emit('status', message, tone === 'danger' ? 'error' : tone === 'ok' ? 'success' : tone)
+  if (translatedMessage) emit('status', translatedMessage, tone === 'danger' ? 'error' : tone === 'ok' ? 'success' : tone)
 }
 
 function applyStatuses(nextStatuses) {
-  statuses.value = normalizeStatuses(nextStatuses)
+  statuses.value = nextStatuses
 }
 
 function beginOperation(kind, featureID = '') {
@@ -144,7 +151,7 @@ async function loadCatalog(notify = false) {
     if (disposed || epoch !== lifecycleEpoch) return
     catalog.value = nextCatalog
     if (notify) announce(`已读取 ${catalog.value.length} 项 CT 0.8.4 安全补丁`, 'ok')
-    else liveMessage.value = '功能目录已就绪；连接游戏后可读取实时状态。'
+    else liveMessage.value = tr('功能目录已就绪；连接游戏后可读取实时状态。')
   } catch (error) {
     if (!disposed && epoch === lifecycleEpoch) announce(`读取 CT 0.8.4 功能目录失败：${errorMessage(error)}`, 'danger')
   } finally {
@@ -159,14 +166,26 @@ async function releaseCT084PageOwner(ownerToken) {
 
 function clearConnectionState() {
   operationGate.reset()
+  releasePending.value = false
   connected.value = false
   connectionOwnerToken = ''
   processInfo.value = { pid: 0, moduleBase: 0 }
   statuses.value = []
 }
 
+function completeRuntimeRelease(expectedOwnerToken, expectedEpoch, notification) {
+  if (
+    disposed
+    || lifecycleEpoch !== expectedEpoch
+    || connectionOwnerToken !== expectedOwnerToken
+    || notification?.ownerToken !== expectedOwnerToken
+  ) return
+  clearConnectionState()
+  announce('全部 CT 0.8.4 补丁已恢复，并已断开游戏进程', 'ok')
+}
+
 async function connect() {
-  if (connected.value) return
+  if (connected.value || releasePending.value) return
   const operationToken = beginOperation('connect')
   if (!operationToken) return
   const epoch = ++lifecycleEpoch
@@ -216,26 +235,31 @@ async function disconnect() {
   const operationToken = beginOperation('disconnect')
   if (!operationToken) return
   const epoch = ++lifecycleEpoch
+  releasePending.value = true
   try {
-    await releaseRuntimeLease(RUNTIME_LEASE_SCOPE, ownerToken, releaseCT084PageOwner)
-    if (!operationIsCurrent(operationToken, epoch)) return
-    clearConnectionState()
-    announce('全部 CT 0.8.4 补丁已恢复，并已断开游戏进程', 'ok')
+    await releaseRuntimeLease(
+      RUNTIME_LEASE_SCOPE,
+      ownerToken,
+      releaseCT084PageOwner,
+      notification => completeRuntimeRelease(ownerToken, epoch, notification),
+    )
   } catch (error) {
-    if (operationIsCurrent(operationToken, epoch)) announce(`安全断开失败：${errorMessage(error)}`, 'danger')
+    if (operationIsCurrent(operationToken, epoch)) {
+      releasePending.value = true
+      announce(`安全断开暂未完成，正在后台重试恢复：${errorMessage(error)}`, 'danger')
+    }
   } finally {
     finishOperation(operationToken)
   }
 }
 
 async function fetchVerifiedStatuses(ownerToken) {
-  const verified = normalizeStatuses(await CT084GetStatusesOwned(ownerToken))
-  return validateCT084StatusSet(catalog.value, verified)
+  return validateCT084StatusSet(catalog.value, await CT084GetStatusesOwned(ownerToken))
 }
 
 async function refreshStatuses() {
   const ownerToken = connectionOwnerToken
-  if (!ownerToken) return
+  if (!ownerToken || releasePending.value) return
   const operationToken = beginOperation('refresh')
   if (!operationToken) return
   const epoch = lifecycleEpoch
@@ -252,7 +276,7 @@ async function refreshStatuses() {
 }
 
 async function setFeatureEnabled(feature, enabled) {
-  if (!feature) return
+  if (!feature || releasePending.value) return
   const operationToken = beginOperation('feature', feature.id)
   if (!operationToken) return
   const ownerToken = connectionOwnerToken
@@ -291,6 +315,7 @@ function offlineUseConfirmed() {
 }
 
 function requestFeatureChange(feature) {
+  if (interactionLocked.value) return
   const enable = !ownsFeature(feature)
   if (enable && !offlineUseConfirmed()) {
     confirmationReturnTarget = document.activeElement
@@ -356,30 +381,34 @@ function activeConflictFor(feature) {
 }
 
 function displayFeatureName(feature) {
-  return String(feature?.displayName || feature?.name || '').replace(/[：:]\s*$/u, '')
+  return translateCT084FeatureName(feature, language.value)
+}
+
+function displayGroupName(group) {
+  return translateCT084GroupName(group, language.value)
 }
 
 function displayFeatureError(feature) {
   if (activeConflictFor(feature)) return ''
-  return replaceCT084FeatureIDs(statusFor(feature).error, catalog.value)
+  return tr(replaceCT084FeatureIDs(statusFor(feature).error, catalog.value))
 }
 
 function featureDisabled(feature) {
   const status = statusFor(feature)
-  if (!connected.value || operationBusy.value) return true
+  if (!connected.value || interactionLocked.value) return true
   if (ownsFeature(feature)) return false
   return !status.available || !!activeConflictFor(feature)
 }
 
 function featureStateLabel(feature) {
-  if (busyFeatureID.value === feature.id) return '回读中'
+  if (busyFeatureID.value === feature.id) return tr('回读中')
   const status = statusFor(feature)
-  if (status.enabled) return '已开启'
-  if (ownsFeature(feature)) return '需要恢复'
-  if (!connected.value) return '未连接'
-  if (activeConflictFor(feature)) return '互斥占用'
-  if (!status.available) return '不可用'
-  return '默认'
+  if (status.enabled) return tr('已开启')
+  if (ownsFeature(feature)) return tr('需要恢复')
+  if (!connected.value) return tr('未连接')
+  if (activeConflictFor(feature)) return tr('互斥占用')
+  if (!status.available) return tr('不可用')
+  return tr('默认')
 }
 
 function formatRVA(value) {
@@ -409,18 +438,18 @@ onBeforeUnmount(() => {
       <div class="ct-connection-main">
         <span class="connection-emblem" aria-hidden="true"><i></i></span>
         <div class="connection-copy">
-          <strong>{{ connected ? '游戏进程已连接' : '连接游戏后读取实时状态' }}</strong>
-          <span v-if="connected">PID {{ processInfo.pid }} · 已开启 {{ activeFeatureCount }} 项</span>
+          <strong>{{ tr(releasePending ? '正在安全恢复并断开' : connected ? '游戏进程已连接' : '连接游戏后读取实时状态') }}</strong>
+          <span v-if="connected">PID {{ processInfo.pid }} · {{ tr('已开启') }} {{ activeFeatureCount }} {{ tr('项') }}</span>
           <span v-else>{{ modeCopy.summary }}</span>
         </div>
-        <span class="ui-tag" :class="connected ? 'is-ok' : 'is-info'">{{ connected ? '已验证连接' : '未连接' }}</span>
+        <span class="ui-tag" :class="releasePending ? 'is-warn' : connected ? 'is-ok' : 'is-info'">{{ tr(releasePending ? '等待恢复' : connected ? '已验证连接' : '未连接') }}</span>
       </div>
       <div class="ct-connection-actions ui-actions">
-        <button v-if="connected" type="button" class="ui-btn is-ghost is-sm" :disabled="operationBusy" @click="refreshStatuses">
-          {{ statusLoading ? '回读中…' : '刷新状态' }}
+        <button v-if="connected" type="button" class="ui-btn is-ghost is-sm" :disabled="interactionLocked" @click="refreshStatuses">
+          {{ tr(statusLoading ? '回读中…' : '刷新状态') }}
         </button>
         <button type="button" class="ui-btn is-sm" :class="connected ? 'is-danger' : 'is-primary'" :disabled="operationBusy" @click="connected ? disconnect() : connect()">
-          {{ connectionLoading ? '处理中…' : connected ? '恢复全部并断开' : '连接游戏进程' }}
+          {{ tr(connectionLoading ? '处理中…' : releasePending ? '重试安全恢复' : connected ? '恢复全部并断开' : '连接游戏进程') }}
         </button>
       </div>
     </section>
@@ -433,32 +462,32 @@ onBeforeUnmount(() => {
     <section class="ct-browser ui-card ui-panel">
       <header class="ct-browser-head">
         <div>
-          <h2 class="ui-section-title">{{ modeCopy.label }}目录 <small>{{ visibleFeatureCount }} 项</small></h2>
-          <p class="ui-section-copy">目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。</p>
+          <h2 class="ui-section-title">{{ modeCopy.label }} {{ tr('目录') }} <small>{{ visibleFeatureCount }} {{ tr('项') }}</small></h2>
+          <p class="ui-section-copy">{{ tr('目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。') }}</p>
         </div>
         <label class="ct-search ui-field">
-          <span class="ui-field-label">搜索名称、角色或分组</span>
+          <span class="ui-field-label">{{ tr('搜索名称、角色或分组') }}</span>
           <span class="search-field">
             <span class="search-glyph" aria-hidden="true"></span>
-            <input v-model.trim="searchQuery" class="ui-input" type="search" autocomplete="off" placeholder="输入关键词筛选">
+            <input v-model.trim="searchQuery" class="ui-input" type="search" autocomplete="off" :placeholder="tr('输入关键词筛选')">
           </span>
         </label>
       </header>
 
-      <div v-if="catalogLoading" class="ct-empty ui-empty">正在读取功能目录…</div>
+      <div v-if="catalogLoading" class="ct-empty ui-empty">{{ tr('正在读取功能目录…') }}</div>
       <div v-else-if="!groups.length" class="ct-empty ui-empty">
-        <strong>没有匹配的功能</strong>
-        <span>换一个角色名、功能名或分组关键词。</span>
+        <strong>{{ tr('没有匹配的功能') }}</strong>
+        <span>{{ tr('换一个角色名、功能名或分组关键词。') }}</span>
       </div>
       <div v-else class="ct-feature-workspace">
         <aside class="ct-group-pane">
           <label class="ct-group-select ui-field">
-            <span class="ui-field-label">当前分组</span>
+            <span class="ui-field-label">{{ tr('当前分组') }}</span>
             <select class="ui-select" :value="currentGroup?.key" @change="selectGroup($event.target.value)">
-              <option v-for="group in groups" :key="group.key" :value="group.key">{{ group.label }}（{{ group.features.length }}）</option>
+              <option v-for="group in groups" :key="group.key" :value="group.key">{{ group.label }} ({{ group.features.length }})</option>
             </select>
           </label>
-          <nav class="ct-group-disclosure" :aria-label="`${modeCopy.label}分组`">
+          <nav class="ct-group-disclosure" :aria-label="`${modeCopy.label} ${tr('分组')}`">
             <button
               v-for="group in groups"
               :key="group.key"
@@ -475,13 +504,13 @@ onBeforeUnmount(() => {
           </nav>
         </aside>
 
-        <section v-if="currentGroup" :id="`ct-group-${mode}-${currentGroup.key}`" class="ct-feature-column" :aria-label="`${currentGroup.label}功能`">
+        <section v-if="currentGroup" :id="`ct-group-${mode}-${currentGroup.key}`" class="ct-feature-column" :aria-label="`${currentGroup.label} ${tr('功能')}`">
           <header class="ct-group-heading">
             <div>
               <span>{{ modeCopy.label }}</span>
               <h3>{{ currentGroup.label }}</h3>
             </div>
-            <small>{{ currentGroup.features.length }} 项已验证补丁</small>
+            <small>{{ currentGroup.features.length }} {{ tr('项已验证补丁') }}</small>
           </header>
 
           <div class="ct-feature-list">
@@ -495,7 +524,7 @@ onBeforeUnmount(() => {
               <div class="ct-feature-summary">
                 <div class="feature-title-block">
                   <div class="feature-kicker">
-                    <span>{{ feature.character || feature.group }}</span>
+                    <span>{{ displayGroupName(feature.character || feature.group) }}</span>
                     <span>CT {{ feature.ctId }}</span>
                   </div>
                   <h4>{{ displayFeatureName(feature) }}</h4>
@@ -506,13 +535,13 @@ onBeforeUnmount(() => {
               </div>
 
               <p v-if="activeConflictFor(feature)" class="feature-conflict ui-notice is-warn">
-                与「{{ displayFeatureName(activeConflictFor(feature)) }}」互斥；先恢复该功能后才能启用。
+                {{ tr('与「') }}{{ displayFeatureName(activeConflictFor(feature)) }}{{ tr('」互斥；先恢复该功能后才能启用。') }}
               </p>
               <p v-else-if="displayFeatureError(feature)" class="feature-error ui-notice is-danger">{{ displayFeatureError(feature) }}</p>
 
               <div class="ct-feature-actions">
                 <span class="feature-proof">
-                  {{ statusFor(feature).rvas.length ? `已回读 ${statusFor(feature).rvas.length} 个写入点` : connected ? '首次启用时定位并保存原字节' : '连接后读取状态' }}
+                  {{ tr(statusFor(feature).rvas.length ? `已回读 ${statusFor(feature).rvas.length} 个写入点` : connected ? '首次启用时定位并保存原字节' : '连接后读取状态') }}
                 </span>
                 <button
                   type="button"
@@ -520,27 +549,27 @@ onBeforeUnmount(() => {
                   class="feature-switch ui-btn is-sm"
                   :class="{ 'is-primary': !ownsFeature(feature), 'is-danger': ownsFeature(feature) }"
                   :aria-checked="statusFor(feature).enabled"
-                  :aria-label="`${displayFeatureName(feature)}：${ownsFeature(feature) ? '恢复默认' : '开启'}`"
+                  :aria-label="`${displayFeatureName(feature)}: ${tr(ownsFeature(feature) ? '恢复默认' : '开启')}`"
                   :disabled="featureDisabled(feature)"
                   @click="requestFeatureChange(feature)"
                 >
                   <span class="switch-track" :class="{ 'is-on': statusFor(feature).enabled }" aria-hidden="true"><i></i></span>
-                  <span>{{ busyFeatureID === feature.id ? '回读中…' : ownsFeature(feature) ? '恢复默认' : '开启' }}</span>
+                  <span>{{ tr(busyFeatureID === feature.id ? '回读中…' : ownsFeature(feature) ? '恢复默认' : '开启') }}</span>
                 </button>
               </div>
 
               <details class="ct-technical ui-disclosure">
-                <summary>技术详情</summary>
+                <summary>{{ tr('技术详情') }}</summary>
                 <dl>
-                  <div><dt>目录 ID</dt><dd><code>{{ feature.id }}</code></dd></div>
-                  <div><dt>写入点</dt><dd>{{ feature.sites.length }}</dd></div>
-                  <div v-if="feature.conflictGroup"><dt>冲突组</dt><dd>{{ feature.conflictGroup }}</dd></div>
+                  <div><dt>{{ tr('目录 ID') }}</dt><dd><code>{{ feature.id }}</code></dd></div>
+                  <div><dt>{{ tr('写入点') }}</dt><dd>{{ feature.sites.length }}</dd></div>
+                  <div v-if="feature.conflictGroup"><dt>{{ tr('冲突组') }}</dt><dd>{{ feature.conflictGroup }}</dd></div>
                 </dl>
                 <ol class="site-list">
                   <li v-for="(site, index) in feature.sites" :key="`${feature.id}-${index}`">
                     <div><b>{{ site.symbol }}</b><span>RVA {{ formatRVA(statusFor(feature).rvas[index]) }}</span></div>
                     <code>{{ site.aob }}</code>
-                    <small>偏移 {{ site.offset }} · 当前字节 {{ statusFor(feature).currentBytes[index] || '未读取' }}</small>
+                    <small>{{ tr('偏移') }} {{ site.offset }} · {{ tr('当前字节') }} {{ statusFor(feature).currentBytes[index] || tr('未读取') }}</small>
                   </li>
                 </ol>
               </details>
@@ -554,14 +583,14 @@ onBeforeUnmount(() => {
       <section class="ct-confirm-dialog ui-card" role="dialog" aria-modal="true" aria-labelledby="ct-offline-title" aria-describedby="ct-offline-copy" @keydown.esc="cancelOfflineConfirmation" @keydown.tab="trapConfirmationFocus">
         <span class="confirm-emblem" aria-hidden="true"><i></i></span>
         <div>
-          <p class="confirm-kicker">首次启用确认</p>
-          <h2 id="ct-offline-title">仅离线/单机使用</h2>
-          <p id="ct-offline-copy">这些功能会直接修改游戏运行时规则。请确认当前不在联机房间，并只在离线或单机内容中使用。本次打开应用只确认一次。</p>
+          <p class="confirm-kicker">{{ tr('首次启用确认') }}</p>
+          <h2 id="ct-offline-title">{{ tr('仅离线/单机使用') }}</h2>
+          <p id="ct-offline-copy">{{ tr('这些功能会直接修改游戏运行时规则。请确认当前不在联机房间，并只在离线或单机内容中使用。本次打开应用只确认一次。') }}</p>
         </div>
-        <div class="confirm-feature"><span>即将开启</span><strong>{{ displayFeatureName(pendingConfirmationFeature) }}</strong></div>
+        <div class="confirm-feature"><span>{{ tr('即将开启') }}</span><strong>{{ displayFeatureName(pendingConfirmationFeature) }}</strong></div>
         <div class="confirm-actions ui-actions is-end">
-          <button ref="confirmationCancelButton" type="button" class="ui-btn is-ghost" @click="cancelOfflineConfirmation">取消</button>
-          <button ref="confirmationButton" type="button" class="ui-btn is-primary" @click="confirmOfflineUse">确认仅在单机使用并开启</button>
+          <button ref="confirmationCancelButton" type="button" class="ui-btn is-ghost" @click="cancelOfflineConfirmation">{{ tr('取消') }}</button>
+          <button ref="confirmationButton" type="button" class="ui-btn is-primary" @click="confirmOfflineUse">{{ tr('确认仅在单机使用并开启') }}</button>
         </div>
       </section>
     </div>
@@ -756,30 +785,31 @@ onBeforeUnmount(() => {
 .confirm-feature strong { color:var(--text-primary); text-align:right; }
 .confirm-actions { grid-column:1 / -1; }
 
-@media (min-width:1024px) {
+@container tool-panel (min-width:680px) {
   .ct-feature-workspace { grid-template-columns:minmax(146px,30fr) minmax(0,70fr); gap:var(--space-4); }
   .ct-group-select { display:none; }
   .ct-group-disclosure { display:flex; flex-direction:column; gap:var(--space-1); }
 }
 
-@media (max-width:1023px) {
+@container tool-panel (max-width:679px) {
   .ct-browser-head { align-items:stretch; flex-direction:column; }
   .ct-search { width:100%; flex-basis:auto; }
   .ct-feature-workspace { grid-template-columns:minmax(0,1fr); }
-}
-
-@media (max-width:767px) {
-  .ct084-page { gap:var(--space-3); padding-bottom:var(--space-5); }
   .ct-connection { align-items:stretch; flex-direction:column; }
   .ct-connection-actions { width:100%; }
   .ct-connection-actions .ui-btn { flex:1 1 150px; }
+}
+
+@container tool-panel (max-width:520px) {
+  .ct084-page { gap:var(--space-3); padding-bottom:var(--space-5); }
   .ct-browser { padding:var(--space-4); }
   .ct-feature-actions { align-items:stretch; flex-direction:column; }
   .feature-switch { width:100%; }
   .ct-group-heading { align-items:flex-start; flex-direction:column; }
 }
 
-@media (max-width:480px) {
+@container tool-panel (max-width:340px) {
+  .ct-browser-head .ui-section-copy { display:none; }
   .ct-connection-main { align-items:flex-start; flex-wrap:wrap; }
   .ct-connection-main > .ui-tag { margin-left:46px; }
   .ct-feature-card { padding:var(--space-3); }

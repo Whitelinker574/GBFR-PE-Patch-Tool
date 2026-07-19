@@ -55,11 +55,17 @@ function schedulePendingRuntimeReleaseRetry() {
   retryTimer?.unref?.()
 }
 
-function registerRuntimeRelease(scope, ownerToken, releaseCallback) {
+function registerRuntimeRelease(scope, ownerToken, releaseCallback, onReleased) {
   if (typeof releaseCallback !== 'function') throw new TypeError('runtime release callback is required')
+  if (onReleased !== undefined && typeof onReleased !== 'function') {
+    throw new TypeError('runtime release completion callback must be a function')
+  }
   const { key, feature, token } = releaseKey(scope, ownerToken)
   const existing = pendingRuntimeReleases.get(key)
-  if (existing) return existing
+  if (existing) {
+    if (onReleased) existing.releaseListeners.add(onReleased)
+    return existing
+  }
 
   const entry = {
     key,
@@ -69,9 +75,22 @@ function registerRuntimeRelease(scope, ownerToken, releaseCallback) {
     failures: 0,
     nextAttemptAt: Date.now(),
     inFlight: null,
+    releaseListeners: new Set(onReleased ? [onReleased] : []),
   }
   pendingRuntimeReleases.set(key, entry)
   return entry
+}
+
+function notifyRuntimeReleaseCompleted(entry, result) {
+  const listeners = [...entry.releaseListeners]
+  entry.releaseListeners.clear()
+  for (const listener of listeners) {
+    try {
+      listener({ scope: entry.scope, ownerToken: entry.token, result })
+    } catch (error) {
+      console.error(`Runtime lease release completion listener failed for ${entry.scope}`, error)
+    }
+  }
 }
 
 async function attemptRuntimeRelease(entry) {
@@ -81,7 +100,10 @@ async function attemptRuntimeRelease(entry) {
   entry.inFlight = releaseAttempt
   try {
     const result = await releaseAttempt
-    if (pendingRuntimeReleases.get(entry.key) === entry) pendingRuntimeReleases.delete(entry.key)
+    if (pendingRuntimeReleases.get(entry.key) === entry) {
+      pendingRuntimeReleases.delete(entry.key)
+      notifyRuntimeReleaseCompleted(entry, result)
+    }
     return result
   } catch (error) {
     if (pendingRuntimeReleases.get(entry.key) === entry) {
@@ -107,8 +129,8 @@ async function retryDueRuntimeLeaseReleases() {
   schedulePendingRuntimeReleaseRetry()
 }
 
-export function releaseRuntimeLease(scope, ownerToken, releaseCallback) {
-  return attemptRuntimeRelease(registerRuntimeRelease(scope, ownerToken, releaseCallback))
+export function releaseRuntimeLease(scope, ownerToken, releaseCallback, onReleased) {
+  return attemptRuntimeRelease(registerRuntimeRelease(scope, ownerToken, releaseCallback, onReleased))
 }
 
 export function queueRuntimeLeaseRelease(scope, ownerToken, releaseCallback) {

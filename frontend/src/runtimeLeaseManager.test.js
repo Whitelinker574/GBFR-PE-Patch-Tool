@@ -42,3 +42,28 @@ test('a failed owned release stays registered and can be retried with its callba
   assert.equal(retryResults[0].status, 'fulfilled')
   assert.equal(manager.pendingRuntimeLeaseReleaseCount(), 0, 'only a resolved release/stale no-op may leave the registry')
 })
+
+test('the release owner is notified only when a retained retry finally succeeds', async () => {
+  assert.ok(manager, 'runtimeLeaseManager.js must exist')
+  const scope = `release-observer-${Date.now()}-${Math.random()}`
+  const token = 'observed-owner-token'
+  const notifications = []
+  let attempts = 0
+  const release = async () => {
+    attempts += 1
+    if (attempts === 1) throw new Error('first release attempt failed')
+    return { ownerToken: '', restored: true }
+  }
+
+  await assert.rejects(
+    manager.releaseRuntimeLease(scope, token, release, notification => notifications.push(notification)),
+    /first release attempt failed/,
+  )
+  assert.deepEqual(notifications, [], 'a transient rejection is not a completed release')
+
+  await manager.retryPendingRuntimeLeaseReleases()
+  assert.equal(notifications.length, 1, 'the eventual successful retry must notify its UI owner exactly once')
+  assert.equal(notifications[0].scope, scope)
+  assert.equal(notifications[0].ownerToken, token)
+  assert.deepEqual(notifications[0].result, { ownerToken: '', restored: true })
+})

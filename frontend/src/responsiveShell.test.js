@@ -99,8 +99,9 @@ test('experimental runtime pages are discoverable and active in the memory switc
   assert.match(patchTool, /:class="\{ active: activeTab === id,/)
 })
 
-test('memory tools reflow into a visible tab grid before any item leaves the viewport', () => {
+test('memory tools stay in one compact horizontally reachable row on narrow windows', () => {
   assert.match(patchTool, /class="tool-switcher ui-tabs"[^>]*:data-group="activeGroup\.id"/)
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1439px\)[\s\S]*?\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*grid[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,\s*minmax\(180px,\s*1fr\)\)[^}]*overflow\s*:\s*visible/is)
-  assert.match(patchTool, /\.tool-switcher\[data-group="memory"\] \.ui-tab\s*\{[^}]*min-width\s*:\s*0[^}]*white-space\s*:\s*normal/is)
+  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1439px\)[\s\S]*?\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*flex[^}]*min-height\s*:\s*46px[^}]*flex\s*:\s*0 0 46px[^}]*overflow-x\s*:\s*auto[^}]*overflow-y\s*:\s*hidden/is)
+  assert.match(patchTool, /\.tool-switcher\[data-group="memory"\] \.ui-tab\s*\{[^}]*flex\s*:\s*0 0 auto[^}]*min-height\s*:\s*46px[^}]*white-space\s*:\s*nowrap/is)
+  assert.doesNotMatch(patchTool, /\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*grid/is)
 })

@@ -10,6 +10,7 @@ const ctPage = read('./components/CT084Features.vue')
 const uiI18n = read('./i18n-ui.js')
 const ctCatalogBackend = read('../../ct084_catalog.go')
 const ctRuntimeBackend = read('../../ct084_runtime.go')
+const productionCatalog = JSON.parse(read('../../data/ct084_patches.json'))
 
 test('one CT operation gate blocks writes and disconnects during a delayed refresh, then invalidates stale publication on reset', async () => {
   const { createCT084OperationGate } = await import(`./ct084OperationGate.js?gate=${Date.now()}`)
@@ -60,8 +61,17 @@ test('the CT page routes refresh, writes, connect and disconnect through the sam
     assert.match(ctPage, new RegExp(`async function ${name}\\([^)]*\\) \\{[\\s\\S]*?beginOperation\\('${kind}'${featureArgument.replace('.', '\\.') }\\)`), `${name} shared gate`)
   }
 
-  assert.match(ctPage, /function featureDisabled\([^)]*\) \{[\s\S]*?operationBusy\.value/)
+  assert.match(ctPage, /function featureDisabled\([^)]*\) \{[\s\S]*?interactionLocked\.value/)
   assert.match(ctPage, /:disabled="operationBusy"[^>]*@click="connected \? disconnect\(\) : connect\(\)"/)
+})
+
+test('a disconnect retry keeps CT writes locked until its exact owner and epoch are finally released', () => {
+  assert.match(ctPage, /const releasePending = ref\(false\)/)
+  assert.match(ctPage, /const interactionLocked = computed\(\(\) => operationBusy\.value \|\| releasePending\.value\)/)
+  assert.match(ctPage, /function completeRuntimeRelease\(expectedOwnerToken, expectedEpoch, notification\) \{[\s\S]*?disposed[\s\S]*?lifecycleEpoch !== expectedEpoch[\s\S]*?connectionOwnerToken !== expectedOwnerToken[\s\S]*?notification\?\.ownerToken !== expectedOwnerToken[\s\S]*?clearConnectionState\(\)/)
+  assert.match(ctPage, /releaseRuntimeLease\([\s\S]*?releaseCT084PageOwner,[\s\S]*?notification => completeRuntimeRelease\(ownerToken, epoch, notification\)[\s\S]*?\)/)
+  assert.match(ctPage, /catch \(error\) \{[\s\S]*?releasePending\.value = true[\s\S]*?正在后台重试恢复/)
+  assert.match(ctPage, /function featureDisabled\([^)]*\) \{[\s\S]*?interactionLocked\.value/)
 })
 
 test('the three CT 0.8.4 routes share one categorized component and unique planned art', () => {
@@ -114,6 +124,13 @@ test('catalog presentation filters by mode and search while naming the active co
   assert.deepEqual(groups.map(group => [group.key, group.features.map(feature => feature.id)]), [
     ['巴萨拉卡', ['ct084-1']],
   ])
+  const englishGroups = buildCT084Groups(features, 'characters', 'Vaseraga', {
+    featureLabel: feature => feature.id === 'ct084-1' ? 'Instant Grynoth' : feature.name,
+    groupLabel: group => group === '巴萨拉卡' ? 'Vaseraga' : group,
+  })
+  assert.deepEqual(englishGroups.map(group => [group.key, group.label, group.features.map(feature => feature.id)]), [
+    ['巴萨拉卡', 'Vaseraga', ['ct084-1']],
+  ])
 
   const statuses = buildCT084StatusIndex([
     { id: 'ct084-1', enabled: false, available: false, rvas: [], currentBytes: [], error: '' },
@@ -124,8 +141,14 @@ test('catalog presentation filters by mode and search while naming the active co
 
 test('verified CT statuses form an exact one-to-one set with the catalog', async () => {
   const { validateCT084StatusSet } = await import(`./ct084FeatureView.js?status-set=${Date.now()}`)
-  const catalog = [{ id: 'ct084-1' }, { id: 'ct084-2' }]
-  const valid = [{ id: 'ct084-2' }, { id: 'ct084-1' }]
+  const catalog = [
+    { id: 'ct084-1', sites: [{ enableBytes: 'kJE=' }] },
+    { id: 'ct084-2', sites: [{ enableBytes: 'zA==' }] },
+  ]
+  const valid = [
+    { id: 'ct084-2', enabled: false, available: true, rvas: [], currentBytes: [], error: '' },
+    { id: 'ct084-1', enabled: true, available: true, rvas: [4096], currentBytes: ['90 91'], error: '' },
+  ]
   assert.equal(validateCT084StatusSet(catalog, valid), valid, 'status order may differ when IDs still match exactly')
 
   assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }]), /数量.*目录/)
@@ -134,6 +157,39 @@ test('verified CT statuses form an exact one-to-one set with the catalog', async
   assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: '' }]), /不能为空/)
   assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: 'ct084-extra' }]), /目录外.*ct084-extra/)
   assert.throws(() => validateCT084StatusSet(catalog, [{ id: 'ct084-1' }, { id: ' ct084-2 ' }]), /目录外/, 'ID equality is exact, not trim-coerced')
+
+  const coercedBoolean = valid.map(status => ({ ...status, rvas: [...status.rvas], currentBytes: [...status.currentBytes] }))
+  coercedBoolean[0].enabled = 'false'
+  assert.throws(() => validateCT084StatusSet(catalog, coercedBoolean), /enabled.*布尔值/)
+
+  const mutateValid = (mutate) => {
+    const next = valid.map(status => ({ ...status, rvas: [...status.rvas], currentBytes: [...status.currentBytes] }))
+    mutate(next)
+    return next
+  }
+  for (const [label, malformed, expected] of [
+    ['available is not coerced', mutateValid(next => { next[0].available = 1 }), /available.*布尔值/],
+    ['error is a string', mutateValid(next => { next[0].error = null }), /error.*字符串/],
+    ['rvas is an array', mutateValid(next => { next[0].rvas = {} }), /rvas.*数组/],
+    ['currentBytes is an array', mutateValid(next => { next[0].currentBytes = null }), /currentBytes.*数组/],
+    ['owned arrays have equal lengths', mutateValid(next => { next[1].currentBytes = [] }), /rvas.*currentBytes.*长度/],
+    ['owned arrays match site count', mutateValid(next => {
+      next[1].rvas.push(8192)
+      next[1].currentBytes.push('90 91')
+    }), /写入点数量.*目录/],
+    ['RVA is a non-negative safe integer', mutateValid(next => { next[1].rvas[0] = 1.5 }), /RVA.*安全整数/],
+    ['current bytes are hex pairs', mutateValid(next => { next[1].currentBytes[0] = 'GG' }), /当前字节.*十六进制/],
+    ['current bytes match patch width', mutateValid(next => { next[1].currentBytes[0] = '90' }), /当前字节.*长度/],
+    ['enabled state owns write sites', mutateValid(next => {
+      next[1].rvas = []
+      next[1].currentBytes = []
+    }), /已开启.*写入点/],
+    ['enabled state is available', mutateValid(next => { next[1].available = false }), /已开启.*available/],
+    ['enabled state has no error', mutateValid(next => { next[1].error = 'foreign bytes' }), /已开启.*error/],
+    ['enabled bytes equal catalog patch', mutateValid(next => { next[1].currentBytes[0] = '90 90' }), /已开启.*目录补丁/],
+  ]) {
+    assert.throws(() => validateCT084StatusSet(catalog, malformed), expected, label)
+  }
 })
 
 test('the shared page owns the full CT lifecycle and changes switches only after verified refresh', () => {
@@ -166,24 +222,26 @@ test('the shared page owns the full CT lifecycle and changes switches only after
   assert.doesNotMatch(ctPage, /任务得分倍率|动作速度|队伍监测|选中素材/, 'unimplemented Task 7 controls must not be advertised')
 
   const statusFetchBody = ctPage.match(/async function fetchVerifiedStatuses\([^)]*\) \{([\s\S]*?)\n\}/)?.[1] || ''
-  assert.match(statusFetchBody, /validateCT084StatusSet\(catalog\.value, verified\)/)
+  assert.match(statusFetchBody, /validateCT084StatusSet\(catalog\.value, await CT084GetStatusesOwned\(ownerToken\)\)/)
   assert.doesNotMatch(statusFetchBody, /new Set\(/, 'the shared validator owns all exact-set semantics')
+  assert.doesNotMatch(ctPage, /function normalizeStatuses|!!status\?\.enabled|String\(status\?\.error/, 'malformed backend DTO fields must never be coerced into plausible UI state')
 })
 
-test('feature browsing remains keyboard-readable and reflows at the four target widths', () => {
-  assert.match(ctPage, /type="search"[^>]*placeholder="输入关键词筛选"/)
+test('feature browsing remains keyboard-readable and reflows from its actual tool-panel width', () => {
+  assert.match(ctPage, /type="search"[^>]*:placeholder="tr\('输入关键词筛选'\)"/)
   assert.match(ctPage, /class="ct-group-disclosure"[^>]*:aria-label/)
   assert.match(ctPage, /:aria-expanded="currentGroup\?\.key === group\.key"/)
   assert.match(ctPage, /role="switch"/)
   assert.match(ctPage, /:aria-checked="statusFor\(feature\)\.enabled"/)
   assert.match(ctPage, /:aria-busy="busyFeatureID === feature\.id"/)
-  assert.match(ctPage, /与「\{\{ displayFeatureName\(activeConflictFor\(feature\)\) \}\}」互斥/)
+  assert.match(ctPage, /tr\('与「'\)[\s\S]*?displayFeatureName\(activeConflictFor\(feature\)\)[\s\S]*?tr\('」互斥；先恢复该功能后才能启用。'\)/)
   assert.match(ctPage, /<details class="ct-technical ui-disclosure">/)
 
-  assert.match(ctPage, /@media\s*\(min-width\s*:\s*1024px\)[\s\S]*?\.ct-feature-workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(146px,30fr\)\s+minmax\(0,70fr\)/i)
-  assert.match(ctPage, /@media\s*\(max-width\s*:\s*1023px\)[\s\S]*?\.ct-feature-workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)/i)
-  assert.match(ctPage, /@media\s*\(max-width\s*:\s*767px\)/)
-  assert.match(ctPage, /@media\s*\(max-width\s*:\s*480px\)/)
+  assert.match(ctPage, /@container\s+tool-panel\s*\(min-width\s*:\s*680px\)[\s\S]*?\.ct-feature-workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(146px,30fr\)\s+minmax\(0,70fr\)/i)
+  assert.match(ctPage, /@container\s+tool-panel\s*\(max-width\s*:\s*679px\)[\s\S]*?\.ct-browser-head\s*\{[^}]*flex-direction\s*:\s*column/i)
+  assert.match(ctPage, /@container\s+tool-panel\s*\(max-width\s*:\s*520px\)/)
+  assert.match(ctPage, /@container\s+tool-panel\s*\(max-width\s*:\s*340px\)[\s\S]*?\.ct-browser-head \.ui-section-copy\s*\{[^}]*display\s*:\s*none/i)
+  assert.doesNotMatch(ctPage, /@media\s*\((?:min|max)-width/, 'component layout must follow panel width, not the outer viewport')
   assert.match(ctPage, /@media\s*\(prefers-reduced-motion\s*:\s*reduce\)/)
 
   const pageRule = ctPage.match(/\.ct084-page\s*\{([^}]*)\}/)?.[1] || ''
@@ -212,5 +270,88 @@ test('new navigation, safety, state and recovery copy is covered by the UI trans
     '互斥占用',
   ]) {
     assert.match(uiI18n, new RegExp(`'${label.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}'\\s*:`), `${label} translation`)
+  }
+})
+
+test('all 58 production CT features, groups and dynamic page messages render without Chinese in English mode', async () => {
+  const {
+    ct084EnglishFeatureNames,
+    translateCT084FeatureName,
+    translateCT084GroupName,
+    translateCT084Text,
+  } = await import(`./ct084Translations.js?complete=${Date.now()}`)
+  const cjk = /[\u3400-\u9fff]/u
+
+  assert.equal(productionCatalog.features.length, 58, 'the production fixture must remain the audited CT 0.8.4 catalog')
+  assert.equal(Object.keys(ct084EnglishFeatureNames).length, productionCatalog.features.length)
+  for (const feature of productionCatalog.features) {
+    const englishName = translateCT084FeatureName(feature, 'en')
+    const englishGroup = translateCT084GroupName(feature.character || feature.group, 'en')
+    assert.ok(englishName && englishName !== feature.displayName, `${feature.id} needs a dedicated English name`)
+    assert.doesNotMatch(englishName, cjk, `${feature.id} English name`)
+    assert.doesNotMatch(englishGroup, cjk, `${feature.id} English group`)
+    assert.doesNotMatch(translateCT084Text(feature.displayName, 'en'), cjk, `${feature.id} dynamic-name replacement`)
+  }
+
+  const dynamicSamples = [
+    '正在读取 CT 0.8.4 功能目录…',
+    '功能目录已就绪；连接游戏后可读取实时状态。',
+    '已读取 58 项 CT 0.8.4 安全补丁',
+    '读取 CT 0.8.4 功能目录失败：未知错误',
+    '后端未返回 CT 0.8.4 连接所有权令牌',
+    '已连接游戏进程 PID 1234',
+    '全部 CT 0.8.4 补丁已恢复，并已断开游戏进程',
+    '安全断开暂未完成，正在后台重试恢复：未知错误',
+    'CT 0.8.4 补丁状态已回读',
+    '刷新状态失败：未知错误',
+    '当前页面不再持有 CT 0.8.4 连接所有权',
+    '无限闪避写后回读状态不一致',
+    '无限闪避已开启',
+    '无限闪避已恢复默认',
+    '无限闪避操作失败：未知错误',
+    '回读中', '已开启', '需要恢复', '未连接', '互斥占用', '不可用', '默认',
+    '正在安全恢复并断开', '游戏进程已连接', '连接游戏后读取实时状态',
+    '已开启 3 项', '等待恢复', '已验证连接', '刷新状态', '处理中…',
+    '重试安全恢复', '恢复全部并断开', '连接游戏进程',
+    '战斗规则目录', '58 项',
+    '目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。',
+    '搜索名称、角色或分组', '输入关键词筛选', '正在读取功能目录…',
+    '没有匹配的功能', '换一个角色名、功能名或分组关键词。', '当前分组',
+    '战斗规则分组', '战斗规则', '3 项已验证补丁',
+    '与「无限格挡」互斥；先恢复该功能后才能启用。',
+    '已回读 2 个写入点', '首次启用时定位并保存原字节', '连接后读取状态',
+    '恢复默认', '开启', '技术详情', '目录 ID', '写入点', '冲突组',
+    '偏移 4 · 当前字节 90 90', '未读取',
+    '首次启用确认', '仅离线/单机使用',
+    '这些功能会直接修改游戏运行时规则。请确认当前不在联机房间，并只在离线或单机内容中使用。本次打开应用只确认一次。',
+    '即将开启', '取消', '确认仅在单机使用并开启',
+    'CT 0.8.4 回读状态 ct084-1 的 enabled 必须是布尔值',
+    'CT 0.8.4 回读状态 ct084-1 的 RVA[0] 必须是非负安全整数',
+    'CT 0.8.4 回读状态 ct084-1 的当前字节[0] 必须是空值或空格分隔的十六进制字节',
+    'CT 0.8.4 功能目录 ct084-1 的补丁字节无效',
+    'CT 0.8.4 回读状态 ct084-1 已开启，但当前字节[0] 与目录补丁不一致',
+  ]
+  for (const sample of dynamicSamples) {
+    const translated = translateCT084Text(sample, 'en')
+    assert.doesNotMatch(translated, cjk, `missing CT page translation for: ${sample}`)
+  }
+})
+
+test('the CT component localizes catalog search, announcements, feature names and every static template label explicitly', () => {
+  assert.match(ctPage, /import \{ language \} from '\.\.\/i18n\.js'/)
+  assert.match(ctPage, /translateCT084FeatureName[\s\S]*?translateCT084GroupName[\s\S]*?translateCT084Text/)
+  assert.match(ctPage, /function tr\(value\) \{[\s\S]*?translateCT084Text\(value, language\.value\)/)
+  assert.match(ctPage, /buildCT084Groups\([\s\S]*?featureLabel:[\s\S]*?translateCT084FeatureName[\s\S]*?groupLabel:[\s\S]*?translateCT084GroupName/)
+  assert.match(ctPage, /function announce\([^)]*\) \{[\s\S]*?const translatedMessage = tr\(message\)[\s\S]*?liveMessage\.value = translatedMessage[\s\S]*?emit\('status', translatedMessage/)
+  assert.match(ctPage, /function displayFeatureName\(feature\) \{[\s\S]*?translateCT084FeatureName\(feature, language\.value\)/)
+
+  const template = ctPage.match(/<template>([\s\S]*?)<\/template>/)?.[1] || ''
+  for (const label of [
+    '游戏进程已连接', '恢复全部并断开', '目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。',
+    '搜索名称、角色或分组', '没有匹配的功能', '首次启用时定位并保存原字节',
+    '技术详情', '目录 ID', '首次启用确认', '仅离线/单机使用', '取消',
+  ]) {
+    const sourceLine = template.split('\n').find(line => line.includes(label)) || ''
+    assert.match(sourceLine, /\btr\(/, `${label} must use CT-local translation`)
   }
 })
