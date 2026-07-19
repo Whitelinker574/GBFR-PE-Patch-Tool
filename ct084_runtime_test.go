@@ -142,6 +142,45 @@ func TestCT084PatchPreflightRejectsActualAddressOverlap(t *testing.T) {
 	}
 }
 
+func TestCT084PatchRejectsAlreadyEnabledExternalBytesBeforeWrite(t *testing.T) {
+	site := ct084PatchSiteLease{
+		Address:  0x1000,
+		Original: []byte{0x90, 0x90},
+		Patch:    []byte{0x90, 0x90},
+	}
+	memory := newCT084FakeMemory(map[uintptr][]byte{site.Address: site.Patch})
+
+	if err := installCT084PatchSites(memory, []ct084PatchSiteLease{site}); err == nil {
+		t.Fatal("installCT084PatchSites() error = nil, want already-enabled ownership rejection")
+	}
+	if memory.reads != 0 || len(memory.writes) != 0 {
+		t.Fatalf("already-enabled patch reached memory: reads=%d writes=%v", memory.reads, memory.writes)
+	}
+}
+
+func TestCT084PatchPreparationRejectsAlreadyEnabledExternalPatchBeforeLease(t *testing.T) {
+	catalog, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	feature := findCT084CatalogFeature(catalog, "ct084-31985")
+	if feature == nil || len(feature.Sites) != 1 || feature.Sites[0].Symbol != "NBGFR054" {
+		t.Fatalf("catalog fixture for wildcard patch changed: %+v", feature)
+	}
+	definition := feature.Sites[0]
+
+	lease, err := prepareCT084PatchSiteLease(
+		0x140000000, 0x141000000, 0x140001000,
+		definition, append([]byte(nil), definition.EnableBytes...),
+	)
+	if err == nil {
+		t.Fatalf("prepareCT084PatchSiteLease() = %+v, nil; want external-patch rejection", lease)
+	}
+	if lease.Address != 0 || lease.RVA != 0 || lease.Original != nil || lease.Patch != nil {
+		t.Fatalf("rejected preparation returned an ownable lease: %+v", lease)
+	}
+}
+
 func TestCT084PatchSecondWriteFailureRollsBackInReverse(t *testing.T) {
 	sites := ct084TestSites()[:2]
 	memory := newCT084FakeMemory(map[uintptr][]byte{

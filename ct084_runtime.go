@@ -114,6 +114,9 @@ func validateCT084PatchSiteRanges(sites []ct084PatchSiteLease) error {
 		if site.Address == 0 || len(site.Original) == 0 || len(site.Original) != len(site.Patch) {
 			return fmt.Errorf("CT084 site[%d] has invalid address or byte lengths", index)
 		}
+		if bytes.Equal(site.Original, site.Patch) {
+			return fmt.Errorf("CT084 site[%d] original bytes already equal the enable patch", index)
+		}
 		end := site.Address + uintptr(len(site.Original))
 		if end < site.Address {
 			return fmt.Errorf("CT084 site[%d] address range overflows", index)
@@ -464,6 +467,31 @@ func (a *App) CT084GetStatusesOwned(token string) ([]CT084FeatureStatus, error) 
 	), nil
 }
 
+func prepareCT084PatchSiteLease(moduleBase, moduleEnd, address uintptr, definition CT084PatchSite, original []byte) (ct084PatchSiteLease, error) {
+	if moduleBase == 0 || moduleEnd <= moduleBase || address < moduleBase || len(definition.EnableBytes) == 0 {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 patch site has invalid module bounds, address, or patch bytes")
+	}
+	end := address + uintptr(len(definition.EnableBytes))
+	if end < address || end > moduleEnd {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 patch site target is outside module bounds")
+	}
+	if len(original) != len(definition.EnableBytes) {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 captured original length does not match enable patch")
+	}
+	if len(definition.DisableBytes) != 0 && !bytes.Equal(original, definition.DisableBytes) {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 explicit disable bytes do not match runtime bytes")
+	}
+	if bytes.Equal(original, definition.EnableBytes) {
+		return ct084PatchSiteLease{}, fmt.Errorf("CT084 runtime bytes already equal the enable patch; ownership cannot be claimed")
+	}
+	return ct084PatchSiteLease{
+		Address:  address,
+		RVA:      uint64(address - moduleBase),
+		Original: append([]byte(nil), original...),
+		Patch:    append([]byte(nil), definition.EnableBytes...),
+	}, nil
+}
+
 func (a *App) prepareCT084PatchSitesLocked(feature CT084Feature, memory ct084Memory) ([]ct084PatchSiteLease, error) {
 	moduleSize, err := getRemoteModuleSize(a.hProcess, a.moduleBase)
 	if err != nil {
@@ -502,15 +530,11 @@ func (a *App) prepareCT084PatchSitesLocked(feature CT084Feature, memory ct084Mem
 		if err != nil {
 			return nil, fmt.Errorf("read %s site[%d] original bytes: %w", feature.ID, index, err)
 		}
-		if len(definition.DisableBytes) != 0 && !bytes.Equal(original, definition.DisableBytes) {
-			return nil, fmt.Errorf("%s site[%d] explicit disable bytes do not match runtime bytes", feature.ID, index)
+		lease, err := prepareCT084PatchSiteLease(a.moduleBase, moduleEnd, address, definition, original)
+		if err != nil {
+			return nil, fmt.Errorf("prepare %s site[%d]: %w", feature.ID, index, err)
 		}
-		sites = append(sites, ct084PatchSiteLease{
-			Address:  address,
-			RVA:      uint64(address - a.moduleBase),
-			Original: append([]byte(nil), original...),
-			Patch:    append([]byte(nil), definition.EnableBytes...),
-		})
+		sites = append(sites, lease)
 	}
 	if err := validateCT084PatchSiteRanges(sites); err != nil {
 		return nil, err
