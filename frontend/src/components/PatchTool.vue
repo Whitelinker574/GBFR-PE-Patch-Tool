@@ -288,7 +288,7 @@ const toolMeta = {
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['progression', 'sigil', 'wrightstone', 'loadoutPresets', 'chara', 'save'] },
   { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'ctCombat', 'ctCharacters', 'ctQuest', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'legacyRuntime', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live game data without writes', items: ['ctMonitor'] },
+  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'patch', 'language'] },
 ])
 
