@@ -37,7 +37,7 @@
 func TestCT084ProductionCatalogHasEverySafeDirectPatch(t *testing.T) {
     catalog, err := loadCT084Catalog()
     if err != nil { t.Fatal(err) }
-    if len(catalog.Features) != 59 { t.Fatalf("features=%d, want 59", len(catalog.Features)) }
+    if len(catalog.Features) != 60 { t.Fatalf("features=%d, want 60", len(catalog.Features)) }
     excluded := map[int]bool{31935:true, 33086:true, 31060:true, 31456:true}
     seen := map[int]bool{}
     for _, feature := range catalog.Features {
@@ -77,7 +77,7 @@ $doc.features.Count
 $doc.features | Where-Object ctId -in 31935,33086,31060,31456
 ```
 
-Expected: `59`, then no rows.
+Expected: `60`, then no rows. The earlier static pre-audit count of 59 omitted CT 32556 because its `AssemblerScript` node carries `Async="1"`; the production generator and content-lock tests include it.
 
 - [ ] **Step 5: Commit the generator/data/test slice**
 
@@ -394,4 +394,3 @@ git add -u
 git add ct084_*.go runtime_quest_mods*.go runtime_action_speed*.go runtime_party_monitor*.go runtime_inventory_item*.go data/ct084_patches.json tools/generate_ct084_patches.ps1 frontend/src/components/CT084Features.vue frontend/src/ct084FeaturesUi.test.js
 git commit -m "feat: complete CT 0.8.4 runtime integration"
 ```
-
