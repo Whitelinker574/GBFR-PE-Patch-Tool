@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -16,51 +17,30 @@ import (
 const ct084SourceSHA256 = "B75DF049E27D1423FC5ECDD47CC85DBAC241BEE582A49CEBA30CF020E150B659"
 const ct084CatalogSHA256 = "F3B940E644CC6CF0B9BDF2EB11B7B7466D3097053DB8900FEFA97229C9EE82A8"
 
-type ct084CatalogFile struct {
-	SchemaVersion int                   `json:"schemaVersion"`
-	SourceVersion string                `json:"sourceVersion"`
-	SourceSHA256  string                `json:"sourceSha256"`
-	Features      []ct084CatalogFeature `json:"features"`
-}
-
-type ct084CatalogFeature struct {
-	ID            string             `json:"id"`
-	CTID          int                `json:"ctId"`
-	Name          string             `json:"name"`
-	DisplayName   string             `json:"displayName"`
-	Mode          string             `json:"mode"`
-	Category      string             `json:"category"`
-	Group         string             `json:"group"`
-	GroupPath     []string           `json:"groupPath"`
-	Character     string             `json:"character"`
-	Conflicts     []string           `json:"conflicts"`
-	ConflictGroup string             `json:"conflictGroup"`
-	Sites         []ct084CatalogSite `json:"sites"`
-}
-
-type ct084CatalogSite struct {
-	Symbol                 string `json:"symbol"`
-	Module                 string `json:"module"`
-	AOB                    string `json:"aob"`
-	Offset                 int    `json:"offset"`
-	PatternValues          []byte `json:"patternValues"`
-	PatternMasks           []byte `json:"patternMasks"`
-	EnableBytes            []byte `json:"enableBytes"`
-	DisableBytes           []byte `json:"disableBytes"`
-	RequiresRuntimeCapture bool   `json:"requiresRuntimeCapture"`
-}
-
-func readCT084CatalogFile(t *testing.T) ct084CatalogFile {
+func readCT084CatalogFile(t *testing.T) CT084Catalog {
 	t.Helper()
 	raw, err := os.ReadFile("data/ct084_patches.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var catalog ct084CatalogFile
+	var catalog CT084Catalog
 	if err := json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatal(err)
 	}
 	return catalog
+}
+
+func cloneCT084CatalogForTest(t *testing.T, source CT084Catalog) CT084Catalog {
+	t.Helper()
+	raw, err := json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cloned CT084Catalog
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		t.Fatal(err)
+	}
+	return cloned
 }
 
 func parseCT084AOB(t *testing.T, pattern string) ([]byte, []byte) {
@@ -108,6 +88,195 @@ func TestCT084CatalogContentSHA256(t *testing.T) {
 	}
 }
 
+func TestCT084ProductionCatalogEmbedsLockedContent(t *testing.T) {
+	raw, err := os.ReadFile("data/ct084_patches.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(ct084CatalogJSON, raw) {
+		t.Fatal("embedded CT084 catalog differs from data/ct084_patches.json")
+	}
+	got := fmt.Sprintf("%X", sha256.Sum256(ct084CatalogJSON))
+	if got != ct084CatalogSHA256 {
+		t.Fatalf("embedded catalog SHA256=%s, want %s", got, ct084CatalogSHA256)
+	}
+}
+
+func TestCT084ProductionCatalogLoadsAndValidates(t *testing.T) {
+	catalog, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatalf("loadCT084Catalog() error = %v", err)
+	}
+	if err := validateCT084Catalog(catalog); err != nil {
+		t.Fatalf("validateCT084Catalog() error = %v", err)
+	}
+	if len(catalog.Features) != 60 {
+		t.Fatalf("features=%d, want 60", len(catalog.Features))
+	}
+}
+
+func TestCT084ProductionCatalogStrictJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "unknown field", raw: `{"schemaVersion":1,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[],"unknown":true}`},
+		{name: "trailing value", raw: `{"schemaVersion":1,"sourceVersion":"0.8.4","sourceSha256":"` + ct084SourceSHA256 + `","features":[]} {}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := decodeCT084Catalog([]byte(tt.raw)); err == nil {
+				t.Fatal("decodeCT084Catalog() error = nil, want strict decoding error")
+			}
+		})
+	}
+}
+
+func TestCT084ProductionCatalogRejectsInvalidMutations(t *testing.T) {
+	base := readCT084CatalogFile(t)
+	featureWithConflicts := -1
+	for featureIndex := range base.Features {
+		if len(base.Features[featureIndex].Conflicts) > 0 && featureWithConflicts < 0 {
+			featureWithConflicts = featureIndex
+		}
+	}
+	if featureWithConflicts < 0 {
+		t.Fatal("catalog fixture lacks conflict examples")
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*CT084Catalog)
+	}{
+		{name: "schema version", mutate: func(c *CT084Catalog) { c.SchemaVersion++ }},
+		{name: "source version", mutate: func(c *CT084Catalog) { c.SourceVersion = "0.8.5" }},
+		{name: "source SHA", mutate: func(c *CT084Catalog) { c.SourceSHA256 = strings.Repeat("0", 64) }},
+		{name: "feature count", mutate: func(c *CT084Catalog) { c.Features = c.Features[:len(c.Features)-1] }},
+		{name: "stable ID", mutate: func(c *CT084Catalog) { c.Features[0].ID = "unstable" }},
+		{name: "duplicate ID and CTID", mutate: func(c *CT084Catalog) {
+			c.Features[1].ID = c.Features[0].ID
+			c.Features[1].CTID = c.Features[0].CTID
+		}},
+		{name: "empty name", mutate: func(c *CT084Catalog) { c.Features[0].Name = " " }},
+		{name: "empty group", mutate: func(c *CT084Catalog) { c.Features[0].Group = "\t" }},
+		{name: "invalid mode", mutate: func(c *CT084Catalog) { c.Features[0].Mode = "menu" }},
+		{name: "empty sites", mutate: func(c *CT084Catalog) { c.Features[0].Sites = nil }},
+		{name: "empty symbol", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Symbol = "" }},
+		{name: "empty module", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Module = " " }},
+		{name: "empty AOB", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].AOB = "" }},
+		{name: "invalid AOB", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].AOB = "GG" }},
+		{name: "noncanonical AOB", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].AOB = strings.ToLower(c.Features[0].Sites[0].AOB) }},
+		{name: "pattern values mismatch", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].PatternValues[0] ^= 1 }},
+		{name: "pattern masks mismatch", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].PatternMasks[0] = 0 }},
+		{name: "noncanonical wildcard bits", mutate: func(c *CT084Catalog) {
+			for index, mask := range c.Features[0].Sites[0].PatternMasks {
+				if mask != 0xff {
+					c.Features[0].Sites[0].PatternValues[index] |= ^mask
+					return
+				}
+			}
+		}},
+		{name: "negative offset", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Offset = -1 }},
+		{name: "empty enable", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].EnableBytes = nil }},
+		{name: "patch past pattern", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].Offset = len(c.Features[0].Sites[0].PatternValues) }},
+		{name: "runtime capture with disable", mutate: func(c *CT084Catalog) { c.Features[0].Sites[0].DisableBytes = []byte{0} }},
+		{name: "static patch missing disable", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].RequiresRuntimeCapture = false
+			c.Features[0].Sites[0].DisableBytes = nil
+		}},
+		{name: "static disable length mismatch", mutate: func(c *CT084Catalog) {
+			c.Features[0].Sites[0].RequiresRuntimeCapture = false
+			c.Features[0].Sites[0].DisableBytes = make([]byte, len(c.Features[0].Sites[0].EnableBytes)+1)
+		}},
+		{name: "overlapping patch slices", mutate: func(c *CT084Catalog) {
+			site := c.Features[0].Sites[0]
+			site.Offset = c.Features[0].Sites[0].Offset
+			c.Features[0].Sites = append(c.Features[0].Sites, site)
+		}},
+		{name: "missing conflict target", mutate: func(c *CT084Catalog) { c.Features[featureWithConflicts].Conflicts[0] = "ct084-999999" }},
+		{name: "self conflict", mutate: func(c *CT084Catalog) {
+			c.Features[featureWithConflicts].Conflicts[0] = c.Features[featureWithConflicts].ID
+		}},
+		{name: "duplicate conflict", mutate: func(c *CT084Catalog) {
+			c.Features[featureWithConflicts].Conflicts[1] = c.Features[featureWithConflicts].Conflicts[0]
+		}},
+		{name: "asymmetric conflict", mutate: func(c *CT084Catalog) {
+			c.Features[featureWithConflicts].Conflicts = c.Features[featureWithConflicts].Conflicts[1:]
+		}},
+		{name: "required conflict group", mutate: func(c *CT084Catalog) {
+			for index := range c.Features {
+				if c.Features[index].CTID == 31979 {
+					c.Features[index].ConflictGroup = "different"
+				}
+			}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := cloneCT084CatalogForTest(t, base)
+			tt.mutate(&catalog)
+			err := validateCT084Catalog(&catalog)
+			if err == nil {
+				t.Fatal("validateCT084Catalog() error = nil, want validation error")
+			}
+			if len(err.Error()) > 300 {
+				t.Fatalf("validation error leaked excessive catalog content (%d bytes): %v", len(err.Error()), err)
+			}
+		})
+	}
+}
+
+func TestCT084ProductionCatalogReturnsDeepDefensiveCopies(t *testing.T) {
+	app := NewApp()
+	first, err := app.CT084GetCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := app.CT084GetCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := cloneCT084CatalogForTest(t, CT084Catalog{Features: second}).Features
+
+	first[0].ID = "poisoned"
+	first[0].GroupPath[0] = "poisoned"
+	first[0].Sites[0].PatternValues[0] ^= 0xff
+	first[0].Sites[0].PatternMasks[0] ^= 0xff
+	first[0].Sites[0].EnableBytes[0] ^= 0xff
+	if len(first[0].Sites[0].DisableBytes) > 0 {
+		first[0].Sites[0].DisableBytes[0] ^= 0xff
+	}
+	for index := range first {
+		if len(first[index].Conflicts) > 0 {
+			first[index].Conflicts[0] = "poisoned"
+			break
+		}
+	}
+	second[0].Name = "also poisoned"
+
+	third, err := app.CT084GetCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(third, want) {
+		t.Fatal("CT084GetCatalog() returned data mutated through an earlier result")
+	}
+
+	loaded, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.Features[0].Name = "load poison"
+	reloaded, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Features[0].Name == "load poison" {
+		t.Fatal("loadCT084Catalog() exposed its process-global cache")
+	}
+}
+
 func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 	catalog := readCT084CatalogFile(t)
 	if catalog.SchemaVersion != 1 {
@@ -127,7 +296,7 @@ func TestCT084CatalogMetadataAndStableFeatureIdentity(t *testing.T) {
 	}
 
 	seenIDs := make(map[string]bool, len(catalog.Features))
-	byCTID := make(map[int]ct084CatalogFeature, len(catalog.Features))
+	byCTID := make(map[int]CT084Feature, len(catalog.Features))
 	seenCategories := make(map[string]bool, 3)
 	validModes := map[string]bool{"combat": true, "characters": true, "quest": true}
 	orderKeys := make([]string, 0, len(catalog.Features))
@@ -294,7 +463,7 @@ REAL+1:
 	if err != nil {
 		t.Fatal(err)
 	}
-	var catalog ct084CatalogFile
+	var catalog CT084Catalog
 	if err := json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +481,7 @@ REAL+1:
 
 func TestCT084CatalogKnownMultiSiteAndConflicts(t *testing.T) {
 	catalog := readCT084CatalogFile(t)
-	byCTID := make(map[int]ct084CatalogFeature, len(catalog.Features))
+	byCTID := make(map[int]CT084Feature, len(catalog.Features))
 	for _, feature := range catalog.Features {
 		byCTID[feature.CTID] = feature
 	}
