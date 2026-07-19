@@ -271,6 +271,15 @@ foreach ($excludedCTID in @(
     [void] $alreadyImplementedCTIDs.Add($excludedCTID)
 }
 
+$exclusionEvidence = @{
+    31935 = "disabling Eugen's instant Detonator can crash"
+    33086 = 'infinite repeat quest is experimental and potentially buggy'
+    31066 = 'NBGFR019B has two matches in the locked game 2.0.2 EXE'
+    31960 = 'NBGFR040 has three matches in the locked game 2.0.2 EXE'
+    31060 = 'Infinite Link Time has an independently owned implementation'
+    31456 = 'Terminus weapon drop has a safer independently owned implementation'
+}
+
 [System.Collections.Generic.List[object]] $features = @()
 foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     $idNode = $entry.SelectSingleNode('ID')
@@ -281,10 +290,25 @@ foreach ($entry in $document.SelectNodes('//CheatEntry[AssemblerScript]')) {
     }
 
     $ctID = 0
-    if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID) -or
-        $knownUnsafeCTIDs.Contains($ctID) -or
-        $unsafeOrUnverifiedCTIDs.Contains($ctID) -or
-        $alreadyImplementedCTIDs.Contains($ctID)) {
+    if (-not [int]::TryParse($idNode.InnerText.Trim(), [ref] $ctID)) {
+        continue
+    }
+    $exclusionClass = ''
+    if ($knownUnsafeCTIDs.Contains($ctID)) {
+        $exclusionClass = 'known unsafe'
+    }
+    elseif ($unsafeOrUnverifiedCTIDs.Contains($ctID)) {
+        $exclusionClass = 'unsafe or unverified'
+    }
+    elseif ($alreadyImplementedCTIDs.Contains($ctID)) {
+        $exclusionClass = 'already implemented'
+    }
+    if (-not [string]::IsNullOrEmpty($exclusionClass)) {
+        $evidence = [string] $exclusionEvidence[$ctID]
+        if ([string]::IsNullOrWhiteSpace($evidence)) {
+            throw "Excluded CT $ctID has no audit evidence."
+        }
+        Write-Verbose "Excluded CT $ctID [$exclusionClass]: $evidence"
         continue
     }
     $rawScript = $scriptNode.InnerText

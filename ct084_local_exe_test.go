@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -139,6 +140,43 @@ func verifyCT084LocalGameIdentity(path string) error {
 	return nil
 }
 
+func formatCT084LocalMatchLocations(matches []ct084LocalPatternMatch) string {
+	if len(matches) == 0 {
+		return "none in executable sections"
+	}
+	const locationLimit = 4
+	shown := len(matches)
+	if shown > locationLimit {
+		shown = locationLimit
+	}
+	locations := make([]string, shown)
+	for index := 0; index < shown; index++ {
+		locations[index] = fmt.Sprintf("%s@RVA 0x%X", matches[index].section, matches[index].rva)
+	}
+	result := strings.Join(locations, ", ")
+	if remaining := len(matches) - shown; remaining > 0 {
+		result += fmt.Sprintf(" (+%d more)", remaining)
+	}
+	return result
+}
+
+func TestFormatCT084LocalMatchLocationsIsBoundedAndExplicit(t *testing.T) {
+	if got := formatCT084LocalMatchLocations(nil); got != "none in executable sections" {
+		t.Fatalf("zero-match locations=%q, want an explicit executable-section result", got)
+	}
+	matches := []ct084LocalPatternMatch{
+		{section: ".text", rva: 0x1000},
+		{section: ".text", rva: 0x1010},
+		{section: ".bind", rva: 0x81df020},
+		{section: ".text", rva: 0x1030},
+		{section: ".text", rva: 0x1040},
+	}
+	want := ".text@RVA 0x1000, .text@RVA 0x1010, .bind@RVA 0x81DF020, .text@RVA 0x1030 (+1 more)"
+	if got := formatCT084LocalMatchLocations(matches); got != want {
+		t.Fatalf("locations=%q, want %q", got, want)
+	}
+}
+
 func TestCT084CatalogMatchesLocalGame202(t *testing.T) {
 	path := os.Getenv("GBFR_GAME_EXE_TEST")
 	if path == "" {
@@ -173,7 +211,7 @@ func TestCT084CatalogMatchesLocalGame202(t *testing.T) {
 				matchCache[canonical] = matches
 			}
 			if len(matches) != 1 {
-				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: count=%d, want 1", feature.ID, feature.CTID, siteIndex, site.Symbol, len(matches))
+				t.Errorf("feature %s / CT ID %d / site index %d / symbol %s: count=%d, want 1; locations=%s", feature.ID, feature.CTID, siteIndex, site.Symbol, len(matches), formatCT084LocalMatchLocations(matches))
 			}
 		}
 	}

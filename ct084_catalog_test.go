@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -444,7 +443,14 @@ func TestCT084CatalogPatchSitesAreComplete(t *testing.T) {
 	}
 }
 
-func TestCT084GeneratorIgnoresCommentedInstructions(t *testing.T) {
+func runCT084GeneratorFixture(t *testing.T, name, input string) CT084Catalog {
+	t.Helper()
+	catalog, _ := runCT084GeneratorFixtureWithArgs(t, name, input)
+	return catalog
+}
+
+func runCT084GeneratorFixtureWithArgs(t *testing.T, name, input string, extraArgs ...string) (CT084Catalog, string) {
+	t.Helper()
 	powerShell := ""
 	for _, candidate := range []string{"powershell", "pwsh"} {
 		if path, err := exec.LookPath(candidate); err == nil {
@@ -457,8 +463,34 @@ func TestCT084GeneratorIgnoresCommentedInstructions(t *testing.T) {
 	}
 
 	tempDir := t.TempDir()
-	inputPath := filepath.Join(tempDir, "comments.ct")
+	inputPath := filepath.Join(tempDir, name+".ct")
 	outputPath := filepath.Join(tempDir, "catalog.json")
+	if err := os.WriteFile(inputPath, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath, err := filepath.Abs("tools/generate_ct084_patches.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-InputCT", inputPath, "-Output", outputPath}
+	arguments = append(arguments, extraArgs...)
+	command := exec.Command(powerShell, arguments...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generator failed: %v\n%s", err, output)
+	}
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog CT084Catalog
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	return catalog, string(output)
+}
+
+func TestCT084GeneratorIgnoresCommentedInstructions(t *testing.T) {
 	input := `<?xml version="1.0" encoding="utf-8"?>
 <CheatTable>
   <CheatEntries>
@@ -491,25 +523,7 @@ REAL+1:
     </CheatEntry>
   </CheatEntries>
 </CheatTable>`
-	if err := os.WriteFile(inputPath, []byte(input), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	scriptPath, err := filepath.Abs("tools/generate_ct084_patches.ps1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := exec.Command(powerShell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-InputCT", inputPath, "-Output", outputPath)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("generator failed: %v\n%s", err, output)
-	}
-	raw, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var catalog CT084Catalog
-	if err := json.Unmarshal(raw, &catalog); err != nil {
-		t.Fatal(err)
-	}
+	catalog := runCT084GeneratorFixture(t, "comments", input)
 	if len(catalog.Features) != 1 {
 		t.Fatalf("features=%d, want 1", len(catalog.Features))
 	}
@@ -522,68 +536,88 @@ REAL+1:
 	}
 }
 
-func readCT084GeneratorExclusionSet(t *testing.T, script, variable string) []int {
-	t.Helper()
-	declaration := "$" + variable + " = [System.Collections.Generic.HashSet[int]]::new()"
-	declarationIndex := strings.Index(script, declaration)
-	if declarationIndex < 0 {
-		t.Fatalf("generator does not declare $%s as a HashSet[int]", variable)
-	}
-	remainder := script[declarationIndex+len(declaration):]
-	const loopPrefix = "foreach ($excludedCTID in @("
-	loopIndex := strings.Index(remainder, loopPrefix)
-	if loopIndex < 0 {
-		t.Fatalf("generator does not populate $%s", variable)
-	}
-	remainder = remainder[loopIndex+len(loopPrefix):]
-	loopEnd := strings.Index(remainder, ")) {")
-	if loopEnd < 0 {
-		t.Fatalf("generator has no complete population loop for $%s", variable)
-	}
-
-	var ids []int
-	for _, line := range strings.Split(remainder[:loopEnd], "\n") {
-		if comment := strings.IndexByte(line, '#'); comment >= 0 {
-			line = line[:comment]
-		}
-		for _, field := range strings.FieldsFunc(line, func(char rune) bool {
-			return char == ',' || char == ' ' || char == '\t' || char == '\r'
-		}) {
-			id, err := strconv.Atoi(field)
-			if err != nil {
-				t.Fatalf("generator $%s contains non-integer exclusion %q", variable, field)
-			}
-			ids = append(ids, id)
-		}
-	}
-	if !strings.Contains(remainder[loopEnd:], "$"+variable+".Add($excludedCTID)") {
-		t.Fatalf("generator population loop does not add IDs to $%s", variable)
-	}
-	return ids
+type ct084GeneratorExclusionFixture struct {
+	id             int
+	classification string
+	evidence       string
 }
 
-func TestCT084GeneratorClassifiesExclusionsBySafetyEvidence(t *testing.T) {
-	raw, err := os.ReadFile("tools/generate_ct084_patches.ps1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	script := string(raw)
-	wantSets := []struct {
-		variable string
-		ids      []int
-	}{
-		{variable: "knownUnsafeCTIDs", ids: []int{31935, 33086}},
-		{variable: "unsafeOrUnverifiedCTIDs", ids: []int{31066, 31960}},
-		{variable: "alreadyImplementedCTIDs", ids: []int{31060, 31456}},
-	}
-	for _, want := range wantSets {
-		if got := readCT084GeneratorExclusionSet(t, script, want.variable); !reflect.DeepEqual(got, want.ids) {
-			t.Errorf("generator $%s=%v, want %v", want.variable, got, want.ids)
+var ct084GeneratorExclusionFixtures = []ct084GeneratorExclusionFixture{
+	{id: 31935, classification: "known unsafe", evidence: "disabling Eugen's instant Detonator can crash"},
+	{id: 33086, classification: "known unsafe", evidence: "infinite repeat quest is experimental and potentially buggy"},
+	{id: 31066, classification: "unsafe or unverified", evidence: "NBGFR019B has two matches in the locked game 2.0.2 EXE"},
+	{id: 31960, classification: "unsafe or unverified", evidence: "NBGFR040 has three matches in the locked game 2.0.2 EXE"},
+	{id: 31060, classification: "already implemented", evidence: "Infinite Link Time has an independently owned implementation"},
+	{id: 31456, classification: "already implemented", evidence: "Terminus weapon drop has a safer independently owned implementation"},
+}
+
+func makeCT084GeneratorExclusionFixture(remapExcluded bool) string {
+	var input strings.Builder
+	input.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<CheatTable><CheatEntries>\n")
+	entries := append([]ct084GeneratorExclusionFixture(nil), ct084GeneratorExclusionFixtures...)
+	entries = append(entries, ct084GeneratorExclusionFixture{id: 900007, classification: "control", evidence: "must remain eligible"})
+	for index, fixture := range entries {
+		ctID := fixture.id
+		if remapExcluded && index < len(ct084GeneratorExclusionFixtures) {
+			ctID = 910000 + index
 		}
-		if filter := "$" + want.variable + ".Contains($ctID)"; !strings.Contains(script, filter) {
-			t.Errorf("generator does not filter with %s", filter)
+		symbol := fmt.Sprintf("EXCLUSION_FIXTURE_%d", index)
+		fmt.Fprintf(&input, `<CheatEntry>
+  <ID>%d</ID>
+  <Description>%s: %s</Description>
+  <AssemblerScript><![CDATA[
+[ENABLE]
+aobscanmodule(%s,$process,48 8B %02X 89 54 24 10 90)
+%s+3:
+  db 90
+[DISABLE]
+%s+3:
+  db 89
+]]></AssemblerScript>
+</CheatEntry>
+`, ctID, fixture.classification, fixture.evidence, symbol, 0x40+index, symbol, symbol)
+	}
+	input.WriteString("</CheatEntries></CheatTable>\n")
+	return input.String()
+}
+
+func TestCT084GeneratorBehaviorExcludesEveryClassifiedFeature(t *testing.T) {
+	catalog, audit := runCT084GeneratorFixtureWithArgs(t, "classified-exclusions", makeCT084GeneratorExclusionFixture(false), "-Verbose")
+	if len(catalog.Features) != 1 || catalog.Features[0].CTID != 900007 {
+		t.Fatalf("classified exclusion fixture generated CT IDs %v, want only control CT 900007", ct084CatalogIDs(catalog.Features))
+	}
+	for _, fixture := range ct084GeneratorExclusionFixtures {
+		for _, feature := range catalog.Features {
+			if feature.CTID == fixture.id {
+				t.Errorf("generator emitted CT %d (%s: %s)", fixture.id, fixture.classification, fixture.evidence)
+			}
+		}
+		wantAudit := fmt.Sprintf("Excluded CT %d [%s]: %s", fixture.id, fixture.classification, fixture.evidence)
+		if !strings.Contains(audit, wantAudit) {
+			t.Errorf("generator verbose audit does not contain %q; output=%q", wantAudit, audit)
 		}
 	}
+
+	// Remapping only the six IDs proves that every script body is independently
+	// eligible; the first result cannot pass because another generator filter
+	// happened to reject malformed fixtures.
+	remapped := runCT084GeneratorFixture(t, "remapped-exclusions", makeCT084GeneratorExclusionFixture(true))
+	if len(remapped.Features) != len(ct084GeneratorExclusionFixtures)+1 {
+		t.Fatalf("remapped direct-patch fixtures generated CT IDs %v, want all seven fixtures", ct084CatalogIDs(remapped.Features))
+	}
+	for _, feature := range remapped.Features {
+		if len(feature.Sites) != 1 || len(feature.Sites[0].EnableBytes) != 1 {
+			t.Errorf("remapped control CT %d was not parsed as a one-site direct patch", feature.CTID)
+		}
+	}
+}
+
+func ct084CatalogIDs(features []CT084Feature) []int {
+	ids := make([]int, len(features))
+	for index, feature := range features {
+		ids[index] = feature.CTID
+	}
+	return ids
 }
 
 func TestCT084CatalogKnownMultiSiteAndConflicts(t *testing.T) {
