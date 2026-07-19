@@ -54,13 +54,21 @@ test('CT pages ship their approved function-specific assets without repeated bin
   }
 })
 
-test('portrait-format function art is sized by rail height so faces and props remain visible', () => {
+test('every function portrait is sized by rail height so faces and props remain visible', () => {
   assert.match(
     shell,
-    /\.tool-stage\[data-tool="loadout"\] \.art-rail \.function-character img,[\s\S]*?\.tool-stage\[data-tool\^="ct"\] \.art-rail \.function-character img\s*\{\s*width:auto;\s*height:var\(--art-scale\);\s*\}/,
+    /\.art-rail \.function-character img\s*\{[^}]*width:auto;[^}]*height:var\(--art-scale\);/s,
   )
-  for (const page of ['loadout', 'loadoutPresets', 'wrightstoneMemory', 'ctMonitor', 'ctCombat', 'ctCharacters', 'ctQuest']) {
-    assert.match(shell, new RegExp(`\\.tool-stage\\[data-tool="${page}"\\] \\{[^}]*--art-scale:1[1-3][0-9]%`))
+  assert.doesNotMatch(shell, /\.art-rail \.function-character img\s*\{[^}]*width:var\(--art-scale\)/s)
+
+  const portraitPages = [
+    'progression', 'sigil', 'sigilMemory', 'loadout', 'loadoutPresets', 'wrightstone',
+    'wrightstoneMemory', 'summon', 'overlimit', 'runtime', 'ctMonitor', 'ctCombat',
+    'ctCharacters', 'ctQuest', 'chara', 'save', 'compatibility', 'legacyRuntime',
+    'monster', 'patch', 'language',
+  ]
+  for (const page of portraitPages) {
+    assert.match(shell, new RegExp(`\\.tool-stage\\[data-tool="${page}"\\][^\\{]*\\{[^}]*--art-scale:1[0-3][0-9]%`))
   }
   assert.match(shell, /\.tool-stage\[data-tool="loadoutPresets"\] \{ --art-scale:116%; --art-x:-2%; --art-y:-10%; \}/)
 })

@@ -76,7 +76,7 @@ test('portrait is an unframed anchored scene layer with per-page optical calibra
   assert.match(patchTool, /\.tool-stage\[data-tool="progression"\]\s*\{[^}]*--art-scale\s*:/is)
   assert.match(patchTool, /\.art-rail\s*\{[^}]*overflow\s*:\s*visible[^}]*border\s*:\s*0[^}]*background\s*:\s*transparent/is)
   assert.match(patchTool, /\.art-rail\s*\{[^}]*height\s*:\s*clamp\(420px,\s*calc\(100dvh\s*-\s*166px\),\s*1400px\)/is)
-  assert.match(patchTool, /\.art-rail \.function-character img\s*\{[^}]*right\s*:\s*var\(--art-x\)[^}]*bottom\s*:\s*var\(--art-y\)[^}]*width\s*:\s*var\(--art-scale\)/is)
+  assert.match(patchTool, /\.art-rail \.function-character img\s*\{[^}]*right\s*:\s*var\(--art-x\)[^}]*bottom\s*:\s*var\(--art-y\)[^}]*width\s*:\s*auto[^}]*height\s*:\s*var\(--art-scale\)/is)
   assert.doesNotMatch(patchTool, /\.art-rail \.function-character img\s*\{[^}]*object-fit\s*:\s*contain/is)
 })
 
