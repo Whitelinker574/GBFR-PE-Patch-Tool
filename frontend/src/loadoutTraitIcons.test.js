@@ -7,6 +7,9 @@ const gameAssets = JSON.parse(readFileSync(new URL('./gameAssetIcons.json', impo
 
 const expectedOfficialMappings = {
   'War Elemental': 'cmn_icskill_02_08.png',
+  'Fearless Drive': 'cmn_icskill_05_pl0000.png',
+  'Fearless Heart': 'cmn_icskill_05_pl0000.png',
+  'Fearless Spirit': 'cmn_icskill_05_pl0000.png',
   '属性克制转换': 'cmn_icskill_02_08.png',
   '勇士的毅力': 'cmn_icskill_05_pl0900.png',
   '涯之二王': 'cmn_icskill_05_pl2300.png',

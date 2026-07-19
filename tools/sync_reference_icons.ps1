@@ -196,33 +196,77 @@ try {
     $itemsByHash = @{}
     $charactersByHash = @{}
 
-    # Start with every authoritative semantic join, then add the application
-    # catalog hashes below. Character traits deliberately reuse their one
-    # official per-character skill emblem.
-    foreach ($record in @($records | Where-Object { $_.category -eq $categoryTraits -and $_.internal_name -notmatch '_glow$' })) {
-        $file = Add-RecordIcon $traitsByID ([string]$record.entity_id) $record 'traits'
-        if ($file) {
-            if ($record.name_cn) { $traitsByName[[string]$record.name_cn] = $file }
-            if ($record.name_en) { $traitsByName[[string]$record.name_en] = $file }
+    # Keep semantic records for the legacy name-only compatibility map. The
+    # application ID/hash maps below are rebuilt from skill.tbl instead: a
+    # translated name is not an identity, and duplicate display names can use
+    # different sprites.
+    $traitRecords = @($records | Where-Object { $_.category -eq $categoryTraits -and $_.internal_name -notmatch '_glow$' })
+    foreach ($record in $traitRecords) {
+        [void](Add-RecordIcon $traitsByID ([string]$record.entity_id) $record 'traits')
+    }
+    # A few Gran/Djeeta traits share the same translated name but have two
+    # official emblems. Resolve name-only compatibility deterministically to
+    # the ordinal-first internal asset (IconId1 / Gran), rather than whichever
+    # record happened to occur last in the catalog.
+    foreach ($nameProperty in @('name_cn', 'name_en')) {
+        foreach ($group in @($traitRecords | Where-Object { $_.$nameProperty } | Group-Object -Property $nameProperty)) {
+            $record = Prefer-Record @($group.Group)
+            $file = Copy-InternalAsset 'traits' ([string]$record.internal_name)
+            if ($file) {
+                $traitsByName[[string]$group.Name] = $file
+            }
         }
     }
 
     $traitRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\traits.json') -Raw -Encoding UTF8 | ConvertFrom-Json).traits
+    $skillTableBytes = [byte[]](Read-GameTableBytes 'skill.tbl')
+    $skillTableRowCount = [BitConverter]::ToInt64($skillTableBytes, 0)
+    $skillTableRowSize = 112
+    if (8 + ($skillTableRowCount * $skillTableRowSize) -ne $skillTableBytes.Length) {
+        throw "Unexpected 2.0.2 skill.tbl layout: rows=$skillTableRowCount bytes=$($skillTableBytes.Length)"
+    }
+    $traitIconByHash = @{}
+    for ($row = 0; $row -lt $skillTableRowCount; $row++) {
+        $offset = 8 + ($row * $skillTableRowSize)
+        $keyHash = '{0:X8}' -f [BitConverter]::ToUInt32($skillTableBytes, $offset + 68)
+        if ($traitIconByHash.ContainsKey($keyHash)) {
+            throw "Duplicate skill.tbl hash: $keyHash"
+        }
+        # The first fixed 16-byte field is IconId1. A second field exists for
+        # the Gran/Djeeta variant, but the application catalog uses IconId1 as
+        # its canonical compact trait icon, matching the in-game default.
+        $traitIconByHash[$keyHash] = Read-FixedASCII $skillTableBytes $offset 16
+    }
+
+    $missingTraitKeys = [Collections.Generic.List[string]]::new()
     foreach ($trait in $traitRows) {
         $id = [string]$trait.internalId
-        $record = Record-For $categoryTraits $id
-        if ($null -eq $record -and $id -match '^SKILL_(17[3-8])_') {
-            $prefix = "SKILL_$($Matches[1])_"
-            $record = Prefer-Record @($records | Where-Object {
-                $_.category -eq $categoryTraits -and $_.entity_id.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
-            })
+        $hash = Normalize-Hex $trait.hash
+        if (-not $traitIconByHash.ContainsKey($hash)) {
+            throw "skill.tbl has no exact row for application trait $id / $hash"
         }
-        $file = Add-RecordIcon $traitsByID $id $record 'traits'
-        if ($file) {
-            $hash = Normalize-Hex $trait.hash
-            if ($hash) { $traitsByHash[$hash] = $file }
-            if ($trait.displayName) { $traitsByName[[string]$trait.displayName] = $file }
+
+        # Remove any semantic ID record before applying the authoritative table
+        # join, so a missing/blank official IconId can never retain a guessed
+        # alias from an earlier generator stage.
+        [void]$traitsByID.Remove($id)
+        [void]$traitsByHash.Remove($hash)
+        $iconID = [string]$traitIconByHash[$hash]
+        if ([string]::IsNullOrWhiteSpace($iconID)) {
+            $missingTraitKeys.Add($id)
+            continue
         }
+
+        $file = Copy-InternalAsset 'traits' "cmn_icskill_$iconID"
+        if (-not $file) {
+            $missingTraitKeys.Add($id)
+            continue
+        }
+        $traitsByID[$id] = $file
+        $traitsByHash[$hash] = $file
+    }
+    if ($missingTraitKeys.Count -ne 1 -or $missingTraitKeys[0] -ne 'SKILL_112_00') {
+        throw "Unexpected missing 2.0.2 trait sprites: $($missingTraitKeys -join ',')"
     }
 
     $weaponRecords = @($records | Where-Object { $_.category -eq $categoryWeapons -and $_.internal_name -notmatch '_glow$' })
@@ -264,6 +308,34 @@ try {
                 $weaponsByHash[$hash] = $file
             }
         }
+    }
+
+    # These late-game canonical hashes are present in weapon.tbl but are not
+    # rows in the curated application weapon list. They are real values seen
+    # in runtime/save weapon records, so keep their exact table-backed aliases
+    # reproducible instead of relying on a hand-edited generated JSON file.
+    $auditedRuntimeWeapons = [ordered]@{
+        'WEP_PL2100_07' = [ordered]@{ hash = 'AD915067'; icon = '2106' }
+        'WEP_PL2200_07' = [ordered]@{ hash = 'FA5F32D5'; icon = '2206' }
+        'WEP_PL2300_07' = [ordered]@{ hash = '4CBA06D8'; icon = '2306' }
+    }
+    foreach ($pair in $auditedRuntimeWeapons.GetEnumerator()) {
+        $id = [string]$pair.Key
+        $hash = [string]$pair.Value.hash
+        $expectedIconID = [string]$pair.Value.icon
+        if (-not $weaponIconByHash.ContainsKey($hash)) {
+            throw "weapon.tbl has no exact row for audited runtime weapon $id / $hash"
+        }
+        $actualIconID = [string]$weaponIconByHash[$hash]
+        if ($actualIconID -ne $expectedIconID) {
+            throw "Unexpected weapon.tbl icon for $id / ${hash}: expected=$expectedIconID actual=$actualIconID"
+        }
+        $file = Copy-InternalAsset 'weapons' "cmn_imgequ_wp$actualIconID"
+        if (-not $file) {
+            throw "Reference archive is missing exact runtime weapon sprite cmn_imgequ_wp$actualIconID"
+        }
+        $weaponsByID[$id] = $file
+        $weaponsByHash[$hash] = $file
     }
 
     foreach ($record in @($records | Where-Object { $_.category -eq $categorySummons -and $_.internal_name -notmatch '_glow$' })) {

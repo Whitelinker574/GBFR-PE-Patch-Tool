@@ -7,6 +7,7 @@ const traits = JSON.parse(readFileSync(new URL('../../data/traits.json', import.
 const weapons = JSON.parse(readFileSync(new URL('../../data/weapons.json', import.meta.url), 'utf8')).weapons
 const summons = JSON.parse(readFileSync(new URL('../../data/summons.json', import.meta.url), 'utf8')).summons
 const items = JSON.parse(readFileSync(new URL('../../data/items.json', import.meta.url), 'utf8')).items
+const iconSyncScript = readFileSync(new URL('../../tools/sync_reference_icons.ps1', import.meta.url), 'utf8')
 
 const expectedCharacterIcons = {
   '2A26B1B2': 'cmn_mini_s_pl0000.png',
@@ -162,4 +163,12 @@ test('records without an authoritative 2.0.2 join remain unmapped', () => {
   assert.equal(catalog.weapons.byHash.FA5F32D5, 'cmn_imgequ_wp2206.png', 'special runtime canonical hash')
   assert.equal(catalog.weapons.byId.WEP_PL2300_07, 'cmn_imgequ_wp2306.png', 'special runtime canonical ID')
   assert.equal(catalog.weapons.byHash['4CBA06D8'], 'cmn_imgequ_wp2306.png', 'special runtime canonical hash')
+})
+
+test('the generator rebuilds application trait icons from the exact skill table hash and IconId1', () => {
+  assert.match(iconSyncScript, /\$skillTableBytes\s*=\s*\[byte\[\]\]\(Read-GameTableBytes 'skill\.tbl'\)/)
+  assert.match(iconSyncScript, /\$skillTableRowSize\s*=\s*112/)
+  assert.match(iconSyncScript, /ToUInt32\(\$skillTableBytes,\s*\$offset\s*\+\s*68\)/)
+  assert.match(iconSyncScript, /Read-FixedASCII \$skillTableBytes \$offset 16/)
+  assert.match(iconSyncScript, /Unexpected missing 2\.0\.2 trait sprites/)
 })
