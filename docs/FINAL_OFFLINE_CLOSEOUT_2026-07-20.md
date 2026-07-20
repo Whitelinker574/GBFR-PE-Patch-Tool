@@ -65,13 +65,13 @@
 | Go 全仓测试 | PASS：`go test -buildvcs=false -timeout 20m ./...`，主包 `331.144s` |
 | Go 静态检查 | PASS：`go vet -buildvcs=false ./...` |
 | 前端全量测试 | PASS：43 个文件，254/254 |
-| Vite 生产构建 | PASS：124 模块；CSS 226.01 KiB / gzip 33.23 KiB；JS 1343.29 KiB / gzip 388.03 KiB；仅大 chunk 警告 |
+| Vite 生产构建 | PASS：124 模块；CSS 226.16 KiB / gzip 33.22 KiB；JS 1343.29 KiB / gzip 388.03 KiB；仅大 chunk 警告 |
 | 召唤石表/图标专项 | PASS：生成器 1/1，图标 16/16，82/82 主加护，189/189 实体 |
 | 真存档隔离写入 | PASS：角色强化/专精容量、配装集成、新因子构造、备份/校验和/回读；原始 fixture 不变 |
 | 真存档配装原生交互 | PASS：43/43；含 1616 称号、6 张伊欧配装、12 因子、8 技能、4 召唤石、专精四阶、1269 背包末项 |
 | 公式采样页原生回归 | PASS：4/4，`2560×1392 / 1680×1050 / 1280×720 / 960×620` |
 | 全页原生尺寸矩阵 | PASS：22 页 × 5 尺寸 = 110/110，0 失败，0 控制台错误 |
-| Windows 正式构建 | PASS：68,947,456 bytes；SHA-256 `55941BDFD25DAD1A72BE1C0A5AC0A09971DEAF22F6A5AA68548C0BED9B8A7AAA` |
+| Windows 正式构建 | PASS：68,947,968 bytes；SHA-256 `275E12133EC3225207CBA300A12F50337F7E8C8B9D074CD5A58725BC629E353D` |
 
 原生截图由 Wails WebView2 的 `Page.captureScreenshot` 直接从应用页面获取，不是桌面裁切、屏幕坐标截图或 HTML 代用品。
 

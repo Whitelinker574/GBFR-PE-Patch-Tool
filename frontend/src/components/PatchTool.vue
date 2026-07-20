@@ -1315,9 +1315,8 @@ button,input,select { font:inherit; }
 
 .tool-stage {
   --art-scale:160%;
-  --art-right:calc(-32.55dvh + 43px);
-  --art-bottom:calc(-3dvh + 4px);
-  --art-position-y:bottom;
+  --art-x:calc(-32.55dvh + 43px);
+  --art-y:calc(3dvh - 4px);
   position:relative;
   isolation:isolate;
   min-width:0;
@@ -1329,13 +1328,10 @@ button,input,select { font:inherit; }
   content:"";
   position:fixed;
   z-index:0;
-  top:calc(var(--titlebar-size) + 90px);
-  right:var(--art-right);
-  bottom:var(--art-bottom);
-  left:0;
+  inset:calc(var(--titlebar-size) + 90px) 0 0;
   background-image:var(--function-art);
   background-repeat:no-repeat;
-  background-position:right var(--art-position-y);
+  background-position:right var(--art-x) top var(--art-y);
   background-size:auto var(--art-scale);
   pointer-events:none;
 }
@@ -1411,27 +1407,27 @@ button,input,select { font:inherit; }
 .tool-panel[data-tool="progression"] :deep(.save-title > div:first-child) { display:none; }
 .tool-panel[data-tool="progression"] :deep(.save-title) { min-height:0; justify-content:flex-end; }
 
-.tool-stage[data-tool="progression"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="sigil"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="sigilMemory"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="loadout"] { --art-scale:160%; --art-right:calc(-8.20dvh + 11px); }
-.tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-right:calc(-8.33dvh + 11px); }
-.tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-right:calc(-6.77dvh + 9px); }
-.tool-stage[data-tool="summon"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="runtime"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-right:calc(-9.11dvh + 12px); }
-.tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-right:calc(-9.11dvh + 12px); --art-position-y:12%; }
-.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-right:calc(-7.03dvh + 9px); }
-.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-right:calc(-7.29dvh + 10px); }
-.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-right:calc(-7.03dvh + 9px); }
-.tool-stage[data-tool="chara"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="save"] { --art-scale:160%; --art-right:calc(-43.10dvh + 57px); }
-.tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-right:calc(-35.81dvh + 47px); }
-.tool-stage[data-tool="monster"] { --art-scale:160%; --art-right:calc(-21.48dvh + 28px); }
-.tool-stage[data-tool="patch"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
-.tool-stage[data-tool="language"] { --art-scale:178%; --art-right:calc(-39.06dvh + 52px); --art-bottom:calc(17dvh - 22px); }
+.tool-stage[data-tool="progression"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="sigil"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="sigilMemory"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="loadout"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-x:calc(-8.33dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-x:calc(-6.77dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="chara"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="save"] { --art-scale:160%; --art-x:calc(-43.10dvh + 57px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-x:calc(-35.81dvh + 47px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="monster"] { --art-scale:160%; --art-x:calc(-21.48dvh + 28px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="patch"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="language"] { --art-scale:178%; --art-x:calc(-39.06dvh + 52px); --art-y:calc(-17dvh + 22px); }
 .art-caption {
   position:fixed;
   z-index:3;

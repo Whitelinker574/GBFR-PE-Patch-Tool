@@ -142,13 +142,12 @@ test('ordinary tool pages reserve a fluid left panel without making portrait pla
   assert.doesNotMatch(patchTool, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*62fr\)/is)
 })
 
-test('portrait is a fixed right background layer with stable per-page optical calibration', () => {
+test('portrait is a fixed top-anchored right background with stable per-page optical calibration', () => {
   assert.match(patchTool, /class="tool-stage"[^>]*:style="\{ '--function-art': `url\('\$\{currentArt\}'\)` \}"/)
   assert.match(patchTool, /\.tool-stage\[data-tool="progression"\]\s*\{[^}]*--art-scale\s*:/is)
-  assert.match(patchTool, /\.tool-stage::before\s*\{[^}]*position\s*:\s*fixed[^}]*right\s*:\s*var\(--art-right\)[^}]*bottom\s*:\s*var\(--art-bottom\)[^}]*background-image\s*:\s*var\(--function-art\)[^}]*background-position\s*:\s*right var\(--art-position-y\)[^}]*background-size\s*:\s*auto var\(--art-scale\)/is)
-  assert.match(patchTool, /--art-position-y\s*:\s*bottom/)
-  assert.match(patchTool, /\.tool-stage\[data-tool="formulaSampler"\][^\{]*\{[^}]*--art-position-y\s*:\s*12%/is)
-  assert.doesNotMatch(patchTool, /--art-x|--art-y/)
+  assert.match(patchTool, /\.tool-stage::before\s*\{[^}]*position\s*:\s*fixed[^}]*background-image\s*:\s*var\(--function-art\)[^}]*background-position\s*:\s*right var\(--art-x\) top var\(--art-y\)[^}]*background-size\s*:\s*auto var\(--art-scale\)/is)
+  assert.match(patchTool, /\.tool-stage\[data-tool="formulaSampler"\][^\{]*\{[^}]*--art-x\s*:[^;}]+;[^}]*--art-y\s*:/is)
+  assert.doesNotMatch(patchTool, /--art-right|--art-bottom|--art-position-y|background-position\s*:\s*right bottom/)
   assert.doesNotMatch(patchTool, /class="character-blend"|class="art-rail"|\.art-rail::before/)
 })
 

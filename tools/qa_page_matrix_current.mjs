@@ -244,6 +244,7 @@ async function collect(page, requestedSize, actualSize) {
     const titleButtons = [...document.querySelectorAll('.titlebar-controls .win-btn')].filter(visible)
     const titleControlsRect = elements.titleControls?.getBoundingClientRect() || null
     const parchmentBackground = getComputedStyle(document.querySelector('.app-window'), '::before').backgroundImage || ''
+    const stageStyle = elements.stage ? getComputedStyle(elements.stage) : null
     const stageArtStyle = elements.stage ? getComputedStyle(elements.stage, '::before') : null
     const stageArtBackground = stageArtStyle?.backgroundImage || ''
     const stageArtVisible = pageName !== 'home' && stageArtBackground !== '' && stageArtBackground !== 'none' && Number(stageArtStyle?.opacity || 1) > 0
@@ -266,6 +267,14 @@ async function collect(page, requestedSize, actualSize) {
       clippedText,
       brokenImages,
       artVisible: stageArtVisible,
+      artTopAnchored: !stageArtVisible || Boolean(
+        stageStyle?.getPropertyValue('--art-x').trim()
+        && stageStyle?.getPropertyValue('--art-y').trim()
+        && !stageStyle?.getPropertyValue('--art-right').trim()
+        && !stageStyle?.getPropertyValue('--art-bottom').trim()
+        && !stageStyle?.getPropertyValue('--art-position-y').trim()
+      ),
+      artBackgroundPosition: stageArtStyle?.backgroundPosition || '',
       artVisibleAreaRatio: stageArtVisible ? 1 : 0,
       artRailCenterOverlapArea: 0,
       artRailCenterOverlapRatio: 0,
@@ -327,6 +336,7 @@ async function run() {
         metrics.artRailCenterOverlapRatio > .01 && `art rail layout overlaps ${Math.round(metrics.artRailCenterOverlapRatio * 100)}% of center`,
         metrics.artVisible && !metrics.centerAboveArt && `center layer z-index ${metrics.centerZIndex} is not above art ${metrics.artRailZIndex}`,
         metrics.artVisible && !metrics.artPointerEventsNone && 'art rail intercepts pointer events',
+        metrics.artVisible && !metrics.artTopAnchored && `portrait is not top-anchored (${metrics.artBackgroundPosition})`,
         page !== 'home' && !metrics.interactiveReachable && 'center content is not hit-test reachable',
         metrics.artCenterStackProbe && !metrics.artCenterStackProbe.centerAboveArt && 'art image paints above center in overlap hit test',
         page !== 'home' && !metrics.title && 'missing title',
