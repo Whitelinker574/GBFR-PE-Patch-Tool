@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
+import { LoadoutApply, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
 import { GetCompatibleSecondaryTraits, GetSecondaryTraitLevels, GetSigilList } from '../../wailsjs/go/main/SigilGen'
 import { applyMasteryDirection, groupMasteryNodes, inferMasteryDirection, isMasteryNodeSelectable, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
@@ -22,6 +22,10 @@ const ctx = ref(null)
 const loading = ref(false)
 const applying = ref(false)
 const sharing = ref(false)
+const complianceReport = ref(null)
+const complianceLoading = ref(false)
+let complianceTimer = null
+let complianceRequestId = 0
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -259,6 +263,14 @@ const activeRankPool = computed(() => masteryPool.value.find(p => p.rank === mas
 const activeRankGroups = computed(() => groupMasteryNodes(activeRankPool.value?.nodes || []))
 function rankPicked(rank) { return (masteryPick.value[rank] || []).length }
 const masteryTotal = computed(() => Object.values(masteryPick.value).reduce((n, a) => n + a.length, 0))
+const masteryRanks = ['R1', 'R2', 'R3', 'EX']
+const masteryRankCap = rank => {
+  const poolCap = Number(masteryPool.value.find(pool => pool.rank === rank)?.cap || 0)
+  const savedCap = statContext.value?.permanentGrowth?.masteryRankCaps?.[rank]
+  if (savedCap === undefined || savedCap === null) return poolCap
+  return Math.min(poolCap, Math.max(0, Number(savedCap) || 0))
+}
+const masteryCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryRankCap(rank), 0))
 function toggleNode(rank, hash, cap) {
   const arr = masteryPick.value[rank] || (masteryPick.value[rank] = [])
   const i = arr.indexOf(hash)
@@ -277,7 +289,7 @@ function chooseMasteryDirection(cat) {
 
 function masteryNodeDisabled(rank, node) {
   const selected = (masteryPick.value[rank] || []).includes(node.hash)
-  return !selected && !isMasteryNodeSelectable(rank, node, masteryDirection.value)
+  return !selected && (rankPicked(rank) >= masteryRankCap(rank) || !isMasteryNodeSelectable(rank, node, masteryDirection.value))
 }
 
 async function loadMasteryPool() {
@@ -312,13 +324,13 @@ function masteryStageSkillPicked(rank, cat) {
   })
 }
 const masteryDirectionReady = computed(() => {
-  if (masteryTotal.value !== 50) return true
+  if (masteryTotal.value !== masteryCapacity.value) return true
+  const directionRanks = ['R2', 'R3'].filter(rank => masteryRankCap(rank) >= 6)
+  if (!directionRanks.length) return true
   return Boolean(
     masteryDirection.value
-    && masteryCategoryPicked('R2', masteryDirection.value) >= 6
-    && masteryCategoryPicked('R3', masteryDirection.value) >= 6
-    && masteryStageSkillPicked('R2', masteryDirection.value)
-    && masteryStageSkillPicked('R3', masteryDirection.value),
+    && directionRanks.every(rank => masteryCategoryPicked(rank, masteryDirection.value) >= 6)
+    && directionRanks.every(rank => masteryStageSkillPicked(rank, masteryDirection.value)),
   )
 })
 const displayedMasteryDirection = computed(() => masteryMode.value === 'free' ? masteryDirection.value : (masterySummary.value?.primaryCat || ''))
@@ -335,10 +347,13 @@ const masteryDirectionCards = computed(() => {
       const threshold = category?.threshold || (rank === 'R1' ? 3 : 6)
       if (masteryMode.value === 'free') {
         const count = masteryCategoryPicked(rank, group.cat)
+        const rankCap = masteryRankCap(rank)
         const hasStageSkill = masteryStageSkillPicked(rank, group.cat)
         const directionMatches = rank === 'R1' || masteryDirection.value === group.cat
         let reason = ''
-        if (rank !== 'R1' && !masteryDirection.value) reason = '请选择2阶起主方向'
+        if (rankCap === 0) reason = `角色强化 Lv${statContext.value?.permanentGrowth?.masterLevel || 1} 尚未解锁`
+        else if (rankCap < threshold) reason = `本阶已解锁 ${rankCap}/${threshold}，尚不能激活效果`
+        else if (rank !== 'R1' && !masteryDirection.value) reason = '请选择2阶起主方向'
         else if (rank !== 'R1' && !directionMatches) reason = '非主方向，仅保留普通子词条'
         else if (!hasStageSkill) reason = `未选择${rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶'}专精技能`
         else if (count < threshold) reason = `需 ${threshold} 项，当前 ${count} 项`
@@ -347,7 +362,7 @@ const masteryDirectionCards = computed(() => {
           label: rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶',
           count,
           threshold,
-          active: directionMatches && hasStageSkill && count >= threshold,
+          active: rankCap >= threshold && directionMatches && hasStageSkill && count >= threshold,
           reason,
         }
       }
@@ -615,17 +630,69 @@ function stageConstructedFactor() {
   })
 }
 
+function buildWriteRequest() {
+  const factorPayload = buildFactorWritePayload(factorSlots.value)
+  const w = { unitId: targetSlot.value, expectCharaHash: props.charaHash, op: op.value }
+  if (op.value === 'write') {
+    w.name = form.value.name
+    w.weaponSlotId = form.value.weaponSlotId || 0
+    w.sigilSlotIds = factorPayload.sigilSlotIds
+    w.constructedSigils = factorPayload.constructedSigils
+    if (writeGlobalSummons.value) w.summonSlotIds = [...summonSlotIds.value]
+    w.skillHashes = [...form.value.skillHashes]
+    if (masteryMode.value === 'free') {
+      w.masteryHashes = [...selectedMasteryHashes.value]
+    } else {
+      const source = masterySources.value.find(item => item.unitId === form.value.masterySource)
+      w.masteryHashes = source ? [...source.nodeHashes] : []
+    }
+  } else if (op.value === 'clone') {
+    w.cloneFromUnitId = cloneFrom.value
+  }
+  return w
+}
+
+function complianceLabel(status) {
+  return ({ legal: '合法', forced: '固定组合', unknown: '未证明', impossible: '不可写' })[status] || '待检测'
+}
+
+function scheduleCompliance() {
+  clearTimeout(complianceTimer)
+  const requestId = ++complianceRequestId
+  complianceReport.value = null
+  if (!props.savePath || !targetSlot.value || writeInvalid.value) {
+    complianceLoading.value = false
+    return
+  }
+  complianceLoading.value = true
+  complianceTimer = setTimeout(async () => {
+    try {
+      const report = await LoadoutCheckCompliance(props.savePath, buildWriteRequest())
+      if (requestId === complianceRequestId) complianceReport.value = report
+    } catch (err) {
+      if (requestId === complianceRequestId) {
+        complianceReport.value = { status: 'impossible', writable: false, message: String(err), items: [] }
+      }
+    } finally {
+      if (requestId === complianceRequestId) complianceLoading.value = false
+    }
+  }, 220)
+}
+
 const writeInvalid = computed(() => {
   if (op.value === 'clear') return false
   if (op.value === 'clone') return !cloneFrom.value || cloneFrom.value === targetSlot.value
   return !form.value.name.trim()
     || nameTooLong.value
     || (writeGlobalSummons.value && !summonSelectionValid.value)
-    || (masteryMode.value === 'free' && masteryTotal.value !== 0 && masteryTotal.value !== 50)
+    || (masteryMode.value === 'free' && masteryTotal.value !== 0 && masteryTotal.value !== masteryCapacity.value)
     || (masteryMode.value === 'free' && !masteryDirectionReady.value)
+    || (complianceReport.value && !complianceReport.value.writable)
 })
 
-onBeforeUnmount(() => { simRequestId++; clearTimeout(simTimer); clearTimeout(masteryTimer) })
+watch([targetSlot, op, form, factorSlots, cloneFrom, writeGlobalSummons, summonSlotIds, () => selectedMasteryHashes.value.slice()], scheduleCompliance, { deep: true })
+
+onBeforeUnmount(() => { simRequestId++; complianceRequestId++; clearTimeout(simTimer); clearTimeout(masteryTimer); clearTimeout(complianceTimer) })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -675,10 +742,25 @@ async function importLoadout() {
 
 async function apply() {
   if (!props.savePath || !targetSlot.value) return
+  const w = buildWriteRequest()
+  complianceLoading.value = true
+  let preflight
+  try {
+    preflight = await LoadoutCheckCompliance(props.savePath, w)
+    complianceReport.value = preflight
+  } catch (err) {
+    emit('status', `合规预检失败：${String(err)}`, 'error')
+    return
+  } finally {
+    complianceLoading.value = false
+  }
+  if (!preflight?.writable) {
+    emit('status', `当前配装不可写：${preflight?.message || '合规预检未通过'}`, 'error')
+    return
+  }
   const slotNo = selectedSlot.value?.slot ?? '?'
   const occupied = selectedSlot.value?.occupied
-  const factorPayload = buildFactorWritePayload(factorSlots.value)
-  const draftCount = factorPayload.constructedSigils.length
+  const draftCount = w.constructedSigils?.length || 0
   const verb = op.value === 'clear' ? '清空' : (occupied ? '覆盖' : '写入')
   const detail = op.value === 'clear'
     ? `将清空【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。`
@@ -690,24 +772,6 @@ async function apply() {
     confirmLabel: '备份并写入',
   })
   if (!confirmed) return
-
-  const w = { unitId: targetSlot.value, expectCharaHash: props.charaHash, op: op.value }
-  if (op.value === 'write') {
-    w.name = form.value.name
-    w.weaponSlotId = form.value.weaponSlotId || 0
-    w.sigilSlotIds = factorPayload.sigilSlotIds
-    w.constructedSigils = factorPayload.constructedSigils
-    if (writeGlobalSummons.value) w.summonSlotIds = [...summonSlotIds.value]
-    w.skillHashes = [...form.value.skillHashes]
-    if (masteryMode.value === 'free') {
-      w.masteryHashes = [...selectedMasteryHashes.value]
-    } else {
-      const src = masterySources.value.find(m => m.unitId === form.value.masterySource)
-      w.masteryHashes = src ? [...src.nodeHashes] : []
-    }
-  } else if (op.value === 'clone') {
-    w.cloneFromUnitId = cloneFrom.value
-  }
 
   applying.value = true
   try {
@@ -787,8 +851,8 @@ async function apply() {
             <span><small>角色基础攻击</small><b>{{ formatStatNumber(statContext.baseAtk) }}</b></span>
             <span><small>命运篇章 HP</small><b>{{ formatSignedValue(statContext.permanentGrowth?.fateHp) }}</b></span>
             <span><small>命运篇章攻击</small><b>{{ formatSignedValue(statContext.permanentGrowth?.fateAtk) }}</b></span>
-            <span><small>角色强化 HP</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterHp) }}</b></span>
-            <span><small>角色强化攻击</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterAtk) }}</b></span>
+            <span><small>角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} HP</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterHp) }}</b></span>
+            <span><small>角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} 攻击</small><b>{{ formatSignedValue(statContext.permanentGrowth?.masterAtk) }}</b></span>
             <span class="baseline-total"><small>固定基准 HP</small><b>{{ formatStatNumber(statContext.baselineHp) }}</b></span>
             <span class="baseline-total"><small>固定基准攻击</small><b>{{ formatStatNumber(statContext.baselineAtk) }}</b></span>
             <span><small>固定基准暴击率</small><b>{{ formatFinalStat(statContext.baselineCritRate, 'pct') }}</b></span>
@@ -1029,7 +1093,7 @@ async function apply() {
         <div class="ed-field mastery-field">
           <button class="mastery-toggle" :aria-expanded="masteryExpanded" @click="masteryExpanded = !masteryExpanded">
             <span><b>专精配置</b><small>位于因子配置下方 · 三方向 1–3 阶 + EX</small></span>
-            <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/50</em>
+            <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/{{ masteryCapacity }}</em>
             <i>{{ masteryExpanded ? '收起' : '展开' }}</i>
           </button>
           <div class="mastery-direction-map" aria-label="三个专精方向与阶段效果">
@@ -1065,8 +1129,8 @@ async function apply() {
               </button>
             </div>
             <div class="rank-tabs">
-              <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" @click="masteryRankTab = p.rank">
-                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= p.cap }">{{ rankPicked(p.rank) }}/{{ p.cap }}</i>
+              <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" :disabled="masteryRankCap(p.rank) === 0" @click="masteryRankTab = p.rank">
+                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= masteryRankCap(p.rank) }">{{ rankPicked(p.rank) }}/{{ masteryRankCap(p.rank) }}</i>
               </button>
             </div>
             <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="mastery-rule direction-rule">
@@ -1091,7 +1155,7 @@ async function apply() {
                   <button v-for="n in grp.nodes" :key="n.hash" class="node"
                     :class="{ on: (masteryPick[activeRankPool.rank] || []).includes(n.hash), named: n.name || n.specialization, disabled: masteryNodeDisabled(activeRankPool.rank, n) }"
                     :disabled="masteryNodeDisabled(activeRankPool.rank, n)"
-                    @click="toggleNode(activeRankPool.rank, n.hash, activeRankPool.cap)">
+                    @click="toggleNode(activeRankPool.rank, n.hash, masteryRankCap(activeRankPool.rank))">
                     <span class="node-check">{{ (masteryPick[activeRankPool.rank] || []).includes(n.hash) ? '✓' : '' }}</span>
                     <span><b v-if="n.name || n.specialization">{{ masteryNodeTitle(activeRankPool.rank, n) }}</b><small>{{ n.desc }}</small></span>
                     <em v-if="n.name || n.specialization">专精技能</em>
@@ -1099,14 +1163,28 @@ async function apply() {
                 </div>
               </section>
             </div>
-            <small class="hint">满级配置固定为 10 / 10 / 10 / 20；2阶与3阶需沿同一主方向各配置至少 6 个节点。</small>
+            <small class="hint">当前角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} 可配置 {{ masteryRankCap('R1') }} / {{ masteryRankCap('R2') }} / {{ masteryRankCap('R3') }} / {{ masteryRankCap('EX') }}；已解锁的2阶与3阶需沿同一主方向配置。</small>
           </template>
           </div>
         </div>
       </template>
 
+      <section class="compliance-panel ui-card" :class="complianceReport?.status || 'pending'" aria-live="polite">
+        <header><strong>写入合规检测</strong><span>{{ complianceLoading ? '检测中…' : complianceLabel(complianceReport?.status) }}</span></header>
+        <p>{{ complianceReport?.message || (writeInvalid ? '完成必填配置后自动检测。' : '正在使用与最终写入相同的后端规则预检。') }}</p>
+        <details v-if="complianceReport?.items?.length">
+          <summary>查看 {{ complianceReport.items.length }} 个因子槽的检测结果</summary>
+          <div class="compliance-items">
+            <article v-for="item in complianceReport.items" :key="`${item.index}-${item.source}`" :class="item.status">
+              <b>槽 {{ String(item.index + 1).padStart(2, '0') }} · {{ item.sigilName || '未收录因子' }}</b>
+              <span>{{ complianceLabel(item.status) }}</span>
+              <small>{{ item.message }}</small>
+            </article>
+          </div>
+        </details>
+      </section>
       <div class="ed-actions">
-        <button class="apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
+        <button class="apply-btn ui-btn is-primary" :disabled="applying || complianceLoading || writeInvalid" @click="apply">
           {{ applying ? '写入中…' : opLabel() + '到槽' + String(selectedSlot?.slot ?? 0).padStart(2, '0') }}
         </button>
       </div>
@@ -1118,7 +1196,7 @@ async function apply() {
           <div class="result-metrics">
             <div><b>{{ configuredFactorCount }}</b><span>/12 因子</span></div>
             <div><b>{{ form.skillHashes.length }}</b><span>/4 技能</span></div>
-            <div><b>{{ selectedMasteryHashes.length }}</b><span>/50 专精</span></div>
+            <div><b>{{ selectedMasteryHashes.length }}</b><span>/{{ masteryCapacity }} 专精</span></div>
             <div><b>{{ selectedSummons.filter(Boolean).length }}</b><span>/4 召唤</span></div>
           </div>
         </section>
@@ -1135,6 +1213,7 @@ async function apply() {
               <article v-for="skill in weaponSkills" :key="`${skill.slot}-${skill.traitHash}`">
                 <span><b>{{ skill.name || '未收录武器技能' }}</b><em>{{ formatWeaponSkillLevel(skill) }}</em></span>
                 <p class="weapon-skill-effect">{{ skill.effect || '暂无可验证效果说明' }}</p>
+                <small v-if="skill.unlockCondition">解锁阶段 · {{ skill.unlockCondition }}</small>
                 <small>来源 · {{ skill.sourceWeapon || '未收录武器' }}</small>
               </article>
             </div>
@@ -1297,6 +1376,23 @@ async function apply() {
 .occ-warn { font-size:var(--fs-xs); color:var(--amber); }
 .op-row, .ed-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
 .ed-actions { padding:12px 14px; }
+.compliance-panel { margin:0 10px; overflow:hidden; border-left:3px solid var(--border-default); box-shadow:none; }
+.compliance-panel.legal { border-left-color:var(--success); }
+.compliance-panel.forced,.compliance-panel.unknown { border-left-color:var(--warning); }
+.compliance-panel.impossible { border-left-color:var(--danger); }
+.compliance-panel > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px 4px; }
+.compliance-panel > header strong { color:var(--text-primary); }
+.compliance-panel > header span { color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); font-weight:700; }
+.compliance-panel > p { margin:0; padding:0 10px 8px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.45; }
+.compliance-panel details { border-top:1px solid var(--line-soft); }
+.compliance-panel summary { padding:7px 10px; color:var(--text-secondary); cursor:pointer; font-size:calc(11px * var(--editor-scale)); }
+.compliance-items { display:grid; gap:1px; padding:0 8px 8px; }
+.compliance-items article { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:6px 7px; border-radius:5px; background:var(--surface-sunken); }
+.compliance-items article b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
+.compliance-items article span { color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); font-weight:700; }
+.compliance-items article small { grid-column:1/-1; color:var(--text-muted); line-height:1.4; }
+.compliance-items article.legal span { color:var(--success-ink); }
+.compliance-items article.impossible span { color:var(--danger-ink); }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
 .op-btn:disabled { opacity:.4; cursor:not-allowed; }

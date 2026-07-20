@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -265,6 +266,38 @@ func TestRenderTraitEffectSeparatesAdjacentPlaceholderLabels(t *testing.T) {
 		if components[i].Label != want[i] {
 			t.Fatalf("component %d label=%q, want %q", i, components[i].Label, want[i])
 		}
+	}
+}
+
+func TestRenderTraitEffectAppliesNumericFormatScaleToTextAndComponents(t *testing.T) {
+	definition := loadTraitValues()["SKILL_004_00"]
+	if definition == nil {
+		t.Fatal("missing DLC 2.0.2 stun trait definition")
+	}
+
+	for _, test := range []struct {
+		level int
+		want  float64
+	}{
+		{level: 1, want: 5},
+		{level: 45, want: 100},
+	} {
+		effect, components := renderTraitEffect(definition, test.level)
+		if effect != fmt.Sprintf("昏厥值+%g", test.want) {
+			t.Fatalf("stun Lv%d effect=%q, want scaled +%g", test.level, effect, test.want)
+		}
+		if len(components) != 1 || components[0].Value != test.want || components[0].Label != "昏厥值" || !components[0].Additive {
+			t.Fatalf("stun Lv%d components=%+v, want one additive flat +%g", test.level, components, test.want)
+		}
+	}
+
+	_, components := renderTraitEffect(definition, 45)
+	got := calculateLoadoutFinalStats(loadoutPanelInputs{
+		CharacterStun: 193,
+		Bonuses:       []TraitBonus{{TraitID: "SKILL_004_00", Name: "昏厥", Components: components}},
+	})
+	if got.StunPower != 293 {
+		t.Fatalf("final stun=%g, want in-game panel 193+100=293", got.StunPower)
 	}
 }
 

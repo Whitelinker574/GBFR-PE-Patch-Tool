@@ -34,6 +34,9 @@ const (
 	SaveID_CharacterID        = 1301
 	SaveID_CharacterQuestUse  = 1314
 	SaveID_FavoriteChara      = 4601
+	SaveID_BadgeUnlocked      = 5801
+	SaveID_BadgeRewardClaimed = 5814
+	SaveID_BadgeViewed        = 5816
 	SaveID_IsUnlocked         = 7102
 )
 

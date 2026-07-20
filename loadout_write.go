@@ -556,6 +556,50 @@ func validateLoadoutSigilDestination(save *SaveData, prepared *preparedLoadoutSi
 	return nil
 }
 
+func loadoutCharacterMasterGrowth(save *SaveData, charaHash uint32) (masterGrowth, error) {
+	var charaUnitID uint32
+	found := false
+	for _, unit := range save.findAllUnitsByType(SaveID_CharacterID) {
+		if unit.ValueCnt == 1 && unit.Uint32() == charaHash {
+			if found && charaUnitID != unit.UnitID {
+				return masterGrowth{}, fmt.Errorf("角色 %08X 对应多个 1301 UnitID，拒绝推断专精容量", charaHash)
+			}
+			charaUnitID = unit.UnitID
+			found = true
+		}
+	}
+	if !found {
+		return masterGrowth{}, fmt.Errorf("存档缺少角色 %08X 的 1301 标量，拒绝推断专精容量", charaHash)
+	}
+	masterMSP, ok := save.findUnitExact(1323, charaUnitID)
+	if !ok || masterMSP.ValueCnt != 1 {
+		return masterGrowth{}, fmt.Errorf("存档缺少角色 %d 的 1323 Master 总 MSP 标量，拒绝写入专精", charaUnitID)
+	}
+	return deriveMasterGrowth(int(masterMSP.Int32())), nil
+}
+
+func validateCharacterMasteryRankCaps(save *SaveData, charaHash uint32, counts map[string]int) error {
+	growth, err := loadoutCharacterMasterGrowth(save, charaHash)
+	if err != nil {
+		return err
+	}
+	for _, rank := range masteryRanks {
+		cap := growth.MasteryRankCaps[rank.Rank]
+		if counts[rank.Rank] > cap {
+			return fmt.Errorf("角色 %08X Master Lv%d 的 %s 专精容量为 %d，收到 %d", charaHash, growth.MasterLevel, rank.Rank, cap, counts[rank.Rank])
+		}
+	}
+	return nil
+}
+
+func validateLoadoutMasteryForCharacter(save *SaveData, charaHash uint32, ownerCode string, hashes []uint32) error {
+	counts, err := validateMasteryQuota(hashes, ownerCode, false)
+	if err != nil {
+		return err
+	}
+	return validateCharacterMasteryRankCaps(save, charaHash, counts)
+}
+
 // validateLoadoutWrite 对一条写入请求做完整预校验，返回可落盘的 resolvedWrite。
 // 任一不合法即返回 error（此时缓冲区尚未被触碰）。
 func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w LoadoutWrite) (*resolvedWrite, error) {
@@ -621,6 +665,12 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		rw.skills = readVec(save, loadoutSkillsIDType, src, loadoutMaxSkills)
 		rw.mastery = readVec(save, loadoutMasteryIDType, src, loadoutMaxMastery)
 		rw.name = entryTextAt(save, src)
+		if len(rw.mastery) > 0 {
+			ownerCode := ix.deriveOwnerCode(save, blockChara)
+			if err := validateLoadoutMasteryForCharacter(save, blockChara, ownerCode, rw.mastery); err != nil {
+				return nil, err
+			}
+		}
 		return rw, nil
 	}
 
@@ -755,10 +805,10 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		}
 		rw.mastery = append(rw.mastery, v)
 	}
-	// 配额校验：每档不超 10/10/10/20（防止写出游戏可能拒绝的非法盘）。
-	// 不强制点满（允许半盘/低级盘）；满级由前端配置器保证正好 50。
+	// 配额校验先保护专精盘固有的分档与方向规则，再按目标角色自身的
+	// 1323 Master 总 MSP 派生等级容量；低级角色不能借前端或克隆写入未解锁档位。
 	if len(rw.mastery) > 0 {
-		if _, err := validateMasteryQuota(rw.mastery, ownerCode, false); err != nil {
+		if err := validateLoadoutMasteryForCharacter(save, blockChara, ownerCode, rw.mastery); err != nil {
 			return nil, err
 		}
 	}

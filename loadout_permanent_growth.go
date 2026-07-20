@@ -10,16 +10,17 @@ import (
 // It is part of the panel baseline and must not be presented as a swappable
 // equipment/factor/mastery bonus.
 type LoadoutPermanentGrowth struct {
-	FateEpisodeMask     uint32  `json:"fateEpisodeMask"`
-	FateEpisodeCount    int     `json:"fateEpisodeCount"`
-	FateHP              int     `json:"fateHp"`
-	FateATK             int     `json:"fateAtk"`
-	MasterTotalMSP      int     `json:"masterTotalMsp"`
-	MasterProgressIndex int     `json:"masterProgressIndex"`
-	MasterLevel         int     `json:"masterLevel"`
-	MasterHP            int     `json:"masterHp"`
-	MasterATK           int     `json:"masterAtk"`
-	MasterDamageCap     float64 `json:"masterDamageCap"`
+	FateEpisodeMask     uint32         `json:"fateEpisodeMask"`
+	FateEpisodeCount    int            `json:"fateEpisodeCount"`
+	FateHP              int            `json:"fateHp"`
+	FateATK             int            `json:"fateAtk"`
+	MasterTotalMSP      int            `json:"masterTotalMsp"`
+	MasterProgressIndex int            `json:"masterProgressIndex"`
+	MasterLevel         int            `json:"masterLevel"`
+	MasterHP            int            `json:"masterHp"`
+	MasterATK           int            `json:"masterAtk"`
+	MasterDamageCap     float64        `json:"masterDamageCap"`
+	MasteryRankCaps     map[string]int `json:"masteryRankCaps"`
 }
 
 type fateGrowthRow struct {
@@ -93,11 +94,12 @@ func deriveFateGrowth(charaHash, episodeMask uint32) (fateGrowth, bool) {
 }
 
 type masterGrowth struct {
-	ProgressIndex int
-	MasterLevel   int
-	HP            int
-	ATK           int
-	DamageCap     float64
+	ProgressIndex   int
+	MasterLevel     int
+	HP              int
+	ATK             int
+	DamageCap       float64
+	MasteryRankCaps map[string]int
 }
 
 // chara_master_exp.tbl 2.0.2. The two initial zero rows mean TotalMSP=0 is
@@ -136,7 +138,16 @@ func deriveMasterGrowth(totalMSP int) masterGrowth {
 		progressIndex = 0
 	}
 	masterLevel := min(progressIndex, 50)
-	result := masterGrowth{ProgressIndex: progressIndex, MasterLevel: masterLevel}
+	result := masterGrowth{
+		ProgressIndex: progressIndex,
+		MasterLevel:   masterLevel,
+		MasteryRankCaps: map[string]int{
+			"R1": min(masterLevel, 10),
+			"R2": min(max(masterLevel-10, 0), 10),
+			"R3": min(max(masterLevel-20, 0), 10),
+			"EX": min(max(masterLevel-30, 0), 20),
+		},
+	}
 	for _, row := range masterStatUnlockRows {
 		if row.level > masterLevel {
 			break
@@ -173,6 +184,6 @@ func readLoadoutPermanentGrowth(data *SaveDataBinary, charaHash, charaUnitID uin
 		FateHP: fate.HP, FateATK: fate.ATK,
 		MasterTotalMSP: masterTotalMSP, MasterProgressIndex: master.ProgressIndex,
 		MasterLevel: master.MasterLevel, MasterHP: master.HP, MasterATK: master.ATK,
-		MasterDamageCap: master.DamageCap,
+		MasterDamageCap: master.DamageCap, MasteryRankCaps: master.MasteryRankCaps,
 	}, nil
 }

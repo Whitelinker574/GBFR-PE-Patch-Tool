@@ -8,6 +8,7 @@ const models = readFileSync(new URL('../wailsjs/go/models.ts', import.meta.url),
 
 const loadoutMethods = [
   'LoadoutApply',
+  'LoadoutCheckCompliance',
   'LoadoutConstructSigil',
   'LoadoutEditContext',
   'LoadoutExport',
@@ -20,6 +21,9 @@ const loadoutMethods = [
   'LoadoutStatContext',
   'MasteryNodePool',
   'MasterySummarize',
+  'LoadBadgeState',
+  'SetBadgeState',
+  'SetAllBadgeStates',
 ]
 
 test('generated Wails bindings expose every loadout and mastery backend entry point', () => {
@@ -60,6 +64,7 @@ test('generated models keep the complete build, share-write and real-stat fields
     'masterHp',
     'masterAtk',
     'masterDamageCap',
+    'masteryRankCaps',
     'runtimeVerified',
     'verification',
   ]) {

@@ -70,6 +70,46 @@ func TestReadLoadoutWeaponContextReadsRealIoTerminusWeapon(t *testing.T) {
 	}
 }
 
+func TestWeaponSkillsExplainTheirCurrentUnlockStage(t *testing.T) {
+	requireStatsSave(t)
+	save, err := LoadSave(testStatsSave)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rebuild, err := readLoadoutWeaponContext(save, 52)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range rebuild.Skills {
+		if !strings.Contains(skill.UnlockCondition, "超凡 6/7") {
+			t.Fatalf("rebuild skill has no current transcendence stage: %+v", skill)
+		}
+	}
+
+	transcendence, ok := save.findUnitExact(weaponTranscendenceIDType, 40049)
+	if !ok {
+		t.Fatal("real Io terminus weapon has no 2817 field")
+	}
+	transcendence.SetInt32(0)
+	awakened, err := readLoadoutWeaponContext(save, 52)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range awakened.Skills {
+		switch skill.Source {
+		case "weapon-base":
+			if !strings.Contains(skill.UnlockCondition, "上限突破 6/6") || !strings.Contains(skill.UnlockCondition, "觉醒 10/10") {
+				t.Fatalf("base skill has no effective level basis: %+v", skill)
+			}
+		case "weapon-awakening":
+			if !strings.Contains(skill.UnlockCondition, "觉醒") || !strings.Contains(skill.UnlockCondition, "解锁") {
+				t.Fatalf("awakening skill has no unlock threshold: %+v", skill)
+			}
+		}
+	}
+}
+
 func TestReadLoadoutWeaponContextReadsAllFiveTranscendenceSkills(t *testing.T) {
 	requireStatsSave(t)
 	save, err := LoadSave(testStatsSave)

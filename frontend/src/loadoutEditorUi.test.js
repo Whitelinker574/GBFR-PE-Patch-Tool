@@ -109,6 +109,17 @@ test('character detail separates save base, permanent growth and the fixed basel
   assert.match(source, /角色强化伤害上限/)
 })
 
+test('character mastery level drives the unlocked rank capacity instead of assuming level 50', () => {
+	assert.match(source, /permanentGrowth\?\.masteryRankCaps/)
+	assert.match(source, /const masteryRankCap =/)
+	assert.match(source, /const masteryCapacity = computed/)
+	assert.match(source, /masteryTotal\.value !== masteryCapacity\.value/)
+	assert.match(source, /toggleNode\(activeRankPool\.rank, n\.hash, masteryRankCap\(activeRankPool\.rank\)\)/)
+	assert.match(source, /rankPicked\(p\.rank\)[\s\S]*masteryRankCap\(p\.rank\)/)
+	assert.match(source, /已点 \{\{ masteryTotal \}\}\/\{\{ masteryCapacity \}\}/)
+	assert.match(source, /角色强化 Lv\{\{ statContext\.permanentGrowth\?\.masterLevel \|\| 1 \}\} HP/)
+})
+
 test('final stats expose the three independent damage-cap totals in a compact drill-down', () => {
 	assert.match(source, /class="final-stat-detail-disclosure[^\"]*"/)
 	assert.match(source, />普通伤害上限</)
@@ -137,6 +148,8 @@ test('weapon skills are visible and traceable in the result sidebar', () => {
 	assert.match(source, /formatWeaponSkillLevel\(skill\)/)
 	assert.match(source, /skill\.effect/)
 	assert.match(source, /skill\.sourceWeapon/)
+	assert.match(source, /skill\.unlockCondition/)
+	assert.match(source, /解锁阶段/)
 })
 
 test('weapon skill rows keep missing fields honest instead of rendering undefined', () => {

@@ -6,7 +6,8 @@ const source = readFileSync(new URL('./components/PatchTool.vue', import.meta.ur
 
 test('version compatibility reports the current product and CT 0.8.4 coverage', () => {
   assert.match(source, /20\s*个实际工具页\s*\+\s*1\s*个主页/)
-  assert.match(source, /存档修改页面[\s\S]*?6\s*\/\s*6[\s\S]*?配装预设、因子、物品与武器、祝福、角色次数、任务次数/)
+  assert.match(source, /存档修改页面[\s\S]*?6\s*\/\s*6[\s\S]*?配装预设、因子、物品与武器、祝福、角色次数、任务与称号记录/)
+  assert.match(source, /Save editing pages[\s\S]*?6\s*\/\s*6[\s\S]*?quest and title records/)
   assert.match(source, /内存注入页面[\s\S]*?10\s*页接入[\s\S]*?综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT\s*战斗、CT\s*角色、CT\s*任务、怪物实验/)
   assert.match(source, /只读监测页面[\s\S]*?1\s*\/\s*1[\s\S]*?运行监测；不执行物品或存档写入/)
   assert.match(source, /工具设置页面[\s\S]*?3\s*\/\s*3[\s\S]*?版本适配、语言与显示、游戏文件维护/)

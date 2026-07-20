@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,29 @@ func TestDeriveMasterGrowthUsesAuditedThresholdsAndClampsUnlocksAt50(t *testing.
 	}
 	if post50.MasterLevel != 50 || post50.HP != 6000 || post50.ATK != 3000 || post50.DamageCap != 100 {
 		t.Fatalf("post-50 unlock growth = %+v, want MLv50 clamp/+6000 HP/+3000 ATK/+100%% cap", post50)
+	}
+}
+
+func TestDeriveMasterGrowthLimitsMasteryRanksByMasterLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		totalMSP int
+		want     map[string]int
+	}{
+		{name: "invalid negative MSP", totalMSP: -1, want: map[string]int{"R1": 0, "R2": 0, "R3": 0, "EX": 0}},
+		{name: "level 1", totalMSP: 0, want: map[string]int{"R1": 1, "R2": 0, "R3": 0, "EX": 0}},
+		{name: "level 20", totalMSP: 136500, want: map[string]int{"R1": 10, "R2": 10, "R3": 0, "EX": 0}},
+		{name: "level 50", totalMSP: 3309499, want: map[string]int{"R1": 10, "R2": 10, "R3": 10, "EX": 20}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			growth := deriveMasterGrowth(test.totalMSP)
+			for rank, want := range test.want {
+				if got := growth.MasteryRankCaps[rank]; got != want {
+					t.Errorf("MSP %d %s capacity = %d, want %d (growth=%+v)", test.totalMSP, rank, got, want, growth)
+				}
+			}
+		})
 	}
 }
 
@@ -71,5 +95,53 @@ func TestLoadoutStatContextReadsRealIoPermanentBaseline(t *testing.T) {
 	}
 	if !strings.Contains(simulation.FinalStats.Scope, "固定基准") || !strings.Contains(simulation.FinalStats.Scope, "加成明细默认只汇总") {
 		t.Fatalf("final-stat scope does not distinguish permanent baseline from changeable bonuses: %q", simulation.FinalStats.Scope)
+	}
+}
+
+func TestIsolatedRealSaveExposesCharacterMasteryRankCaps(t *testing.T) {
+	path := requireIsolatedSaveQA(t)
+	parsed, err := LoadSaveFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.SlotData == nil {
+		t.Fatal("isolated save has no SlotData")
+	}
+
+	tests := []struct {
+		unitID   uint32
+		totalMSP int32
+		level    int
+		wantCaps map[string]int
+	}{
+		{unitID: 10002, totalMSP: 0, level: 1, wantCaps: map[string]int{"R1": 1, "R2": 0, "R3": 0, "EX": 0}},
+		{unitID: 10001, totalMSP: 136500, level: 20, wantCaps: map[string]int{"R1": 10, "R2": 10, "R3": 0, "EX": 0}},
+		{unitID: 10004, totalMSP: 3309499, level: 50, wantCaps: map[string]int{"R1": 10, "R2": 10, "R3": 10, "EX": 20}},
+	}
+	app := &App{}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("Unit%d", test.unitID), func(t *testing.T) {
+			chara, ok := uintUnitExact(parsed.SlotData, 1301, test.unitID)
+			if !ok || len(chara.ValueData) != 1 {
+				t.Fatalf("isolated save lacks scalar 1301 UnitID %d", test.unitID)
+			}
+			masterMSP, ok := intUnitExact(parsed.SlotData, 1323, test.unitID)
+			if !ok || len(masterMSP.ValueData) != 1 || masterMSP.ValueData[0] != test.totalMSP {
+				t.Fatalf("1323 UnitID %d = %+v, want [%d]", test.unitID, masterMSP, test.totalMSP)
+			}
+			context, err := app.LoadoutStatContext(path, hashText(chara.ValueData[0]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			growth := context.PermanentGrowth
+			if growth.MasterTotalMSP != int(test.totalMSP) || growth.MasterLevel != test.level {
+				t.Fatalf("UnitID %d Master growth = %+v, want MSP %d / level %d", test.unitID, growth, test.totalMSP, test.level)
+			}
+			for rank, want := range test.wantCaps {
+				if got := growth.MasteryRankCaps[rank]; got != want {
+					t.Errorf("UnitID %d %s capacity = %d, want %d", test.unitID, rank, got, want)
+				}
+			}
+		})
 	}
 }

@@ -20,8 +20,9 @@ A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Gr
 - **New Sigil Memory Editor** — Read the sigil currently selected in-game and edit its sigil, primary trait, secondary trait, and levels.
 - **Wrightstone Generator** — Configure a wrightstone and its three traits, with queue support for batch generation.
 - **Selected Wrightstone Memory Editor** — Read and transactionally update the selected three-trait record; successful writes automatically restore the hook.
-- **Single-character Loadouts** — Edit one character build with weapon, 12 sigil slots, four skills, mastery paths, summons, and single-build JSON import/export.
-- **Quest Clear Statistics** — Scan save slots and display quest clear counts and save summaries.
+- **Single-character Loadouts** — Edit one character build with a real weapon and its unlocked skills, 12 sigil slots, four active skills, three mastery paths, and single-build JSON import/export. The four selected summons can optionally be written to the save's global equipped-summon slots; they are not stored independently per preset.
+- **Loadout Compliance and Stat Audit** — Reuse the real backend write validation before confirmation, show per-slot legality, and calculate clearly marked offline estimates from character level/base values, Fate episodes, permanent Master growth, weapon, sigils, mastery, Over Mastery, and summons. Unresolved formula stages remain marked as approximate.
+- **Quest and Title Records** — Scan save slots, display quest clear counts, and search/edit the 1,616-entry bilingual title catalog. Title writes can update unlock/viewed bits while preserving reward-claimed records.
 - **In-place Save Editing** — Optionally overwrite the selected input save directly. Back up the save first.
 
 ### EXE patches
@@ -43,7 +44,7 @@ A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Gr
 
 ### Compatibility lab
 
-Quest-result countdown, infinite challenges, face/alternate-skin runes, unlock-all-titles, team damage metering, score multipliers, forced sub-objective rewards, and mission multipliers are retained only as legacy/experimental material. They have not completed production acceptance against game 2.0.2 and are labelled accordingly in the UI.
+Quest-result countdown, infinite challenges, face/alternate-skin runes, runtime unlock-all-titles, team damage metering, score multipliers, and mission multipliers are retained only as legacy/experimental material. They have not completed production acceptance against game 2.0.2 and are labelled accordingly in the UI. Offline title-record editing is a separate guarded save feature, and forced sub-objective rewards are already part of the validated CT quest catalog.
 
 ## Safety notes
 
@@ -97,6 +98,8 @@ The English localization currently covers:
 - Sigil and Wrightstone generators
 - New selected-sigil memory editor
 - Save and quest statistics
+- Offline title-record search and editing
+- Single-character loadout compliance, permanent-growth baselines, weapon stages, and approximate final-stat audit
 - Character usage statistics
 - Miscellaneous runtime tools
 - Monster enhancement controls

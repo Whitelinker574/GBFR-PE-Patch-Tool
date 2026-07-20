@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { FindSaveFiles, GetQuests, LoadSave, UpdateQuestCounts } from '../../wailsjs/go/main/App'
+import BadgeUnlock from './BadgeUnlock.vue'
 
 const emit = defineEmits(['status'])
 const slots = ref([])
@@ -13,6 +14,7 @@ const sortDesc = ref(true)
 const search = ref('')
 const selected = ref(new Set())
 const batchCount = ref(0)
+const activeMode = ref('quests')
 
 const visibleQuests = computed(() => {
   const needle = search.value.trim().toLowerCase()
@@ -79,6 +81,8 @@ async function saveSelected() {
   } finally { saving.value = false }
 }
 
+function forwardStatus(...args) { emit('status', ...args) }
+
 scanSaves()
 </script>
 
@@ -89,7 +93,13 @@ scanSaves()
       <button class="plain-btn ui-btn is-sm" @click="scanSaves">刷新</button>
     </div>
 
-    <div v-if="loading" class="loading empty ui-empty">解析中…</div>
+    <nav class="record-tabs" role="tablist" aria-label="记录类型">
+      <button type="button" class="ui-tab" role="tab" :aria-selected="activeMode === 'quests'" :class="{ active: activeMode === 'quests' }" @click="activeMode = 'quests'">任务完成次数</button>
+      <button type="button" class="ui-tab" role="tab" :aria-selected="activeMode === 'badges'" :class="{ active: activeMode === 'badges' }" @click="activeMode = 'badges'">称号记录</button>
+    </nav>
+
+    <BadgeUnlock v-if="activeMode === 'badges'" :save-path="savePath" @status="forwardStatus" />
+    <div v-else-if="loading" class="loading empty ui-empty">解析中…</div>
     <div v-else-if="quests.length" class="quests ui-card">
       <div class="head">
         <span>{{ quests.length }} 个任务 · {{ total }} 次挑战</span>
@@ -138,6 +148,8 @@ scanSaves()
   justify-content:center;
   gap:var(--space-2);
 }
+.record-tabs { display:flex; justify-content:center; gap:var(--space-2); }
+.record-tabs .ui-tab { min-width:132px; }
 .slot-btn.on {
   border-color:var(--selected-border);
   background:var(--selected-bg);

@@ -23,15 +23,16 @@ type WeaponStatLine struct {
 }
 
 type LoadoutWeaponSkill struct {
-	Slot           int    `json:"slot"`
-	TraitHash      string `json:"traitHash"`
-	TraitID        string `json:"traitId"`
-	Name           string `json:"name"`
-	Level          int    `json:"level"`
-	Effect         string `json:"effect"`
-	Source         string `json:"source"`
-	SourceWeapon   string `json:"sourceWeapon"`
-	LevelTableHash string `json:"levelTableHash"`
+	Slot            int    `json:"slot"`
+	TraitHash       string `json:"traitHash"`
+	TraitID         string `json:"traitId"`
+	Name            string `json:"name"`
+	Level           int    `json:"level"`
+	Effect          string `json:"effect"`
+	Source          string `json:"source"`
+	SourceWeapon    string `json:"sourceWeapon"`
+	LevelTableHash  string `json:"levelTableHash"`
+	UnlockCondition string `json:"unlockCondition"`
 }
 
 type LoadoutWeaponContext struct {
@@ -391,7 +392,8 @@ func readLoadoutWeaponSkills(save *SaveData, data *loadoutWeaponStatsFile, catal
 				if level <= 0 {
 					continue
 				}
-				result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot, hash, level, "weapon-rebuild", levelRow.Group))
+				unlock := fmt.Sprintf("超凡 %d/7 · 当前阶段技能表", context.Transcendence)
+				result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot, hash, level, "weapon-rebuild", levelRow.Group, unlock))
 			}
 			return result
 		}
@@ -402,7 +404,8 @@ func readLoadoutWeaponSkills(save *SaveData, data *loadoutWeaponStatsFile, catal
 	for slot, traitText := range row.SkillHashes {
 		level := weaponSkillLevel(data.SkillLevels[row.SkillLevelKeys[slot]], context.Uncap, context.Awakening)
 		if hash, ok := parseWeaponSkillHash(traitText); ok && level > 0 {
-			result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot, hash, level, "weapon-base", row.SkillLevelKeys[slot]))
+			unlock := fmt.Sprintf("上限突破 %d/6 · 觉醒 %d/10", context.Uncap, context.Awakening)
+			result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot, hash, level, "weapon-base", row.SkillLevelKeys[slot], unlock))
 		}
 	}
 	awakeningThresholds := [...]int{3, 10, 10, 10}
@@ -412,7 +415,8 @@ func readLoadoutWeaponSkills(save *SaveData, data *loadoutWeaponStatsFile, catal
 		}
 		level := weaponSkillLevel(data.SkillLevels[row.AwakeningSkillLevelKeys[slot]], context.Uncap, context.Awakening)
 		if hash, ok := parseWeaponSkillHash(traitText); ok && level > 0 {
-			result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot+4, hash, level, "weapon-awakening", row.AwakeningSkillLevelKeys[slot]))
+			unlock := fmt.Sprintf("觉醒 %d/10 · 阶段 %d 解锁", context.Awakening, awakeningThresholds[slot])
+			result = append(result, newLoadoutWeaponSkill(data, catalog, context.Name, slot+4, hash, level, "weapon-awakening", row.AwakeningSkillLevelKeys[slot], unlock))
 		}
 	}
 	return result
@@ -446,7 +450,7 @@ func parseWeaponSkillHash(text string) (uint32, bool) {
 	return hash, err == nil
 }
 
-func newLoadoutWeaponSkill(data *loadoutWeaponStatsFile, catalog *Catalog, weaponName string, slot int, hash uint32, level int, source, levelTableHash string) LoadoutWeaponSkill {
+func newLoadoutWeaponSkill(data *loadoutWeaponStatsFile, catalog *Catalog, weaponName string, slot int, hash uint32, level int, source, levelTableHash, unlockCondition string) LoadoutWeaponSkill {
 	hashString := hashText(hash)
 	traitID := data.TraitIDs[hashString]
 	name := ""
@@ -477,5 +481,5 @@ func newLoadoutWeaponSkill(data *loadoutWeaponStatsFile, catalog *Catalog, weapo
 			name = verifiedName
 		}
 	}
-	return LoadoutWeaponSkill{Slot: slot, TraitHash: hashString, TraitID: traitID, Name: name, Level: level, Effect: effect, Source: source, SourceWeapon: weaponName, LevelTableHash: levelTableHash}
+	return LoadoutWeaponSkill{Slot: slot, TraitHash: hashString, TraitID: traitID, Name: name, Level: level, Effect: effect, Source: source, SourceWeapon: weaponName, LevelTableHash: levelTableHash, UnlockCondition: unlockCondition}
 }

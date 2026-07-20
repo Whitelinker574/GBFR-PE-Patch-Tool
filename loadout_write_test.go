@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -706,6 +707,70 @@ func TestPrepareLoadoutSigilRejectsNonNaturalDraftValues(t *testing.T) {
 	}
 }
 
+func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *testing.T) {
+	path := badgeTestSaveCopy(t)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &App{}
+	groups, err := app.LoadoutList(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chara *CharacterLoadouts
+	for index := range groups {
+		if groups[index].CharaName == "伊欧" {
+			chara = &groups[index]
+			break
+		}
+	}
+	if chara == nil {
+		t.Skip("测试存档里没有伊欧")
+	}
+	ctx, err := app.LoadoutEditContext(path, chara.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ctx.Slots) == 0 {
+		t.Skip("伊欧没有配装槽")
+	}
+
+	valid := LoadoutWrite{
+		UnitID: ctx.Slots[0].UnitID, ExpectCharaHash: chara.CharaHash, Op: "write", Name: "合规预检",
+		ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, Item: naturalConstructedSigilItem(t)}},
+	}
+	report, err := app.LoadoutCheckCompliance(path, valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Writable || report.Status != LegalityLegal || len(report.Items) != 1 || report.Items[0].Status != LegalityLegal {
+		t.Fatalf("valid natural draft report=%+v", report)
+	}
+
+	invalid := valid
+	invalid.ConstructedSigils = append([]LoadoutConstructedSigil(nil), valid.ConstructedSigils...)
+	invalid.ConstructedSigils[0].Item.Level = 999
+	report, err = app.LoadoutCheckCompliance(path, invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Writable || report.Status != LegalityImpossible || len(report.Items) != 1 || report.Items[0].Status != LegalityImpossible {
+		t.Fatalf("impossible draft report=%+v", report)
+	}
+	if !strings.Contains(report.Message, "自然范围") || !strings.Contains(report.Items[0].Message, "自然范围") {
+		t.Fatalf("compliance reasons must explain the rejected value: %+v", report)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("read-only compliance check changed the save")
+	}
+}
+
 func TestPrepareLoadoutSigilRejectsCatalogEntriesWithoutConstructibleProof(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
@@ -972,6 +1037,162 @@ func TestLoadoutApplyRejections(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadoutWriteLimitsMasteryByTargetCharacterMasterLevel(t *testing.T) {
+	path := requireIsolatedSaveQA(t)
+	parsed, err := LoadSaveFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chara, ok := uintUnitExact(parsed.SlotData, 1301, 10002)
+	if !ok || len(chara.ValueData) != 1 {
+		t.Fatal("isolated save lacks scalar 1301 UnitID 10002")
+	}
+	charaHash := chara.ValueData[0]
+
+	save, err := LoadSave(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	index := buildLoadoutIndex(save)
+	var target uint32
+	for _, entry := range save.findAllUnitsByType(loadoutCharIDType) {
+		if entry.Uint32() == charaHash && entry.UnitID >= loadoutBase && entry.UnitID < partyLoadoutBase {
+			target = entry.UnitID
+			break
+		}
+	}
+	if target == 0 {
+		t.Fatalf("UnitID 10002 character %08X has no saved loadout block", charaHash)
+	}
+	ownerCode := index.deriveOwnerCode(save, charaHash)
+	if ownerCode == "" {
+		t.Fatalf("cannot derive owner code for UnitID 10002 character %08X", charaHash)
+	}
+	pools, err := (&App{}).MasteryNodePool(ownerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hashes []string
+	for _, pool := range pools {
+		if pool.Rank != "R1" {
+			continue
+		}
+		for _, node := range pool.Nodes {
+			hashes = append(hashes, node.Hash)
+			if len(hashes) == 2 {
+				break
+			}
+		}
+	}
+	if len(hashes) != 2 {
+		t.Fatalf("%s has fewer than two R1 nodes", ownerCode)
+	}
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateLoadoutWrite(save, index, catalog, LoadoutWrite{
+		UnitID: target, ExpectCharaHash: hashText(charaHash), Op: "write", Name: "level-cap-check",
+		MasteryHashes: hashes[:1],
+	}); err != nil {
+		t.Fatalf("Lv1 target should accept exactly one R1 mastery node: %v", err)
+	}
+	_, err = validateLoadoutWrite(save, index, catalog, LoadoutWrite{
+		UnitID: target, ExpectCharaHash: hashText(charaHash), Op: "write", Name: "level-cap-check",
+		MasteryHashes: hashes,
+	})
+	if err == nil {
+		t.Fatalf("Lv1 target accepted two R1 mastery nodes: %v", hashes)
+	}
+	if !strings.Contains(err.Error(), "R1") || !strings.Contains(err.Error(), "1") {
+		t.Fatalf("capacity rejection does not identify the target rank/cap: %v", err)
+	}
+}
+
+func TestLoadoutCloneCannotBypassTargetCharacterMasteryCapacity(t *testing.T) {
+	path := requireIsolatedSaveQA(t)
+	parsed, err := LoadSaveFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chara, ok := uintUnitExact(parsed.SlotData, 1301, 10002)
+	if !ok || len(chara.ValueData) != 1 {
+		t.Fatal("isolated save lacks scalar 1301 UnitID 10002")
+	}
+	charaHash := chara.ValueData[0]
+	save, err := LoadSave(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	index := buildLoadoutIndex(save)
+
+	var source uint32
+	for _, entry := range save.findAllUnitsByType(loadoutCharIDType) {
+		if entry.Uint32() != charaHash || entry.UnitID < loadoutBase || entry.UnitID >= partyLoadoutBase {
+			continue
+		}
+		source = entry.UnitID
+		break
+	}
+	if source == 0 {
+		t.Fatalf("UnitID 10002 character %08X has no saved loadout source", charaHash)
+	}
+	ownerCode := index.deriveOwnerCode(save, charaHash)
+	if ownerCode == "" {
+		t.Fatalf("cannot derive owner code for UnitID 10002 character %08X", charaHash)
+	}
+	pools, err := (&App{}).MasteryNodePool(ownerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mastery []uint32
+	for _, pool := range pools {
+		if pool.Rank != "R1" {
+			continue
+		}
+		for _, node := range pool.Nodes {
+			hash, err := ParseHashHex(node.Hash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mastery = append(mastery, hash)
+			if len(mastery) == 2 {
+				break
+			}
+		}
+	}
+	if len(mastery) != 2 {
+		t.Fatalf("%s has fewer than two R1 nodes", ownerCode)
+	}
+	if err := save.writeLoadoutVector(loadoutMasteryIDType, source, mastery, loadoutMaxMastery, EmptyHash); err != nil {
+		t.Fatal(err)
+	}
+	blockBase := loadoutBase + ((source - loadoutBase) / loadoutSlotsPerChara * loadoutSlotsPerChara)
+	target := blockBase
+	if target == source {
+		target++
+	}
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = validateLoadoutWrite(save, index, catalog, LoadoutWrite{
+		UnitID: target, ExpectCharaHash: hashText(charaHash), Op: "clone", CloneFromUnitID: source,
+	})
+	if err == nil {
+		t.Fatalf("Lv1 target cloned over-cap mastery from slot %d", source)
+	}
+	if !strings.Contains(err.Error(), "Master Lv1") || !strings.Contains(err.Error(), "容量") {
+		t.Fatalf("clone capacity rejection is not explicit: %v", err)
 	}
 }
 

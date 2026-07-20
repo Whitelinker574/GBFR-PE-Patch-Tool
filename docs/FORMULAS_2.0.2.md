@@ -38,6 +38,7 @@ v = low + (high - low) * (level - lowLevel) / (highLevel - lowLevel)
 
 | 存档 IDType | 伊欧真实存档值 | 含义 / 联表方式 |
 |---:|---:|---|
+| `1308` | `100` | 当前角色等级；与同一 `UnitID` 的基础四项共同构成角色固定基准 |
 | `1309` | `3156` | 基础 HP（`i32`） |
 | `1310` | `666` | 基础攻击力（`i32`） |
 | `1312` | `0x41000000` → `8.0` | 基础昏厥值（IEEE-754 `float32`），不是 Fate 加成 |
@@ -55,6 +56,16 @@ Crit = 5
 ```
 
 编辑器离线模型按这三层证据构造基础线；不能只读取 `1309 / 1310`，也不能把 `1312 / 1313` 错当 Fate 或 Master 加成。
+
+`1323` 不是全角色共用的固定常量。隔离真实存档中的三个独立角色给出完整梯度：
+
+| 角色 UnitID | `1323` 总 MSP | Master 等级 | R1 / R2 / R3 / EX 可配置数 | 永久属性累计 |
+|---:|---:|---:|---:|---:|
+| `10002` | `0` | `1` | `1 / 0 / 0 / 0` | `HP +0 / ATK +0 / DmgCap +0` |
+| `10001` | `136,500` | `20` | `10 / 10 / 0 / 0` | `HP +2400 / ATK +1200 / DmgCap +29` |
+| `10004` | `3,309,499` | `50` | `10 / 10 / 10 / 20` | `HP +6000 / ATK +3000 / DmgCap +100` |
+
+各阶容量依据 `chara_master_exp` 推导的 Master 等级，按已审计的阶段顺序分配：`R1=min(Lv,10)`、`R2=min(max(Lv-10,0),10)`、`R3=min(max(Lv-20,0),10)`、`EX=min(max(Lv-30,0),20)`；`skillboard_unlock` 用于核对各级属性解锁效果。配装写入与写入前合规检查都按目标角色自己的 `1323` 重新推导容量；低 Master 角色不能借用其他角色的满级专精盘。
 
 ## 武器面板（A）
 
@@ -123,7 +134,8 @@ HP  = [weapon+0x5C base] + [weapon+0x78 awake]
 ### 因子、武器技能与专精
 
 - 同名词条先聚合实际等级，再按 `skill_status.tbl` 的等级曲线封顶；页面同时显示有效等级、实际投入和溢出等级。
-- 武器技能来自武器实例及超越技能向量，不再只显示四个主动技能。
+- `skill_status.tbl` 的占位符格式同时参与文字与结构化数值：普通小数精度保持原值；明确的倍率格式（例如昏厥 `昏厥值+{0:10}`）把表内 `0.5..10` 统一换算为面板 `5..100`，避免说明文字正确而汇总少十倍。
+- 武器技能来自武器实例及超越技能向量，不再只显示四个主动技能；基础技能标出上限突破/觉醒进度，觉醒技能标出解锁阶段，超凡技能标出当前超越阶段所使用的技能表。
 - 专精 R1 三方向可并存；R2 起形成唯一主方向，R3 必须沿用该方向。没有形成主方向时，R2/R3 的普通子词条仍可保存，但专精方向效果不应被伪造为生效。
 - 已审计的因子联动节点：攻击类主因子每个 `+10% ATK`（最多 5 个）、基础类主因子每个 `+20% damage cap`（最多 5 个）、防御/支援类主因子每个 `+10000 HP`（最多 4 个）。只统计主词条。
 
@@ -238,15 +250,18 @@ pre-cap raw damage
 - [2.0.2 官方更新说明（英文）](https://relink-ragnarok.granbluefantasy.com/en/updates/381/)
 - [当前召唤石加护与副参数目录](https://nenkai.github.io/relink-modding/resources/summon_trait_chances/)
 - [Hercules 当前武器基础值与超越阶段](https://game8.jp/gbf-relink/797383)
+- [更新后的碧蓝配装模拟器（只作交叉比较；本项目仍以本地 2.0.2 表和真实存档为准）](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/)
+- [上游 PR #26 称号记录方案（仅安全提炼锁定字段与目录，不直接合并实现）](https://github.com/BitterG/GBFR-PE-Patch-Tool/pull/26)
 
 ## 回归命令
 
 ```powershell
 $env:GOCACHE='D:\gbf\.tmp\gocache'
-go test -mod=mod -count=1 -timeout=10m ./...
+go test -mod=mod -count=1 -timeout=20m ./...
 
 cd frontend
-node --test src/*.test.js
+$tests = Get-ChildItem src -Filter *.test.js | ForEach-Object FullName
+node --test $tests
 npm run build
 ```
 

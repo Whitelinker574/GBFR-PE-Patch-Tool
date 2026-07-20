@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -17,7 +18,8 @@ import (
 //  2. 按词条 internalId 分组，把同名词条所有出现的等级**相加**，封顶到该词条 maxLevel。
 //  3. 用合并后等级查 trait_values.json，按格式串占位符 {N}→LevelValue(N+1) 取数值与单位（带%为百分比）。
 //
-// v1 只做「因子→词条加成总和」（用户诉求），不做整机最终面板（武器多表/召唤石/限界突破未端到端校准）。
+// 该层负责可审计的因子→词条聚合；更上层再将武器、召唤石、专精与角色固定基准分轨汇总。
+// 离线最终值在百分比乘区与中间 float32 量化顺序尚未闭环时必须保留估算标记。
 
 //go:embed data/trait_values.json
 var traitValuesJSON []byte
@@ -339,6 +341,7 @@ func renderTraitEffect(def *traitValueDef, level int) (string, []BonusComponent)
 		if idx >= 0 && idx < len(p.Values) {
 			v = p.Values[idx]
 		}
+		v *= placeholderFormatScale(def.Format, p.Ph)
 		valByPh[p.Ph] = v
 		label, sign, additive := additivePlaceholderMeta(def.Format, p.Ph)
 		if sign < 0 {
@@ -353,6 +356,32 @@ func renderTraitEffect(def *traitValueDef, level int) (string, []BonusComponent)
 		})
 	}
 	return stripMarkup(substituteFormat(def.Format, valByPh)), comps
+}
+
+// placeholderFormatScale handles the numeric scale syntax emitted by the
+// game's text table. It is distinct from precision syntax such as :.1f:
+// `昏厥值+{0:10}` means that the stored 0.5..10 curve is displayed and
+// aggregated as 5..100. Unknown format specs deliberately keep scale 1.
+func placeholderFormatScale(format string, ph int) float64 {
+	marker := fmt.Sprintf("{%d:", ph)
+	start := strings.Index(format, marker)
+	if start < 0 {
+		return 1
+	}
+	specStart := start + len(marker)
+	relEnd := strings.IndexByte(format[specStart:], '}')
+	if relEnd < 0 {
+		return 1
+	}
+	spec := strings.TrimSpace(format[specStart : specStart+relEnd])
+	if spec == "" || strings.ContainsAny(spec, ".fFeEgG") {
+		return 1
+	}
+	scale, err := strconv.ParseFloat(spec, 64)
+	if err != nil || scale <= 0 {
+		return 1
+	}
+	return scale
 }
 
 // additivePlaceholderMeta 从“冷却时间-{0:.1f}%”中提取“冷却时间”和负号。

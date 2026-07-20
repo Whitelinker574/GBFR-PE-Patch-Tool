@@ -234,10 +234,10 @@ const toolMeta = {
     speaker: '姬塔', note: '只会保存你勾选的角色。动手前再数一遍，团长的记录要清清楚楚。',
   },
   save: {
-    group: 'save', title: '任务完成次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
-    description: '搜索任务并批量修改完成次数，保留未选任务的原始数据。',
-    usage: ['完全退出游戏', '搜索并勾选任务', '批量填入后保存已选'],
-    caution: '每次保存都会创建时间戳备份并回读。',
+    group: 'save', title: '任务与称号记录', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
+    description: '修改任务完成次数，或搜索并维护称号解锁与已查看记录。',
+    usage: ['完全退出游戏', '选择任务或称号标签', '核对筛选结果后写入'],
+    caution: '称号奖励领取记录保持不变。',
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
   compatibility: {
@@ -322,7 +322,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
-  { scope: '存档修改页面', status: '6 / 6', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、角色次数、任务次数' },
+  { scope: '存档修改页面', status: '6 / 6', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、角色次数、任务与称号记录' },
   { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT 战斗、CT 角色、CT 任务、怪物实验' },
   { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '运行监测；不执行物品或存档写入' },
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
@@ -330,7 +330,7 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
   { scope: '真实游戏进程 E2E', status: '待实机验证', tone: 'pending', detail: '本轮未连接正在运行的目标游戏；运行时功能不得视为全场景实机通过' },
 ] : [
-  { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest counts' },
+  { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest and title records' },
   { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, CT combat, CT characters, CT quests, monster experiments' },
   { scope: 'Read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Runtime monitoring; does not write items or save data' },
   { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },

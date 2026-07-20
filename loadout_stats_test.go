@@ -426,7 +426,10 @@ func TestLoadoutSimulateBuildIncludesRealWeaponSkillsMasteryAndFinalStats(t *tes
 	}
 	t.Logf("真实伊欧配装最终属性: HP=%d ATK=%d Crit=%g Stun=%g Cap=%g", result.FinalStats.HP, result.FinalStats.Attack, result.FinalStats.CritRate, result.FinalStats.StunPower, result.FinalStats.DamageCap)
 	t.Logf("真实伊欧配装完整最终属性: %+v", result.FinalStats)
-	if result.FinalStats.HP != 89390 || result.FinalStats.Attack != 76963 || result.FinalStats.CritRate != 30 || result.FinalStats.StunPower != 17.5 ||
+	// skill_status stores the Lv45 stun curve as 10 with format {0:10}; the
+	// format multiplier makes its panel contribution +100, so this real build's
+	// merged stun result is 63.4 rather than the old under-scaled 17.5.
+	if result.FinalStats.HP != 89390 || result.FinalStats.Attack != 76963 || result.FinalStats.CritRate != 30 || result.FinalStats.StunPower != 63.4 ||
 		result.FinalStats.DamageCap != 1265 || result.FinalStats.NormalDamageCap != 1575 || result.FinalStats.AbilityDamageCap != 1355 || result.FinalStats.SkyboundDamageCap != 1265 {
 		t.Fatalf("真实伊欧武器技能/魔法师的伶俐未进入最终属性: %+v", result.FinalStats)
 	}
