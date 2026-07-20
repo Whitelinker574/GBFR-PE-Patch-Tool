@@ -11,18 +11,28 @@ import (
 	"strings"
 )
 
-const formulaSampleSchemaVersion = "gbfr-formula-sample/v1"
+const formulaSampleSchemaVersion = "gbfr-formula-sample/v2"
 const formulaSampleCandidateLimit = 4096
 
 var formulaExperimentTypes = map[string]struct{}{
 	"weapon": {}, "weapon_skill": {}, "sigil": {}, "mastery": {},
 	"overlimit": {}, "summon": {}, "hp_condition": {},
-	"battle_condition": {}, "control": {}, "other": {},
+	"battle_condition": {}, "defense": {}, "damage_cap": {},
+	"control": {}, "other": {},
 }
 
 func validFormulaExperimentType(value string) bool {
 	_, ok := formulaExperimentTypes[value]
 	return ok
+}
+
+func formulaExperimentAllowsUnchangedKnownPanel(value string) bool {
+	switch value {
+	case "mastery", "defense", "damage_cap":
+		return true
+	default:
+		return false
+	}
 }
 
 // FormulaSampleManifest intentionally contains no machine, process, path or
@@ -72,14 +82,15 @@ type FormulaPanelDelta struct {
 }
 
 type FormulaEvidenceModel struct {
-	Kind               string            `json:"kind"`
-	Status             string            `json:"status"`
-	A1ToB1             FormulaPanelDelta `json:"a1ToB1"`
-	A2ToB2             FormulaPanelDelta `json:"a2ToB2"`
-	RepeatedBitExact   bool              `json:"repeatedBitExact"`
-	RestoredBitExact   bool              `json:"restoredBitExact"`
-	KnownProbeCoverage []string          `json:"knownProbeCoverage"`
-	UnavailableProbes  []string          `json:"unavailableProbes"`
+	Kind                  string            `json:"kind"`
+	Status                string            `json:"status"`
+	A1ToB1                FormulaPanelDelta `json:"a1ToB1"`
+	A2ToB2                FormulaPanelDelta `json:"a2ToB2"`
+	PanelRepeatedBitExact bool              `json:"panelRepeatedBitExact"`
+	PanelRestoredBitExact bool              `json:"panelRestoredBitExact"`
+	CandidateABABVerified bool              `json:"candidateABABVerified"`
+	KnownProbeCoverage    []string          `json:"knownProbeCoverage"`
+	UnavailableProbes     []string          `json:"unavailableProbes"`
 }
 
 type FormulaRedactionReport struct {
@@ -123,6 +134,10 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 	if len(candidates) > formulaSampleCandidateLimit {
 		return nil, fmt.Errorf("公式候选数量 %d 超过脱敏上限 %d，请确认每轮只改变一个项目", len(candidates), formulaSampleCandidateLimit)
 	}
+	panelChanged := !formulaPanelValuesBitEqual(events[0].Panel, events[1].Panel)
+	if experimentType != "control" && !formulaExperimentAllowsUnchangedKnownPanel(experimentType) && !panelChanged && len(candidates) == 0 {
+		return nil, fmt.Errorf("公式实验的已知面板与状态窗口都没有可逆变化，请确认只改变了目标项目并完成 A/B/A/B")
+	}
 
 	redactedEvents := make([]FormulaRedactedEvent, len(events))
 	observations := make([]FormulaObservation, 0, len(events)*4)
@@ -130,15 +145,25 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 		redactedEvents[index] = FormulaRedactedEvent{Phase: event.Phase, Panel: redactFormulaPanel(event.Panel)}
 		observations = append(observations, formulaPanelObservations(event)...)
 	}
+	modelKind := "known-final-panel-difference"
+	modelStatus := "evidence-only; known final-panel change repeated; no unverified game formula asserted"
+	if !panelChanged && len(candidates) > 0 {
+		modelKind = "reversible-status-candidate-scan"
+		modelStatus = "evidence-only; known final panel unchanged; reversible status candidates require cross-run semantic identification"
+	} else if !panelChanged {
+		modelKind = "no-observed-known-panel-or-status-candidate"
+		modelStatus = "negative observation only; operator change record and independent repetitions required; absence is not proof of no game effect"
+	}
 	model := FormulaEvidenceModel{
-		Kind:               "repeated-panel-difference",
-		Status:             "evidence-only; no unverified game formula asserted",
-		A1ToB1:             formulaPanelDelta(events[0].Panel, events[1].Panel),
-		A2ToB2:             formulaPanelDelta(events[2].Panel, events[3].Panel),
-		RepeatedBitExact:   formulaPanelValuesBitEqual(events[1].Panel, events[3].Panel),
-		RestoredBitExact:   formulaPanelValuesBitEqual(events[0].Panel, events[2].Panel),
-		KnownProbeCoverage: []string{"final_hp", "final_attack", "final_stun_power", "final_critical_rate", "status_object_relative_scalar_candidates"},
-		UnavailableProbes:  []string{"independently-labelled_base_component", "independently-labelled_master_component", "independently-labelled_fate_component"},
+		Kind:                  modelKind,
+		Status:                modelStatus,
+		A1ToB1:                formulaPanelDelta(events[0].Panel, events[1].Panel),
+		A2ToB2:                formulaPanelDelta(events[2].Panel, events[3].Panel),
+		PanelRepeatedBitExact: formulaPanelValuesBitEqual(events[1].Panel, events[3].Panel),
+		PanelRestoredBitExact: formulaPanelValuesBitEqual(events[0].Panel, events[2].Panel),
+		CandidateABABVerified: len(candidates) > 0,
+		KnownProbeCoverage:    []string{"final_hp", "final_attack", "final_stun_power", "final_critical_rate", "status_object_relative_scalar_candidates"},
+		UnavailableProbes:     []string{"independently-labelled_base_component", "independently-labelled_master_component", "independently-labelled_fate_component"},
 	}
 	redaction := FormulaRedactionReport{
 		RawMemoryIncluded: false,
@@ -149,7 +174,7 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 			"Windows user identity", "custom character names and free-form notes", "raw 24 KiB status snapshots",
 		},
 		CandidateFilters: []string{
-			"A1 must equal A2 bit-for-bit", "B1 must equal B2 bit-for-bit", "A must differ from B",
+			"every exported candidate requires A1=A2, B1=B2 and A!=B at the same relative offset",
 			"64-bit values confirmed by VirtualQueryEx as mapped process addresses are removed at capture time and before export; masks are unioned across all phases",
 			"candidate exports contain relative offsets and A-to-B deltas only, never absolute A/B scalar bit patterns",
 			"non-finite and implausible i32/f32 values are removed", "only relative offsets within 0x0000..0x5FFF are retained",
@@ -248,8 +273,11 @@ const formulaSampleReadme = `GBFR character-formula evidence bundle / GBFR 角�
 This archive contains a strict read-only A1/B1/A2/B2 experiment. It does not contain raw memory,
 process identity, absolute addresses, local paths, usernames, timestamps, or free-form notes.
 Validate every listed file against SHA256SUMS before analysis. Relative scalar candidates are clues,
-not verified formulas; formula-model.json deliberately reports evidence only.
+not verified formulas; formula-model.json deliberately reports evidence only. A no-change mastery,
+defense, or damage-cap bundle is a negative observation that requires operator records and repetitions,
+not proof that the game has no effect.
 
 本包来自严格只读的 A1/B1/A2/B2 单变量实验，不包含原始内存、进程身份、绝对地址、本地路径、
 用户名、时间戳或自由备注。分析前请核对 SHA256SUMS。相对偏移候选只是线索，不等于已验证公式。
+专精、防御力或伤害上限实验若没有观察到变化，只能作为需要操作记录和重复实验支持的负观察，不能单独证明游戏没有该效果。
 `

@@ -16,6 +16,8 @@ test('formula sampler Wails binding carries the required experiment type', () =>
 test('formula sampler exposes only owner-token capture and close operations', () => {
   assert.match(appJS, /FormulaSamplerCaptureOwned\(arg1, arg2\)/)
   assert.match(appJS, /FormulaSamplerCloseOwned\(arg1\)/)
+  assert.match(appJS, /FormulaSamplerExport\(arg1\)/)
+  assert.match(appTypes, /FormulaSamplerExport\(arg1:string\)/)
   assert.doesNotMatch(appJS, /export function FormulaSamplerCapture\(/)
   assert.doesNotMatch(appJS, /export function FormulaSamplerClose\(/)
 })

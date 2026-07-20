@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, SummonGetOptions } from '../../wailsjs/go/main/App'
 import { GetSigilList, GetTraitList } from '../../wailsjs/go/main/SigilGen'
-import { groupMasteryNodes, inferMasteryDirection, resolveMasteryHashes } from '../loadoutMastery'
+import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
 import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
@@ -395,12 +395,18 @@ function catAbbr(cat) { return CAT_ABBR[cat] || '基' }
 const activeRankPool = computed(() => masteryPool.value.find(p => p.rank === masteryRankTab.value) || null)
 const activeRankGroups = computed(() => groupMasteryNodes(activeRankPool.value?.nodes || []))
 function rankPicked(rank) { return (masteryPick.value[rank] || []).length }
-const masteryTotal = computed(() => Object.values(masteryPick.value).reduce((n, a) => n + a.length, 0))
 const masteryRanks = ['R1', 'R2', 'R3', 'EX']
-const masteryRankCap = rank => {
+const masteryStructuralRankCap = rank => {
   return Number(masteryPool.value.find(pool => pool.rank === rank)?.cap || 0)
 }
-const masteryCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryRankCap(rank), 0))
+const masteryCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryStructuralRankCap(rank), 0))
+const masteryUnlockAmbiguous = computed(() => Boolean(statContext.value?.permanentGrowth)
+  && Number(statContext.value.permanentGrowth.masterTotalMsp || 0) === 0)
+const masteryRankCaps = computed(() => masteryUnlockAmbiguous.value
+  ? { R1: 0, R2: 0, R3: 0, EX: 0 }
+  : (statContext.value?.permanentGrowth?.masteryRankCaps || {}))
+const masteryUnlockedRankCap = rank => Math.max(0, Number(masteryRankCaps.value?.[rank] || 0))
+const masteryUnlockedCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryUnlockedRankCap(rank), 0))
 function toggleNode(rank, hash, cap) {
   const arr = masteryPick.value[rank] || (masteryPick.value[rank] = [])
   const i = arr.indexOf(hash)
@@ -412,7 +418,7 @@ function toggleNode(rank, hash, cap) {
 
 function masteryNodeDisabled(rank, node) {
   const selected = (masteryPick.value[rank] || []).includes(node.hash)
-  return !selected && rankPicked(rank) >= masteryRankCap(rank)
+  return !selected && rankPicked(rank) >= masteryStructuralRankCap(rank)
 }
 
 async function loadMasteryPool() {
@@ -436,18 +442,33 @@ const masteryNodeByHash = computed(() => {
   for (const pool of masteryPool.value) for (const node of pool.nodes || []) result.set(node.hash, { ...node, rank: pool.rank, rankLabel: pool.label })
   return result
 })
+const effectiveMasteryHashes = computed(() => limitMasteryHashesByRankCaps(
+  selectedMasteryHashes.value,
+  masteryNodeByHash.value,
+  masteryRankCaps.value,
+))
+const effectiveMasteryPick = computed(() => {
+  const result = { R1: [], R2: [], R3: [], EX: [] }
+  for (const hash of effectiveMasteryHashes.value) {
+    const rank = masteryNodeByHash.value.get(hash)?.rank
+    if (rank && result[rank]) result[rank].push(hash)
+  }
+  return result
+})
+const masteryDraftOverflow = computed(() => Math.max(0, selectedMasteryHashes.value.length - effectiveMasteryHashes.value.length))
 const masteryDirection = computed(() => inferMasteryDirection(masteryPick.value, masteryNodeByHash.value))
+const effectiveMasteryDirection = computed(() => inferMasteryDirection(effectiveMasteryPick.value, masteryNodeByHash.value))
 function masteryCategoryPicked(rank, cat) {
-  return (masteryPick.value[rank] || []).filter(hash => masteryNodeByHash.value.get(hash)?.cat === cat).length
+  return (effectiveMasteryPick.value[rank] || []).filter(hash => masteryNodeByHash.value.get(hash)?.cat === cat).length
 }
 function masteryStageSkillPicked(rank, cat) {
-  return (masteryPick.value[rank] || []).some(hash => {
+  return (effectiveMasteryPick.value[rank] || []).some(hash => {
     const node = masteryNodeByHash.value.get(hash)
     return node?.cat === cat && node.specialization
   })
 }
-const displayedMasteryDirection = computed(() => masteryMode.value === 'free' ? masteryDirection.value : (masterySummary.value?.primaryCat || ''))
-const selectedMasteryDetails = computed(() => selectedMasteryHashes.value.map(hash => masteryNodeByHash.value.get(hash)).filter(Boolean))
+const displayedMasteryDirection = computed(() => masterySummary.value?.primaryCat || '')
+const selectedMasteryDetails = computed(() => effectiveMasteryHashes.value.map(hash => masteryNodeByHash.value.get(hash)).filter(Boolean))
 const selectedSkills = computed(() => form.value.skillHashes.map(hash => ctx.value?.skills?.find(skill => skill.hash === hash)).filter(Boolean))
 const masterySummary = ref(null)
 const summarizingMastery = ref(false)
@@ -460,13 +481,13 @@ const masteryDirectionCards = computed(() => {
       const threshold = category?.threshold || (rank === 'R1' ? 3 : 6)
       if (masteryMode.value === 'free') {
         const count = masteryCategoryPicked(rank, group.cat)
-        const rankCap = masteryRankCap(rank)
+        const rankCap = masteryUnlockedRankCap(rank)
         const hasStageSkill = masteryStageSkillPicked(rank, group.cat)
-        const directionMatches = rank === 'R1' || masteryDirection.value === group.cat
+        const directionMatches = rank === 'R1' || effectiveMasteryDirection.value === group.cat
         let reason = ''
         if (rankCap === 0) reason = `角色强化 Lv${statContext.value?.permanentGrowth?.masterLevel || 1} 尚未解锁`
         else if (rankCap < threshold) reason = `本阶已解锁 ${rankCap}/${threshold}，尚不能激活效果`
-        else if (rank !== 'R1' && !masteryDirection.value) reason = '2阶节点尚未形成唯一主方向'
+        else if (rank !== 'R1' && !effectiveMasteryDirection.value) reason = '当前生效的2阶节点尚未形成唯一主方向'
         else if (rank !== 'R1' && !directionMatches) reason = '非推导主方向，专精技能通常不生效'
         else if (!hasStageSkill) reason = `未选择${rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶'}专精技能`
         else if (count < threshold) reason = `需 ${threshold} 项，当前 ${count} 项`
@@ -575,7 +596,7 @@ const effectUnitLabel = unit => unit === 'pct' ? '比例' : '固定'
 function refreshMasterySummary() {
   clearTimeout(masteryTimer)
   masteryTimer = setTimeout(async () => {
-    const hashes = selectedMasteryHashes.value
+    const hashes = effectiveMasteryHashes.value
     if (!ctx.value?.ownerCode || !hashes.length) { masterySummary.value = null; return }
     summarizingMastery.value = true
     try { masterySummary.value = await MasterySummarize(ctx.value.ownerCode, hashes) }
@@ -583,7 +604,7 @@ function refreshMasterySummary() {
     finally { summarizingMastery.value = false }
   }, 100)
 }
-watch(() => selectedMasteryHashes.value.slice(), refreshMasterySummary, { deep: true })
+watch(() => effectiveMasteryHashes.value.slice(), refreshMasterySummary, { deep: true })
 
 function setMasteryHashes(hashes) {
   masteryPick.value = { R1: [], R2: [], R3: [], EX: [] }
@@ -1328,7 +1349,7 @@ async function apply() {
         <div class="ed-field mastery-field">
           <button class="mastery-toggle" :aria-expanded="masteryExpanded" @click="masteryExpanded = !masteryExpanded">
             <span><b>专精配置</b><small>位于因子配置下方 · 三方向 1–3 阶 + EX</small></span>
-            <em v-if="masteryMode === 'free'">已点 {{ masteryTotal }}/{{ masteryCapacity }}</em>
+            <em>草稿 {{ selectedMasteryHashes.length }}/{{ masteryCapacity }} · 解锁内估算 {{ effectiveMasteryHashes.length }}/{{ masteryUnlockedCapacity }}</em>
             <i>{{ masteryExpanded ? '收起' : '展开' }}</i>
           </button>
           <div class="mastery-direction-map" aria-label="三个专精方向与阶段效果">
@@ -1340,6 +1361,9 @@ async function apply() {
               </div>
             </article>
           </div>
+
+          <small v-if="masteryUnlockAmbiguous" class="hint mastery-unlock-warning">存档总 MSP 为 0：现有字段无法区分“专精系统尚未开放”和“已开放但尚未获得 MSP”，离线属性按 0 个专精节点保守估算。</small>
+          <small v-if="masteryDraftOverflow" class="hint mastery-unlock-warning">越过当前角色强化解锁范围的节点仍保留在可写草稿中；离线属性暂按各阶存档顺序截取到当前容量，非法超量在游戏内的实际生效顺序待实机验证。</small>
 
           <div v-if="masteryExpanded" class="mastery-panel">
           <div class="op-row ui-seg">
@@ -1354,17 +1378,17 @@ async function apply() {
                 复制自 槽{{ String(m.slot).padStart(2, '0') }}「{{ m.name || '未命名' }}」（{{ m.nodeCount }} 节点）
               </option>
             </select>
-            <small class="hint">整套复制自该角色已有配装，保证游戏认可</small>
+            <small class="hint">整套复制自该角色已有配装；若来源超过目标角色当前解锁容量，会保留草稿并明确提示。</small>
           </template>
 
           <template v-else>
             <div class="mastery-auto-direction">
               <strong>主方向由已点节点自动推导</strong>
-              <small>{{ masteryDirection ? `当前推导：${masteryDirectionCards.find(item => item.cat === masteryDirection)?.label || masteryDirection}` : '继续配置2阶节点；未形成或存在冲突时只提示，不会删除选择。' }}</small>
+              <small>{{ masteryDirection ? `草稿推导：${masteryDirectionCards.find(item => item.cat === masteryDirection)?.label || masteryDirection}` : '继续配置2阶节点；未形成或存在冲突时只提示，不会删除选择。' }}</small>
             </div>
             <div class="rank-tabs">
-              <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" :disabled="masteryRankCap(p.rank) === 0" @click="masteryRankTab = p.rank">
-                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= masteryRankCap(p.rank) }">{{ rankPicked(p.rank) }}/{{ masteryRankCap(p.rank) }}</i>
+              <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" :disabled="masteryStructuralRankCap(p.rank) === 0" @click="masteryRankTab = p.rank">
+                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= masteryStructuralRankCap(p.rank) }">草稿 {{ rankPicked(p.rank) }}/{{ masteryStructuralRankCap(p.rank) }} · 解锁容量 {{ masteryUnlockedRankCap(p.rank) }}</i>
               </button>
             </div>
             <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="mastery-rule direction-rule">
@@ -1389,7 +1413,7 @@ async function apply() {
                   <button v-for="n in grp.nodes" :key="n.hash" class="node"
                     :class="{ on: (masteryPick[activeRankPool.rank] || []).includes(n.hash), named: n.name || n.specialization, disabled: masteryNodeDisabled(activeRankPool.rank, n) }"
                     :disabled="masteryNodeDisabled(activeRankPool.rank, n)"
-                    @click="toggleNode(activeRankPool.rank, n.hash, masteryRankCap(activeRankPool.rank))">
+                    @click="toggleNode(activeRankPool.rank, n.hash, masteryStructuralRankCap(activeRankPool.rank))">
                     <span class="node-check">{{ (masteryPick[activeRankPool.rank] || []).includes(n.hash) ? '✓' : '' }}</span>
                     <span><b v-if="n.name || n.specialization">{{ masteryNodeTitle(activeRankPool.rank, n) }}</b><small>{{ n.desc }}</small></span>
                     <em v-if="n.name || n.specialization">专精技能</em>
@@ -1397,7 +1421,7 @@ async function apply() {
                 </div>
               </section>
             </div>
-            <small class="hint">存档结构容量 {{ masteryRankCap('R1') }} / {{ masteryRankCap('R2') }} / {{ masteryRankCap('R3') }} / {{ masteryRankCap('EX') }}；角色当前强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} 的正常解锁差异会在结果中提示。</small>
+            <small class="hint">存档结构容量 {{ masteryStructuralRankCap('R1') }} / {{ masteryStructuralRankCap('R2') }} / {{ masteryStructuralRankCap('R3') }} / {{ masteryStructuralRankCap('EX') }}；角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} HP/攻击等固定成长已从存档读取。</small>
           </template>
           </div>
         </div>
@@ -1425,7 +1449,7 @@ async function apply() {
           <div class="result-metrics">
             <div><b>{{ configuredFactorCount }}</b><span>/12 因子</span></div>
             <div><b>{{ form.skillHashes.length }}</b><span>/4 技能</span></div>
-            <div><b>{{ selectedMasteryHashes.length }}</b><span>/{{ masteryCapacity }} 专精</span></div>
+            <div><b>{{ effectiveMasteryHashes.length }}</b><span>/{{ masteryUnlockedCapacity }} 解锁内估算</span></div>
             <div><b>{{ selectedSummons.filter(Boolean).length }}</b><span>/4 召唤</span></div>
           </div>
         </section>
@@ -1483,10 +1507,10 @@ async function apply() {
         </section>
 
         <section class="result-card mastery-summary-card ui-card ui-panel is-compact">
-          <header><strong>专精生效结果</strong><span>{{ summarizingMastery ? '解析中…' : (masterySummary?.primaryLabel || '未形成2阶主方向') }}</span></header>
+          <header><strong>专精解锁内估算</strong><span>{{ summarizingMastery ? '解析中…' : (masterySummary?.primaryLabel || '未形成2阶主方向') }}</span></header>
           <div v-if="masterySummary" class="mastery-result">
             <article v-for="rank in masterySummary.ranks" :key="rank.rank" class="mastery-result-rank">
-              <div class="rank-line"><b>{{ rank.label }}</b><em>{{ rank.count }}/{{ rank.cap }}</em></div>
+              <div class="rank-line"><b>{{ rank.label }}</b><em>{{ rank.count }}/{{ masteryUnlockedRankCap(rank.rank) }}</em></div>
               <template v-if="rank.rank !== 'EX'">
                 <div v-for="cat in rank.categories" :key="cat.cat" class="mastery-result-cat" :class="{ active: cat.active }">
                   <span>{{ cat.specialization || cat.label }}</span>
@@ -1496,7 +1520,7 @@ async function apply() {
                 </div>
               </template>
               <div v-else class="ex-result">
-                EX阶专精技能 {{ rank.count }}/{{ rank.cap }} · 按三方向归类，不构成第四专精
+                EX阶专精技能 {{ rank.count }}/{{ masteryUnlockedRankCap(rank.rank) }} · 按三方向归类，不构成第四专精
               </div>
             </article>
           </div>
@@ -1808,6 +1832,7 @@ async function apply() {
 .rank-tab i { font-style:normal; margin-left:5px; font-size:var(--fs-xs); opacity:.8; }
 .rank-tab i.full { color:var(--success); font-weight:600; }
 .rank-tab.on i.full { color:#bfe6cd; }
+.mastery-unlock-warning { display:block; margin:6px 10px; padding:7px 9px; border-left:3px solid var(--warning); border-radius:var(--radius-sm); background:var(--warning-bg); color:var(--warning-ink); font-weight:var(--fw-bold); line-height:var(--lh-normal); overflow-wrap:anywhere; }
 .mastery-auto-direction { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 10px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
 .mastery-auto-direction strong { font-size:var(--fs-xs); color:var(--text-primary); }
 .mastery-auto-direction small { min-width:0; color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }

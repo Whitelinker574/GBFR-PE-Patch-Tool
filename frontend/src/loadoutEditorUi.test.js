@@ -29,7 +29,7 @@ test('specialization effects remain directly visible in the three-direction summ
 })
 
 test('result sidebar follows the stable overview, skills, totals, mastery, share order', () => {
-  const titles = ['角色效果总计', '技能效果', '总计加成', '专精生效结果', '分享单套配装']
+  const titles = ['角色效果总计', '技能效果', '总计加成', '专精解锁内估算', '分享单套配装']
   const positions = titles.map(title => source.indexOf(`<strong>${title}</strong>`))
   assert.ok(positions.every(position => position >= 0), `missing result heading: ${positions}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
@@ -130,14 +130,19 @@ test('character detail separates save base, permanent growth and the fixed basel
   assert.match(source, /角色强化伤害上限/)
 })
 
-test('mastery keeps structural rank capacity while character unlock differences are warnings', () => {
-	assert.doesNotMatch(source, /permanentGrowth\?\.masteryRankCaps/)
-	assert.match(source, /const masteryRankCap =/)
-	assert.match(source, /const masteryCapacity = computed/)
-	assert.doesNotMatch(source, /masteryTotal\.value !== masteryCapacity\.value/)
-	assert.match(source, /toggleNode\(activeRankPool\.rank, n\.hash, masteryRankCap\(activeRankPool\.rank\)\)/)
-	assert.match(source, /rankPicked\(p\.rank\)[\s\S]*masteryRankCap\(p\.rank\)/)
-	assert.match(source, /已点 \{\{ masteryTotal \}\}\/\{\{ masteryCapacity \}\}/)
+test('mastery separates editable structure from the character current unlock and effective calculation', () => {
+	assert.match(source, /permanentGrowth\?\.masteryRankCaps/)
+	assert.match(source, /permanentGrowth\.masterTotalMsp/)
+	assert.match(source, /无法区分“专精系统尚未开放”和“已开放但尚未获得 MSP”/)
+	assert.match(source, /const masteryStructuralRankCap =/)
+	assert.match(source, /const masteryUnlockedRankCap =/)
+	assert.match(source, /const effectiveMasteryHashes = computed/)
+	assert.match(source, /limitMasteryHashesByRankCaps/)
+	assert.match(source, /toggleNode\(activeRankPool\.rank, n\.hash, masteryStructuralRankCap\(activeRankPool\.rank\)\)/)
+	assert.match(source, /草稿 \{\{ selectedMasteryHashes\.length \}\}\/\{\{ masteryCapacity \}\}/)
+	assert.match(source, /解锁内估算 \{\{ effectiveMasteryHashes\.length \}\}\/\{\{ masteryUnlockedCapacity \}\}/)
+	assert.match(source, /离线属性暂按各阶存档顺序截取到当前容量/)
+	assert.match(source, /masteryUnlockedRankCap\(rank\.rank\)/)
 	assert.match(source, /角色强化 Lv\{\{ statContext\.permanentGrowth\?\.masterLevel \|\| 1 \}\} HP/)
 })
 

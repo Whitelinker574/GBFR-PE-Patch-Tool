@@ -5,6 +5,7 @@ import {
   groupMasteryNodes,
   inferMasteryDirection,
   isMasteryNodeSelectable,
+  limitMasteryHashesByRankCaps,
   resolveMasteryHashes,
 } from './loadoutMastery.js'
 
@@ -32,6 +33,18 @@ test('自由配置与复制现有都能生成右栏汇总所需的真实节点 h
     sourceId: 3007,
     sources: [{ unitId: 3007, nodeHashes: ['AA', 'BB'] }],
   }), ['AA', 'BB'])
+})
+
+test('专精草稿可保留越级节点，但生效列表只取角色当前各阶解锁数', () => {
+  const nodes = new Map([
+    ['R1-A', { hash: 'R1-A', rank: 'R1' }],
+    ['R1-B', { hash: 'R1-B', rank: 'R1' }],
+    ['R2-A', { hash: 'R2-A', rank: 'R2' }],
+    ['EX-A', { hash: 'EX-A', rank: 'EX' }],
+  ])
+  const draft = ['R1-A', 'R1-B', 'R2-A', 'EX-A']
+  assert.deepEqual(limitMasteryHashesByRankCaps(draft, nodes, { R1: 1, R2: 0, R3: 0, EX: 0 }), ['R1-A'])
+  assert.deepEqual(draft, ['R1-A', 'R1-B', 'R2-A', 'EX-A'])
 })
 
 test('all known mastery nodes remain selectable while direction is inferred from picks', () => {
@@ -73,7 +86,7 @@ test('derived direction never deletes selected mastery nodes', () => {
   })
 })
 
-test('primary mastery direction is inferred from the six-node stage-two threshold before named-skill fallback', () => {
+test('primary mastery direction is inferred only from the six-node stage-two threshold', () => {
   const nodes = new Map()
   const r2 = []
   for (let index = 0; index < 6; index += 1) {
@@ -91,4 +104,11 @@ test('conflicting stage-two specialization roots stay ambiguous instead of choos
     ['D', { hash: 'D', rank: 'R2', cat: 'SB_DEF', specialization: true }],
   ])
   assert.equal(inferMasteryDirection({ R1: [], R2: ['A', 'D'], R3: [], EX: [] }, nodes), '')
+})
+
+test('a named stage-two node alone does not invent a direction before the six-node threshold', () => {
+  const nodes = new Map([
+    ['A', { hash: 'A', rank: 'R2', cat: 'SB_ATK', specialization: true }],
+  ])
+  assert.equal(inferMasteryDirection({ R1: [], R2: ['A'], R3: [], EX: [] }, nodes), '')
 })

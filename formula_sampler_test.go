@@ -104,3 +104,30 @@ func TestFormulaSamplerControlExperimentRequiresFourUnchangedPhases(t *testing.T
 		t.Fatal("unchanged control experiment did not complete")
 	}
 }
+
+func TestFormulaSamplerAllowsUnchangedKnownPanelForDefenseCandidateScan(t *testing.T) {
+	panel := RuntimeCharacterPanelStats{CharacterHash: "AABBCCDD", HP: 100, Attack: 200, StunPower: 3, CritRate: 4}
+	sampler := newFormulaSamplerForExperiment("defense", func() error { return nil }, func() (RuntimeCharacterPanelStats, error) {
+		return panel, nil
+	})
+	for _, phase := range formulaSamplePhaseOrder {
+		if _, err := sampler.Capture(phase); err != nil {
+			t.Fatalf("defense scan capture %s: %v", phase, err)
+		}
+	}
+	if !sampler.Complete() {
+		t.Fatal("unchanged known panel prevented the defense candidate scan from completing")
+	}
+}
+
+func TestFormulaSamplerAllowsUnchangedKnownPanelForMasteryCandidateScan(t *testing.T) {
+	panel := RuntimeCharacterPanelStats{CharacterHash: "AABBCCDD", HP: 100, Attack: 200, StunPower: 3, CritRate: 4}
+	sampler := newFormulaSamplerForExperiment("mastery", func() error { return nil }, func() (RuntimeCharacterPanelStats, error) {
+		return panel, nil
+	})
+	for _, phase := range formulaSamplePhaseOrder {
+		if _, err := sampler.Capture(phase); err != nil {
+			t.Fatalf("mastery scan capture %s: %v", phase, err)
+		}
+	}
+}

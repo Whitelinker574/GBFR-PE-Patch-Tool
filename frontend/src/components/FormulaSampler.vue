@@ -41,6 +41,7 @@ const experimentTypes = Object.freeze([
   ['sigil', '因子', 'Sigil'], ['weapon', '武器实例', 'Weapon'], ['weapon_skill', '武器技能', 'Weapon skill'],
   ['mastery', '专精', 'Mastery'], ['overlimit', '上限突破', 'Over Mastery'], ['summon', '召唤石', 'Summon'],
   ['hp_condition', 'HP 条件', 'HP condition'], ['battle_condition', '战斗条件', 'Battle condition'],
+  ['defense', '防御力', 'Defense'], ['damage_cap', '伤害上限', 'Damage cap'],
   ['control', '空白对照', 'No-change control'], ['other', '其他单项', 'Other one-variable'],
 ].map(([value, zh, en]) => Object.freeze({ value, zh, en })))
 const selectedHash = ref(characters[0].hash)
@@ -49,6 +50,7 @@ const sampler = ref(normalizeFormulaSamplerStatus(null))
 const busy = ref(false)
 const message = ref(copy('ready'))
 const tone = ref('info')
+const lastExportPath = ref('')
 let disposed = false
 
 const connected = computed(() => sampler.value.connected)
@@ -109,6 +111,7 @@ function announce(text, nextTone = 'info') {
 async function attach() {
   if (busy.value || connected.value) return
   busy.value = true
+  lastExportPath.value = ''
   try {
     const status = normalizeFormulaSamplerStatus(await FormulaSamplerAttach(selectedHash.value, selectedExperimentType.value))
     if (disposed) {
@@ -163,9 +166,13 @@ async function capture() {
 async function exportBundle() {
   if (!complete.value || busy.value) return
   busy.value = true
+  lastExportPath.value = ''
   try {
-    const path = await FormulaSamplerExport()
-    if (path) announce(language.value === 'en' ? 'Redacted evidence exported.' : '脱敏证据包已导出。', 'ok')
+    const path = await FormulaSamplerExport(sampler.value.sessionToken)
+    if (path) {
+      lastExportPath.value = path
+      announce(language.value === 'en' ? `Redacted evidence exported to ${path}` : `脱敏证据包已导出到 ${path}`, 'ok')
+    }
   } catch (error) {
     announce(errorText(error), 'danger')
   } finally {
@@ -179,6 +186,7 @@ async function close() {
   try {
     await FormulaSamplerCloseOwned(sampler.value.sessionToken)
     sampler.value = normalizeFormulaSamplerStatus(null)
+    lastExportPath.value = ''
     announce(copy('disconnected'), 'info')
   } catch (error) {
     announce(errorText(error), 'danger')
@@ -239,12 +247,15 @@ onBeforeUnmount(() => {
     </section>
 
     <div class="sampler-message ui-notice" :class="`is-${tone}`" aria-live="polite">{{ message }}</div>
+    <div v-if="lastExportPath" class="export-path ui-card" aria-live="polite">
+      <b>{{ language === 'en' ? 'Saved to' : '保存路径' }}</b><span>{{ lastExportPath }}</span>
+    </div>
 
     <details class="sampling-scope ui-card ui-panel is-compact">
       <summary>{{ language === 'en' ? 'Advanced sampling scope' : '高级采样范围' }}</summary>
       <p>{{ language === 'en'
-        ? 'Each phase checks six bit-exact final-panel reads around three stable reads of a 24 KiB character-status window. Export keeps only reversible scalar candidates; raw blocks, process identity, paths, and absolute addresses are omitted.'
-        : '每个阶段会在角色状态对象前后各核对三次位精确最终面板，并对 24 KiB 状态窗口连续只读三次。导出只保留可逆标量候选；原始内存块、进程身份、路径和绝对地址全部省略。' }}</p>
+        ? 'Each phase checks six bit-exact final-panel reads around three stable reads of a 24 KiB character-status window. Mastery, defense, and damage-cap runs may keep all four known panel values unchanged; such exports are labelled as candidate scans or negative observations, never verified formulas.'
+        : '每个阶段会在角色状态对象前后各核对三次位精确最终面板，并对 24 KiB 状态窗口连续只读三次。专精、防御力与伤害上限允许已知四项面板不变；导出会如实标成候选扫描或负观察，绝不冒充已验证公式。' }}</p>
     </details>
 
     <section class="workflow-card ui-card ui-panel">
@@ -298,6 +309,9 @@ onBeforeUnmount(() => {
 .readonly-seal { height:36px; display:inline-flex; align-items:center; gap:var(--space-2); padding:0 var(--space-3); border:1px solid var(--border-default); border-radius:999px; color:var(--accent-hover); background:var(--accent-soft); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
 .readonly-seal i { font-style:normal; }
 .sampler-message { min-height:40px; display:flex; align-items:center; }
+.export-path { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--space-3); align-items:center; padding:var(--space-3) var(--space-4); }
+.export-path b { color:var(--text-primary); font-size:var(--fs-xs); }
+.export-path span { min-width:0; overflow-wrap:anywhere; color:var(--text-secondary); font-family:var(--font-mono); font-size:var(--fs-xs); }
 .sampling-scope { padding-block:var(--space-3); }
 .sampling-scope summary { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); cursor:pointer; }
 .sampling-scope p { margin:var(--space-3) 0 0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }

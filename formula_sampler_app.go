@@ -317,12 +317,20 @@ func (a *App) closeFormulaSampler() error {
 	return session.close()
 }
 
-func (a *App) FormulaSamplerExport() (string, error) {
+func (a *App) FormulaSamplerExport(token string) (string, error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("Wails 上下文未初始化")
 	}
 	a.formulaSamplerMu.Lock()
 	session := a.formulaSamplerSession
+	if token == "" {
+		a.formulaSamplerMu.Unlock()
+		return "", fmt.Errorf("公式采样器必须提供页面所有权令牌")
+	}
+	if session != nil && token != session.token {
+		a.formulaSamplerMu.Unlock()
+		return "", fmt.Errorf("公式采样会话已被替换")
+	}
 	a.formulaSamplerMu.Unlock()
 	if session == nil {
 		return "", fmt.Errorf("没有可导出的公式采样会话")

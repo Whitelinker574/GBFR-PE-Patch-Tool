@@ -101,7 +101,7 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 	if err := json.Unmarshal(contents["manifest.json"], &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.SchemaVersion != "gbfr-formula-sample/v1" || !manifest.StrictReadOnly || manifest.PhaseCount != 4 {
+	if manifest.SchemaVersion != "gbfr-formula-sample/v2" || !manifest.StrictReadOnly || manifest.PhaseCount != 4 {
 		t.Fatalf("unexpected manifest: %+v", manifest)
 	}
 	var candidates []FormulaScalarCandidate
@@ -143,5 +143,69 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 		if !strings.Contains(string(contents["SHA256SUMS"]), want) {
 			t.Fatalf("SHA256SUMS is missing %s", name)
 		}
+	}
+}
+
+func TestFormulaSampleBundleAcceptsDefenseExperimentFromRawReversibleCandidate(t *testing.T) {
+	events, raw := completeFormulaExperimentFixture(t)
+	for index := range events {
+		events[index].Panel = events[0].Panel
+	}
+	bundle, err := buildFormulaSampleBundle("defense", events, raw, func(uint64) (bool, error) { return false, nil }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle) == 0 {
+		t.Fatal("defense candidate scan produced an empty evidence bundle")
+	}
+	reader, err := zip.NewReader(bytes.NewReader(bundle), int64(len(bundle)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var model FormulaEvidenceModel
+	for _, file := range reader.File {
+		if file.Name != "formula-model.json" {
+			continue
+		}
+		stream, openErr := file.Open()
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		payload, readErr := io.ReadAll(stream)
+		_ = stream.Close()
+		if readErr != nil || json.Unmarshal(payload, &model) != nil {
+			t.Fatalf("read formula model: %v", readErr)
+		}
+	}
+	if model.Kind != "reversible-status-candidate-scan" || !model.CandidateABABVerified {
+		t.Fatalf("scan-only model overclaimed panel evidence: %+v", model)
+	}
+}
+
+func TestFormulaSampleBundleKeepsHonestNoChangeMasteryObservation(t *testing.T) {
+	events, _ := completeFormulaExperimentFixture(t)
+	raw := make(map[FormulaSamplePhase][]byte, len(events))
+	for index := range events {
+		events[index].Panel = events[0].Panel
+		raw[events[index].Phase] = make([]byte, formulaStatusObjectScanSize)
+	}
+	bundle, err := buildFormulaSampleBundle("mastery", events, raw, func(uint64) (bool, error) { return false, nil }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle) == 0 {
+		t.Fatal("negative mastery observation was discarded")
+	}
+}
+
+func TestFormulaSampleBundleRejectsNoChangeForOrdinaryPanelExperiment(t *testing.T) {
+	events, _ := completeFormulaExperimentFixture(t)
+	raw := make(map[FormulaSamplePhase][]byte, len(events))
+	for index := range events {
+		events[index].Panel = events[0].Panel
+		raw[events[index].Phase] = make([]byte, formulaStatusObjectScanSize)
+	}
+	if _, err := buildFormulaSampleBundle("sigil", events, raw, func(uint64) (bool, error) { return false, nil }, nil); err == nil {
+		t.Fatal("ordinary panel experiment accepted no observed change")
 	}
 }

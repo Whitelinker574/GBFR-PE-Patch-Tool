@@ -121,6 +121,59 @@ func parseMasteryPanelBonus(desc, source string) (LoadoutPanelBonus, bool) {
 	return LoadoutPanelBonus{Label: match[1], Unit: unit, Value: value, Source: source}, true
 }
 
+func masteryCalculationRankCaps(growth LoadoutPermanentGrowth) (map[string]int, bool) {
+	if growth.MasterTotalMSP == 0 {
+		return map[string]int{"R1": 0, "R2": 0, "R3": 0, "EX": 0}, true
+	}
+	caps := make(map[string]int, len(growth.MasteryRankCaps))
+	for rank, cap := range growth.MasteryRankCaps {
+		caps[rank] = cap
+	}
+	return caps, false
+}
+
+// effectiveMasteryHexesForRankCaps separates the writable 50-slot draft from
+// the nodes currently covered by the character's save-backed Master level.
+// It deliberately does not mutate or reject overflow draft nodes.
+func effectiveMasteryHexesForRankCaps(ownerCode string, hexes []string, caps map[string]int) ([]string, int, error) {
+	used := map[string]int{"R1": 0, "R2": 0, "R3": 0, "EX": 0}
+	effective := make([]string, 0, len(hexes))
+	ignored := 0
+	seen := make(map[uint32]bool, len(hexes))
+	for _, value := range hexes {
+		hash, err := ParseHashHex(value)
+		if err != nil {
+			return nil, 0, fmt.Errorf("专精节点 hash %q 无效: %w", value, err)
+		}
+		if hash == 0 || hash == EmptyHash {
+			continue
+		}
+		if seen[hash] {
+			return nil, 0, fmt.Errorf("专精节点 %08X 被重复配置", hash)
+		}
+		seen[hash] = true
+		node, ok := skillboardNodeForHash(hash)
+		if !ok {
+			return nil, 0, fmt.Errorf("专精节点 %08X 未收录", hash)
+		}
+		if ownerCode != "" && node.Char != "" && node.Char != ownerCode {
+			return nil, 0, fmt.Errorf("专精节点 %08X 属于 %s，不属于 %s", hash, node.Char, ownerCode)
+		}
+		rank, _, ok := masteryRankOfGrp(node.Grp)
+		if !ok {
+			continue
+		}
+		cap := max(0, caps[rank])
+		if used[rank] >= cap {
+			ignored++
+			continue
+		}
+		used[rank]++
+		effective = append(effective, value)
+	}
+	return effective, ignored, nil
+}
+
 func loadoutMasteryPanelBonuses(ownerCode string, hexes []string, factorCounts loadoutFactorCategoryCounts) ([]LoadoutPanelBonus, error) {
 	bonuses := make([]LoadoutPanelBonus, 0)
 	seen := make(map[uint32]bool, len(hexes))

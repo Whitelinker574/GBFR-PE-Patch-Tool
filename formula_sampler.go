@@ -30,6 +30,7 @@ type formulaSampler struct {
 	readSnapshot func() (RuntimeCharacterPanelStats, error)
 	events       []FormulaSampleEvent
 	control      bool
+	scanOnly     bool
 }
 
 func newFormulaSampler(validate func() error, readSnapshot func() (RuntimeCharacterPanelStats, error)) *formulaSampler {
@@ -39,6 +40,7 @@ func newFormulaSampler(validate func() error, readSnapshot func() (RuntimeCharac
 func newFormulaSamplerForExperiment(experimentType string, validate func() error, readSnapshot func() (RuntimeCharacterPanelStats, error)) *formulaSampler {
 	sampler := newFormulaSampler(validate, readSnapshot)
 	sampler.control = experimentType == "control"
+	sampler.scanOnly = formulaExperimentAllowsUnchangedKnownPanel(experimentType)
 	return sampler
 }
 
@@ -82,7 +84,7 @@ func (sampler *formulaSampler) validateTransition(phase FormulaSamplePhase, pane
 			}
 			return nil
 		}
-		if formulaPanelValuesBitEqual(sampler.events[0].Panel, panel) {
+		if formulaPanelValuesBitEqual(sampler.events[0].Panel, panel) && !sampler.scanOnly {
 			return fmt.Errorf("formula phase B1 did not change the panel")
 		}
 	case FormulaPhaseA2:

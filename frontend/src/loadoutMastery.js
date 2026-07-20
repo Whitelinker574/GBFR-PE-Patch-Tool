@@ -22,6 +22,22 @@ function masteryNode(nodeByHash, hash) {
   return nodeByHash?.[hash]
 }
 
+// Keep the editable draft intact, but expose only the nodes covered by the
+// character's current save-backed mastery rank caps to calculators/summaries.
+export function limitMasteryHashesByRankCaps(hashes = [], nodeByHash, rankCaps = {}) {
+  const used = { R1: 0, R2: 0, R3: 0, EX: 0 }
+  const effective = []
+  for (const hash of hashes) {
+    const rank = masteryNode(nodeByHash, hash)?.rank
+    if (!(rank in used)) continue
+    const cap = Math.max(0, Number(rankCaps?.[rank] || 0))
+    if (used[rank] >= cap) continue
+    used[rank] += 1
+    effective.push(hash)
+  }
+  return effective
+}
+
 export function isMasteryNodeSelectable(rank, node, direction) {
   void rank
   void direction
@@ -45,12 +61,5 @@ export function inferMasteryDirection(picks = {}, nodeByHash) {
     .filter(item => item.count >= 6)
     .sort((a, b) => b.count - a.count)
   if (thresholdDirections.length === 1) return thresholdDirections[0].cat
-  if (thresholdDirections.length > 1) return ''
-
-  const roots = new Set()
-  for (const hash of picks.R2 || []) {
-    const node = masteryNode(nodeByHash, hash)
-    if (node?.specialization && CATEGORY_ORDER.includes(node.cat)) roots.add(node.cat)
-  }
-  return roots.size === 1 ? [...roots][0] : ''
+  return ''
 }

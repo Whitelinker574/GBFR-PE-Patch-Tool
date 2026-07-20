@@ -34,3 +34,11 @@ test('capture and export controls follow evidence state and remain responsive', 
   assert.match(source, /container-name:\s*formula-sampler/)
   assert.match(source, /@container formula-sampler \(max-width:\s*620px\)/)
 })
+
+test('formula sampler can scan defense and damage-cap candidates and reveals the exact export path', () => {
+  assert.match(source, /\['defense', '防御力'/)
+  assert.match(source, /\['damage_cap', '伤害上限'/)
+  assert.match(source, /const lastExportPath = ref\(''\)/)
+  assert.match(source, /保存路径|Saved to/)
+  assert.match(source, /\{\{ lastExportPath \}\}/)
+})

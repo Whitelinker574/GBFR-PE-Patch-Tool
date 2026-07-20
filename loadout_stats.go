@@ -754,7 +754,16 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		}
 	}
 	factorCounts := loadoutPrimaryFactorCategoryCounts(cat, factorPrimaryHashes)
-	masteryBonuses, err := loadoutMasteryPanelBonuses(ownerCode, masteryHexes, factorCounts)
+	masteryCalculationCaps, masteryUnlockAmbiguous := masteryCalculationRankCaps(context.PermanentGrowth)
+	effectiveMasteryHexes, ignoredMasteryCount, err := effectiveMasteryHexesForRankCaps(
+		ownerCode,
+		masteryHexes,
+		masteryCalculationCaps,
+	)
+	if err != nil {
+		return nil, err
+	}
+	masteryBonuses, err := loadoutMasteryPanelBonuses(ownerCode, effectiveMasteryHexes, factorCounts)
 	if err != nil {
 		return nil, err
 	}
@@ -778,6 +787,25 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		CharacterDamageCap: context.BaselineDamageCap,
 		Bonuses:            bonuses, Mastery: panelBonuses, OverLimit: context.OverLimit,
 		Warnings: append([]string(nil), context.Warnings...),
+	}
+	if ignoredMasteryCount > 0 {
+		panelInput.Warnings = append(panelInput.Warnings, fmt.Sprintf(
+			"专精草稿有 %d 个节点超过角色强化 Lv%d 的当前解锁范围；这些节点不参与离线属性估算，写入仍为非阻塞草稿。",
+			ignoredMasteryCount, context.PermanentGrowth.MasterLevel,
+		))
+	}
+	if masteryUnlockAmbiguous {
+		panelInput.Warnings = append(panelInput.Warnings, "该角色存档 1323 总 MSP 为 0，现有数据无法区分专精系统尚未开放与已开放但未获得 MSP；为避免假算，离线属性暂不计入该角色的专精节点，草稿写入不受阻止。")
+	}
+	for _, value := range effectiveMasteryHexes {
+		hash, parseErr := ParseHashHex(value)
+		if parseErr != nil {
+			continue
+		}
+		if node, ok := skillboardNodeForHash(hash); ok && strings.TrimSpace(node.Desc) == "昏厥值+0.4" {
+			panelInput.Warnings = append(panelInput.Warnings, "专精“昏厥值+0.4”来自 2.0.2 原始节点 Value1=0.4；内部显示尺度仍待游戏运行时 A/B 样本闭环。")
+			break
+		}
 	}
 	if weapon != nil {
 		panelInput.WeaponHP = weapon.Total.HP

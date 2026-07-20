@@ -188,6 +188,36 @@ func TestLoadoutMasteryPanelBonusesIncludeRealUnconditionalDefenseNode(t *testin
 	}
 }
 
+func TestEffectiveMasteryHexesRespectCurrentRankUnlocksWithoutDeletingDraft(t *testing.T) {
+	draft := []string{"12AA6898", "1F55589B", "1AD4D530", "1F52146F"}
+	effective, ignored, err := effectiveMasteryHexesForRankCaps("PL0400", draft, map[string]int{
+		"R1": 1, "R2": 0, "R3": 0, "EX": 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(effective) != 1 || effective[0] != draft[0] || ignored != 3 {
+		t.Fatalf("effective=%v ignored=%d, want first R1 node only and three inactive draft nodes", effective, ignored)
+	}
+	if len(draft) != 4 || draft[3] != "1F52146F" {
+		t.Fatalf("unlock filtering mutated the writable draft: %v", draft)
+	}
+}
+
+func TestMasteryCalculationRankCapsFailClosedWhenZeroMSPCannotProveSystemUnlock(t *testing.T) {
+	growth := LoadoutPermanentGrowth{
+		MasterTotalMSP:  0,
+		MasteryRankCaps: map[string]int{"R1": 1, "R2": 0, "R3": 0, "EX": 0},
+	}
+	caps, ambiguous := masteryCalculationRankCaps(growth)
+	if !ambiguous || caps["R1"] != 0 || caps["R2"] != 0 || caps["R3"] != 0 || caps["EX"] != 0 {
+		t.Fatalf("zero-MSP ambiguous mastery must fail closed: caps=%v ambiguous=%v", caps, ambiguous)
+	}
+	if growth.MasteryRankCaps["R1"] != 1 {
+		t.Fatalf("calculation caps mutated the table-derived save context: %+v", growth.MasteryRankCaps)
+	}
+}
+
 func TestAddPanelBonusesToTotalsClassifiesDefenseSynergy(t *testing.T) {
 	totals := []EffectTotal{}
 	addPanelBonusesToTotals(&totals, []LoadoutPanelBonus{{Label: "防御力", Unit: "pct", Value: 30, Source: "专精 · EX · 因子联动"}})

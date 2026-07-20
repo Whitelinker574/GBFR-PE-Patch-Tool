@@ -110,7 +110,7 @@ async function measure(size) {
       stickerLoaded: Boolean(sticker?.complete && sticker.naturalWidth > 0),
       parchmentVisible: getComputedStyle(document.querySelector('.app-window'), '::before').backgroundImage.includes('parchment-ui-v2'),
       titleButtons: document.querySelectorAll('.titlebar-controls .win-btn').length,
-      hasExperimentTypes: document.querySelectorAll('.experiment-picker option').length === 10,
+      hasExperimentTypes: document.querySelectorAll('.experiment-picker option').length === 12,
       hasFourPhases: document.querySelectorAll('.phase-card').length === 4,
       hasStrictReadOnly: /严格只读|Strict read-only/.test(text),
       suspicious: ['undefined', '[object Object]', 'NaN', '渲染失败'].filter(token => text.includes(token)),
