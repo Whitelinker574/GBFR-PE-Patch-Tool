@@ -152,55 +152,63 @@ func readStableRuntimeCharacterPanelSnapshots(readSnapshot func() (RuntimeCharac
 }
 
 func readRuntimeCharacterPanel(memory runtimeCharacterPanelMemory, moduleBase uintptr, targetHash uint32) (RuntimeCharacterPanelStats, error) {
+	status, err := locateRuntimeCharacterPanelStatus(memory, moduleBase, targetHash)
+	if err != nil {
+		return RuntimeCharacterPanelStats{}, err
+	}
+	return readRuntimeCharacterPanelValues(memory, status, targetHash)
+}
+
+func locateRuntimeCharacterPanelStatus(memory runtimeCharacterPanelMemory, moduleBase uintptr, targetHash uint32) (uintptr, error) {
 	if memory == nil || moduleBase == 0 || targetHash == 0 {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("游戏真实面板读取参数无效")
+		return 0, fmt.Errorf("游戏真实面板读取参数无效")
 	}
 	if err := verifyRuntimeCharacterPanelVersion(memory, moduleBase); err != nil {
-		return RuntimeCharacterPanelStats{}, err
+		return 0, err
 	}
 
 	managerAddress, ok := checkedRuntimePanelAddress(moduleBase, runtimeCharacterPanelManagerRVA)
 	if !ok {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("角色状态 manager 地址溢出")
+		return 0, fmt.Errorf("角色状态 manager 地址溢出")
 	}
 	manager, err := readRuntimePanelPointer(memory, managerAddress)
 	if err != nil || manager == 0 {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 manager 失败: %w", normalizeRuntimePanelReadError(err))
+		return 0, fmt.Errorf("读取角色状态 manager 失败: %w", normalizeRuntimePanelReadError(err))
 	}
 
 	begin, err := readRuntimePanelPointerOffset(memory, manager, runtimeCharacterPanelVectorBeginOffset)
 	if err != nil {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色 ID 向量起点失败: %w", err)
+		return 0, fmt.Errorf("读取角色 ID 向量起点失败: %w", err)
 	}
 	end, err := readRuntimePanelPointerOffset(memory, manager, runtimeCharacterPanelVectorEndOffset)
 	if err != nil {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色 ID 向量终点失败: %w", err)
+		return 0, fmt.Errorf("读取角色 ID 向量终点失败: %w", err)
 	}
 	if begin == 0 || end < begin || (end-begin)%4 != 0 || (end-begin)/4 > runtimeCharacterPanelMaxIDs {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("角色 ID 向量范围异常: begin=0x%X end=0x%X", begin, end)
+		return 0, fmt.Errorf("角色 ID 向量范围异常: begin=0x%X end=0x%X", begin, end)
 	}
 
 	sentinel, err := readRuntimePanelPointerOffset(memory, manager, runtimeCharacterPanelSentinelOffset)
 	if err != nil || sentinel == 0 {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 map 哨兵失败: %w", normalizeRuntimePanelReadError(err))
+		return 0, fmt.Errorf("读取角色状态 map 哨兵失败: %w", normalizeRuntimePanelReadError(err))
 	}
 	table, err := readRuntimePanelPointerOffset(memory, manager, runtimeCharacterPanelBucketTableOffset)
 	if err != nil || table == 0 {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 bucket 表失败: %w", normalizeRuntimePanelReadError(err))
+		return 0, fmt.Errorf("读取角色状态 bucket 表失败: %w", normalizeRuntimePanelReadError(err))
 	}
 	mask, err := readRuntimePanelU32Offset(memory, manager, runtimeCharacterPanelBucketMaskOffset)
 	if err != nil {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 bucket mask 失败: %w", err)
+		return 0, fmt.Errorf("读取角色状态 bucket mask 失败: %w", err)
 	}
 	if mask > 0xFFFF || ((uint64(mask)+1)&uint64(mask)) != 0 {
-		return RuntimeCharacterPanelStats{}, fmt.Errorf("角色状态 bucket mask 异常: 0x%X", mask)
+		return 0, fmt.Errorf("角色状态 bucket mask 异常: 0x%X", mask)
 	}
 
 	seenIDs := make(map[uint32]struct{}, int((end-begin)/4))
 	for cursor := begin; cursor < end; cursor += 4 {
 		id, readErr := readRuntimePanelU32(memory, cursor)
 		if readErr != nil {
-			return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色 ID 失败: %w", readErr)
+			return 0, fmt.Errorf("读取角色 ID 失败: %w", readErr)
 		}
 		if _, duplicate := seenIDs[id]; duplicate {
 			continue
@@ -208,36 +216,32 @@ func readRuntimeCharacterPanel(memory runtimeCharacterPanelMemory, moduleBase ui
 		seenIDs[id] = struct{}{}
 		status, found, lookupErr := lookupRuntimeCharacterPanelStatus(memory, table, mask, sentinel, id)
 		if lookupErr != nil {
-			return RuntimeCharacterPanelStats{}, lookupErr
+			return 0, lookupErr
 		}
 		if !found || status == 0 {
 			continue
 		}
 		ready, readErr := readRuntimePanelU8Offset(memory, status, runtimeCharacterPanelReadyOffset)
 		if readErr != nil {
-			return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 ready 标记失败: %w", readErr)
+			return 0, fmt.Errorf("读取角色状态 ready 标记失败: %w", readErr)
 		}
 		eligible, readErr := readRuntimePanelU8Offset(memory, status, runtimeCharacterPanelEligibilityOffset)
 		if readErr != nil {
-			return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色状态 eligibility 标记失败: %w", readErr)
+			return 0, fmt.Errorf("读取角色状态 eligibility 标记失败: %w", readErr)
 		}
 		if ready != 1 || eligible == 0 {
 			continue
 		}
 		characterHash, readErr := readRuntimePanelU32Offset(memory, status, runtimeCharacterPanelCharacterHashOffset)
 		if readErr != nil {
-			return RuntimeCharacterPanelStats{}, fmt.Errorf("读取角色 hash 失败: %w", readErr)
+			return 0, fmt.Errorf("读取角色 hash 失败: %w", readErr)
 		}
 		if characterHash != targetHash {
 			continue
 		}
-		stats, readErr := readRuntimeCharacterPanelValues(memory, status, characterHash)
-		if readErr != nil {
-			return RuntimeCharacterPanelStats{}, readErr
-		}
-		return stats, nil
+		return status, nil
 	}
-	return RuntimeCharacterPanelStats{}, fmt.Errorf("游戏内尚无角色 %08X 的可用面板结果，请打开角色/装备面板后重试", targetHash)
+	return 0, fmt.Errorf("游戏内尚无角色 %08X 的可用面板结果，请打开角色/装备面板后重试", targetHash)
 }
 
 func verifyRuntimeCharacterPanelVersion(memory runtimeCharacterPanelMemory, moduleBase uintptr) error {

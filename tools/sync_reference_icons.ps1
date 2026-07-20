@@ -356,6 +356,37 @@ try {
         [void](Add-RecordIcon $itemsByHash (Normalize-Hex $record.entity_id) $record 'items')
     }
 
+    # Rebuild every ordinary application item through item.tbl. The save item
+    # hash is the uint32 at +32 and the official compact sprite ID is the fixed
+    # ASCII field at +16. Semantic aliases are useful as an index, but this
+    # table join is the authoritative identity proof and prevents similarly
+    # named materials from inheriting the wrong icon.
+    $itemRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\items.json') -Raw -Encoding UTF8 | ConvertFrom-Json).items
+    $itemTableBytes = [byte[]](Read-GameTableBytes 'item.tbl')
+    $itemRowCount = [BitConverter]::ToInt64($itemTableBytes, 0)
+    $itemTableRowSize = 128
+    if (8 + ($itemRowCount * $itemTableRowSize) -ne $itemTableBytes.Length) {
+        throw "Unexpected 2.0.2 item.tbl layout: rows=$itemRowCount bytes=$($itemTableBytes.Length)"
+    }
+    $itemIconByHash = @{}
+    for ($row = 0; $row -lt $itemRowCount; $row++) {
+        $offset = 8 + ($row * $itemTableRowSize)
+        $itemHash = '{0:X8}' -f [BitConverter]::ToUInt32($itemTableBytes, $offset + 32)
+        $iconID = Read-FixedASCII $itemTableBytes ($offset + 16) 16
+        if ($itemIconByHash.ContainsKey($itemHash) -and $itemIconByHash[$itemHash] -ne $iconID) {
+            throw "Conflicting item.tbl icon rows for hash ${itemHash}: $($itemIconByHash[$itemHash]) / $iconID"
+        }
+        $itemIconByHash[$itemHash] = $iconID
+    }
+    foreach ($item in $itemRows) {
+        $hash = Normalize-Hex $item.hash
+        if (-not $itemIconByHash.ContainsKey($hash)) { continue }
+        [void]$itemsByHash.Remove($hash)
+        $iconID = [string]$itemIconByHash[$hash]
+        $file = Copy-InternalAsset 'items' "cmn_icitm_$iconID"
+        if ($file) { $itemsByHash[$hash] = $file }
+    }
+
     # ITEM_70_0020..0027 use their normal identifier hashes in the save, but
     # the 2.0.2 item table stores eight opaque row keys. Join through the
     # table's exact TXT_ITEM_70_002x name hash instead. All eight rows point to
@@ -375,15 +406,9 @@ try {
     foreach ($pair in $skyMemoryNameHashToItemHash.GetEnumerator()) {
         $unresolvedSkyMemoryHashes[$pair.Value] = $true
     }
-    $itemTableBytes = [byte[]](Read-GameTableBytes 'item.tbl')
     try {
-        $itemRowCount = [BitConverter]::ToInt64($itemTableBytes, 0)
-        $itemRowSize = 128
-        if (8 + ($itemRowCount * $itemRowSize) -ne $itemTableBytes.Length) {
-            throw "Unexpected 2.0.2 item.tbl layout: rows=$itemRowCount bytes=$($itemTableBytes.Length)"
-        }
         for ($row = 0; $row -lt $itemRowCount; $row++) {
-            $offset = 8 + ($row * $itemRowSize)
+            $offset = 8 + ($row * $itemTableRowSize)
             $nameHash = '{0:X8}' -f [BitConverter]::ToUInt32($itemTableBytes, $offset + 36)
             if (-not $skyMemoryNameHashToItemHash.ContainsKey($nameHash)) { continue }
 
@@ -399,6 +424,18 @@ try {
         }
         if ($unresolvedSkyMemoryHashes.Count -ne 0) {
             throw "item.tbl did not prove every Sky Memory alias: $($unresolvedSkyMemoryHashes.Keys -join ', ')"
+        }
+
+        $missingItemHashes = @($itemRows |
+            Where-Object { -not $itemsByHash.ContainsKey((Normalize-Hex $_.hash)) } |
+            ForEach-Object { Normalize-Hex $_.hash } |
+            Sort-Object)
+        $expectedMissingItemHashes = @(
+            '131A4636', '29BBA035', '7F695B76', '9FC6585E', 'CB39E0FC', 'CD6AF550',
+            'CE0B379E', 'E600BE75', 'E8C461CA', 'EAC2D7AB', 'F384E322'
+        )
+        if (($missingItemHashes -join ',') -ne ($expectedMissingItemHashes -join ',')) {
+            throw "Unexpected missing 2.0.2 item sprites: $($missingItemHashes -join ',')"
         }
     }
     finally {
@@ -431,7 +468,6 @@ try {
     $skillMap = $skillBuild.map
 
     $summonRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\summons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).summons
-    $itemRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\items.json') -Raw -Encoding UTF8 | ConvertFrom-Json).items
     $coverage = [ordered]@{
         traits = "$(@($traitRows | Where-Object { $traitsByID.ContainsKey([string]$_.internalId) }).Count)/$($traitRows.Count)"
         weapons = "$(@($weaponRows | Where-Object { $weaponsByHash.ContainsKey((Normalize-Hex $_.hash)) }).Count)/$($weaponRows.Count)"

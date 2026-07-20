@@ -36,27 +36,29 @@ type LoadoutWeaponSkill struct {
 }
 
 type LoadoutWeaponContext struct {
-	UnitID          uint32               `json:"unitId"`
-	SlotID          uint32               `json:"slotId"`
-	StoredHash      string               `json:"storedHash"`
-	BaseHash        string               `json:"baseHash"`
-	Name            string               `json:"name"`
-	InternalID      string               `json:"internalId"`
-	WeaponType      string               `json:"weaponType"`
-	Level           int                  `json:"level"`
-	XP              uint32               `json:"xp"`
-	Uncap           int                  `json:"uncap"`
-	Mirage          int                  `json:"mirage"`
-	Awakening       int                  `json:"awakening"`
-	Transcendence   int                  `json:"transcendence"`
-	Base            WeaponStatLine       `json:"base"`
-	AwakeningBonus  WeaponStatLine       `json:"awakeningBonus"`
-	MirageBonus     WeaponStatLine       `json:"mirageBonus"`
-	RebuildBonus    WeaponStatLine       `json:"rebuildBonus"`
-	Total           WeaponStatLine       `json:"total"`
-	Skills          []LoadoutWeaponSkill `json:"skills"`
-	Warnings        []string             `json:"warnings"`
-	FormulaVerified bool                 `json:"formulaVerified"`
+	UnitID                 uint32               `json:"unitId"`
+	SlotID                 uint32               `json:"slotId"`
+	StoredHash             string               `json:"storedHash"`
+	BaseHash               string               `json:"baseHash"`
+	Name                   string               `json:"name"`
+	InternalID             string               `json:"internalId"`
+	WeaponType             string               `json:"weaponType"`
+	Level                  int                  `json:"level"`
+	XP                     uint32               `json:"xp"`
+	Uncap                  int                  `json:"uncap"`
+	Mirage                 int                  `json:"mirage"`
+	Awakening              int                  `json:"awakening"`
+	Transcendence          int                  `json:"transcendence"`
+	TranscendenceSkill     string               `json:"transcendenceSkill"`
+	TranscendenceSkillName string               `json:"transcendenceSkillName"`
+	Base                   WeaponStatLine       `json:"base"`
+	AwakeningBonus         WeaponStatLine       `json:"awakeningBonus"`
+	MirageBonus            WeaponStatLine       `json:"mirageBonus"`
+	RebuildBonus           WeaponStatLine       `json:"rebuildBonus"`
+	Total                  WeaponStatLine       `json:"total"`
+	Skills                 []LoadoutWeaponSkill `json:"skills"`
+	Warnings               []string             `json:"warnings"`
+	FormulaVerified        bool                 `json:"formulaVerified"`
 }
 
 type weaponStatKeyframe struct {
@@ -205,6 +207,14 @@ func readLoadoutWeaponContext(save *SaveData, slotID uint32) (*LoadoutWeaponCont
 	context.Mirage = readWeaponIntScalar(save, weaponMirageIDType, unitID, &context.Warnings)
 	context.Awakening = readWeaponIntScalar(save, weaponAwakeIDType, unitID, &context.Warnings)
 	context.Transcendence = readWeaponIntScalar(save, weaponTranscendenceIDType, unitID, &context.Warnings)
+	if extra, ok := save.findUnitExact(weaponExtraIDType, unitID); ok && extra.ValueCnt >= 5 {
+		if hash, readErr := extra.Uint32At(4); readErr == nil {
+			if name, verified := weaponTranscendenceSkills[hash]; verified {
+				context.TranscendenceSkill = hashText(hash)
+				context.TranscendenceSkillName = name
+			}
+		}
+	}
 
 	context.Base = interpolateWeaponStat(data.Status[baseHash], context.Level)
 	// weapon_status_awake rows are per-level increments.  Summing through the

@@ -172,3 +172,11 @@ test('the generator rebuilds application trait icons from the exact skill table 
   assert.match(iconSyncScript, /Read-FixedASCII \$skillTableBytes \$offset 16/)
   assert.match(iconSyncScript, /Unexpected missing 2\.0\.2 trait sprites/)
 })
+
+test('the generator audits every application item through the exact item table hash and icon id', () => {
+  assert.match(iconSyncScript, /\$itemRows\s*=.*data\\items\.json/s)
+  assert.match(iconSyncScript, /\$itemTableRowSize\s*=\s*128/)
+  assert.match(iconSyncScript, /ToUInt32\(\$itemTableBytes,\s*\$offset\s*\+\s*32\)/)
+  assert.match(iconSyncScript, /Read-FixedASCII \$itemTableBytes \(\$offset \+ 16\) 16/)
+  assert.match(iconSyncScript, /Unexpected missing 2\.0\.2 item sprites/)
+})

@@ -189,9 +189,14 @@ type App struct {
 	// hProcess/moduleBase/{PID, Created} transition. Held only by lifecycle
 	// transitions (CharaAttach/CharaDetach/ensureGameProcess); the unexported
 	// charaDetachLocked variant runs the detach body without re-locking.
-	procMu             sync.Mutex
-	damageMeterMapping windows.Handle
-	damageMeterView    uintptr
+	procMu sync.Mutex
+	// formulaSamplerMu protects a separate strict read-only process handle and
+	// its A/B/A/B evidence state. It never shares the editor lifecycle above.
+	formulaSamplerMu         sync.Mutex
+	formulaSamplerSession    *formulaSamplerSession
+	formulaSamplerGeneration uint64
+	damageMeterMapping       windows.Handle
+	damageMeterView          uintptr
 	// damageMu guards the damage-meter shared-memory lifecycle and every mapped
 	// view read/write. Without it frontend polling could race shutdown after the
 	// view was unmapped.
@@ -223,6 +228,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	_ = a.closeFormulaSampler()
 	if handleDetachBeforeClose(ctx, a.CharaDetach()) {
 		return true
 	}
@@ -232,6 +238,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.saveWindowSize(ctx)
+	_ = a.closeFormulaSampler()
 	if a.damageOverlay != nil {
 		a.damageOverlay.stop()
 	}

@@ -228,6 +228,17 @@ var weaponTranscendenceSkills = map[uint32]string{
 	0x79027FC8: "超凡破限",
 }
 
+func parseWeaponTranscendenceSkill(value string) (uint32, error) {
+	hash, err := ParseHashHex(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("weapon transcendence skill is invalid: %w", err)
+	}
+	if _, valid := weaponTranscendenceSkills[hash]; !valid {
+		return 0, fmt.Errorf("weapon transcendence skill 0x%08X is not in the audited DLC 2.0.2 catalog", hash)
+	}
+	return hash, nil
+}
+
 type ProgressionResourceChange struct {
 	Kind  string `json:"kind"` // rupees | mastery | commendations
 	Value int32  `json:"value"`
@@ -578,6 +589,9 @@ type progressionWeaponExpected struct {
 }
 
 func (a *App) ProgressionApply(inputPath, outputPath string, resourceChanges []ProgressionResourceChange, itemChanges []ProgressionItemChange, weaponChanges []ProgressionWeaponChange) (*ProgressionApplyResult, error) {
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
+
 	if len(resourceChanges) == 0 && len(itemChanges) == 0 && len(weaponChanges) == 0 {
 		return nil, fmt.Errorf("没有待应用的修改")
 	}
@@ -868,7 +882,7 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 	}
 	if change.Transcendence >= 7 {
 		if strings.TrimSpace(change.TranscendenceSkill) != "" {
-			transcendenceSkill, err = ParseHashHex(change.TranscendenceSkill)
+			transcendenceSkill, err = parseWeaponTranscendenceSkill(change.TranscendenceSkill)
 			if err != nil {
 				return false, expected, fmt.Errorf("超凡强化效果 ID 无效: %w", err)
 			}
@@ -876,9 +890,6 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 			transcendenceSkill = current
 		} else {
 			transcendenceSkill = 0xBBD77C33
-		}
-		if _, valid := weaponTranscendenceSkills[transcendenceSkill]; !valid {
-			return false, expected, fmt.Errorf("超凡强化效果 0x%08X 不在 DLC 2.0.2 验证目录中", transcendenceSkill)
 		}
 	}
 	if err := extra.SetUint32At(4, transcendenceSkill); err != nil {

@@ -1,5 +1,7 @@
 # GBFRDataTools 最终实现与完整性审计
 
+> 历史快照：本文的页面数、测试数和 EXE 哈希已被 2026-07-20 离线收尾版取代。当前结论请以 [`FINAL_OFFLINE_CLOSEOUT_2026-07-20.md`](FINAL_OFFLINE_CLOSEOUT_2026-07-20.md) 为准；本文仅保留 CT 0.8.4、v1.8.4 和 PR #26 的审计过程。
+
 审计日期：2026-07-19
 
 工作分支：`feature/loadout-fullscreen`

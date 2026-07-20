@@ -76,6 +76,7 @@ type SigilGen struct {
 	savePath                string
 	queue                   []QueueItem
 	loadSaveForVerification func(string) (*SaveData, error)
+	retryAfterFailedCommit  *failedGeneratorCommit
 }
 
 var generatorFindProcessByName = findProcessByName
@@ -415,6 +416,7 @@ func (sg *SigilGen) LoadSaveFile(path string) (*SaveInfo, error) {
 	}
 	sg.save = s
 	sg.savePath = path
+	sg.retryAfterFailedCommit = nil
 
 	info := &SaveInfo{Path: path, OccupiedSigils: s.GetOccupiedGemCount()}
 	if maxID, err := s.GetMaxSlotID(); err == nil {
@@ -625,6 +627,8 @@ func (sg *SigilGen) ClearQueue() {
 func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
 		return nil, err
 	}
@@ -634,6 +638,16 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	if sg.save == nil {
 		return nil, fmt.Errorf("请先加载存档")
 	}
+	retryAllowed, err := allowExactFailedCommitRetry(sg.savePath, outputPath, sg.retryAfterFailedCommit)
+	if err != nil {
+		return nil, err
+	}
+	if !retryAllowed {
+		if err := ensureOfflineSaveSnapshotCurrent(sg.savePath, sg.save.data); err != nil {
+			return nil, err
+		}
+	}
+	sg.retryAfterFailedCommit = nil
 
 	// 展开队列（按 quantity 展开）
 	var expanded []QueueItem
@@ -704,6 +718,8 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	originalQueue := append([]QueueItem(nil), sg.queue...)
 	originalBackupPath := sg.save.lastBackupPath
 	committed := false
+	diskWritten := false
+	var writtenData []byte
 	defer func() {
 		if committed {
 			return
@@ -711,6 +727,9 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		sg.save.data = originalData
 		sg.save.lastBackupPath = originalBackupPath
 		sg.queue = originalQueue
+		if diskWritten {
+			sg.retryAfterFailedCommit = &failedGeneratorCommit{outputPath: outputPath, written: writtenData}
+		}
 	}()
 
 	newMaxSlotID := firstNewSlotID + len(expanded) - 1
@@ -765,6 +784,8 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	if err := sg.save.Write(outputPath); err != nil {
 		return nil, fmt.Errorf("写入输出文件失败: %w", err)
 	}
+	diskWritten = true
+	writtenData = append([]byte(nil), sg.save.data...)
 
 	// 严格回读验证：加载失败或任一字段不符都必须向调用方返回错误。
 	verifyLoader := sg.loadSaveForVerification
@@ -811,6 +832,7 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	}
 	sg.queue = nil
 	committed = true
+	sg.retryAfterFailedCommit = nil
 	return &ApplyResult{
 		CreatedCount:  created,
 		VerifiedCount: verified,
@@ -824,6 +846,8 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 func (sg *SigilGen) RemoveAllSigils(inputPath, outputPath string) (*ApplyResult, error) {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
 		return nil, err
 	}
@@ -1018,6 +1042,8 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 func (sg *SigilGen) DeleteSelectedSigils(gemUnitIDs []int, outputPath string) (*ApplyResult, error) {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	if err := ensureGeneratorWriteAllowed(outputPath); err != nil {
 		return nil, err
 	}

@@ -106,7 +106,7 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
   assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'chara', 'save'])
   assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'])
-  assert.deepEqual(navigationIds(patchTool, 'monitor'), ['ctMonitor'])
+  assert.deepEqual(navigationIds(patchTool, 'monitor'), ['ctMonitor', 'formulaSampler'])
   assert.deepEqual(navigationIds(patchTool, 'tools'), ['compatibility', 'language', 'patch'])
   assert.match(patchTool, /window\.setTimeout\(\(\) => warmTool\(navigation\.value\[0\]\?\.items\[0\]\), 60\)/)
 })
@@ -114,7 +114,7 @@ test('sidebar and top-tab groups put common functions first in an exact stable o
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
   assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone'])
   assert.deepEqual(homeEntryIds('memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest'])
-  assert.deepEqual(homeEntryIds('monitor'), ['ctMonitor'])
+  assert.deepEqual(homeEntryIds('monitor'), ['ctMonitor', 'formulaSampler'])
 })
 
 test('user-facing page titles omit the CT 0.8.4 suffix', () => {
@@ -142,10 +142,13 @@ test('ordinary tool pages reserve a fluid left panel without making portrait pla
   assert.doesNotMatch(patchTool, /\.tool-stage\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*62fr\)/is)
 })
 
-test('portrait is a fixed right-side background layer with top-anchored optical calibration', () => {
+test('portrait is a fixed right background layer with stable per-page optical calibration', () => {
   assert.match(patchTool, /class="tool-stage"[^>]*:style="\{ '--function-art': `url\('\$\{currentArt\}'\)` \}"/)
   assert.match(patchTool, /\.tool-stage\[data-tool="progression"\]\s*\{[^}]*--art-scale\s*:/is)
-  assert.match(patchTool, /\.tool-stage::before\s*\{[^}]*position\s*:\s*fixed[^}]*background-image\s*:\s*var\(--function-art\)[^}]*background-position\s*:\s*right var\(--art-x\) top var\(--art-y\)[^}]*background-size\s*:\s*auto var\(--art-scale\)/is)
+  assert.match(patchTool, /\.tool-stage::before\s*\{[^}]*position\s*:\s*fixed[^}]*right\s*:\s*var\(--art-right\)[^}]*bottom\s*:\s*var\(--art-bottom\)[^}]*background-image\s*:\s*var\(--function-art\)[^}]*background-position\s*:\s*right var\(--art-position-y\)[^}]*background-size\s*:\s*auto var\(--art-scale\)/is)
+  assert.match(patchTool, /--art-position-y\s*:\s*bottom/)
+  assert.match(patchTool, /\.tool-stage\[data-tool="formulaSampler"\][^\{]*\{[^}]*--art-position-y\s*:\s*12%/is)
+  assert.doesNotMatch(patchTool, /--art-x|--art-y/)
   assert.doesNotMatch(patchTool, /class="character-blend"|class="art-rail"|\.art-rail::before/)
 })
 

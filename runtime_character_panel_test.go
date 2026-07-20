@@ -140,6 +140,22 @@ func TestReadRuntimeCharacterPanelReturnsExactGameValuesForRequestedCharacter(t 
 	}
 }
 
+func TestLocateRuntimeCharacterPanelStatusReturnsTheMatchedStatusObject(t *testing.T) {
+	fixture := newRuntimePanelFixture()
+	fixture.setIDs(0x11, 0x22)
+	wantStatus := uintptr(0x250010000)
+	fixture.addStatus(0x11, 0x240000000, 0x250000000, 0x10203040, 1, 2, 3, 4)
+	fixture.addStatus(0x22, 0x240001000, wantStatus, 0xAABBCCDD, 5, 6, 7, 8)
+
+	status, err := locateRuntimeCharacterPanelStatus(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != wantStatus {
+		t.Fatalf("status object = 0x%X, want 0x%X", status, wantStatus)
+	}
+}
+
 func TestStableRuntimeCharacterPanelRequiresThreeIdenticalSnapshots(t *testing.T) {
 	want := RuntimeCharacterPanelStats{
 		CharacterHash:   "AABBCCDD",

@@ -1,10 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { LoadoutApply, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize } from '../../wailsjs/go/main/App'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, SummonGetOptions } from '../../wailsjs/go/main/App'
 import { GetCompatibleSecondaryTraits, GetSecondaryTraitLevels, GetSigilList } from '../../wailsjs/go/main/SigilGen'
 import { applyMasteryDirection, groupMasteryNodes, inferMasteryDirection, isMasteryNodeSelectable, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
 import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
+import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -34,6 +35,11 @@ const factorSlots = ref(createFactorSlots())
 const activeFactorIndex = ref(0)
 const cloneFrom = ref(0)
 const sigilSearch = ref('')
+const bagViewport = ref(null)
+const bagScrollTop = ref(0)
+const bagViewportWidth = ref(900)
+const bagViewportHeight = ref(420)
+let bagResizeObserver = null
 const factorMode = ref('construct')
 const masteryExpanded = ref(false)
 const masteryDirection = ref('')
@@ -50,6 +56,17 @@ const constructLoading = ref(false)
 const statContext = ref({ summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] })
 const summonSlotIds = ref([0, 0, 0, 0])
 const writeGlobalSummons = ref(false)
+const summonCatalog = ref({ traits: [], subParams: [] })
+const summonInlineEnabled = ref(false)
+const summonDrafts = ref({})
+const weaponInlineEnabled = ref(false)
+const weaponTranscendenceSkillDraft = ref('')
+const weaponTranscendenceSkills = [
+  { hash: 'BBD77C33', name: '超凡强击' },
+  { hash: '020DB733', name: '超凡技艺' },
+  { hash: '3F682593', name: '超凡奥秘' },
+  { hash: '79027FC8', name: '超凡破限' },
+]
 const finalStats = ref(null)
 const simulationError = ref('')
 const weaponSkills = ref([])
@@ -111,6 +128,29 @@ const filteredSigils = computed(() => {
   return (ctx.value?.sigils || []).filter(item => [item.name, item.primaryTraitName, item.secondaryTraitName]
     .some(value => String(value || '').toLocaleLowerCase().includes(query)))
 })
+const bagWindow = computed(() => resolveVirtualGridWindow({
+  itemCount: filteredSigils.value.length,
+  viewportWidth: bagViewportWidth.value,
+  viewportHeight: bagViewportHeight.value,
+  scrollTop: bagScrollTop.value,
+}))
+const visibleSigils = computed(() => filteredSigils.value.slice(bagWindow.value.startIndex, bagWindow.value.endIndex))
+const bagSpacerStyle = computed(() => ({ height: `${bagWindow.value.totalHeight}px` }))
+const bagWindowStyle = computed(() => ({
+  '--bag-columns': String(bagWindow.value.columns),
+  transform: `translateY(${bagWindow.value.offsetTop}px)`,
+}))
+
+function resetBagScroll() {
+  bagScrollTop.value = 0
+  nextTick(() => {
+    if (bagViewport.value) bagViewport.value.scrollTop = 0
+  })
+}
+
+function onBagScroll(event) {
+  bagScrollTop.value = event.currentTarget.scrollTop
+}
 function assetPath(folder, file) {
   if (!file) return ''
   return `/loadout-icons/${folder}/${String(file).split('/').map(part => encodeURIComponent(part).replace(/'/g, '%27')).join('/')}`
@@ -128,6 +168,12 @@ const selectedWeaponIcon = computed(() => weaponAssetIcon(selectedWeaponContext.
 const selectedSummons = computed(() => summonSlotIds.value.map(slotId =>
   statContext.value.summons.find(item => item.slotId === slotId) || null
 ))
+const weaponCurrentTranscendenceSkill = computed(() => {
+  const hash = normalizedHash(selectedWeaponContext.value?.transcendenceSkill)
+  return weaponTranscendenceSkills.some(skill => skill.hash === hash) ? hash : ''
+})
+const weaponInlineAvailable = computed(() => Number(selectedWeaponContext.value?.transcendence) >= 7
+  && Boolean(weaponCurrentTranscendenceSkill.value))
 const summonSelectionValid = computed(() => {
   const ids = summonSlotIds.value.map(Number)
   return ids.length === 4 && ids.every(id => id > 0 && statContext.value.summons.some(item => item.slotId === id)) && new Set(ids).size === 4
@@ -135,6 +181,108 @@ const summonSelectionValid = computed(() => {
 function summonUsedElsewhere(slotId, currentIndex) {
   return summonSlotIds.value.some((value, index) => index !== currentIndex && Number(value) === Number(slotId))
 }
+function hashHex(value) {
+  if (typeof value === 'string') return normalizedHash(value).padStart(8, '0')
+  return Number(value || 0).toString(16).toUpperCase().padStart(8, '0')
+}
+function summonSnapshotKey(summon) {
+  if (!summon) return '0'
+  return [summon.slotId, summon.unitId, summon.typeHash, summon.mainTraitHash, summon.mainTraitLevel,
+    summon.subParamHash, summon.subParamLevel, summon.rank].join(':')
+}
+function makeSummonDraft(summon) {
+  return {
+    mainTraitHash: hashHex(summon.mainTraitHash),
+    mainTraitLevel: Number(summon.mainTraitLevel),
+    subParamHash: hashHex(summon.subParamHash),
+    subParamLevel: Number(summon.subParamLevel),
+    rank: Number(summon.rank),
+  }
+}
+function summonMainOption(hash) {
+  const normalized = normalizedHash(hash)
+  return summonCatalog.value.traits.find(option => hashHex(option.hash) === normalized) || null
+}
+function summonSubOption(hash) {
+  const normalized = normalizedHash(hash)
+  return summonCatalog.value.subParams.find(option => hashHex(option.hash) === normalized) || null
+}
+function summonMainLevelLimit(draft) {
+  return Math.min(15, Math.max(0, Number(summonMainOption(draft?.mainTraitHash)?.maxLevel || 0)))
+}
+function summonSubLevelLimit(draft) {
+  return Math.min(9, Math.max(0, Number(summonSubOption(draft?.subParamHash)?.maxLevel || 0)))
+}
+function clampSummonDraft(draft) {
+  if (!draft) return
+  draft.mainTraitLevel = Math.min(Math.max(0, Number(draft.mainTraitLevel) || 0), summonMainLevelLimit(draft))
+  draft.subParamLevel = Math.min(Math.max(0, Number(draft.subParamLevel) || 0), summonSubLevelLimit(draft))
+  draft.rank = Math.min(Math.max(0, Number(draft.rank) || 0), 3)
+}
+function summonDraftChanged(summon, draft) {
+  return Boolean(summon && draft) && (
+    normalizedHash(draft.mainTraitHash) !== normalizedHash(summon.mainTraitHash)
+    || Number(draft.mainTraitLevel) !== Number(summon.mainTraitLevel)
+    || normalizedHash(draft.subParamHash) !== normalizedHash(summon.subParamHash)
+    || Number(draft.subParamLevel) !== Number(summon.subParamLevel)
+    || Number(draft.rank) !== Number(summon.rank)
+  )
+}
+function buildWeaponInlineEdits() {
+  const weapon = selectedWeaponContext.value
+  if (op.value !== 'write' || !weaponInlineEnabled.value || !weaponInlineAvailable.value
+    || weaponTranscendenceSkillDraft.value === weaponCurrentTranscendenceSkill.value) return []
+  return [{
+    slotId: Number(weapon.slotId),
+    expectUnitId: Number(weapon.unitId),
+    expectStoredHash: weapon.storedHash,
+    expectTranscendence: Number(weapon.transcendence),
+    expectTranscendenceSkill: weapon.transcendenceSkill,
+    transcendenceSkill: weaponTranscendenceSkillDraft.value,
+  }]
+}
+function buildSummonInlineEdits() {
+  if (op.value !== 'write' || !summonInlineEnabled.value || !summonSelectionValid.value) return []
+  return selectedSummons.value.flatMap((summon) => {
+    const draft = summonDrafts.value[summon?.slotId]
+    if (!summonDraftChanged(summon, draft)) return []
+    return [{
+      slotId: Number(summon.slotId),
+      expectUnitId: Number(summon.unitId),
+      expectTypeHash: summon.typeHash,
+      expectMainTraitHash: summon.mainTraitHash,
+      expectMainTraitLevel: Number(summon.mainTraitLevel),
+      expectSubParamHash: summon.subParamHash,
+      expectSubParamLevel: Number(summon.subParamLevel),
+      expectRank: Number(summon.rank),
+      mainTraitHash: draft.mainTraitHash,
+      mainTraitLevel: Number(draft.mainTraitLevel),
+      subParamHash: draft.subParamHash,
+      subParamLevel: Number(draft.subParamLevel),
+      rank: Number(draft.rank),
+    }]
+  })
+}
+
+let inlineWeaponUnitID = 0
+watch(() => [selectedWeaponContext.value?.unitId || 0, weaponCurrentTranscendenceSkill.value], ([unitId, skill]) => {
+  if (Number(unitId) !== inlineWeaponUnitID) weaponInlineEnabled.value = false
+  inlineWeaponUnitID = Number(unitId)
+  weaponTranscendenceSkillDraft.value = skill || ''
+})
+watch(() => selectedSummons.value.map(summonSnapshotKey).join('|'), () => {
+  const next = {}
+  for (const summon of selectedSummons.value) {
+    if (summon) next[summon.slotId] = makeSummonDraft(summon)
+  }
+  summonDrafts.value = next
+}, { immediate: true })
+watch(summonInlineEnabled, (enabled) => {
+  if (enabled) writeGlobalSummons.value = true
+})
+watch(writeGlobalSummons, (enabled) => {
+  if (!enabled) summonInlineEnabled.value = false
+})
 function formatStatNumber(value) {
   return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 }
@@ -517,15 +665,18 @@ async function loadCtx() {
   loading.value = true
   ctx.value = null
   try {
-    const [editContext, loadedStatContext] = await Promise.all([
+    const [editContext, loadedStatContext, loadedSummonCatalog] = await Promise.all([
       LoadoutEditContext(props.savePath, props.charaHash),
       LoadoutStatContext(props.savePath, props.charaHash),
+      SummonGetOptions(),
     ])
     ctx.value = editContext
     statContext.value = loadedStatContext || { summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] }
+    summonCatalog.value = loadedSummonCatalog || { traits: [], subParams: [] }
     summonSlotIds.value = [...(statContext.value.equippedSummonSlotIds || [])].slice(0, 4)
     while (summonSlotIds.value.length < 4) summonSlotIds.value.push(0)
     writeGlobalSummons.value = false
+    summonInlineEnabled.value = false
     await loadMasteryPool()
     // 默认打开该角色内容最完整的一套，真实存档可直接看到 12 因子、4 技能与 50 专精。
     const richest = [...props.loadouts].filter(item => !item.isParty).sort((a, b) =>
@@ -547,6 +698,23 @@ async function loadCtx() {
 watch(() => [props.savePath, props.charaHash], loadCtx, { immediate: true })
 watch(() => props.loadouts, (next, previous) => {
   if (next !== previous && props.savePath && props.charaHash) loadCtx()
+})
+watch(sigilSearch, resetBagScroll)
+watch(() => ctx.value?.sigils, resetBagScroll)
+watch(bagViewport, (nextViewport, previousViewport) => {
+  if (previousViewport) bagResizeObserver?.unobserve(previousViewport)
+  if (nextViewport) bagResizeObserver?.observe(nextViewport)
+})
+
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined') return
+  bagResizeObserver = new ResizeObserver(entries => {
+    const rect = entries[0]?.contentRect
+    if (!rect) return
+    bagViewportWidth.value = rect.width || 900
+    bagViewportHeight.value = rect.height || 420
+  })
+  if (bagViewport.value) bagResizeObserver.observe(bagViewport.value)
 })
 
 function selectFactorSlot(index) {
@@ -600,7 +768,13 @@ function replaceSkillAt(index) {
   else form.value.skillHashes.splice(index, 1, pending)
   pendingSkillHash.value = ''
 }
-watch(op, () => { pendingSkillHash.value = '' })
+watch(op, (nextOp) => {
+  pendingSkillHash.value = ''
+  if (nextOp !== 'write') {
+    weaponInlineEnabled.value = false
+    summonInlineEnabled.value = false
+  }
+})
 
 function stageConstructedFactor() {
   const sigil = selectedConstructSigil.value
@@ -692,7 +866,7 @@ const writeInvalid = computed(() => {
 
 watch([targetSlot, op, form, factorSlots, cloneFrom, writeGlobalSummons, summonSlotIds, () => selectedMasteryHashes.value.slice()], scheduleCompliance, { deep: true })
 
-onBeforeUnmount(() => { simRequestId++; complianceRequestId++; clearTimeout(simTimer); clearTimeout(masteryTimer); clearTimeout(complianceTimer) })
+onBeforeUnmount(() => { simRequestId++; complianceRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer); clearTimeout(complianceTimer) })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -761,10 +935,13 @@ async function apply() {
   const slotNo = selectedSlot.value?.slot ?? '?'
   const occupied = selectedSlot.value?.occupied
   const draftCount = w.constructedSigils?.length || 0
+  const weaponEdits = buildWeaponInlineEdits()
+  const summonEdits = buildSummonInlineEdits()
+  const ownedEditCount = weaponEdits.length + summonEdits.length
   const verb = op.value === 'clear' ? '清空' : (occupied ? '覆盖' : '写入')
   const detail = op.value === 'clear'
     ? `将清空【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。`
-    : `将${verb}【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。${draftCount ? `其中 ${draftCount} 个构造草稿会在本次写入中自动生成并绑定到对应槽位。` : ''}${writeGlobalSummons.value ? '同时更新存档共用的全局四槽召唤石。' : ''}`
+    : `将${verb}【${props.charaName}·槽${String(slotNo).padStart(2, '0')}】的配装。${draftCount ? `其中 ${draftCount} 个构造草稿会在本次写入中自动生成并绑定到对应槽位。` : ''}${writeGlobalSummons.value ? '同时更新存档共用的全局四槽召唤石。' : ''}${ownedEditCount ? `本次还会编辑 ${ownedEditCount} 个背包实例；所有引用它的配装都会看到新值。配装、构造因子和实例改动在同一事务写入并回读。` : ''}`
   const confirmed = await confirmDialog.value?.ask({
     title: '写入存档前确认',
     detail,
@@ -775,7 +952,11 @@ async function apply() {
 
   applying.value = true
   try {
-    const res = await LoadoutApply(props.savePath, '', [w])
+    const res = await LoadoutApplyWithResources(props.savePath, '', {
+      changes: [w],
+      weaponEdits,
+      summonEdits,
+    })
     emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，同时生成 ${res.createdCount} 个因子` : ''}`, 'success')
     emit('reload')
   } catch (err) {
@@ -936,6 +1117,17 @@ async function apply() {
             <span><b>{{ selectedWeaponContext.name }}</b><small>Lv{{ selectedWeaponContext.level }} · 觉醒 {{ selectedWeaponContext.awakening }} · 超凡 {{ selectedWeaponContext.transcendence }}</small></span>
             <em>HP {{ formatFinalStat(selectedWeaponContext.total?.hp) }} · 攻击 {{ formatFinalStat(selectedWeaponContext.total?.attack) }}</em>
           </div>
+          <div v-if="weaponInlineAvailable" class="inline-resource-panel weapon-inline-panel">
+            <label class="inline-resource-toggle ui-check">
+              <input v-model="weaponInlineEnabled" type="checkbox" />
+              <span><b>同时编辑该武器实例</b><small>仅开放已验证的第 7 阶超凡效果槽</small></span>
+            </label>
+            <select v-if="weaponInlineEnabled" v-model="weaponTranscendenceSkillDraft" class="ed-select ui-select">
+              <option v-for="skill in weaponTranscendenceSkills" :key="skill.hash" :value="skill.hash">{{ skill.name }}</option>
+            </select>
+            <small>编辑的是背包中的武器与召唤石实例，会影响所有引用它的配装。</small>
+          </div>
+          <small v-else-if="selectedWeaponContext && Number(selectedWeaponContext.transcendence) >= 7" class="summon-invalid">第 7 阶效果不是内置目录中的四种已验证值，当前页面只读显示。</small>
         </div>
 
         <div class="ed-field summon-field">
@@ -947,8 +1139,15 @@ async function apply() {
               <small>关闭时仅参与右侧数值预览；背包可选 {{ statContext.summons.length }} 个</small>
             </span>
           </label>
+          <label class="summon-write-toggle ui-check" :class="{ disabled: !summonSelectionValid }">
+            <input v-model="summonInlineEnabled" type="checkbox" :disabled="!summonSelectionValid" />
+            <span>
+              <b>同时编辑当前四个召唤石实例</b>
+              <small>启用后会一并选定并写入这四个全局槽；实例属性与配装在同一事务回读验证</small>
+            </span>
+          </label>
           <div class="summon-slot-list">
-            <label v-for="index in 4" :key="index" class="summon-slot-card">
+            <article v-for="index in 4" :key="index" class="summon-slot-card">
               <span class="summon-slot-index">{{ String(index).padStart(2, '0') }}</span>
               <select v-model.number="summonSlotIds[index - 1]" class="ed-select ui-select">
                 <option :value="0" disabled>— 选择召唤石 —</option>
@@ -963,7 +1162,26 @@ async function apply() {
                 <small><i>主</i>{{ selectedSummons[index - 1].mainTraitName }} Lv{{ selectedSummons[index - 1].mainTraitLevel }}</small>
                 <small><i>副</i>{{ selectedSummons[index - 1].subParamName }} {{ formatSignedValue(selectedSummons[index - 1].subParamValue, selectedSummons[index - 1].subParamUnit) }}</small>
               </span>
-            </label>
+              <div v-if="summonInlineEnabled && selectedSummons[index - 1] && summonDrafts[selectedSummons[index - 1].slotId]" class="summon-inline-grid">
+                <label class="summon-inline-wide"><span>主加护</span>
+                  <select v-model="summonDrafts[selectedSummons[index - 1].slotId].mainTraitHash" class="ed-select ui-select"
+                    :disabled="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])">
+                    <option v-if="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" :value="hashHex(selectedSummons[index - 1].mainTraitHash)">未收录主加护（仅原样保留）</option>
+                    <option v-for="option in summonCatalog.traits" :key="option.hash" :value="hashHex(option.hash)">{{ option.name }}</option>
+                  </select>
+                </label>
+                <label><span>主等级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].mainTraitLevel" class="ed-input ui-input" type="number" min="0"
+                  :max="summonMainLevelLimit(summonDrafts[selectedSummons[index - 1].slotId])" :disabled="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
+                <label class="summon-inline-wide"><span>副参数</span>
+                  <select v-model="summonDrafts[selectedSummons[index - 1].slotId].subParamHash" class="ed-select ui-select" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])">
+                    <option v-for="option in summonCatalog.subParams" :key="option.hash" :value="hashHex(option.hash)">{{ option.name }}</option>
+                  </select>
+                </label>
+                <label><span>副等级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].subParamLevel" class="ed-input ui-input" type="number" min="0"
+                  :max="summonSubLevelLimit(summonDrafts[selectedSummons[index - 1].slotId])" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
+                <label><span>阶级</span><select v-model.number="summonDrafts[selectedSummons[index - 1].slotId].rank" class="ed-select ui-select"><option v-for="rank in [0,1,2,3]" :key="rank" :value="rank">{{ rank }} / 3</option></select></label>
+              </div>
+            </article>
           </div>
           <small v-if="writeGlobalSummons && !summonSelectionValid" class="summon-invalid">要同步全局四槽，请选择四个不重复、确实存在于当前存档背包中的召唤石。</small>
           <small v-else class="hint">四个召唤石始终参与右侧来源汇总；只有开启上方选项时才会改动存档的全局装备槽。</small>
@@ -1041,21 +1259,26 @@ async function apply() {
               <input v-model="sigilSearch" class="ui-input" placeholder="搜索因子、主词条或副词条" />
               <span>{{ filteredSigils.length }} 件</span>
             </div>
-            <div class="pick-grid sigils">
-              <button v-for="s in filteredSigils" :key="s.slotId" class="pick sigil-pick"
-                :class="{ on: factorSlots[activeFactorIndex]?.kind === 'bag' && factorSlots[activeFactorIndex]?.slotId === s.slotId, used: bagFactorSlotNumber(s.slotId) }"
-                @click="chooseBagFactor(s.slotId)" :title="`${s.name}｜主：${s.primaryTraitName} Lv${s.primaryTraitLevel}${s.secondaryTraitName ? `｜副：${s.secondaryTraitName} Lv${s.secondaryTraitLevel}` : ''}`">
-                <span class="sigil-icon-frame">
-                  <img v-if="traitIcon(s.primaryTraitName, s.primaryTraitHash)" :src="traitIcon(s.primaryTraitName, s.primaryTraitHash)" alt="" />
-                  <i v-else>{{ s.generic ? '◇' : '◆' }}</i>
-                </span>
-                <span class="sigil-copy">
-                  <b>{{ s.name }}</b>
-                  <small v-if="s.primaryTraitName" class="trait-line"><i>主</i><span>{{ s.primaryTraitName }}</span><em>Lv{{ s.primaryTraitLevel }}</em></small>
-                  <small v-if="s.secondaryTraitName" class="trait-line"><i>副</i><span>{{ s.secondaryTraitName }}</span><em>Lv{{ s.secondaryTraitLevel }}</em></small>
-                </span>
-                <span class="bag-factor-meta"><b v-if="bagFactorSlotNumber(s.slotId)">槽 {{ String(bagFactorSlotNumber(s.slotId)).padStart(2, '0') }}</b><i v-if="s.level">Lv{{ s.level }}</i></span>
-              </button>
+            <div ref="bagViewport" class="bag-virtual-viewport ui-scroll-region" aria-label="背包因子" @scroll="onBagScroll">
+              <div class="bag-virtual-spacer" :style="bagSpacerStyle">
+                <div class="pick-grid sigils bag-virtual-window" :style="bagWindowStyle">
+                  <button v-for="(s, visibleIndex) in visibleSigils" :key="s.slotId" class="pick sigil-pick"
+                    :data-virtual-index="bagWindow.startIndex + visibleIndex"
+                    :class="{ on: factorSlots[activeFactorIndex]?.kind === 'bag' && factorSlots[activeFactorIndex]?.slotId === s.slotId, used: bagFactorSlotNumber(s.slotId) }"
+                    @click="chooseBagFactor(s.slotId)" :title="`${s.name}｜主：${s.primaryTraitName} Lv${s.primaryTraitLevel}${s.secondaryTraitName ? `｜副：${s.secondaryTraitName} Lv${s.secondaryTraitLevel}` : ''}`">
+                    <span class="sigil-icon-frame">
+                      <img v-if="traitIcon(s.primaryTraitName, s.primaryTraitHash)" :src="traitIcon(s.primaryTraitName, s.primaryTraitHash)" alt="" />
+                      <i v-else>{{ s.generic ? '◇' : '◆' }}</i>
+                    </span>
+                    <span class="sigil-copy">
+                      <b>{{ s.name }}</b>
+                      <small v-if="s.primaryTraitName" class="trait-line"><i>主</i><span>{{ s.primaryTraitName }}</span><em>Lv{{ s.primaryTraitLevel }}</em></small>
+                      <small v-if="s.secondaryTraitName" class="trait-line"><i>副</i><span>{{ s.secondaryTraitName }}</span><em>Lv{{ s.secondaryTraitLevel }}</em></small>
+                    </span>
+                    <span class="bag-factor-meta"><b v-if="bagFactorSlotNumber(s.slotId)">槽 {{ String(bagFactorSlotNumber(s.slotId)).padStart(2, '0') }}</b><i v-if="s.level">Lv{{ s.level }}</i></span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1404,8 +1627,16 @@ async function apply() {
 .weapon-context-strip b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
 .weapon-context-strip small { color:var(--text-muted); font-size:var(--fs-xs); }
 .weapon-context-strip em { grid-column:2 / -1; min-width:0; color:#765126; font-size:var(--fs-xs); font-style:normal; font-variant-numeric:tabular-nums; white-space:normal; overflow-wrap:anywhere; }
+.inline-resource-panel { display:grid; gap:7px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.055); }
+.inline-resource-panel > small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.4; }
+.inline-resource-toggle { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; cursor:pointer; }
+.inline-resource-toggle input { width:16px; height:16px; margin:0; accent-color:#765126; }
+.inline-resource-toggle span { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.inline-resource-toggle b { color:var(--text-primary); }
+.inline-resource-toggle small { color:var(--text-muted); }
 .summon-slot-list { display:flex; flex-direction:column; gap:8px; }
 .summon-write-toggle { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; padding:7px 8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.055); cursor:pointer; }
+.summon-write-toggle.disabled { opacity:.55; cursor:not-allowed; }
 .summon-write-toggle input { width:16px; height:16px; margin:0; accent-color:#765126; }
 .summon-write-toggle span { min-width:0; display:flex; flex-direction:column; gap:1px; }
 .summon-write-toggle b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
@@ -1419,6 +1650,11 @@ async function apply() {
 .summon-source-lines > b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-weight:600; }
 .summon-source-lines > small { display:grid; grid-template-columns:19px minmax(0,1fr); gap:4px; color:var(--text-muted); line-height:1.4; }
 .summon-source-lines i { height:17px; display:grid; place-items:center; border:1px solid var(--line-soft); border-radius:3px; color:#765126; font-style:normal; }
+.summon-inline-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:4px; padding:8px; border:1px solid rgba(139,103,55,.2); border-radius:7px; background:rgba(255,255,255,.44); }
+.summon-inline-grid label { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.summon-inline-grid label > span { color:var(--text-muted); font-size:var(--fs-xs); font-weight:600; }
+.summon-inline-grid input,.summon-inline-grid select { width:100%; min-width:0; }
+.summon-inline-wide { grid-column:span 2; }
 .summon-invalid { color:var(--red); font-size:calc(12px * var(--editor-scale)); }
 .pick-grid { display:flex; flex-wrap:wrap; gap:6px; padding:2px; }
 .pick-grid.sigils { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); grid-auto-rows:minmax(86px,auto); align-items:stretch; gap:9px; padding:3px 5px 3px 3px; }
@@ -1655,6 +1891,13 @@ async function apply() {
 .loadout-editor .sigil-pick { grid-template-columns:36px minmax(0,1fr) auto; min-height:86px; height:100%; }
 
 .bag-picker-shell { display:flex; flex-direction:column; gap:8px; padding:9px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-solid); }
+.bag-virtual-viewport { position:relative; height:clamp(300px,46dvh,560px); min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; contain:layout paint; }
+.bag-virtual-spacer { position:relative; width:100%; min-width:0; }
+.pick-grid.sigils.bag-virtual-window { position:absolute; top:0; right:0; left:0; grid-template-columns:repeat(var(--bag-columns),minmax(0,1fr)); grid-auto-rows:86px; will-change:transform; }
+.bag-virtual-window .sigil-pick { min-height:86px; height:86px; overflow:hidden; }
+.bag-virtual-window .sigil-copy > b,
+.bag-virtual-window .trait-line > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bag-virtual-window .sigil-copy .trait-line { overflow:hidden; white-space:nowrap; }
 .constructor-shell { display:flex; flex-direction:column; gap:9px; padding:10px; border:1px solid var(--line-gold); border-radius:9px; background:rgba(249,242,225,.78); }
 .constructor-note { display:flex; align-items:center; gap:9px; }
 .constructor-mark { width:30px; height:30px; display:grid; place-items:center; flex:0 0 30px; border-radius:50%; background:#8b6737; color:#fff; font-size:calc(12px * var(--editor-scale)); font-weight:700; line-height:1; }
@@ -1726,5 +1969,8 @@ async function apply() {
   .ed-head .owner { justify-self:start; }
   .bag-toolbar { grid-template-columns:1fr auto; }
   .bag-toolbar strong { grid-column:1/-1; }
+  .bag-virtual-viewport { height:clamp(260px,42dvh,440px); }
+  .summon-inline-grid { grid-template-columns:1fr; }
+  .summon-inline-wide { grid-column:auto; }
 }
 </style>

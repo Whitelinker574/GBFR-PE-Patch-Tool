@@ -52,10 +52,12 @@ const ctCombatArt = new URL('../assets/gbfr/cutouts/ct-combat-official-edge-safe
 const ctCharactersArt = new URL('../assets/gbfr/cutouts/ct-characters-official-edge-safe.webp', import.meta.url).href
 const ctQuestArt = new URL('../assets/gbfr/cutouts/ct-quest-official-edge-safe.webp', import.meta.url).href
 const ctMonitorArt = new URL('../assets/gbfr/cutouts/ct-monitor-official-edge-safe.webp', import.meta.url).href
+const formulaSamplerArt = new URL('../assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp', import.meta.url).href
 const ctCombatSticker = new URL('../assets/gbfr/stickers/ct-combat.webp', import.meta.url).href
 const ctCharactersSticker = new URL('../assets/gbfr/stickers/ct-characters.webp', import.meta.url).href
 const ctQuestSticker = new URL('../assets/gbfr/stickers/ct-quest.webp', import.meta.url).href
 const ctMonitorSticker = new URL('../assets/gbfr/stickers/ct-monitor.webp', import.meta.url).href
+const formulaSamplerSticker = new URL('../assets/gbfr/stickers/formula-sampler.webp', import.meta.url).href
 
 const componentLoaders = {
   progression: () => import('./ProgressionEditor.vue'),
@@ -75,6 +77,7 @@ const componentLoaders = {
   ctCharacters: () => import('./CT084Features.vue'),
   ctQuest: () => import('./CT084Features.vue'),
   ctMonitor: () => import('./CT084RuntimeMonitor.vue'),
+  formulaSampler: () => import('./FormulaSampler.vue'),
   language: () => import('./LanguageSettings.vue'),
 }
 // 桌面本地应用无网络加载成本，改用静态直引：全部组件打进主包，
@@ -95,6 +98,7 @@ import SaveEditor from './SaveEditor.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
 import CT084Features from './CT084Features.vue'
 import CT084RuntimeMonitor from './CT084RuntimeMonitor.vue'
+import FormulaSampler from './FormulaSampler.vue'
 import LanguageSettings from './LanguageSettings.vue'
 
 const state = reactive({
@@ -205,6 +209,13 @@ const toolMeta = {
     caution: '页面不会写物品或存档；选中物品捕获 Hook 会在安全断开或离开页面时恢复原字节。',
     speaker: '尤斯塔斯', note: '等数据稳定再读。地址变化就停一下——巡检只看证据，不靠猜。',
   },
+  formulaSampler: {
+    group: 'monitor', title: '角色公式采样', eyebrow: '严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
+    description: '只读采集角色最终 HP、攻击、暴击率与昏厥值，通过单变量 A1/B1/A2/B2 复现实验生成脱敏证据包。',
+    usage: ['选择当前出战角色并连接', '每轮只改变一个可逆项目', '严格按 A1/B1/A2/B2 采集后导出'],
+    caution: '面板未稳定或同时改变多个项目会让样本失效；采样器不安装 Hook，也不写进程。',
+    speaker: '卡塔莉娜', note: '一次只动一项，等数字站稳再记。前后能复现，公式才算有证据。',
+  },
   ctCombat: {
     group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
     description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
@@ -275,7 +286,7 @@ const toolMeta = {
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'chara', 'save'] },
   { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor'] },
+  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor', 'formulaSampler'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
 ])
 
@@ -283,7 +294,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '20 个实际工具页 + 1 个主页已接入。',
+  baselineSummary: '21 个实际工具页 + 1 个主页已接入。',
   baselineBoundary: '真实游戏进程 E2E 仍待实机验证',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
@@ -303,7 +314,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '20 tool pages plus the home page are integrated.',
+  baselineSummary: '21 tool pages plus the home page are integrated.',
   baselineBoundary: 'Real-process E2E validation is still pending',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
@@ -324,7 +335,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '存档修改页面', status: '6 / 6', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、角色次数、任务与称号记录' },
   { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT 战斗、CT 角色、CT 任务、怪物实验' },
-  { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '运行监测；不执行物品或存档写入' },
+  { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '运行监测与角色公式采样；公式采样不安装 Hook、不写进程或存档' },
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
   { scope: 'CT 安全直接覆盖', status: '60 / 64', tone: 'ok', detail: '58 个新增功能 + 2 个已有安全实现；4 个拒绝项未作为可用开关暴露' },
   { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
@@ -332,7 +343,7 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
 ] : [
   { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest and title records' },
   { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, CT combat, CT characters, CT quests, monster experiments' },
-  { scope: 'Read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Runtime monitoring; does not write items or save data' },
+  { scope: 'Read-only monitor pages', status: '2 / 2', tone: 'ok', detail: 'Runtime monitoring and formula sampling; formula sampling installs no hooks and writes neither process nor save data' },
   { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
   { scope: 'CT safe direct coverage', status: '60 / 64', tone: 'ok', detail: '58 new features plus 2 existing safe implementations; 4 rejected candidates are not exposed' },
   { scope: 'CT production catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to DLC 2.0.2 original-byte and unique-hit evidence' },
@@ -372,6 +383,7 @@ const functionArt = {
   ctCharacters: ctCharactersArt,
   ctQuest: ctQuestArt,
   ctMonitor: ctMonitorArt,
+  formulaSampler: formulaSamplerArt,
   chara: charaArt,
   save: saveArt,
   compatibility: compatibilityArt,
@@ -395,6 +407,7 @@ const functionStickers = {
   ctCharacters: ctCharactersSticker,
   ctQuest: ctQuestSticker,
   ctMonitor: ctMonitorSticker,
+  formulaSampler: formulaSamplerSticker,
   chara: charaSticker,
   save: saveSticker,
   compatibility: compatibilitySticker,
@@ -701,6 +714,7 @@ function showStatus(message, type) {
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
             <CT084RuntimeMonitor v-else-if="activeTab === 'ctMonitor'" @status="showStatus" />
+            <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCombat'" mode="combat" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCharacters'" mode="characters" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctQuest'" mode="quest" @status="showStatus" />
@@ -1301,8 +1315,9 @@ button,input,select { font:inherit; }
 
 .tool-stage {
   --art-scale:160%;
-  --art-x:calc(-32.55dvh + 43px);
-  --art-y:calc(3dvh - 4px);
+  --art-right:calc(-32.55dvh + 43px);
+  --art-bottom:calc(-3dvh + 4px);
+  --art-position-y:bottom;
   position:relative;
   isolation:isolate;
   min-width:0;
@@ -1314,10 +1329,13 @@ button,input,select { font:inherit; }
   content:"";
   position:fixed;
   z-index:0;
-  inset:calc(var(--titlebar-size) + 90px) 0 0;
+  top:calc(var(--titlebar-size) + 90px);
+  right:var(--art-right);
+  bottom:var(--art-bottom);
+  left:0;
   background-image:var(--function-art);
   background-repeat:no-repeat;
-  background-position:right var(--art-x) top var(--art-y);
+  background-position:right var(--art-position-y);
   background-size:auto var(--art-scale);
   pointer-events:none;
 }
@@ -1393,26 +1411,27 @@ button,input,select { font:inherit; }
 .tool-panel[data-tool="progression"] :deep(.save-title > div:first-child) { display:none; }
 .tool-panel[data-tool="progression"] :deep(.save-title) { min-height:0; justify-content:flex-end; }
 
-.tool-stage[data-tool="progression"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="sigil"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="sigilMemory"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="loadout"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-x:calc(-8.33dvh + 11px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-x:calc(-6.77dvh + 9px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="chara"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="save"] { --art-scale:160%; --art-x:calc(-43.10dvh + 57px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-x:calc(-35.81dvh + 47px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="monster"] { --art-scale:160%; --art-x:calc(-21.48dvh + 28px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="patch"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="language"] { --art-scale:178%; --art-x:calc(-39.06dvh + 52px); --art-y:calc(-17dvh + 22px); }
+.tool-stage[data-tool="progression"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="sigil"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="sigilMemory"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="loadout"] { --art-scale:160%; --art-right:calc(-8.20dvh + 11px); }
+.tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-right:calc(-8.33dvh + 11px); }
+.tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-right:calc(-6.77dvh + 9px); }
+.tool-stage[data-tool="summon"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="runtime"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-right:calc(-9.11dvh + 12px); }
+.tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-right:calc(-9.11dvh + 12px); --art-position-y:12%; }
+.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-right:calc(-7.03dvh + 9px); }
+.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-right:calc(-7.29dvh + 10px); }
+.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-right:calc(-7.03dvh + 9px); }
+.tool-stage[data-tool="chara"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="save"] { --art-scale:160%; --art-right:calc(-43.10dvh + 57px); }
+.tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-right:calc(-35.81dvh + 47px); }
+.tool-stage[data-tool="monster"] { --art-scale:160%; --art-right:calc(-21.48dvh + 28px); }
+.tool-stage[data-tool="patch"] { --art-scale:160%; --art-right:calc(-32.55dvh + 43px); }
+.tool-stage[data-tool="language"] { --art-scale:178%; --art-right:calc(-39.06dvh + 52px); --art-bottom:calc(17dvh - 22px); }
 .art-caption {
   position:fixed;
   z-index:3;

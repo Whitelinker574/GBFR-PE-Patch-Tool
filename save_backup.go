@@ -350,6 +350,8 @@ func (a *App) RestoreSaveSnapshot(id string) (SaveRestoreResult, error) {
 	if _, err := findProcessByName(charaProcessName); err == nil {
 		return SaveRestoreResult{}, fmt.Errorf("恢复存档前请先完全退出游戏")
 	}
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	saveSnapshotMu.Lock()
 	defer saveSnapshotMu.Unlock()
 	snapshot, snapshotDir, err := loadSaveSnapshot(id)

@@ -33,6 +33,7 @@ const groups = [
     id: 'monitor', mark: '测', label: '内存监测', hint: '只读读取运行中游戏数据，不修改物品或存档',
     items: [
       { id: 'ctMonitor', icon: '测', title: '运行监测', copy: '队伍快照、选中素材与关键物品' },
+      { id: 'formulaSampler', icon: '证', title: '公式采样', copy: '单变量 A/B/A/B 角色面板证据' },
     ],
   },
 ]

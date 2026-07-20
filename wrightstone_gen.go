@@ -64,6 +64,7 @@ type WrightstoneGen struct {
 	savePath                string
 	queue                   []WrightstoneQueueItem
 	loadSaveForVerification func(string) (*SaveData, error)
+	retryAfterFailedCommit  *failedGeneratorCommit
 }
 
 func NewWrightstoneGen() *WrightstoneGen {
@@ -233,6 +234,7 @@ func (wg *WrightstoneGen) LoadSaveFile(path string) (*WrightstoneSaveInfo, error
 	}
 	wg.save = s
 	wg.savePath = path
+	wg.retryAfterFailedCommit = nil
 
 	info := &WrightstoneSaveInfo{Path: path, OccupiedWrightstones: s.GetOccupiedWrightstoneCount()}
 	if maxID, err := s.GetMaxWrightstoneSlotID(); err == nil {
@@ -470,6 +472,8 @@ func (wg *WrightstoneGen) ClearQueue() {
 func (wg *WrightstoneGen) ApplyQueue(outputPath string) (*WrightstoneApplyResult, error) {
 	wg.mu.Lock()
 	defer wg.mu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	items := append([]WrightstoneQueueItem(nil), wg.queue...)
 	result, err := wg.applyItemsLocked(items, outputPath)
 	if err != nil {
@@ -482,6 +486,8 @@ func (wg *WrightstoneGen) ApplyQueue(outputPath string) (*WrightstoneApplyResult
 func (wg *WrightstoneGen) ApplyItems(items []WrightstoneQueueItem, outputPath string) (*WrightstoneApplyResult, error) {
 	wg.mu.Lock()
 	defer wg.mu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 	return wg.applyItemsLocked(append([]WrightstoneQueueItem(nil), items...), outputPath)
 }
 
@@ -496,6 +502,16 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 		return nil, fmt.Errorf("请先加载存档")
 	}
 	outputPath = strings.TrimSpace(outputPath)
+	retryAllowed, err := allowExactFailedCommitRetry(wg.savePath, outputPath, wg.retryAfterFailedCommit)
+	if err != nil {
+		return nil, err
+	}
+	if !retryAllowed {
+		if err := ensureOfflineSaveSnapshotCurrent(wg.savePath, wg.save.data); err != nil {
+			return nil, err
+		}
+	}
+	wg.retryAfterFailedCommit = nil
 	if outputPath == "" {
 		return nil, fmt.Errorf("请输入输出路径")
 	}
@@ -566,6 +582,8 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 	originalQueue := append([]WrightstoneQueueItem(nil), wg.queue...)
 	originalBackupPath := wg.save.lastBackupPath
 	committed := false
+	diskWritten := false
+	var writtenData []byte
 	defer func() {
 		if committed {
 			return
@@ -573,6 +591,9 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 		wg.save.data = originalData
 		wg.save.lastBackupPath = originalBackupPath
 		wg.queue = originalQueue
+		if diskWritten {
+			wg.retryAfterFailedCommit = &failedGeneratorCommit{outputPath: outputPath, written: writtenData}
+		}
 	}()
 
 	newMaxSlotID := firstNewSlotID + len(expanded) - 1
@@ -633,6 +654,8 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 	if err := wg.save.Write(outputPath); err != nil {
 		return nil, fmt.Errorf("写入输出文件失败: %w", err)
 	}
+	diskWritten = true
+	writtenData = append([]byte(nil), wg.save.data...)
 
 	verified, err := wg.verifyWrittenWrightstones(outputPath, created, expectedWrites, verifyWrightstoneRecord)
 	if err != nil {
@@ -641,6 +664,7 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 
 	absPath, _ := filepath.Abs(outputPath)
 	committed = true
+	wg.retryAfterFailedCommit = nil
 	return &WrightstoneApplyResult{CreatedCount: created, VerifiedCount: verified, OutputPath: absPath}, nil
 }
 

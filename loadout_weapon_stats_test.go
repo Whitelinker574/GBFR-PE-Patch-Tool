@@ -124,6 +124,9 @@ func TestReadLoadoutWeaponContextReadsAllFiveTranscendenceSkills(t *testing.T) {
 	if context.UnitID != 40073 || context.StoredHash != "BE1BA9E3" || context.Transcendence != 7 {
 		t.Fatalf("unexpected Slot76 weapon: %+v", context)
 	}
+	if context.TranscendenceSkill != "020DB733" || context.TranscendenceSkillName == "" {
+		t.Fatalf("Slot76 raw seventh-stage effect was not exposed for stale-guarded editing: %+v", context)
+	}
 	if context.Total != (WeaponStatLine{ATK: 19497, HP: 3256}) {
 		t.Fatalf("Slot76 total = %+v, want attack 19497 hp 3256; ledger=%+v", context.Total, context)
 	}

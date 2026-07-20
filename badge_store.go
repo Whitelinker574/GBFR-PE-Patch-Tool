@@ -189,6 +189,8 @@ func (a *App) SetAllBadgeStates(path string, unlocked, markViewed bool) (*BadgeW
 func (a *App) writeBadgeStates(path string, changes map[int]bool, markViewed bool) (*BadgeWriteResult, error) {
 	badgeWriteMu.Lock()
 	defer badgeWriteMu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("存档路径不能为空")

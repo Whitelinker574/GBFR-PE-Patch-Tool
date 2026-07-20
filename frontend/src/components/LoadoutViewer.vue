@@ -169,7 +169,7 @@ onMounted(async () => {
         <div class="chara-row">
           <button v-for="g in groups" :key="g.charaHash" class="chara-chip ui-chip" :class="{ 'is-on': selectedChara === g.charaName }" @click="selectedChara = g.charaName">
             <img v-if="characterAssetIcon(g.charaHash)" :src="characterAssetIcon(g.charaHash)" alt="" />
-            {{ g.charaName }}<i>{{ g.loadouts.filter(l => !l.isParty).length }}</i>
+            <span class="chara-chip-name" :title="g.charaName">{{ g.charaName }}</span><i>{{ g.loadouts.filter(l => !l.isParty).length }}</i>
           </button>
         </div>
       </section>
@@ -258,10 +258,11 @@ onMounted(async () => {
 .editor-workspace-content { min-width:0; min-height:0; flex:1; overflow:auto; scrollbar-gutter:stable; overscroll-behavior:contain; padding:0 2px 2px; }
 .editor-workspace-content :deep(.loadout-editor) { height:100%; min-height:0; }
 .path-line { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.chara-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:var(--space-2); }
-.chara-chip { width:100%; min-width:0; display:inline-flex; align-items:center; justify-content:center; gap:5px; }
-.chara-chip img { width:27px; height:27px; object-fit:cover; border-radius:6px; }
-.chara-chip i { margin-left:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
+.chara-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(156px, 1fr)); gap:var(--space-2); }
+.chara-chip { width:100%; min-width:0; display:inline-flex; align-items:center; justify-content:flex-start; gap:5px; }
+.chara-chip img { flex:0 0 auto; width:27px; height:27px; object-fit:cover; border-radius:6px; }
+.chara-chip-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chara-chip i { flex:0 0 auto; margin-left:auto; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
 .chara-chip.is-on i { color:var(--accent-soft); }
 /* 配装卡横向自适应网格：图标缩小、从左往右排；展开的卡占满整行显示明细 */
 .card-grid { --ui-grid-min:360px; align-items:start; }

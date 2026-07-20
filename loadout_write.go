@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"unicode/utf8"
 )
 
@@ -122,7 +121,6 @@ type LoadoutEditContext struct {
 }
 
 var loadoutFindProcessByName = findProcessByName
-var loadoutApplyMu sync.Mutex
 
 // LoadoutConstructSigil creates one catalog-validated sigil in the save that is
 // currently open in the loadout editor. A fresh generator is used deliberately:
@@ -130,9 +128,6 @@ var loadoutApplyMu sync.Mutex
 // sigil generator screen. SaveData.Write performs an atomic in-place write,
 // creates a timestamped backup, fixes checksums and is verified by ApplyQueue.
 func (a *App) LoadoutConstructSigil(path string, item QueueItem) (*ApplyResult, error) {
-	loadoutApplyMu.Lock()
-	defer loadoutApplyMu.Unlock()
-
 	if path == "" {
 		return nil, fmt.Errorf("存档路径不能为空")
 	}
@@ -1139,10 +1134,17 @@ func equalUint32Slice(left, right []uint32) bool {
 
 // LoadoutApply 是配装写入闸门：全量预校验通过后统一落盘，任一失败即在触碰磁盘前返回。
 func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite) (*LoadoutApplyResult, error) {
+	return a.LoadoutApplyWithResources(inputPath, outputPath, LoadoutApplyRequest{Changes: changes})
+}
+
+// LoadoutApplyWithResources is the single transaction boundary for preset,
+// constructed sigil, audited weapon, and audited summon edits.
+func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request LoadoutApplyRequest) (*LoadoutApplyResult, error) {
+	changes := request.Changes
 	// Serialise all in-process save transactions so two editor actions cannot
 	// allocate the same empty gem slot/max SlotID from the same stale snapshot.
-	loadoutApplyMu.Lock()
-	defer loadoutApplyMu.Unlock()
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
 
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("没有要写入的配装")
@@ -1177,6 +1179,17 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 			return nil, err
 		}
 	}
+	inlineSummonSlotIDs := summonSlotIDs
+	if len(request.SummonEdits) > 0 && inlineSummonSlotIDs == nil {
+		inlineSummonSlotIDs, err = readLoadoutEquippedSummonSlotIDsStrict(save)
+		if err != nil {
+			return nil, err
+		}
+		inlineSummonSlotIDs, err = validateLoadoutSummonSlotIDs(save, inlineSummonSlotIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// 第一段：全量预校验（不触碰缓冲区）
 	seen := map[uint32]bool{}
@@ -1191,6 +1204,10 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 			return nil, err
 		}
 		resolved = append(resolved, rw)
+	}
+	inlineResources, err := prepareLoadoutInlineResources(save, request, resolved, inlineSummonSlotIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	// 第二段：仍在触碰缓冲区之前，为全部构造草稿一次性分配空因子槽，
@@ -1256,6 +1273,9 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 			return nil, fmt.Errorf("写入召唤石配置失败: %w", err)
 		}
 	}
+	if err := applyPreparedLoadoutInlineResources(save, inlineResources); err != nil {
+		return nil, fmt.Errorf("apply inline loadout resources: %w", err)
+	}
 	if err := save.FixChecksums(); err != nil {
 		return nil, fmt.Errorf("修复存档校验失败: %w", err)
 	}
@@ -1286,6 +1306,11 @@ func (a *App) LoadoutApply(inputPath, outputPath string, changes []LoadoutWrite)
 		}
 		result.VerifiedFields++
 	}
+	inlineVerified, err := verifyPreparedLoadoutInlineResources(verify, inlineResources)
+	if err != nil {
+		return nil, fmt.Errorf("loadout was written but inline resource readback failed: %v; restore from backup", err)
+	}
+	result.VerifiedFields += inlineVerified
 	if len(constructed) > 0 {
 		gotMaxSlotID, err := verify.GetMaxSlotID()
 		if err != nil {

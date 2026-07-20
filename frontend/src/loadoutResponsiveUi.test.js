@@ -16,7 +16,8 @@ test('loadout viewer consumes the shared page, card, control and empty-state pri
 
 test('character and preset grids reflow by available component width', () => {
   assert.match(viewer, /\.loadout-viewer\s*\{[^}]*container\s*:\s*loadout-viewer\s*\/\s*inline-size/is)
-  assert.match(viewer, /\.chara-row\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,\s*minmax\(90px,\s*1fr\)\)/is)
+  assert.match(viewer, /\.chara-row\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,\s*minmax\(156px,\s*1fr\)\)/is)
+  assert.match(viewer, /\.chara-chip-name\s*\{[^}]*min-width\s*:\s*0[^}]*text-overflow\s*:\s*ellipsis[^}]*white-space\s*:\s*nowrap/is)
   assert.match(viewer, /\.loadout-card-toggle\s*\{[^}]*grid-template-columns\s*:\s*62px\s+auto\s+minmax\(0,1fr\)\s+minmax\(120px,/is)
   assert.match(viewer, /@container\s+loadout-viewer\s*\(max-width\s*:\s*760px\)/i)
 })
@@ -52,11 +53,19 @@ test('dense editor details stay readable and the narrow identity header cannot o
   assert.match(editor, /@container\s+loadout-editor\s*\(max-width\s*:\s*760px\)\s*\{[\s\S]*?\.ed-head\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)/is)
 })
 
-test('formula, weapon and inventory content wrap without a nested inventory scrollbar', () => {
+test('formula and weapon content wrap while the 1269-factor bag uses a bounded virtual viewport', () => {
   assert.match(editor, /\.profile-stat-heading\s*\{[^}]*min-width\s*:\s*0[^}]*flex-wrap\s*:\s*wrap/is)
   assert.match(editor, /\.runtime-read-row\s+small\s*\{[^}]*white-space\s*:\s*normal/is)
   assert.match(editor, /\.weapon-context-strip\s*\{[^}]*grid-template-columns\s*:\s*58px\s+minmax\(0,1fr\)/is)
   assert.match(editor, /\.weapon-context-strip\s+em\s*\{[^}]*grid-column\s*:\s*2\s*\/\s*-1[^}]*white-space\s*:\s*normal/is)
-  const pickGridRules = [...editor.matchAll(/\.pick-grid(?:\.sigils)?\s*\{([^}]*)\}/g)].map(match => match[1]).join('\n')
-  assert.doesNotMatch(pickGridRules, /max-height\s*:|overflow-y\s*:/i)
+  assert.match(editor, /from '\.\.\/loadoutVirtualGrid'/)
+  assert.match(editor, /class="bag-virtual-viewport ui-scroll-region"/)
+  assert.match(editor, /v-for="\(s,\s*visibleIndex\) in visibleSigils"/)
+  assert.match(editor, /:data-virtual-index="bagWindow\.startIndex \+ visibleIndex"/)
+  assert.doesNotMatch(editor, /v-for="s in filteredSigils"/)
+  assert.match(editor, /new ResizeObserver\(/)
+  assert.match(editor, /watch\(sigilSearch,\s*resetBagScroll\)/)
+  assert.match(editor, /\.bag-virtual-viewport\s*\{[^}]*height\s*:\s*clamp\([^}]*overflow-y\s*:\s*auto/is)
+  assert.match(editor, /\.bag-virtual-window\s+\.sigil-pick\s*\{[^}]*height\s*:\s*86px/is)
+  assert.match(editor, /\.pick-grid\.sigils\.bag-virtual-window\s*\{[^}]*grid-template-columns\s*:\s*repeat\(var\(--bag-columns\),minmax\(0,1fr\)\)/is)
 })

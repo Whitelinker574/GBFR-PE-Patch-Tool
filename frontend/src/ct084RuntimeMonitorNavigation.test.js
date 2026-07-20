@@ -11,7 +11,7 @@ test('runtime monitor is routed as its own read-only memory-monitoring category'
   assert.match(shell, /ctMonitor:\s*\(\)\s*=>\s*import\(['"]\.\/CT084RuntimeMonitor\.vue['"]\)/)
   assert.match(shell, /import CT084RuntimeMonitor from ['"]\.\/CT084RuntimeMonitor\.vue['"]/)
   assert.match(shell, /ctMonitor:\s*\{\s*group:\s*['"]monitor['"]/)
-  assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]ctMonitor['"]\]/)
+  assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]ctMonitor['"],\s*['"]formulaSampler['"]\]/)
   for (const group of ['save', 'memory']) {
     const match = shell.match(new RegExp(`\\{ id: '${group}'[^\\n]+items: \\[([^\\]]*)\\]`))
     assert.ok(match, `${group} navigation entry must exist`)

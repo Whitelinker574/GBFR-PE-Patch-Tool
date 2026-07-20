@@ -298,6 +298,9 @@ var characterNameByHash = map[uint32]string{
 // UpdateCharacterStats updates arbitrary character slots. Slot IDs are kept in
 // the UI model so sorting/filtering can never redirect a value to another row.
 func (a *App) UpdateCharacterStats(path string, changes []CharacterCountChange) (*SaveEditResult, error) {
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
+
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("没有选择要修改的角色")
 	}
@@ -394,6 +397,9 @@ func (a *App) GetQuests(path string) ([]QuestEntry, error) {
 // vector index and quest ID are checked to prevent a sorted UI from editing the
 // wrong quest.
 func (a *App) UpdateQuestCounts(path string, changes []QuestCountChange) (*SaveEditResult, error) {
+	offlineSaveMutationMu.Lock()
+	defer offlineSaveMutationMu.Unlock()
+
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("没有选择要修改的任务")
 	}

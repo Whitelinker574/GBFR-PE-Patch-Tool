@@ -8,6 +8,7 @@ const models = readFileSync(new URL('../wailsjs/go/models.ts', import.meta.url),
 
 const loadoutMethods = [
   'LoadoutApply',
+  'LoadoutApplyWithResources',
   'LoadoutCheckCompliance',
   'LoadoutConstructSigil',
   'LoadoutEditContext',
@@ -67,6 +68,9 @@ test('generated models keep the complete build, share-write and real-stat fields
     'masteryRankCaps',
     'runtimeVerified',
     'verification',
+    'expectTranscendenceSkill',
+    'weaponEdits',
+    'summonEdits',
   ]) {
     assert.match(models, new RegExp(`\\b${field}\\??:`), `${field} is absent from generated models.ts`)
   }
