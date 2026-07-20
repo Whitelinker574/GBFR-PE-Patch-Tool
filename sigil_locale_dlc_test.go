@@ -43,3 +43,20 @@ func TestDLCTraitChineseNamesComeFromLocalSimplifiedChineseCatalog(t *testing.T)
 		t.Errorf("ct name 0x9ACE140B = %q, want %q", got, "刃姬的轮舞曲")
 	}
 }
+
+func TestOverdriveTraitChineseNamesUseTheGameCatalogCasing(t *testing.T) {
+	previousLanguage := getCurrentLanguage()
+	setCurrentLanguage("zh")
+	defer setCurrentLanguage(previousLanguage)
+
+	want := map[uint32]string{
+		0x6F2CF65F: "Overdrive特效",
+		0xA9D17F55: "Overdrive特效",
+		0x3973C1C4: "Overdrive特效V+",
+	}
+	for hash, name := range want {
+		if got := ctName(hash); got != name {
+			t.Errorf("ctName(%08X) = %q, want %q", hash, got, name)
+		}
+	}
+}

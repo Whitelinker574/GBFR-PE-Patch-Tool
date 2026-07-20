@@ -14,6 +14,8 @@ test('version compatibility reports the current product and audited feature cove
   assert.match(source, /CT\s*安全直接覆盖[\s\S]*?60\s*\/\s*64/)
   assert.match(source, /58\s*个新增功能\s*\+\s*2\s*个已有安全实现/)
   assert.match(source, /58\s*功能\s*\/\s*81\s*站点\s*\/\s*79\s*AOB/)
+	assert.match(source, /上游\s*v1\.8\.5\s*增量[\s\S]*?2\s*\/\s*2\s*已提炼[\s\S]*?称号搜索支持拼音[\s\S]*?三字节补丁/)
+	assert.match(source, /Upstream\s*v1\.8\.5\s*delta[\s\S]*?2\s*\/\s*2\s*integrated/)
 })
 
 test('version compatibility exposes exact icon coverage instead of claiming completeness', () => {

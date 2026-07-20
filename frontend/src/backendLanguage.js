@@ -7,6 +7,6 @@ const selectedLanguage = getStoredLanguage()
 // overtake it. The shell still paints immediately; only name-bearing catalog
 // requests wait for the backend to acknowledge the selected language.
 export const backendLanguageReady = SetLanguage(selectedLanguage).catch((error) => {
-  console.warn('Unable to synchronise backend language:', error)
-  return selectedLanguage
+  console.error('Unable to synchronise backend language:', error)
+  throw new Error(`Unable to synchronise backend language: ${error?.message || error}`)
 })

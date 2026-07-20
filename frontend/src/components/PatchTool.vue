@@ -339,6 +339,7 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
   { scope: 'CT 安全直接覆盖', status: '60 / 64', tone: 'ok', detail: '58 个新增功能 + 2 个已有安全实现；4 个拒绝项未作为可用开关暴露' },
   { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
+  { scope: '上游 v1.8.5 增量', status: '2 / 2 已提炼', tone: 'ok', detail: '称号搜索支持拼音；连续挑战改用新版唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '待实机验证', tone: 'pending', detail: '本轮未连接正在运行的目标游戏；运行时功能不得视为全场景实机通过' },
 ] : [
   { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest and title records' },
@@ -347,6 +348,7 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
   { scope: 'CT safe direct coverage', status: '60 / 64', tone: 'ok', detail: '58 new features plus 2 existing safe implementations; 4 rejected candidates are not exposed' },
   { scope: 'CT production catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to DLC 2.0.2 original-byte and unique-hit evidence' },
+  { scope: 'Upstream v1.8.5 delta', status: '2 / 2 integrated', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use the new unique signature, three-byte patch, and write-back verification' },
   { scope: 'Real game-process E2E', status: 'Pending', tone: 'pending', detail: 'No running target game was connected in this pass; live features are not claimed as fully field-tested' },
 ])
 

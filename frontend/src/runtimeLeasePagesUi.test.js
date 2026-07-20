@@ -45,12 +45,11 @@ test('runtime pages no longer call unconditional compatibility lifecycle APIs', 
   assert.doesNotMatch(sources['OverLimit.vue'], /OverLimit(?:Enable|Disable)/)
 })
 
-test('MiscTools keeps the owned stable runtime surface without experimental bindings', () => {
+test('MiscTools keeps the owned stable runtime surface without retired experimental bindings', () => {
   const miscSource = sources['MiscTools.vue']
   for (const symbol of [
     'Countdown',
     'FaceAccessory',
-    'InfiniteChallenge',
     'UnlockAllTrophy',
     'OtherSkinPurpleRune',
     'DamageMeter',
@@ -95,6 +94,8 @@ test('live writes carry the current owner token and never call compatibility wri
     ['MaterialConsumeGetStatusOwned', 'MaterialConsumeGetStatus', 'connectionOwnerToken'],
     ['MaterialConsumeSetEnabledOwned', 'MaterialConsumeSetEnabled', 'connectionOwnerToken,'],
     ['CollectibleTaskCompleteOwned', 'CollectibleTaskComplete', 'connectionOwnerToken'],
+    ['InfiniteChallengeGetStatusOwned', 'InfiniteChallengeGetStatus', 'connectionOwnerToken'],
+    ['InfiniteChallengeSetEnabledOwned', 'InfiniteChallengeSetEnabled', 'connectionOwnerToken,'],
     ['TerminusDropGetStatusOwned', 'TerminusDropGetStatus', 'connectionOwnerToken'],
     ['TerminusDropScanOwned', 'TerminusDropScan', 'connectionOwnerToken'],
     ['TerminusDropSetEnabledOwned', 'TerminusDropSetEnabled', 'connectionOwnerToken,'],

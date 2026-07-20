@@ -38,9 +38,8 @@ func cnWrightstone(en string) string {
 	return en
 }
 
-// cnWrightstoneTrait keeps the blessing editor's verified choice names
-// separate from the broader sigil catalog. A trait being known to the shared
-// catalog does not by itself make it a valid blessing choice.
+// Blessing legality comes from data/wrightstone_traits.json; display names use
+// the same authoritative bilingual trait catalog as sigils and weapon skills.
 func cnWrightstoneTrait(en string) string {
 	if !useChinese() {
 		return en
@@ -48,5 +47,5 @@ func cnWrightstoneTrait(en string) string {
 	if v, ok := wrightstoneTraitCN[en]; ok {
 		return v
 	}
-	return en
+	return cnTrait(en)
 }

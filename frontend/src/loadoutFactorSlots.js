@@ -47,8 +47,14 @@ export function buildFactorWritePayload(slots = []) {
   const normalized = normalizeSlots(slots)
   return {
     sigilSlotIds: normalized.map(entry => entry?.kind === 'bag' ? entry.slotId : 0),
-    constructedSigils: normalized.flatMap((entry, index) => entry?.kind === 'construct'
-      ? [{ index, item: { ...entry.item } }]
-      : []),
+    constructedSigils: normalized.flatMap((entry, index) => {
+      if (entry?.kind !== 'construct') return []
+      const templateSlotId = Number(entry.item.templateSlotId || 0)
+      return [{
+        index,
+        ...(templateSlotId > 0 ? { templateSlotId } : {}),
+        item: Object.fromEntries(Object.entries(entry.item).filter(([key]) => key !== 'templateSlotId')),
+      }]
+    }),
   }
 }

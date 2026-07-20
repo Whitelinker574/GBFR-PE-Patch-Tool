@@ -663,6 +663,123 @@ func TestLoadoutApplyAtomicallyConstructsAndBindsSigilOnSaveCopy(t *testing.T) {
 	}
 }
 
+func TestLoadoutApplyClonesExactRealSaveSigilTemplateOnSaveCopy(t *testing.T) {
+	if !haveSave(testLoadoutSave) {
+		t.Skipf("测试存档不存在: %s", testLoadoutSave)
+	}
+	work := filepath.Join(t.TempDir(), "template-clone.dat")
+	raw, err := os.ReadFile(testLoadoutSave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(work, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{}
+	groups, err := app.LoadoutList(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var group *CharacterLoadouts
+	for i := range groups {
+		if groups[i].CharaName == "伊欧" {
+			group = &groups[i]
+			break
+		}
+	}
+	if group == nil {
+		t.Skip("测试存档里没有伊欧")
+	}
+	ctx, err := app.LoadoutEditContext(work, group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var templateSlot uint32
+	for _, sigil := range ctx.Sigils {
+		if strings.Contains(sigil.Name, "浪迹天涯") {
+			templateSlot = sigil.SlotID
+			break
+		}
+	}
+	if templateSlot == 0 {
+		t.Skip("测试存档没有浪迹天涯真实因子模板")
+	}
+	var target uint32
+	for _, slot := range ctx.Slots {
+		if slot.Occupied {
+			target = slot.UnitID
+			break
+		}
+	}
+	if target == 0 {
+		t.Skip("伊欧没有已有配装")
+	}
+
+	before, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeIndex := buildLoadoutIndex(before)
+	sourceUnit, ok := beforeIndex.gemBySlotID[templateSlot]
+	if !ok {
+		t.Fatalf("模板 SlotID %d 没有因子记录", templateSlot)
+	}
+	toHex := func(values []uint32) []string {
+		out := make([]string, len(values))
+		for i, value := range values {
+			out[i] = fmt.Sprintf("%08X", value)
+		}
+		return out
+	}
+	weaponSID := uint32(0)
+	if entry, ok := before.findUnitExact(loadoutWeaponIDType, target); ok {
+		weaponSID = entry.Uint32()
+	}
+	write := LoadoutWrite{
+		UnitID: target, ExpectCharaHash: group.CharaHash, Op: "write",
+		Name: entryTextAt(before, target), WeaponSlotID: weaponSID,
+		SigilSlotIDs:      readLoadoutSigilVector(before, target),
+		SkillHashes:       toHex(readVec(before, loadoutSkillsIDType, target, loadoutMaxSkills)),
+		MasteryHashes:     toHex(readVec(before, loadoutMasteryIDType, target, loadoutMaxMastery)),
+		ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, TemplateSlotID: templateSlot}},
+	}
+	result, err := app.LoadoutApply(work, work, []LoadoutWrite{write})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CreatedCount != 1 || result.VerifiedCount != 1 || len(result.SlotIDs) != 1 {
+		t.Fatalf("模板克隆结果异常: %+v", result)
+	}
+	after, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterIndex := buildLoadoutIndex(after)
+	newUnit, ok := afterIndex.gemBySlotID[result.SlotIDs[0]]
+	if !ok {
+		t.Fatalf("找不到新模板因子 SlotID %d", result.SlotIDs[0])
+	}
+	for _, idType := range []uint32{GemIDType, GemLevelIDType, GemFlagsIDType} {
+		want, wantOK := before.findUnitExact(idType, sourceUnit)
+		got, gotOK := after.findUnitExact(idType, newUnit)
+		if !wantOK || !gotOK || got.Uint32() != want.Uint32() {
+			t.Fatalf("模板字段 %d 克隆不符", idType)
+		}
+	}
+	for offset := uint32(0); offset < 2; offset++ {
+		sourceTrait := uint32(TraitSlotBase+(int(sourceUnit)-GemSlotBaseID)*100) + offset
+		newTrait := uint32(TraitSlotBase+(int(newUnit)-GemSlotBaseID)*100) + offset
+		for _, idType := range []uint32{TraitHashIDType, TraitLevelIDType} {
+			want, wantOK := before.findUnitExact(idType, sourceTrait)
+			got, gotOK := after.findUnitExact(idType, newTrait)
+			if !wantOK || !gotOK || got.Uint32() != want.Uint32() {
+				t.Fatalf("模板词条字段 %d/%d 克隆不符", idType, offset)
+			}
+		}
+	}
+}
+
 func TestPrepareLoadoutSigilRejectsNonNaturalDraftValues(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {

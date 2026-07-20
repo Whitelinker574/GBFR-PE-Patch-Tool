@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -13,15 +14,16 @@ type LoadoutApplyRequest struct {
 	SummonEdits []LoadoutSummonInlineEdit `json:"summonEdits,omitempty"`
 }
 
-// LoadoutWeaponInlineEdit deliberately exposes only the audited seventh-stage
-// option stored in 2818[4]. The first four 2818 values are never writable here.
+// LoadoutWeaponInlineEdit carries a full five-slot stale snapshot. Individual
+// changes are accepted only when the target hash belongs to that weapon slot's
+// exact rebuild group at the current transcendence stage.
 type LoadoutWeaponInlineEdit struct {
-	SlotID                   uint32 `json:"slotId"`
-	ExpectUnitID             uint32 `json:"expectUnitId"`
-	ExpectStoredHash         string `json:"expectStoredHash"`
-	ExpectTranscendence      int    `json:"expectTranscendence"`
-	ExpectTranscendenceSkill string `json:"expectTranscendenceSkill"`
-	TranscendenceSkill       string `json:"transcendenceSkill"`
+	SlotID              uint32   `json:"slotId"`
+	ExpectUnitID        uint32   `json:"expectUnitId"`
+	ExpectStoredHash    string   `json:"expectStoredHash"`
+	ExpectTranscendence int      `json:"expectTranscendence"`
+	ExpectSkillHashes   []string `json:"expectSkillHashes"`
+	SkillHashes         []string `json:"skillHashes"`
 }
 
 // LoadoutSummonInlineEdit changes only 1458/1459/1460. TypeHash is a stale
@@ -45,7 +47,7 @@ type LoadoutSummonInlineEdit struct {
 type preparedLoadoutWeaponEdit struct {
 	slotID uint32
 	unitID uint32
-	skill  uint32
+	skills [5]uint32
 }
 
 type preparedLoadoutSummonEdit struct {
@@ -149,7 +151,7 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 	order := make([]uint32, 0, len(edits))
 	for _, edit := range edits {
 		if previous, exists := deduplicated[edit.SlotID]; exists {
-			if previous != edit {
+			if !reflect.DeepEqual(previous, edit) {
 				return nil, fmt.Errorf("conflicting weapon edits for SlotID %d", edit.SlotID)
 			}
 			continue
@@ -158,6 +160,14 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 		order = append(order, edit.SlotID)
 	}
 	prepared := make([]preparedLoadoutWeaponEdit, 0, len(order))
+	data, err := loadLoadoutWeaponStats()
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := LoadCatalog()
+	if err != nil {
+		return nil, err
+	}
 	for _, slotID := range order {
 		edit := deduplicated[slotID]
 		if !selected[slotID] {
@@ -177,23 +187,63 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 		if err != nil {
 			return nil, err
 		}
-		expectSkill, err := parseWeaponTranscendenceSkill(edit.ExpectTranscendenceSkill)
-		if err != nil {
-			return nil, fmt.Errorf("expected weapon transcendence skill is invalid: %w", err)
+		if len(edit.ExpectSkillHashes) != 5 || len(edit.SkillHashes) != 5 {
+			return nil, fmt.Errorf("weapon SlotID %d requires a complete five-skill snapshot", slotID)
 		}
-		currentSkill, readErr := extra.Uint32At(4)
-		if readErr != nil || unitID != edit.ExpectUnitID || hash.Uint32() != expectHash ||
-			int(transcendence.Int32()) != edit.ExpectTranscendence || currentSkill != expectSkill {
+		var currentSkills, expectedSkills, draftSkills [5]uint32
+		for index := range currentSkills {
+			currentSkills[index], err = extra.Uint32At(index)
+			if err != nil {
+				return nil, fmt.Errorf("weapon SlotID %d cannot read 2818[%d]", slotID, index)
+			}
+			expectedSkills[index], err = parseInlineHash(fmt.Sprintf("expected weapon skill %d", index+1), edit.ExpectSkillHashes[index])
+			if err != nil {
+				return nil, err
+			}
+			draftSkills[index], err = parseInlineHash(fmt.Sprintf("weapon skill %d", index+1), edit.SkillHashes[index])
+			if err != nil {
+				return nil, err
+			}
+		}
+		if unitID != edit.ExpectUnitID || hash.Uint32() != expectHash ||
+			int(transcendence.Int32()) != edit.ExpectTranscendence || currentSkills != expectedSkills {
 			return nil, fmt.Errorf("stale weapon snapshot for SlotID %d", slotID)
 		}
-		if transcendence.Int32() < 7 {
-			return nil, fmt.Errorf("weapon SlotID %d has not reached transcendence stage 7", slotID)
+		stage := int(transcendence.Int32())
+		if stage <= 0 || stage > 7 {
+			return nil, fmt.Errorf("weapon SlotID %d does not have a valid transcendence skill stage", slotID)
 		}
-		skill, err := parseWeaponTranscendenceSkill(edit.TranscendenceSkill)
-		if err != nil {
-			return nil, err
+		row, ok := resolveLoadoutWeaponTableRow(data, hash.Uint32())
+		if !ok {
+			return nil, fmt.Errorf("weapon SlotID %d is absent from the verified weapon table", slotID)
 		}
-		prepared = append(prepared, preparedLoadoutWeaponEdit{slotID: slotID, unitID: unitID, skill: skill})
+		seen := make(map[uint32]int, len(draftSkills))
+		for index, draft := range draftSkills {
+			if draft != 0 && draft != EmptyHash {
+				if previous, duplicate := seen[draft]; duplicate {
+					return nil, fmt.Errorf("weapon SlotID %d duplicates one trait in skill slots %d and %d", slotID, previous+1, index+1)
+				}
+				seen[draft] = index
+			}
+			if draft == currentSkills[index] {
+				continue
+			}
+			options := rebuildSkillOptionsForSlot(data, catalog, row.RebuildSkillLevelKeys[index], stage)
+			if len(options) <= 1 {
+				return nil, fmt.Errorf("weapon SlotID %d skill slot %d is fixed at the current stage", slotID, index+1)
+			}
+			legal := false
+			for _, option := range options {
+				if option.Hash == hashText(draft) {
+					legal = true
+					break
+				}
+			}
+			if !legal {
+				return nil, fmt.Errorf("weapon SlotID %d skill slot %d rejects trait %s outside its verified group", slotID, index+1, hashText(draft))
+			}
+		}
+		prepared = append(prepared, preparedLoadoutWeaponEdit{slotID: slotID, unitID: unitID, skills: draftSkills})
 	}
 	return prepared, nil
 }
@@ -311,8 +361,10 @@ func applyPreparedLoadoutInlineResources(save *SaveData, prepared *preparedLoado
 		if !ok || extra.ValueCnt < 5 {
 			return fmt.Errorf("weapon SlotID %d lost its 2818 vector before apply", edit.slotID)
 		}
-		if err := extra.SetUint32At(4, edit.skill); err != nil {
-			return err
+		for index, skill := range edit.skills {
+			if err := extra.SetUint32At(index, skill); err != nil {
+				return err
+			}
 		}
 	}
 	for _, edit := range prepared.summons {
@@ -349,9 +401,11 @@ func verifyPreparedLoadoutInlineResources(save *SaveData, prepared *preparedLoad
 		if !ok || extra.ValueCnt < 5 {
 			return verified, fmt.Errorf("weapon SlotID %d readback is missing 2818", edit.slotID)
 		}
-		got, err := extra.Uint32At(4)
-		if err != nil || got != edit.skill {
-			return verified, fmt.Errorf("weapon SlotID %d 2818[4] readback mismatch", edit.slotID)
+		for index, want := range edit.skills {
+			got, err := extra.Uint32At(index)
+			if err != nil || got != want {
+				return verified, fmt.Errorf("weapon SlotID %d 2818[%d] readback mismatch", edit.slotID, index)
+			}
 		}
 		verified++
 	}

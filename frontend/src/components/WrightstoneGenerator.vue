@@ -7,12 +7,18 @@ import { GetWrightstoneList, GetTraitList, GetTraitLevels, GetDefaultTrait,
          SelectWrightstoneOutputSave } from '../../wailsjs/go/main/WrightstoneGen'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
+import { language } from '../i18n.js'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import CatalogSelect from './CatalogSelect.vue'
 
 const emit = defineEmits(['status'])
 function showStatus(msg, type) { emit('status', msg, type) }
+function text(zh, en) { return language.value === 'en' ? en : zh }
+function isolatedError(error, englishFallback) {
+  const raw = String(error || '')
+  return language.value === 'en' && /[\u3400-\u9fff]/u.test(raw) ? englishFallback : raw
+}
 
 const wrightstones = ref([])
 const traits = ref([])
@@ -35,7 +41,7 @@ const selectedTraits = reactive([
 ])
 const quantity = ref(1)
 const queue = ref([])
-const legality = reactive({ status: 'impossible', writable: false, message: '请先完成祝福配置', reasons: [] })
+const legality = reactive({ status: 'impossible', writable: false, message: text('请先完成祝福配置', 'Complete the wrightstone configuration first.'), reasons: [] })
 let legalityTicket = 0
 
 const dataLoading = ref(true)
@@ -44,6 +50,7 @@ const dataError = ref('')
 const currentSelectionValid = computed(() => {
   return !!selectedWrightstoneID.value && selectedTraits.every(t => !!t.id && !!t.level) && quantity.value > 0
 })
+const displayedLegalityMessage = computed(() => isolatedError(legality.message, 'This configuration is not legal.'))
 const canApply = computed(() => saveLoaded.value && !!outputPath.value.trim() && (queue.value.length > 0 || (currentSelectionValid.value && legality.writable)))
 
 function naturalTraitMax(slot) {
@@ -66,7 +73,7 @@ onMounted(async () => {
     await backendLanguageReady
     ;[wrightstones.value, traits.value, slots.value] = await Promise.all([GetWrightstoneList(), GetTraitList(), FindSaveFiles()])
     if (!wrightstones.value.length || !traits.value.length) {
-      dataError.value = '祝福或特性数据为空'
+      dataError.value = text('祝福或特性数据为空', 'The wrightstone or trait catalog is empty.')
     }
     const lastPath = await GetLastSavePath()
     if (lastPath) {
@@ -74,7 +81,9 @@ onMounted(async () => {
       outputPath.value = defaultOutputPath(lastPath)
     }
   } catch (e) {
-    dataError.value = '加载祝福数据失败: ' + String(e)
+    dataError.value = language.value === 'en'
+      ? `Failed to load wrightstone data: ${isolatedError(e, 'catalog request failed')}`
+      : '加载祝福数据失败: ' + String(e)
   } finally {
     dataLoading.value = false
   }
@@ -100,7 +109,7 @@ async function browseInput() {
     if (!path) return
     inputPath.value = path
     await loadSave()
-  } catch (e) { showStatus(String(e), 'error') }
+  } catch (e) { showStatus(isolatedError(e, 'Failed to choose the input save.'), 'error') }
 }
 
 async function selectSaveSlot(path) {
@@ -118,20 +127,20 @@ async function browseOutput() {
   try {
     const path = await SelectWrightstoneOutputSave(outputPath.value.trim() || defaultOutputPath(inputPath.value.trim()))
     if (path) outputPath.value = path
-  } catch (e) { showStatus(String(e), 'error') }
+  } catch (e) { showStatus(isolatedError(e, 'Failed to choose the output location.'), 'error') }
 }
 
 async function loadSave() {
-  if (!inputPath.value.trim()) { showStatus('请输入存档路径', 'error'); return }
+  if (!inputPath.value.trim()) { showStatus(text('请输入存档路径', 'Enter a save path.'), 'error'); return }
   try {
     const info = await LoadSaveFile(inputPath.value.trim())
     Object.assign(saveInfo, info)
     saveLoaded.value = true
     outputPath.value = inPlaceEdit.value ? info.path : defaultOutputPath(info.path)
     await SetLastSavePath(info.path)
-    showStatus(`已加载存档: ${info.occupiedWrightstones} 个祝福`, 'success')
+    showStatus(language.value === 'en' ? `Save loaded: ${info.occupiedWrightstones} wrightstones` : `已加载存档: ${info.occupiedWrightstones} 个祝福`, 'success')
   } catch (e) {
-    showStatus(String(e), 'error')
+    showStatus(isolatedError(e, 'Failed to load the save.'), 'error')
   }
 }
 
@@ -143,7 +152,7 @@ watch(selectedWrightstoneID, async (id) => {
       selectedTraits[0].id = def.internalId
       await loadTraitLevels(0)
     }
-  } catch (e) { showStatus(String(e), 'error') }
+  } catch (e) { showStatus(isolatedError(e, 'Failed to load the wrightstone defaults.'), 'error') }
 })
 
 async function loadTraitLevels(slot) {
@@ -160,12 +169,12 @@ async function loadTraitLevels(slot) {
   } catch (e) {
     selectedTraits[slot].levels = []
     selectedTraits[slot].level = 0
-    showStatus(String(e), 'error')
+    showStatus(isolatedError(e, 'Failed to load allowed trait levels.'), 'error')
   }
 }
 
 function traitLabel(slot) {
-  return ['第一特性', '第二特性', '第三特性'][slot]
+  return language.value === 'en' ? ['First Trait', 'Second Trait', 'Third Trait'][slot] : ['第一特性', '第二特性', '第三特性'][slot]
 }
 function traitIconForOption(trait) {
   return traitAssetIcon({ internalId: trait?.internalId, hash: trait?.hash, name: trait?.displayName })
@@ -198,21 +207,26 @@ async function refreshLegality() {
     const report = await CheckLegality(buildCurrentItem())
     if (ticket === legalityTicket) Object.assign(legality, report)
   } catch (e) {
-    if (ticket === legalityTicket) Object.assign(legality, { status: 'impossible', writable: false, message: `检验失败：${String(e)}`, reasons: [] })
+    if (ticket === legalityTicket) Object.assign(legality, {
+      status: 'impossible',
+      writable: false,
+      message: language.value === 'en' ? `Validation failed: ${isolatedError(e, 'the configuration could not be checked')}` : `检验失败：${String(e)}`,
+      reasons: [],
+    })
   }
 }
 
 watch(() => [selectedWrightstoneID.value, quantity.value, ...selectedTraits.flatMap(t => [t.id, t.level])], refreshLegality)
 
 function validateCurrentSelection() {
-  if (!selectedWrightstoneID.value) { showStatus('请选择祝福', 'error'); return false }
+  if (!selectedWrightstoneID.value) { showStatus(text('请选择祝福', 'Select a wrightstone.'), 'error'); return false }
   for (let i = 0; i < 3; i++) {
     if (!selectedTraits[i].id || !selectedTraits[i].level) {
-      showStatus(`请选择${traitLabel(i)}及等级`, 'error')
+      showStatus(language.value === 'en' ? `Select ${traitLabel(i)} and its level.` : `请选择${traitLabel(i)}及等级`, 'error')
       return false
     }
   }
-  if (!quantity.value || quantity.value < 1) { showStatus('数量至少为 1', 'error'); return false }
+  if (!quantity.value || quantity.value < 1) { showStatus(text('数量至少为 1', 'Quantity must be at least 1.'), 'error'); return false }
   return true
 }
 
@@ -221,15 +235,15 @@ async function addToQueue() {
   try {
     await AddToQueue(buildCurrentItem())
     queue.value = await GetQueue()
-    showStatus('已添加到队列', 'success')
-  } catch (e) { showStatus(String(e), 'error') }
+    showStatus(text('已添加到队列', 'Added to the queue.'), 'success')
+  } catch (e) { showStatus(isolatedError(e, 'Failed to add the wrightstone to the queue.'), 'error') }
 }
 
 async function removeFromQueue(index) {
   try {
     await RemoveFromQueue(index)
     queue.value = await GetQueue()
-  } catch (e) { showStatus(String(e), 'error') }
+  } catch (e) { showStatus(isolatedError(e, 'Failed to remove the queue entry.'), 'error') }
 }
 
 async function clearQueueAll() {
@@ -247,8 +261,8 @@ function flashApplySuccess() {
 }
 
 async function applyQueueToSave() {
-  if (!saveLoaded.value) { showStatus('请先加载存档', 'error'); return }
-  if (!outputPath.value.trim()) { showStatus('请输入输出路径', 'error'); return }
+  if (!saveLoaded.value) { showStatus(text('请先加载存档', 'Load a save first.'), 'error'); return }
+  if (!outputPath.value.trim()) { showStatus(text('请输入输出路径', 'Enter an output path.'), 'error'); return }
   if (!queue.value.length && !validateCurrentSelection()) return
 
   isApplying.value = true
@@ -257,11 +271,11 @@ async function applyQueueToSave() {
     const exists = await FileExists(output)
     if (exists) {
       const confirmed = await confirmDialog.value?.ask({
-        title: '覆盖已有存档',
-        message: '输出位置已经存在同名文件，是否覆盖？',
+        title: text('覆盖已有存档', 'Overwrite Existing Save'),
+        message: text('输出位置已经存在同名文件，是否覆盖？', 'A file with the same name already exists at the output location. Overwrite it?'),
         detail: output,
         tone: 'danger',
-        confirmLabel: '确认覆盖',
+        confirmLabel: text('确认覆盖', 'Confirm Overwrite'),
       })
       if (!confirmed) return
     }
@@ -272,8 +286,10 @@ async function applyQueueToSave() {
     queue.value = []
     if (inPlaceEdit.value) await loadSave()
     flashApplySuccess()
-    showStatus(`已写入 ${result.createdCount} 个祝福 (验证 ${result.verifiedCount})`, 'success')
-  } catch (e) { showStatus(String(e), 'error') }
+    showStatus(language.value === 'en'
+      ? `Wrote ${result.createdCount} wrightstones (${result.verifiedCount} verified).`
+      : `已写入 ${result.createdCount} 个祝福 (验证 ${result.verifiedCount})`, 'success')
+  } catch (e) { showStatus(isolatedError(e, 'Failed to write the wrightstone save.'), 'error') }
   finally { isApplying.value = false }
 }
 </script>
@@ -286,9 +302,11 @@ async function applyQueueToSave() {
         <button v-for="slot in slots" :key="slot.index" class="slot-choice ui-btn is-sm" :class="{ on: inputPath === slot.path }" @click="selectSaveSlot(slot.path)">{{ saveSlotLabel(slot) }}</button>
         <button class="slot-choice secondary ui-btn is-sm" @click="browseInput">选择其他存档</button>
       </div>
-      <div class="selected-save" :class="{ empty: !inputPath }">{{ inputPath || '尚未选择存档' }}</div>
+      <div class="selected-save" :class="{ empty: !inputPath }">{{ inputPath || text('尚未选择存档', 'No Save Selected') }}</div>
       <div v-if="saveLoaded" class="save-info">
-        已加载 · {{ saveInfo.occupiedWrightstones }} 个祝福 · 最大槽位 {{ saveInfo.maxSlotId }}
+        {{ language === 'en'
+          ? `Loaded · ${saveInfo.occupiedWrightstones} wrightstones · Highest slot ${saveInfo.maxSlotId}`
+          : `已加载 · ${saveInfo.occupiedWrightstones} 个祝福 · 最大槽位 ${saveInfo.maxSlotId}` }}
       </div>
     </div>
 
@@ -299,8 +317,8 @@ async function applyQueueToSave() {
       </div>
       <div v-if="dataError" class="data-error">{{ dataError }}</div>
       <div class="field ui-field wrightstone-pick">
-        <label class="ui-field-label">祝福 <small>{{ dataLoading ? '正在加载目录' : '点击下拉后可搜索名称' }}</small></label>
-        <CatalogSelect v-model="selectedWrightstoneID" :options="wrightstones" :disabled="dataLoading || !!dataError" placeholder="尚未选择祝福" search-placeholder="搜索祝福名称" />
+        <label class="ui-field-label">{{ text('祝福', 'Wrightstone') }} <small>{{ dataLoading ? text('正在加载目录', 'Loading Catalog') : text('点击下拉后可搜索名称', 'Open the list to search by name') }}</small></label>
+        <CatalogSelect v-model="selectedWrightstoneID" :options="wrightstones" :disabled="dataLoading || !!dataError" :placeholder="text('尚未选择祝福', 'No Wrightstone Selected')" :search-placeholder="text('搜索祝福名称', 'Search Wrightstones')" />
       </div>
 
       <div class="trait-grid">
@@ -308,19 +326,21 @@ async function applyQueueToSave() {
         <div class="field flex-1 ui-field">
           <label class="ui-field-label trait-label-with-icon">
             <img v-if="traitIconByID(selectedTraits[i].id)" :src="traitIconByID(selectedTraits[i].id)" alt="" />
-            <span>{{ traitLabel(i) }} <small>点击下拉选择特性</small></span>
+            <span>{{ traitLabel(i) }} <small>{{ text('点击下拉选择特性', 'Open the list to choose a trait') }}</small></span>
           </label>
-          <CatalogSelect v-model="selectedTraits[i].id" :options="traits" :icon-resolver="traitIconForOption" placeholder="尚未选择特性" search-placeholder="搜索特性名称" detail-key="maxLevel" @pick="loadTraitLevels(i)" />
+          <CatalogSelect v-model="selectedTraits[i].id" :options="traits" :icon-resolver="traitIconForOption" :placeholder="text('尚未选择特性', 'No Trait Selected')" :search-placeholder="text('搜索特性名称', 'Search Traits')" detail-key="maxLevel" @pick="loadTraitLevels(i)" />
         </div>
         <div class="field level-field ui-field">
-          <label class="ui-field-label">等级 <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ selectedTraits[i].level > naturalTraitMax(i) ? `超过合规上限 ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` : `合规上限 ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` }}</small></label>
+          <label class="ui-field-label">{{ text('等级', 'Level') }} <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ language === 'en'
+            ? `${selectedTraits[i].level > naturalTraitMax(i) ? 'Above legal cap' : 'Legal cap'} ${naturalTraitMax(i)} / editable cap ${writableTraitMax(i)}`
+            : `${selectedTraits[i].level > naturalTraitMax(i) ? '超过合规上限' : '合规上限'} ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` }}</small></label>
           <input v-model.number="selectedTraits[i].level" type="number" min="0" :max="writableTraitMax(i)" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedTraits[i].level > naturalTraitMax(i) }" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, writableTraitMax(i))" />
         </div>
       </div>
       </div>
 
       <div class="config-footer">
-        <LegalityIndicator v-if="currentSelectionValid" class="config-legality" :status="legality.status" :message="legality.message" />
+        <LegalityIndicator v-if="currentSelectionValid" class="config-legality" :status="legality.status" :message="displayedLegalityMessage" />
         <span v-else class="selection-note">选完祝福与三项特性后显示合法性结果</span>
         <div class="qty-add">
           <div class="field quantity-field ui-field">
@@ -344,7 +364,7 @@ async function applyQueueToSave() {
       <div v-else class="queue-list">
         <div v-for="(item, i) in queue" :key="i" class="queue-item ui-row">
           <div class="queue-info">
-            <span class="queue-name">{{ item.wrightstoneName }} <em v-if="item.legalityStatus" class="queue-legality" :class="item.legalityStatus">{{ item.legalityStatus === 'forced' ? '强制' : '未完全验证' }}</em></span>
+            <span class="queue-name">{{ item.wrightstoneName }} <em v-if="item.legalityStatus" class="queue-legality" :class="item.legalityStatus">{{ item.legalityStatus === 'forced' ? text('强制', 'Forced') : text('未完全验证', 'Not Fully Verified') }}</em></span>
             <span class="queue-detail">
               {{ item.firstTraitName }} Lv {{ item.firstLevel }} /
               {{ item.secondTraitName }} Lv {{ item.secondLevel }} /

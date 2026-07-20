@@ -365,6 +365,15 @@ func (s *SaveData) GetOccupiedGemCount() int {
 func (s *SaveData) PatchSigil(gemUnitID, newSlotID int, sigilHash uint32, level int,
 	primaryTraitHash uint32, primaryLevel int,
 	secondaryTraitHash uint32, secondaryLevel int, hasSecondary bool) error {
+	return s.PatchSigilWithFlags(gemUnitID, newSlotID, sigilHash, level, primaryTraitHash, primaryLevel, secondaryTraitHash, secondaryLevel, hasSecondary, NormalSigilFlags)
+}
+
+// PatchSigilWithFlags duplicates a game-accepted real-save template without
+// normalising its record flags. Ordinary catalog construction continues to use
+// PatchSigil and NormalSigilFlags.
+func (s *SaveData) PatchSigilWithFlags(gemUnitID, newSlotID int, sigilHash uint32, level int,
+	primaryTraitHash uint32, primaryLevel int,
+	secondaryTraitHash uint32, secondaryLevel int, hasSecondary bool, flags uint32) error {
 
 	gemIndex := gemUnitID - GemSlotBaseID
 	primaryTraitUnit := TraitSlotBase + (gemIndex * 100)
@@ -380,7 +389,7 @@ func (s *SaveData) PatchSigil(gemUnitID, newSlotID int, sigilHash uint32, level 
 		func() error { return s.patchUint(GemIDType, uint32(gemUnitID), sigilHash) },
 		func() error { return s.patchInt(GemLevelIDType, uint32(gemUnitID), level) },
 		func() error { return s.patchUint(GemWornByIDType, uint32(gemUnitID), EmptyHash) },
-		func() error { return s.patchUint(GemFlagsIDType, uint32(gemUnitID), NormalSigilFlags) },
+		func() error { return s.patchUint(GemFlagsIDType, uint32(gemUnitID), flags) },
 		// --- Trait fields ---
 		func() error { return s.patchUint(TraitHashIDType, uint32(primaryTraitUnit), primaryTraitHash) },
 		func() error { return s.patchInt(TraitLevelIDType, uint32(primaryTraitUnit), primaryLevel) },
@@ -586,6 +595,12 @@ func copyFile(source, destination string) error {
 func (s *SaveData) VerifySigil(gemUnitID int, expectedSlotID, sigilHash uint32, level int,
 	primaryHash uint32, primaryLevel int,
 	secondaryHash uint32, secondaryLevel int, hasSecondary bool) error {
+	return s.VerifySigilWithFlags(gemUnitID, expectedSlotID, sigilHash, level, primaryHash, primaryLevel, secondaryHash, secondaryLevel, hasSecondary, NormalSigilFlags)
+}
+
+func (s *SaveData) VerifySigilWithFlags(gemUnitID int, expectedSlotID, sigilHash uint32, level int,
+	primaryHash uint32, primaryLevel int,
+	secondaryHash uint32, secondaryLevel int, hasSecondary bool, flags uint32) error {
 
 	gemIndex := gemUnitID - GemSlotBaseID
 	primaryTraitUnit := TraitSlotBase + (gemIndex * 100)
@@ -626,7 +641,7 @@ func (s *SaveData) VerifySigil(gemUnitID int, expectedSlotID, sigilHash uint32, 
 	if err := check(GemWornByIDType, uint32(gemUnitID), EmptyHash, "装备角色"); err != nil {
 		return err
 	}
-	if err := check(GemFlagsIDType, uint32(gemUnitID), NormalSigilFlags, "因子标记"); err != nil {
+	if err := check(GemFlagsIDType, uint32(gemUnitID), flags, "因子标记"); err != nil {
 		return err
 	}
 	if err := check(TraitHashIDType, uint32(primaryTraitUnit), primaryHash, "主特性哈希"); err != nil {

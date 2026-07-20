@@ -146,6 +146,15 @@ func TestReadLoadoutWeaponContextReadsAllFiveTranscendenceSkills(t *testing.T) {
 		context.Skills[4].Name != "超凡技艺" || context.Skills[4].Effect != "能力伤害上限+30%" {
 		t.Fatalf("2.0.2 transcendence skills must use the unpacked official names and values: %+v", context.Skills)
 	}
+	if len(context.SkillSlots) != 5 {
+		t.Fatalf("editable weapon skill slots=%d, want full 2818 vector", len(context.SkillSlots))
+	}
+	if len(context.SkillSlots[1].Options) != 8 || len(context.SkillSlots[3].Options) != 9 {
+		t.Fatalf("weapon-specific choice sets are incomplete: %+v", context.SkillSlots)
+	}
+	if context.SkillSlots[1].Editable != true || context.SkillSlots[3].Editable != true || context.SkillSlots[4].Editable {
+		t.Fatalf("editable flags must follow exact unpacked group cardinality: %+v", context.SkillSlots)
+	}
 }
 
 func TestWeaponStatTableSemanticsKeepKeyframesAndCumulativeGainsSeparate(t *testing.T) {

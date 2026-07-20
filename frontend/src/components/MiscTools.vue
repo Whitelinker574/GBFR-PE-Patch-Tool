@@ -5,6 +5,7 @@ import { CharaAcquire, CharaRelease,
          PotionGetAllOwned, PotionSetOneOwned,
          MaterialConsumeGetStatusOwned, MaterialConsumeSetEnabledOwned,
          CollectibleTaskCompleteOwned,
+         InfiniteChallengeGetStatusOwned, InfiniteChallengeSetEnabledOwned,
          TerminusDropGetStatusOwned, TerminusDropScanOwned, TerminusDropSetEnabledOwned,
          MonsterEnhanceSetPatchValueEnabledOwned } from '../../wailsjs/go/main/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
@@ -19,6 +20,8 @@ const loading = ref(false)
 const materialConsumeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const materialConsumeLoading = ref(false)
 const collectibleTaskLoading = ref(false)
+const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, owned: false, currentBytes: '' })
+const infiniteChallengeLoading = ref(false)
 const inventorySet45Enabled = ref(false)
 const inventorySet45Loading = ref(false)
 const inventorySet45Seconds = ref(0)
@@ -41,6 +44,7 @@ const runtimeCatalog = computed(() => {
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
     mission: [
+      ['连续挑战', '阻止挑战完成次数递增，可重复完成当前挑战', 'v1.8.5 特征'],
       ['巴武掉落 100%', '移除巴武掉落的随机排除，保留原始资格检查', 'AOB 定位'],
     ],
   }
@@ -57,6 +61,7 @@ function clearConnectionState() {
   inventorySet45Enabled.value = false
   Object.assign(info, { pid: 0, moduleBase: 0, manager: 0 })
   Object.assign(materialConsumeStatus, { rva: 0, enabled: false, currentBytes: '' })
+  Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, owned: false, currentBytes: '' })
   Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
   currencies.value = []
   Object.keys(currencyInputs).forEach((key) => delete currencyInputs[key])
@@ -81,6 +86,7 @@ async function connect() {
     connected.value = true
     Object.assign(info, res)
     loadMaterialConsumeStatus()
+    loadInfiniteChallengeStatus()
     loadTerminusDropStatus()
     loadCurrencyValues()
     loadPotionValues()
@@ -145,6 +151,31 @@ function setMaterialConsumeEnabled(enabled) {
     .then((status) => { applyMaterialConsumeStatus(status); emit('status', enabled ? '已开启升级/强化不材料消耗' : '已恢复升级/强化材料变化', 'success') })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { materialConsumeLoading.value = false })
+}
+
+function applyInfiniteChallengeStatus(status) {
+  Object.assign(infiniteChallengeStatus, status || { rva: 0, enabled: false, owned: false, currentBytes: '' })
+}
+
+function loadInfiniteChallengeStatus() {
+  if (!connected.value) return
+  infiniteChallengeLoading.value = true
+  InfiniteChallengeGetStatusOwned(connectionOwnerToken)
+    .then(applyInfiniteChallengeStatus)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { infiniteChallengeLoading.value = false })
+}
+
+function setInfiniteChallengeEnabled(enabled) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  infiniteChallengeLoading.value = true
+  InfiniteChallengeSetEnabledOwned(connectionOwnerToken, enabled)
+    .then((status) => {
+      applyInfiniteChallengeStatus(status)
+      emit('status', enabled ? '已开启连续挑战' : '已恢复挑战次数递增', 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { infiniteChallengeLoading.value = false })
 }
 
 function completeCollectibleTask() {
@@ -418,6 +449,25 @@ onBeforeUnmount(() => {
             <button class="btn-refresh ui-btn is-sm" @click="setInventorySet45Enabled(false)" :disabled="inventorySet45Loading || !inventorySet45Enabled || materialConsumeStatus.enabled">恢复正常</button>
             <button class="btn-batch ui-btn is-primary is-sm" @click="completeCollectibleTask" :disabled="collectibleTaskLoading">{{ collectibleTaskLoading ? '收集任务处理中...' : '小钳蟹成就' }}</button>
           </div>
+        </div>
+
+        <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled && infiniteChallengeStatus.owned }">
+          <div class="memory-header">
+            <span class="memory-title">连续挑战</span>
+            <span class="info-dot" title="使用上游 v1.8.5 更新后的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
+            <span class="memory-hint">唯一 AOB · 三字节补丁 · 写后回读</span>
+          </div>
+          <p class="feature-help">用途：完成挑战后保持当前挑战次数，便于连续重复。进入挑战前开启，用完后立即恢复默认。</p>
+          <div class="memory-info">
+            <span>RVA: {{ formatHex(infiniteChallengeStatus.rva) }}</span>
+            <span>状态: {{ infiniteChallengeStatus.enabled ? (infiniteChallengeStatus.owned ? '已由本页开启' : '检测到外部补丁') : '默认' }}</span>
+          </div>
+          <div class="memory-row">
+            <button class="btn-batch ui-btn is-primary is-sm" @click="setInfiniteChallengeEnabled(true)" :disabled="infiniteChallengeLoading || infiniteChallengeStatus.enabled">开启连续挑战</button>
+            <button class="btn-refresh ui-btn is-sm" @click="setInfiniteChallengeEnabled(false)" :disabled="infiniteChallengeLoading || !infiniteChallengeStatus.enabled || !infiniteChallengeStatus.owned">恢复默认</button>
+            <button class="btn-refresh ui-btn is-sm" @click="loadInfiniteChallengeStatus" :disabled="infiniteChallengeLoading">重新扫描 / 刷新</button>
+          </div>
+          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ infiniteChallengeStatus.currentBytes || '未定位' }}</code></details>
         </div>
 
         <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: terminusDropStatus.enabled }">

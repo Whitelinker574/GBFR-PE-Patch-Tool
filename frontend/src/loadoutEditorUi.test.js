@@ -15,6 +15,12 @@ test('mastery starts collapsed while the three-direction summary stays visible',
     'the direction summary must sit between the toggle and collapsible details')
 })
 
+test('a full real-save mastery remains writable without forcing optional named specialization skills', () => {
+  const readyBody = source.match(/const masteryDirectionReady = computed\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+  assert.match(readyBody, /masteryCategoryPicked\(rank, masteryDirection\.value\) >= 6/)
+  assert.doesNotMatch(readyBody, /masteryStageSkillPicked/)
+})
+
 test('result sidebar follows the stable overview, skills, totals, mastery, share order', () => {
   const titles = ['角色效果总计', '技能效果', '总计加成', '专精生效结果', '分享单套配装']
   const positions = titles.map(title => source.indexOf(`<strong>${title}</strong>`))
@@ -211,4 +217,24 @@ test('summon selectors are explicit global equipment and only write after opt-in
 test('merged total names and source ledgers wrap instead of being ellipsized', () => {
   assert.match(source, /\.effect-total-row\s*>\s*span\s+b\s*\{[^}]*white-space\s*:\s*normal/is)
   assert.match(source, /\.effect-total-row\s*>\s*span\s+small\s*\{[^}]*white-space\s*:\s*normal/is)
+})
+
+test('fullscreen editor keeps a persistent save action and compact preset metadata', () => {
+	assert.match(source, /class="editor-save-bar"/)
+	assert.match(source, /saveButtonLabel/)
+	assert.match(source, /class="editor-save-button[^"]*"[^>]*@click="apply"/)
+	assert.match(source, /\.editor-save-bar\s*\{[^}]*position\s*:\s*sticky/is)
+	assert.match(viewer, /class="preset-count-badge"[\s\S]*\{\{\s*currentGroup\.loadouts\.filter\(l => !l\.isParty\)\.length\s*\}\}[\s\S]*套已有预设/)
+	assert.doesNotMatch(viewer, /class="editor-workspace-meta">\s*<b>/)
+})
+
+test('constructor and bag controls expose real filtering, sorting and empty states', () => {
+	assert.match(source, /from '\.\.\/loadoutCatalogFilters'/)
+	assert.match(source, /watch\(filteredConstructCatalog/)
+	assert.match(source, /构造目录无匹配结果/)
+	for (const model of ['bagStateFilter', 'bagTraitFilter', 'bagSort']) {
+		assert.match(source, new RegExp(`v-model="${model}"`))
+	}
+	assert.match(source, /未装入当前草稿/)
+	assert.match(source, /主词条等级从高到低/)
 })

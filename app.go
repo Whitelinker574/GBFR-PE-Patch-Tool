@@ -177,8 +177,10 @@ type App struct {
 	// bytes are now proven restored. They intentionally remain mapped until the
 	// game exits because entry restoration cannot quiesce an in-flight thread.
 	// The metadata is dropped only when this process connection is detached.
-	retiredRuntimeCaves []retiredRuntimeCave
-	materialConsumeAddr uintptr
+	retiredRuntimeCaves         []retiredRuntimeCave
+	materialConsumeAddr         uintptr
+	infiniteChallengeAddr       uintptr
+	infiniteChallengeOwnerToken string
 	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
 	// read/validate/write sequence must be atomic or concurrent Wails calls can
 	// both observe the original bytes and then overwrite each other.
@@ -1482,8 +1484,9 @@ func (a *App) CharaRelease(token string) error {
 		a.runtimePatchMu.Lock()
 		selectedErr := a.releaseCT084SelectedCaptureHooksLocked(token, false)
 		ctErr := a.restoreAllCT084PatchesLocked(token)
+		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(selectedErr, ctErr); combined != nil {
+		if combined := errors.Join(selectedErr, ctErr, challengeErr); combined != nil {
 			return fmt.Errorf("CT 0.8.4 runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
@@ -1492,6 +1495,10 @@ func (a *App) CharaRelease(token string) error {
 	} else {
 		a.dropCT084SelectedCaptureHooksLocked(token, false)
 		a.dropCT084PatchesForOwnerLocked(token)
+		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
+			a.infiniteChallengeOwnerToken = ""
+			a.infiniteChallengeAddr = 0
+		}
 		// Once the game process is gone there is no executable jump left to
 		// restore. Consume only this page's monster recovery records; unrelated
 		// runtime owners keep their existing detach semantics below.
@@ -1538,6 +1545,9 @@ func (a *App) charaDetachLocked() error {
 	if a.hProcess != 0 && processHandleAlive(a.hProcess) {
 		var releaseErr error
 		a.runtimePatchMu.Lock()
+		if err := a.restoreInfiniteChallengeOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous challenge: %w", err))
+		}
 		if err := a.releaseCT084SelectedCaptureHooksLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("CT 0.8.4 selected-item capture: %w", err))
 		}
@@ -1601,6 +1611,8 @@ func (a *App) charaDetachLocked() error {
 	a.ct084SelectedKeyItemHook = ct084SelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
 	a.materialConsumeAddr = 0
+	a.infiniteChallengeAddr = 0
+	a.infiniteChallengeOwnerToken = ""
 	a.charaOwnerToken = ""
 	a.sigilMemoryOwnerToken = ""
 	a.wrightstoneMemoryOwnerToken = ""
@@ -2149,50 +2161,174 @@ func (a *App) readFaceAccessoryStatus(addr uintptr) (FaceAccessoryStatus, error)
 type InfiniteChallengeStatus struct {
 	RVA          uint64 `json:"rva"`
 	Enabled      bool   `json:"enabled"`
+	Owned        bool   `json:"owned"`
 	CurrentBytes string `json:"currentBytes"`
 }
 
-const infiniteChallengeRVA = uintptr(0x278A6DE)
-
 var (
-	infiniteChallengeOrig  = []byte{0xFF, 0xC2}
-	infiniteChallengePatch = []byte{0x90, 0x90}
+	infiniteChallengePattern = []byte{0x41, 0xFF, 0x00, 0xB2, 0x00, 0xE9}
+	infiniteChallengeMask    = []bool{true, true, false, true, false, true}
+	infiniteChallengeOrig    = []byte{0x41, 0xFF, 0xC0}
+	infiniteChallengePatch   = []byte{0x90, 0x90, 0x90}
 )
 
 func (a *App) InfiniteChallengeGetStatus() (InfiniteChallengeStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return InfiniteChallengeStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	return a.readInfiniteChallengeStatus()
+}
+
+func (a *App) InfiniteChallengeGetStatusOwned(token string) (InfiniteChallengeStatus, error) {
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
 	return a.readInfiniteChallengeStatus()
 }
 
 func (a *App) InfiniteChallengeSetEnabled(enabled bool) (InfiniteChallengeStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
 		return InfiniteChallengeStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	return a.infiniteChallengeSetEnabledLocked(a.charaOwnerToken, enabled)
+}
+
+func (a *App) InfiniteChallengeSetEnabledOwned(token string, enabled bool) (InfiniteChallengeStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	return a.infiniteChallengeSetEnabledLocked(token, enabled)
+}
+
+func (a *App) infiniteChallengeSetEnabledLocked(ownerToken string, enabled bool) (InfiniteChallengeStatus, error) {
+	status, err := a.readInfiniteChallengeStatus()
+	if err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	if status.Enabled == enabled {
+		return status, nil
+	}
+	if !enabled && !runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, ownerToken) {
+		return InfiniteChallengeStatus{}, fmt.Errorf("连续挑战补丁不属于当前页面，拒绝恢复未知写入")
 	}
 	patch := infiniteChallengeOrig
 	if enabled {
 		patch = infiniteChallengePatch
 	}
-	addr := a.moduleBase + infiniteChallengeRVA
+	addr := a.infiniteChallengeAddr
 	if err := writeCodeMemory(a.hProcess, addr, patch); err != nil {
 		return InfiniteChallengeStatus{}, fmt.Errorf("写入无限挑战失败: %w", err)
 	}
-	return a.readInfiniteChallengeStatus()
+	verified, err := a.readInfiniteChallengeStatusAt(addr)
+	if err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	if verified.Enabled != enabled {
+		return InfiniteChallengeStatus{}, fmt.Errorf("无限挑战写后回读状态不匹配")
+	}
+	if enabled {
+		if ownerToken == "" {
+			ownerToken = "compatibility-call"
+		}
+		a.infiniteChallengeOwnerToken = ownerToken
+	} else {
+		a.infiniteChallengeOwnerToken = ""
+	}
+	return verified, nil
+}
+
+// restoreInfiniteChallengeOwnedLocked runs while procMu and runtimePatchMu are
+// held. The recovery lease is consumed only after the original instruction is
+// written and read back, so detach can safely retry after a transient failure.
+func (a *App) restoreInfiniteChallengeOwnedLocked(ownerToken string, force bool) error {
+	if a.infiniteChallengeOwnerToken == "" || (!force && !runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, ownerToken)) {
+		return nil
+	}
+	status, err := a.readInfiniteChallengeStatus()
+	if err != nil {
+		return err
+	}
+	if status.Enabled {
+		if err := writeCodeMemory(a.hProcess, a.infiniteChallengeAddr, infiniteChallengeOrig); err != nil {
+			return err
+		}
+		status, err = a.readInfiniteChallengeStatusAt(a.infiniteChallengeAddr)
+		if err != nil || status.Enabled {
+			return errors.Join(err, fmt.Errorf("连续挑战原始指令回读失败"))
+		}
+	}
+	a.infiniteChallengeOwnerToken = ""
+	return nil
 }
 
 func (a *App) readInfiniteChallengeStatus() (InfiniteChallengeStatus, error) {
-	addr := a.moduleBase + infiniteChallengeRVA
-	buf := make([]byte, len(infiniteChallengeOrig))
+	addr, err := a.locateInfiniteChallenge()
+	if err != nil {
+		return InfiniteChallengeStatus{}, err
+	}
+	return a.readInfiniteChallengeStatusAt(addr)
+}
+
+func (a *App) locateInfiniteChallenge() (uintptr, error) {
+	if a.infiniteChallengeAddr != 0 {
+		if _, err := a.readInfiniteChallengeStatusAt(a.infiniteChallengeAddr); err == nil {
+			return a.infiniteChallengeAddr, nil
+		}
+		a.infiniteChallengeAddr = 0
+	}
+	addr, err := a.scanPatternUnique(infiniteChallengePattern, infiniteChallengeMask, "连续挑战特征")
+	if err != nil {
+		patchedPattern := append([]byte(nil), infiniteChallengePattern...)
+		copy(patchedPattern, infiniteChallengePatch)
+		addr, err = a.scanPatternUnique(patchedPattern, infiniteChallengeMask, "已启用连续挑战特征")
+	}
+	if err != nil {
+		return 0, err
+	}
+	a.infiniteChallengeAddr = addr
+	return addr, nil
+}
+
+func (a *App) readInfiniteChallengeStatusAt(addr uintptr) (InfiniteChallengeStatus, error) {
+	buf := make([]byte, len(infiniteChallengePattern))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
 		return InfiniteChallengeStatus{}, fmt.Errorf("读取无限挑战指令失败: %w", err)
 	}
-	if !bytesEqual(buf, infiniteChallengeOrig) && !bytesEqual(buf, infiniteChallengePatch) {
+	knownInstruction := bytesEqual(buf[:len(infiniteChallengeOrig)], infiniteChallengeOrig) || bytesEqual(buf[:len(infiniteChallengePatch)], infiniteChallengePatch)
+	for index := len(infiniteChallengeOrig); index < len(infiniteChallengePattern); index++ {
+		if infiniteChallengeMask[index] && buf[index] != infiniteChallengePattern[index] {
+			knownInstruction = false
+		}
+	}
+	if !knownInstruction {
 		return InfiniteChallengeStatus{}, fmt.Errorf("无限挑战指令字节异常: %s", bytesToHex(buf))
 	}
 	return InfiniteChallengeStatus{
-		RVA:          uint64(infiniteChallengeRVA),
-		Enabled:      bytesEqual(buf, infiniteChallengePatch),
+		RVA:          uint64(addr - a.moduleBase),
+		Enabled:      bytesEqual(buf[:len(infiniteChallengePatch)], infiniteChallengePatch),
+		Owned:        a.infiniteChallengeOwnerToken != "",
 		CurrentBytes: bytesToHex(buf),
 	}, nil
 }
@@ -2934,6 +3070,7 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.monsterEnhanceOwned) != 0 ||
 		len(a.ct084PatchLeases) != 0 ||
 		len(a.ct084PatchOrder) != 0 ||
+		a.infiniteChallengeOwnerToken != "" ||
 		a.hasCT084SelectedCaptureLeaseLocked()
 }
 

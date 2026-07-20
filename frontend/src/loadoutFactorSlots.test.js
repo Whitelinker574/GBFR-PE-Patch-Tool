@@ -47,6 +47,15 @@ test('a constructed replacement stays a draft until the loadout write payload', 
   assert.equal(slots[0].kind, 'bag', 'slot updates must not mutate the source draft')
 })
 
+test('a real-save template clone keeps its source slot in the atomic constructed payload', () => {
+  const slots = putConstructedFactor(createFactorSlots([]), 0, {
+    sigilId: 'template:3179', templateSlotId: 3179, level: 15, primaryLevel: 15,
+  }, { name: '浪迹天涯V+', primaryTraitName: '浪迹天涯' })
+  const payload = buildFactorWritePayload(slots)
+  assert.equal(payload.constructedSigils[0].templateSlotId, 3179)
+  assert.equal(payload.constructedSigils[0].item.templateSlotId, undefined)
+})
+
 test('choosing an already equipped bag factor swaps slots instead of duplicating it', () => {
   const slots = createFactorSlots([{ slotId: 11 }, { slotId: 22 }])
   const next = putBagFactor(slots, 0, 22)

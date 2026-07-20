@@ -13,16 +13,17 @@ test('loadout editor submits preset and owned-resource edits through one transac
   assert.match(source, /LoadoutApplyWithResources[\s\S]*?weaponEdits,\s*summonEdits,/)
 })
 
-test('weapon inline editing is limited to the audited seventh-stage field and four real effects', () => {
-  for (const hash of ['BBD77C33', '020DB733', '3F682593', '79027FC8']) {
-    assert.match(source, new RegExp(hash))
-  }
-  assert.match(source, /selectedWeaponContext\.value\?\.transcendence\)\s*>=\s*7/)
+test('weapon inline editing uses the exact five-slot snapshot and per-weapon audited choices', () => {
+  assert.match(source, /weaponSkillDrafts/)
+  assert.match(source, /selectedWeaponContext\.value\?\.skillSlots/)
   assert.match(source, /expectUnitId:\s*Number\(weapon\.unitId\)/)
   assert.match(source, /expectStoredHash:\s*weapon\.storedHash/)
   assert.match(source, /expectTranscendence:\s*Number\(weapon\.transcendence\)/)
-  assert.match(source, /expectTranscendenceSkill:\s*weapon\.transcendenceSkill/)
-  assert.match(source, /transcendenceSkill:\s*weaponTranscendenceSkillDraft\.value/)
+  assert.match(source, /expectSkillHashes:/)
+  assert.match(source, /skillHashes:/)
+  assert.match(source, /v-for="slot in editableWeaponSkillSlots"/)
+  assert.match(source, /v-for="option in slot\.options"/)
+  assert.doesNotMatch(source, /const weaponTranscendenceSkills =/)
 })
 
 test('summon inline editing uses the save snapshot as a stale-write guard', () => {

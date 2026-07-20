@@ -24,7 +24,7 @@ test('runtime feature titles stay short and put operational detail in helper tex
 
 test('connection catalog and connected views keep every feature discoverable', () => {
   assert.match(source, /\['小钳蟹相关'/)
-  for (const label of ['实时货币编辑', '副本药水', '素材不消耗', '巴武掉落 100%']) {
+  for (const label of ['实时货币编辑', '副本药水', '素材不消耗', '连续挑战', '巴武掉落 100%']) {
     assert.match(source, new RegExp(label))
   }
   assert.doesNotMatch(source, /runtimeCatalog\.slice\(/)
@@ -66,7 +66,6 @@ test('experimental runtime integrations are absent from the stable page', () => 
   for (const symbol of [
     'Countdown',
     'FaceAccessory',
-    'InfiniteChallenge',
     'UnlockAllTrophy',
     'OtherSkinPurpleRune',
     'DamageMeter',
@@ -77,6 +76,14 @@ test('experimental runtime integrations are absent from the stable page', () => 
   for (const label of ['待适配运行时功能', '兼容性实验室', '战斗与任务', '显示与解锁', '团队伤害记录', '任务结算倒计时', '无限挑战']) {
     assert.doesNotMatch(source, new RegExp(label), `${label} must not remain visible`)
   }
+})
+
+test('continuous challenge is a stable owned v1.8.5 mission action', () => {
+  assert.match(source, /InfiniteChallengeGetStatusOwned/)
+  assert.match(source, /InfiniteChallengeSetEnabledOwned/)
+  assert.match(source, /连续挑战[\s\S]*v1\.8\.5\s*特征/)
+  assert.match(source, /唯一 AOB · 三字节补丁 · 写后回读/)
+  assert.match(source, /infiniteChallengeStatus\.owned/)
 })
 
 test('runtime scoped styles contain no legacy dark palette or scale hover', () => {

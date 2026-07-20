@@ -48,8 +48,9 @@ type LoadoutWrite struct {
 // LoadoutConstructedSigil describes one factor draft that must be created and
 // bound as part of the same LoadoutApply transaction. Index is 0 based.
 type LoadoutConstructedSigil struct {
-	Index int       `json:"index"`
-	Item  QueueItem `json:"item"`
+	Index          int       `json:"index"`
+	TemplateSlotID uint32    `json:"templateSlotId,omitempty"`
+	Item           QueueItem `json:"item"`
 }
 
 // LoadoutApplyResult 汇报写入结果。
@@ -386,6 +387,7 @@ type preparedLoadoutSigil struct {
 	secondaryHash  uint32
 	secondaryLevel int
 	hasSecondary   bool
+	flags          uint32
 }
 
 func containsNaturalLevel(levels []int, selected int) bool {
@@ -452,7 +454,7 @@ func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*prepared
 	prepared := &preparedLoadoutSigil{
 		index: draft.Index, item: item, sigilHash: sigilHash,
 		primaryHash: primaryHash, secondaryHash: EmptyHash,
-		hasSecondary: supportsGeneratedPlusSigil(sigil),
+		hasSecondary: supportsGeneratedPlusSigil(sigil), flags: NormalSigilFlags,
 	}
 	if item.SecondaryTraitID == "" {
 		if requiresCharacterSigilSecondary(sigil) {
@@ -516,6 +518,79 @@ func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*prepared
 	prepared.secondaryLevel = item.SecondaryLevel
 	prepared.item.SecondaryTraitName = cnTrait(secondary.DisplayName)
 	return prepared, nil
+}
+
+func prepareLoadoutSigilForSave(save *SaveData, ix *loadoutIndex, cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if draft.TemplateSlotID == 0 {
+		return prepareLoadoutSigil(cat, draft)
+	}
+	if draft.Index < 0 || draft.Index >= loadoutMaxSigils {
+		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
+	}
+	sourceUnit, ok := ix.gemBySlotID[draft.TemplateSlotID]
+	if !ok {
+		return nil, fmt.Errorf("真实存档模板 SlotID %d 不存在或已经为空", draft.TemplateSlotID)
+	}
+	readUint := func(idType uint32, unitID uint32, name string) (uint32, error) {
+		entry, exists := save.findUnitExact(idType, unitID)
+		if !exists || entry.ValueCnt != 1 {
+			return 0, fmt.Errorf("真实存档模板 SlotID %d 缺少%s标量", draft.TemplateSlotID, name)
+		}
+		return entry.Uint32(), nil
+	}
+	sigilHash, err := readUint(GemIDType, sourceUnit, "因子哈希")
+	if err != nil || sigilHash == 0 || sigilHash == EmptyHash {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("真实存档模板 SlotID %d 指向空因子", draft.TemplateSlotID)
+	}
+	levelRaw, err := readUint(GemLevelIDType, sourceUnit, "因子等级")
+	if err != nil {
+		return nil, err
+	}
+	flags, err := readUint(GemFlagsIDType, sourceUnit, "因子标记")
+	if err != nil {
+		return nil, err
+	}
+	traitBase := uint32(TraitSlotBase + (int(sourceUnit)-GemSlotBaseID)*100)
+	primaryHash, err := readUint(TraitHashIDType, traitBase, "主词条哈希")
+	if err != nil || primaryHash == 0 || primaryHash == EmptyHash {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("真实存档模板 SlotID %d 缺少主词条", draft.TemplateSlotID)
+	}
+	primaryLevelRaw, err := readUint(TraitLevelIDType, traitBase, "主词条等级")
+	if err != nil {
+		return nil, err
+	}
+	secondaryHash, err := readUint(TraitHashIDType, traitBase+1, "副词条哈希")
+	if err != nil {
+		return nil, err
+	}
+	secondaryLevelRaw, err := readUint(TraitLevelIDType, traitBase+1, "副词条等级")
+	if err != nil {
+		return nil, err
+	}
+	hasSecondary := secondaryHash != 0 && secondaryHash != EmptyHash
+	if !hasSecondary {
+		secondaryHash = EmptyHash
+		secondaryLevelRaw = 0
+	}
+	item := draft.Item
+	item.Quantity = 1
+	item.Level = int(int32(levelRaw))
+	item.PrimaryLevel = int(int32(primaryLevelRaw))
+	item.SecondaryLevel = int(int32(secondaryLevelRaw))
+	if item.SigilName == "" {
+		item.SigilName = sigilDisplayNameOr(sigilHash)
+	}
+	return &preparedLoadoutSigil{
+		index: draft.Index, item: item, sigilHash: sigilHash, primaryHash: primaryHash,
+		secondaryHash: secondaryHash, secondaryLevel: item.SecondaryLevel,
+		hasSecondary: hasSecondary, flags: flags,
+	}, nil
 }
 
 func validateLoadoutSigilDestination(save *SaveData, prepared *preparedLoadoutSigil) error {
@@ -711,7 +786,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if constructedIndexes[draft.Index] {
 			return nil, fmt.Errorf("因子槽位索引 %d 被重复提交构造草稿", draft.Index)
 		}
-		prepared, err := prepareLoadoutSigil(cat, draft)
+		prepared, err := prepareLoadoutSigilForSave(save, ix, cat, draft)
 		if err != nil {
 			return nil, fmt.Errorf("构造第 %d 个因子失败: %w", draft.Index+1, err)
 		}
@@ -1246,10 +1321,10 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 			return nil, err
 		}
 		for _, prepared := range constructed {
-			if err := save.PatchSigil(
+			if err := save.PatchSigilWithFlags(
 				prepared.gemUnitID, int(prepared.newSlotID), prepared.sigilHash, prepared.item.Level,
 				prepared.primaryHash, prepared.item.PrimaryLevel,
-				prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary,
+				prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary, prepared.flags,
 			); err != nil {
 				return nil, fmt.Errorf("写入构造因子「%s」失败: %w", prepared.item.SigilName, err)
 			}
@@ -1322,10 +1397,10 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		}
 	}
 	for i, prepared := range constructed {
-		if err := verify.VerifySigil(
+		if err := verify.VerifySigilWithFlags(
 			prepared.gemUnitID, prepared.newSlotID, prepared.sigilHash, prepared.item.Level,
 			prepared.primaryHash, prepared.item.PrimaryLevel,
-			prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary,
+			prepared.secondaryHash, prepared.secondaryLevel, prepared.hasSecondary, prepared.flags,
 		); err != nil {
 			return nil, fmt.Errorf("配装已写入，但第 %d 个新因子回读验证失败: %w；请用备份恢复", i+1, err)
 		}

@@ -8,6 +8,8 @@ import {
   WrightstoneMemoryUpdateOwned,
 } from '../../wailsjs/go/main/App'
 import { traitAssetIcon } from '../gameAssetIcons'
+import { language } from '../i18n.js'
+import { backendLanguageReady } from '../backendLanguage.js'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -19,7 +21,12 @@ const confirmDialog = ref(null)
 const loading = ref(false)
 const writing = ref(false)
 const stale = ref(false)
-const liveMessage = ref('尚未启用读取。')
+function text(zh, en) { return language.value === 'en' ? en : zh }
+function isolatedError(error, englishFallback) {
+  const raw = String(error || '')
+  return language.value === 'en' && /[\u3400-\u9fff]/u.test(raw) ? englishFallback : raw
+}
+const liveMessage = ref(text('尚未启用读取。', 'Capture is not enabled.'))
 const traits = ref([])
 const status = reactive({
   found: false,
@@ -36,10 +43,11 @@ const status = reactive({
   thirdLevel: 0,
 })
 const traitSlots = reactive([
-  { label: '第一槽', hashKey: 'firstHash', nameKey: 'firstName', levelKey: 'firstLevel', maxLevel: 20, hash: 0, level: 0 },
-  { label: '第二槽', hashKey: 'secondHash', nameKey: 'secondName', levelKey: 'secondLevel', maxLevel: 15, hash: 0, level: 0 },
-  { label: '第三槽', hashKey: 'thirdHash', nameKey: 'thirdName', levelKey: 'thirdLevel', maxLevel: 10, hash: 0, level: 0 },
+  { labelZh: '第一槽', labelEn: 'Slot One', hashKey: 'firstHash', nameKey: 'firstName', levelKey: 'firstLevel', maxLevel: 20, hash: 0, level: 0 },
+  { labelZh: '第二槽', labelEn: 'Slot Two', hashKey: 'secondHash', nameKey: 'secondName', levelKey: 'secondLevel', maxLevel: 15, hash: 0, level: 0 },
+  { labelZh: '第三槽', labelEn: 'Slot Three', hashKey: 'thirdHash', nameKey: 'thirdName', levelKey: 'thirdLevel', maxLevel: 10, hash: 0, level: 0 },
 ])
+function slotLabel(slot) { return language.value === 'en' ? slot.labelEn : slot.labelZh }
 const traitCatalogOptions = computed(() => traits.value
   .map(trait => ({
     ...trait,
@@ -54,11 +62,11 @@ let lifecycleEpoch = 0
 let hookOwnerToken = ''
 
 const statusLabel = computed(() => {
-  if (stale.value) return '记录已失效'
-  if (status.selectedAddr) return '已锁定记录'
-  if (status.hooked) return '等待游戏内选择'
-  if (status.found) return '已定位，尚未启用'
-  return '未连接'
+  if (stale.value) return text('记录已失效', 'Record Expired')
+  if (status.selectedAddr) return text('已锁定记录', 'Record Locked')
+  if (status.hooked) return text('等待游戏内选择', 'Waiting for In-Game Selection')
+  if (status.found) return text('已定位，尚未启用', 'Located, Not Enabled')
+  return text('未连接', 'Not Connected')
 })
 
 function formatHex(value) {
@@ -136,31 +144,35 @@ function applyStatus(next, { sync = false } = {}) {
 const changes = computed(() => traitSlots.flatMap((slot, index) => {
   const rows = []
   if (normaliseHash(slot.hash) !== currentHash(slot)) {
-    rows.push(`${slot.label}：${currentName(slot)} → ${targetName(slot)}`)
+    rows.push(language.value === 'en'
+      ? `${slotLabel(slot)}: ${currentName(slot)} → ${targetName(slot)}`
+      : `${slotLabel(slot)}：${currentName(slot)} → ${targetName(slot)}`)
   }
   if (Number(slot.level) !== currentLevel(slot)) {
-    rows.push(`${slot.label}等级：${currentLevel(slot)} → ${Number(slot.level)}`)
+    rows.push(language.value === 'en'
+      ? `${slotLabel(slot)} Level: ${currentLevel(slot)} → ${Number(slot.level)}`
+      : `${slotLabel(slot)}等级：${currentLevel(slot)} → ${Number(slot.level)}`)
   }
   return rows.map(text => ({ key: `${index}-${text}`, text }))
 }))
 
 const validationMessage = computed(() => {
-  if (!status.hooked) return '请先启用读取。'
-  if (stale.value) return '上次写入后记录已失效，请在游戏内重新选择记录。'
-  if (!status.selectedAddr) return '请在游戏内祝福石列表重新选中目标记录。'
-  if (!traitSlots[0].hash) return '第一槽词条不能为空。'
+  if (!status.hooked) return text('请先启用读取。', 'Enable capture first.')
+  if (stale.value) return text('上次写入后记录已失效，请在游戏内重新选择记录。', 'The record expired after the last write. Select it again in-game.')
+  if (!status.selectedAddr) return text('请在游戏内祝福石列表重新选中目标记录。', 'Select the target again in the in-game wrightstone list.')
+  if (!traitSlots[0].hash) return text('第一槽词条不能为空。', 'Slot One cannot be empty.')
   for (const slot of traitSlots) {
-    if (!slot.hash && Number(slot.level) !== 0) return `${slot.label}为空时等级必须为 0。`
+    if (!slot.hash && Number(slot.level) !== 0) return language.value === 'en' ? `${slotLabel(slot)} must have level 0 when empty.` : `${slotLabel(slot)}为空时等级必须为 0。`
     const option = traitOption(slot.hash)
-    if (slot.hash && !option) return `${slot.label}词条不在已验证目录中。`
+    if (slot.hash && !option) return language.value === 'en' ? `${slotLabel(slot)} is not in the verified catalog.` : `${slotLabel(slot)}词条不在已验证目录中。`
     if (slot.hash && !allowedLevels(slot).includes(Number(slot.level))) {
-      return `${slot.label}等级不在该槽位的允许范围内。`
+      return language.value === 'en' ? `${slotLabel(slot)} level is outside this slot's allowed range.` : `${slotLabel(slot)}等级不在该槽位的允许范围内。`
     }
   }
   const selectedHashes = traitSlots.map(slot => normaliseHash(slot.hash)).filter(Boolean)
   const uniqueHashes = new Set(traitSlots.map(slot => normaliseHash(slot.hash)).filter(Boolean))
-  if (uniqueHashes.size !== selectedHashes.length) return '三个槽位不能选择重复词条。'
-  if (!changes.value.length) return '目标值与当前记录相同。'
+  if (uniqueHashes.size !== selectedHashes.length) return text('三个槽位不能选择重复词条。', 'The three slots cannot use duplicate traits.')
+  if (!changes.value.length) return text('目标值与当前记录相同。', 'Target values are identical to the current record.')
   return ''
 })
 const canWrite = computed(() => !loading.value && !writing.value && !validationMessage.value)
@@ -190,14 +202,18 @@ async function pollStatus(silent = false) {
     if (disposed || epoch !== lifecycleEpoch) return
     applyStatus(next)
     if (!status.hooked) stopPolling()
-    if (!previousSelectedAddr && status.selectedAddr) liveMessage.value = '已读取当前祝福石记录。'
-    else if (previousSelectedAddr && !status.selectedAddr && status.hooked) liveMessage.value = '当前记录已释放，请在游戏内重新选择祝福石。'
-    else if (!silent) liveMessage.value = status.selectedAddr ? '已读取当前祝福石记录。' : '等待游戏内选择祝福石记录。'
+    if (!previousSelectedAddr && status.selectedAddr) liveMessage.value = text('已读取当前祝福石记录。', 'The current wrightstone record was captured.')
+    else if (previousSelectedAddr && !status.selectedAddr && status.hooked) liveMessage.value = text('当前记录已释放，请在游戏内重新选择祝福石。', 'The current record was released. Select the wrightstone again in-game.')
+    else if (!silent) liveMessage.value = status.selectedAddr
+      ? text('已读取当前祝福石记录。', 'The current wrightstone record was captured.')
+      : text('等待游戏内选择祝福石记录。', 'Waiting for an in-game wrightstone selection.')
   } catch (error) {
     if (disposed || epoch !== lifecycleEpoch) return
     stopPolling()
     applyStatus(null)
-    liveMessage.value = `读取已停止：${String(error)}`
+    liveMessage.value = language.value === 'en'
+      ? `Capture stopped: ${isolatedError(error, 'The runtime capture status could not be read.')}`
+      : `读取已停止：${String(error)}`
     if (!silent) emit('status', liveMessage.value, 'error')
   }
 }
@@ -209,19 +225,21 @@ async function enable() {
   try {
     const next = await WrightstoneMemoryAcquire(nextRuntimeAcquireRequestID())
     acquiredOwnerToken = String(next?.ownerToken || '')
-    if (!acquiredOwnerToken) throw new Error('后端未返回祝福石读取所有权令牌')
+    if (!acquiredOwnerToken) throw new Error(text('后端未返回祝福石读取所有权令牌', 'The backend did not return a wrightstone capture owner token.'))
     if (disposed || epoch !== lifecycleEpoch) {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, WrightstoneMemoryRelease)
       return
     }
     hookOwnerToken = acquiredOwnerToken
     applyStatus(next, { sync: true })
-    liveMessage.value = status.selectedAddr ? '读取已启用，并已捕获一条记录。' : '读取已启用，请在游戏内选择一条祝福石记录。'
+    liveMessage.value = status.selectedAddr
+      ? text('读取已启用，并已捕获一条记录。', 'Capture is enabled and one record has been captured.')
+      : text('读取已启用，请在游戏内选择一条祝福石记录。', 'Capture is enabled. Select a wrightstone record in-game.')
     emit('status', liveMessage.value, 'success')
     startPolling()
   } catch (error) {
     if (disposed || epoch !== lifecycleEpoch) return
-    liveMessage.value = String(error)
+    liveMessage.value = isolatedError(error, 'Failed to enable wrightstone capture.')
     emit('status', liveMessage.value, 'error')
   } finally {
     if (!disposed && epoch === lifecycleEpoch) loading.value = false
@@ -246,11 +264,11 @@ async function disable() {
     applyStatus(next)
     stale.value = false
     clearDraft()
-    liveMessage.value = '读取已停止，游戏指令已恢复。'
+    liveMessage.value = text('读取已停止，游戏指令已恢复。', 'Capture stopped and the game instruction was restored.')
     emit('status', liveMessage.value, 'success')
   } catch (error) {
     if (disposed || epoch !== lifecycleEpoch) return
-    liveMessage.value = String(error)
+    liveMessage.value = isolatedError(error, 'Failed to stop wrightstone capture.')
     emit('status', liveMessage.value, 'error')
   } finally {
     if (!disposed && epoch === lifecycleEpoch) loading.value = false
@@ -275,17 +293,17 @@ async function write() {
   }
   const changeDetail = changes.value.map(item => item.text).join('\n')
   const confirmed = await confirmDialog.value?.ask({
-    title: '写入当前祝福石',
-    message: `确认写入 ${changes.value.length} 项变更？`,
+    title: text('写入当前祝福石', 'Write Current Wrightstone'),
+    message: language.value === 'en' ? `Write ${changes.value.length} changes?` : `确认写入 ${changes.value.length} 项变更？`,
     detail: changeDetail,
     tone: 'warning',
-    confirmLabel: '确认写入',
+    confirmLabel: text('确认写入', 'Confirm Write'),
   })
   if (!confirmed) return
   writing.value = true
   try {
     const ownerToken = hookOwnerToken
-    if (!ownerToken) throw new Error('当前页面不再持有祝福石读取所有权')
+    if (!ownerToken) throw new Error(text('当前页面不再持有祝福石读取所有权', 'This page no longer owns the wrightstone capture lease.'))
     const result = await WrightstoneMemoryUpdateOwned(ownerToken, payload)
     applyStatus(result)
     clearDraft()
@@ -297,15 +315,17 @@ async function write() {
       if (hookOwnerToken === ownerToken) hookOwnerToken = ''
       applyStatus(released)
       stale.value = false
-      liveMessage.value = '写入成功，读取已自动停止，游戏指令已恢复。'
+      liveMessage.value = text('写入成功，读取已自动停止，游戏指令已恢复。', 'Write succeeded. Capture stopped automatically and the game instruction was restored.')
       emit('status', liveMessage.value, 'success')
     } catch (releaseError) {
       if (disposed) return
-      liveMessage.value = `写入已成功，但自动停止读取失败；请立即点击“停止读取”：${String(releaseError)}`
+      liveMessage.value = language.value === 'en'
+        ? `Write succeeded, but automatic capture shutdown failed. Click “Stop Capture” now: ${isolatedError(releaseError, 'runtime restore failed')}`
+        : `写入已成功，但自动停止读取失败；请立即点击“停止读取”：${String(releaseError)}`
       emit('status', liveMessage.value, 'error')
     }
   } catch (error) {
-    liveMessage.value = String(error)
+    liveMessage.value = isolatedError(error, 'Failed to write the wrightstone record.')
     emit('status', liveMessage.value, 'error')
   } finally {
     writing.value = false
@@ -315,12 +335,14 @@ async function write() {
 onMounted(async () => {
   loading.value = true
   try {
+    await backendLanguageReady
+    if (disposed) return
     const result = await WrightstoneMemoryGetOptions()
     traits.value = Array.isArray(result?.traits) ? result.traits : []
     await pollStatus(true)
     if (status.hooked) startPolling()
   } catch (error) {
-    liveMessage.value = String(error)
+    liveMessage.value = isolatedError(error, 'Failed to load the wrightstone catalog.')
   } finally {
     loading.value = false
   }
@@ -342,66 +364,68 @@ onBeforeUnmount(() => {
       <section class="connection-card section ui-card">
         <header class="ui-split">
           <div>
-            <h2 class="ui-section-title">捕获状态</h2>
-            <p class="ui-section-copy">捕获游戏内当前选中的祝福石记录，核对三槽后一次性写入。</p>
+            <h2 class="ui-section-title">{{ text('捕获状态', 'Capture Status') }}</h2>
+            <p class="ui-section-copy">{{ text('捕获游戏内当前选中的祝福石记录，核对三槽后一次性写入。', 'Capture the currently selected in-game wrightstone, verify all three slots, then write once.') }}</p>
           </div>
           <span class="ui-tag" :class="status.selectedAddr && !stale ? 'is-ok' : status.hooked ? 'is-info' : ''">{{ statusLabel }}</span>
         </header>
         <div class="connection-body">
           <div class="connection-actions ui-actions">
-            <button type="button" class="ui-btn is-primary" :disabled="loading || status.hooked" @click="enable">启用读取</button>
-            <button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">刷新状态</button>
-            <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">停止读取</button>
+            <button type="button" class="ui-btn is-primary" :disabled="loading || status.hooked" @click="enable">{{ text('启用读取', 'Enable Capture') }}</button>
+            <button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">{{ text('刷新状态', 'Refresh Status') }}</button>
+            <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">{{ text('停止读取', 'Stop Capture') }}</button>
           </div>
           <p class="connection-message ui-notice" :class="{ 'is-warn': stale }" aria-live="polite">{{ liveMessage }}</p>
         </div>
-        <p class="ui-hint">读取 Hook 启用期间不要切入铁匠铺的其他操作；写入成功后会自动停止读取，避免游戏闪退。</p>
+        <p class="ui-hint">{{ text('读取 Hook 启用期间不要切入铁匠铺的其他操作；写入成功后会自动停止读取，避免游戏闪退。', 'Do not switch to other blacksmith actions while the capture hook is active. Capture stops automatically after a successful write to avoid crashes.') }}</p>
       </section>
 
       <section class="record-panel section ui-card">
         <header class="ui-split">
           <div>
-            <h3 class="ui-section-title">三槽记录</h3>
-            <p class="ui-section-copy">当前值保持只读；目标值只有在重新捕获记录后才可写。</p>
+            <h3 class="ui-section-title">{{ text('三槽记录', 'Three-Slot Record') }}</h3>
+            <p class="ui-section-copy">{{ text('当前值保持只读；目标值只有在重新捕获记录后才可写。', 'Current values remain read-only. Target values become writable only after a fresh capture.') }}</p>
           </div>
-          <code>{{ status.selectedAddr ? `0x${Number(status.selectedAddr).toString(16).toUpperCase()}` : '未选择' }}</code>
+          <code>{{ status.selectedAddr ? `0x${Number(status.selectedAddr).toString(16).toUpperCase()}` : text('未选择', 'Not Selected') }}</code>
         </header>
 
         <div v-if="!status.selectedAddr || stale" class="selection-inline-notice" role="status">
-          <span>{{ stale ? '写入后的旧记录不可复用，请在游戏内重新选中一条记录。' : '启用读取后，在游戏内祝福石列表选中目标记录。' }}</span>
+          <span>{{ stale
+            ? text('写入后的旧记录不可复用，请在游戏内重新选中一条记录。', 'The old record cannot be reused after writing. Select a record again in-game.')
+            : text('启用读取后，在游戏内祝福石列表选中目标记录。', 'After enabling capture, select the target in the in-game wrightstone list.') }}</span>
         </div>
 
         <div class="trait-grid" :aria-disabled="!status.selectedAddr || stale">
-          <article v-for="(slot, index) in traitSlots" :key="slot.label" class="trait-card ui-card">
-            <header class="trait-card-heading ui-split"><h4 class="ui-section-title">{{ slot.label }}</h4><span class="ui-tag">{{ index + 1 }} / 3</span></header>
+          <article v-for="(slot, index) in traitSlots" :key="slot.hashKey" class="trait-card ui-card">
+            <header class="trait-card-heading ui-split"><h4 class="ui-section-title">{{ slotLabel(slot) }}</h4><span class="ui-tag">{{ index + 1 }} / 3</span></header>
             <div class="trait-current">
               <span class="trait-current-icon">
                 <img v-if="traitIcon(currentHash(slot), currentName(slot))" :src="traitIcon(currentHash(slot), currentName(slot))" alt="" />
                 <span v-else aria-hidden="true">—</span>
               </span>
               <span class="trait-current-copy">
-                <small>当前配置</small>
+                <small>{{ text('当前配置', 'Current Configuration') }}</small>
                 <strong>{{ currentName(slot) }}</strong>
               </span>
               <code>Lv {{ currentLevel(slot) }} · {{ formatHex(currentHash(slot)) }}</code>
             </div>
             <div class="trait-target">
               <label class="ui-field">
-                <span class="ui-field-label">目标词条</span>
+                <span class="ui-field-label">{{ text('目标词条', 'Target Trait') }}</span>
                 <CatalogSelect
                   :model-value="traitCatalogValue(slot)"
                   :options="traitCatalogOptions"
                   :icon-resolver="traitIconForOption"
                   :optional="index > 0"
                   :disabled="!status.selectedAddr || stale"
-                  placeholder="尚未选择特性"
-                  search-placeholder="搜索特性名称"
+                  :placeholder="text('尚未选择特性', 'No Trait Selected')"
+                  :search-placeholder="text('搜索特性名称', 'Search Traits')"
                   detail-key="maxLevel"
                   @update:model-value="selectTrait(slot, $event)"
                 />
               </label>
               <label class="ui-field trait-level-field">
-                <span class="ui-field-label">目标等级</span>
+                <span class="ui-field-label">{{ text('目标等级', 'Target Level') }}</span>
                 <select v-model.number="slot.level" class="ui-select ui-input" :disabled="!slot.hash || !status.selectedAddr || stale">
                   <option v-for="level in allowedLevels(slot)" :key="level" :value="level">Lv {{ level }}</option>
                 </select>
@@ -412,15 +436,15 @@ onBeforeUnmount(() => {
 
         <div class="record-footer">
           <details class="ui-disclosure change-summary">
-            <summary>变更摘要 · {{ changes.length }} 项</summary>
+            <summary>{{ text('变更摘要', 'Change Summary') }} · {{ changes.length }} {{ text('项', 'changes') }}</summary>
             <ul v-if="changes.length"><li v-for="item in changes" :key="item.key">{{ item.text }}</li></ul>
-            <p v-else class="ui-hint">当前没有待写入变更。</p>
+            <p v-else class="ui-hint">{{ text('当前没有待写入变更。', 'There are no pending changes.') }}</p>
           </details>
 
           <aside class="wrightstone-memory-actions ui-card ui-panel is-compact">
-            <span><b>{{ statusLabel }}</b><small>{{ validationMessage || `${changes.length} 项待写入` }}</small></span>
-            <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">还原当前值</button>
-            <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? '写入中…' : '写入三槽' }}</button>
+            <span><b>{{ statusLabel }}</b><small>{{ validationMessage || (language === 'en' ? `${changes.length} changes pending` : `${changes.length} 项待写入`) }}</small></span>
+            <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">{{ text('还原当前值', 'Restore Current Values') }}</button>
+            <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? text('写入中…', 'Writing…') : text('写入三槽', 'Write Three Slots') }}</button>
           </aside>
         </div>
       </section>

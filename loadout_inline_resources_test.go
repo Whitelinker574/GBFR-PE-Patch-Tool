@@ -23,7 +23,9 @@ type inlineResourceFixture struct {
 	write          LoadoutWrite
 	weapon         LoadoutWeaponInlineEdit
 	summon         LoadoutSummonInlineEdit
-	weaponPrefix   []uint32
+	weaponBefore   [5]uint32
+	weaponAfter    [5]uint32
+	weaponEditSlot int
 	summonSnapshot map[uint32][]uint32
 }
 
@@ -49,9 +51,6 @@ func setupInlineResourceFixture(t *testing.T, path string) inlineResourceFixture
 		t.Fatalf("weapon UnitID %d lacks required inline fields", weaponUnitID)
 	}
 	transcendence.SetInt32(7)
-	if err := extra.SetUint32At(4, 0xBBD77C33); err != nil {
-		t.Fatal(err)
-	}
 	if err := save.FixChecksums(); err != nil {
 		t.Fatal(err)
 	}
@@ -59,15 +58,44 @@ func setupInlineResourceFixture(t *testing.T, path string) inlineResourceFixture
 		t.Fatal(err)
 	}
 
-	weaponPrefix := make([]uint32, 4)
-	for i := range weaponPrefix {
-		weaponPrefix[i], _ = extra.Uint32At(i)
+	var weaponBefore [5]uint32
+	expectSkills := make([]string, 5)
+	draftSkills := make([]string, 5)
+	for i := range weaponBefore {
+		weaponBefore[i], _ = extra.Uint32At(i)
+		expectSkills[i] = hashText(weaponBefore[i])
+		draftSkills[i] = expectSkills[i]
 	}
+	context, err := readLoadoutWeaponContext(save, loadout.WeaponSlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editSlot := -1
+	for _, slot := range context.SkillSlots {
+		if !slot.Editable {
+			continue
+		}
+		for _, option := range slot.Options {
+			if option.Hash != slot.CurrentHash {
+				draftSkills[slot.Index] = option.Hash
+				editSlot = slot.Index
+				break
+			}
+		}
+		if editSlot >= 0 {
+			break
+		}
+	}
+	if editSlot < 0 {
+		t.Skip("real loadout fixture has no editable transcendence skill slot")
+	}
+	weaponAfter := weaponBefore
+	weaponAfter[editSlot] = mustParseTestHash(t, draftSkills[editSlot])
 	weaponEdit := LoadoutWeaponInlineEdit{
 		SlotID: loadout.WeaponSlotID, ExpectUnitID: weaponUnitID,
 		ExpectStoredHash: hashText(weaponHashEntry.Uint32()), ExpectTranscendence: 7,
-		ExpectTranscendenceSkill: "BBD77C33",
-		TranscendenceSkill:       "020DB733",
+		ExpectSkillHashes: expectSkills,
+		SkillHashes:       draftSkills,
 	}
 
 	stats, err := (&App{}).LoadoutStatContext(path, testIoHash)
@@ -104,7 +132,8 @@ func setupInlineResourceFixture(t *testing.T, path string) inlineResourceFixture
 	write := loadoutWriteFromEntry(loadout, append([]uint32(nil), stats.EquippedSummonSlotIDs...))
 	return inlineResourceFixture{
 		write: write, weapon: weaponEdit, summon: summonEdit,
-		weaponPrefix: weaponPrefix, summonSnapshot: summonInstanceSnapshot(t, save),
+		weaponBefore: weaponBefore, weaponAfter: weaponAfter, weaponEditSlot: editSlot,
+		summonSnapshot: summonInstanceSnapshot(t, save),
 	}
 }
 
@@ -137,7 +166,7 @@ func TestLoadoutApplyWithResourcesRejectsStaleWeaponEffectBeforeWrite(t *testing
 	input := copyStatsSave(t)
 	fixture := setupInlineResourceFixture(t, input)
 	output := filepath.Join(t.TempDir(), "stale-weapon-effect.dat")
-	fixture.weapon.ExpectTranscendenceSkill = "79027FC8"
+	fixture.weapon.ExpectSkillHashes[fixture.weaponEditSlot] = "79027FC8"
 	_, err := (&App{}).LoadoutApplyWithResources(input, output, LoadoutApplyRequest{
 		Changes: []LoadoutWrite{fixture.write}, WeaponEdits: []LoadoutWeaponInlineEdit{fixture.weapon},
 	})
@@ -153,7 +182,8 @@ func TestLoadoutApplyWithResourcesRejectsConflictingWeaponEditsBeforeWrite(t *te
 	input := copyStatsSave(t)
 	fixture := setupInlineResourceFixture(t, input)
 	conflict := fixture.weapon
-	conflict.TranscendenceSkill = "3F682593"
+	conflict.SkillHashes = append([]string(nil), fixture.weapon.SkillHashes...)
+	conflict.SkillHashes[fixture.weaponEditSlot] = fixture.weapon.ExpectSkillHashes[fixture.weaponEditSlot]
 	output := filepath.Join(t.TempDir(), "conflicting-weapon.dat")
 	_, err := (&App{}).LoadoutApplyWithResources(input, output, LoadoutApplyRequest{
 		Changes:     []LoadoutWrite{fixture.write},
@@ -217,14 +247,11 @@ func TestLoadoutApplyWithResourcesWritesWeaponAndSummonInOneVerifiedTransaction(
 	if !ok || extra.ValueCnt < 5 {
 		t.Fatal("written weapon lost its 2818 vector")
 	}
-	for index, want := range fixture.weaponPrefix {
+	for index, want := range fixture.weaponAfter {
 		got, _ := extra.Uint32At(index)
 		if got != want {
 			t.Fatalf("weapon 2818[%d] changed from %08X to %08X", index, want, got)
 		}
-	}
-	if got, _ := extra.Uint32At(4); got != 0x020DB733 {
-		t.Fatalf("weapon 2818[4]=%08X, want 020DB733", got)
 	}
 
 	afterSummons := summonInstanceSnapshot(t, after)

@@ -35,30 +35,51 @@ type LoadoutWeaponSkill struct {
 	UnlockCondition string `json:"unlockCondition"`
 }
 
+// LoadoutWeaponSkillOption is one legal trait for a single 2818 vector slot at
+// the weapon's current transcendence stage. Options are deliberately scoped to
+// the weapon table group instead of exposing a global trait list.
+type LoadoutWeaponSkillOption struct {
+	Hash  string `json:"hash"`
+	Name  string `json:"name"`
+	Level int    `json:"level"`
+}
+
+type LoadoutWeaponSkillSlot struct {
+	Index        int                        `json:"index"`
+	Label        string                     `json:"label"`
+	GroupHash    string                     `json:"groupHash"`
+	CurrentHash  string                     `json:"currentHash"`
+	CurrentName  string                     `json:"currentName"`
+	CurrentLevel int                        `json:"currentLevel"`
+	Editable     bool                       `json:"editable"`
+	Options      []LoadoutWeaponSkillOption `json:"options"`
+}
+
 type LoadoutWeaponContext struct {
-	UnitID                 uint32               `json:"unitId"`
-	SlotID                 uint32               `json:"slotId"`
-	StoredHash             string               `json:"storedHash"`
-	BaseHash               string               `json:"baseHash"`
-	Name                   string               `json:"name"`
-	InternalID             string               `json:"internalId"`
-	WeaponType             string               `json:"weaponType"`
-	Level                  int                  `json:"level"`
-	XP                     uint32               `json:"xp"`
-	Uncap                  int                  `json:"uncap"`
-	Mirage                 int                  `json:"mirage"`
-	Awakening              int                  `json:"awakening"`
-	Transcendence          int                  `json:"transcendence"`
-	TranscendenceSkill     string               `json:"transcendenceSkill"`
-	TranscendenceSkillName string               `json:"transcendenceSkillName"`
-	Base                   WeaponStatLine       `json:"base"`
-	AwakeningBonus         WeaponStatLine       `json:"awakeningBonus"`
-	MirageBonus            WeaponStatLine       `json:"mirageBonus"`
-	RebuildBonus           WeaponStatLine       `json:"rebuildBonus"`
-	Total                  WeaponStatLine       `json:"total"`
-	Skills                 []LoadoutWeaponSkill `json:"skills"`
-	Warnings               []string             `json:"warnings"`
-	FormulaVerified        bool                 `json:"formulaVerified"`
+	UnitID                 uint32                   `json:"unitId"`
+	SlotID                 uint32                   `json:"slotId"`
+	StoredHash             string                   `json:"storedHash"`
+	BaseHash               string                   `json:"baseHash"`
+	Name                   string                   `json:"name"`
+	InternalID             string                   `json:"internalId"`
+	WeaponType             string                   `json:"weaponType"`
+	Level                  int                      `json:"level"`
+	XP                     uint32                   `json:"xp"`
+	Uncap                  int                      `json:"uncap"`
+	Mirage                 int                      `json:"mirage"`
+	Awakening              int                      `json:"awakening"`
+	Transcendence          int                      `json:"transcendence"`
+	TranscendenceSkill     string                   `json:"transcendenceSkill"`
+	TranscendenceSkillName string                   `json:"transcendenceSkillName"`
+	Base                   WeaponStatLine           `json:"base"`
+	AwakeningBonus         WeaponStatLine           `json:"awakeningBonus"`
+	MirageBonus            WeaponStatLine           `json:"mirageBonus"`
+	RebuildBonus           WeaponStatLine           `json:"rebuildBonus"`
+	Total                  WeaponStatLine           `json:"total"`
+	Skills                 []LoadoutWeaponSkill     `json:"skills"`
+	SkillSlots             []LoadoutWeaponSkillSlot `json:"skillSlots"`
+	Warnings               []string                 `json:"warnings"`
+	FormulaVerified        bool                     `json:"formulaVerified"`
 }
 
 type weaponStatKeyframe struct {
@@ -172,11 +193,7 @@ func readLoadoutWeaponContext(save *SaveData, slotID uint32) (*LoadoutWeaponCont
 		return nil, fmt.Errorf("武器 SlotID %d 没有有效武器", slotID)
 	}
 	storedText := hashText(storedHash)
-	row, rowOK := data.Weapons[storedText]
-	if !rowOK {
-		baseText := hashText(weaponBaseHash(storedHash))
-		row, rowOK = firstWeaponTableRowForBase(data.Weapons, baseText)
-	}
+	row, rowOK := resolveLoadoutWeaponTableRow(data, storedHash)
 	if !rowOK {
 		return nil, fmt.Errorf("武器 %s 不在内置官方数值目录中", storedText)
 	}
@@ -230,8 +247,98 @@ func readLoadoutWeaponContext(save *SaveData, slotID uint32) (*LoadoutWeaponCont
 		return nil, err
 	}
 	context.Skills = readLoadoutWeaponSkills(save, data, catalog, row, context)
+	context.SkillSlots = buildLoadoutWeaponSkillSlots(save, data, catalog, row, context)
 	markUnresolvedWeaponSkills(context)
 	return context, nil
+}
+
+func resolveLoadoutWeaponTableRow(data *loadoutWeaponStatsFile, storedHash uint32) (loadoutWeaponTableRow, bool) {
+	if data == nil {
+		return loadoutWeaponTableRow{}, false
+	}
+	if row, ok := data.Weapons[hashText(storedHash)]; ok {
+		return row, true
+	}
+	return firstWeaponTableRowForBase(data.Weapons, hashText(weaponBaseHash(storedHash)))
+}
+
+func loadoutWeaponSkillName(data *loadoutWeaponStatsFile, catalog *Catalog, hash uint32, level int) string {
+	skill := newLoadoutWeaponSkill(data, catalog, "", 0, hash, level, "weapon-rebuild", "", "")
+	if strings.TrimSpace(skill.Name) != "" {
+		return skill.Name
+	}
+	return hashText(hash)
+}
+
+func rebuildSkillOptionsForSlot(data *loadoutWeaponStatsFile, catalog *Catalog, group string, stage int) []LoadoutWeaponSkillOption {
+	if data == nil || group == "" || stage <= 0 || stage > 7 {
+		return nil
+	}
+	seen := make(map[uint32]bool)
+	options := make([]LoadoutWeaponSkillOption, 0)
+	for _, row := range data.RebuildSkillLevels {
+		if row.Group != group || row.Levels[stage-1] <= 0 {
+			continue
+		}
+		hash, ok := parseWeaponSkillHash(row.Trait)
+		if !ok || seen[hash] {
+			continue
+		}
+		seen[hash] = true
+		level := row.Levels[stage-1]
+		options = append(options, LoadoutWeaponSkillOption{
+			Hash: hashText(hash), Name: loadoutWeaponSkillName(data, catalog, hash, level), Level: level,
+		})
+	}
+	sort.SliceStable(options, func(i, j int) bool {
+		if options[i].Name != options[j].Name {
+			return options[i].Name < options[j].Name
+		}
+		return options[i].Hash < options[j].Hash
+	})
+	return options
+}
+
+func buildLoadoutWeaponSkillSlots(save *SaveData, data *loadoutWeaponStatsFile, catalog *Catalog, row loadoutWeaponTableRow, context *LoadoutWeaponContext) []LoadoutWeaponSkillSlot {
+	if save == nil || context == nil || context.Transcendence <= 0 {
+		return nil
+	}
+	extra, ok := save.findUnitExact(weaponExtraIDType, context.UnitID)
+	if !ok || extra.ValueCnt < 5 {
+		return nil
+	}
+	labels := [...]string{"I", "II", "III", "IV", "EX"}
+	result := make([]LoadoutWeaponSkillSlot, 0, len(labels))
+	for index, label := range labels {
+		current, err := extra.Uint32At(index)
+		if err != nil {
+			continue
+		}
+		options := rebuildSkillOptionsForSlot(data, catalog, row.RebuildSkillLevelKeys[index], context.Transcendence)
+		slot := LoadoutWeaponSkillSlot{
+			Index: index, Label: label, GroupHash: row.RebuildSkillLevelKeys[index],
+			CurrentHash: hashText(current), Options: options,
+		}
+		currentIsLegal := false
+		for _, option := range options {
+			if option.Hash == slot.CurrentHash {
+				slot.CurrentName = option.Name
+				slot.CurrentLevel = option.Level
+				currentIsLegal = true
+				break
+			}
+		}
+		if slot.CurrentName == "" && current != 0 && current != EmptyHash {
+			slot.CurrentName = loadoutWeaponSkillName(data, catalog, current, 0)
+		}
+		slot.Editable = currentIsLegal && len(options) > 1
+		if !currentIsLegal && current != 0 && current != EmptyHash {
+			context.FormulaVerified = false
+			context.Warnings = append(context.Warnings, fmt.Sprintf("武器技能槽 %d 的 %s 不属于当前武器与超凡阶段的技能组，已禁止编辑", index+1, slot.CurrentHash))
+		}
+		result = append(result, slot)
+	}
+	return result
 }
 
 func markUnresolvedWeaponSkills(context *LoadoutWeaponContext) {

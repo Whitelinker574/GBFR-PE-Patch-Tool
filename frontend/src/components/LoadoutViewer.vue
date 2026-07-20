@@ -136,8 +136,7 @@ onMounted(async () => {
           <span>构造或从真实背包选择资源，配置因子、技能与三方向专精</span>
         </div>
         <div class="editor-workspace-meta">
-          <b>{{ currentGroup.loadouts.filter(l => !l.isParty).length }}</b>
-          <span>套已有预设</span>
+          <span class="preset-count-badge"><b>{{ currentGroup.loadouts.filter(l => !l.isParty).length }}</b> 套已有预设</span>
           <small :title="savePath">{{ savePath }}</small>
         </div>
       </header>
@@ -251,10 +250,10 @@ onMounted(async () => {
 .editor-workspace-title small { grid-column:1/-1; color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-semibold); letter-spacing:.08em; }
 .editor-workspace-title strong { color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); font-weight:var(--fw-bold); }
 .editor-workspace-title span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-size:var(--fs-sm); }
-.editor-workspace-meta { min-width:0; display:grid; grid-template-columns:auto 1fr; align-items:baseline; column-gap:6px; text-align:right; }
-.editor-workspace-meta b { color:var(--accent-hover); font-size:var(--fs-lg); }
-.editor-workspace-meta span { color:var(--text-secondary); font-size:var(--fs-sm); }
-.editor-workspace-meta small { grid-column:1/-1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
+.editor-workspace-meta { min-width:0; display:flex; flex-direction:column; align-items:flex-end; gap:2px; text-align:right; }
+.preset-count-badge { display:inline-flex; align-items:baseline; gap:5px; padding:3px 8px; border:1px solid var(--line-soft); border-radius:12px; background:rgba(139,103,55,.07); color:var(--text-secondary); font-size:var(--fs-sm); white-space:nowrap; }
+.preset-count-badge b { color:var(--accent-hover); font-size:var(--fs-md); }
+.editor-workspace-meta small { max-width:100%; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
 .editor-workspace-content { min-width:0; min-height:0; flex:1; overflow:auto; scrollbar-gutter:stable; overscroll-behavior:contain; padding:0 2px 2px; }
 .editor-workspace-content :deep(.loadout-editor) { height:100%; min-height:0; }
 .path-line { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

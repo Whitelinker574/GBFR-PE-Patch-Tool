@@ -25,8 +25,8 @@ test('loadout simulation failures stay visible instead of looking like missing d
   assert.match(editor, /v-if="simulationError"[^>]*role="alert"[^>]*>\{\{ simulationError \}\}/)
 })
 
-test('language settings do not promise translation coverage the editor does not have', () => {
-  assert.doesNotMatch(languageSettings, /完整英文界面|complete English interface/)
-  assert.match(languageSettings, /部分新增专业术语仍保留中文/)
-  assert.match(languageSettings, /some newly added technical terms remain Chinese/)
+test('language settings promise strict single-language presentation', () => {
+  assert.match(languageSettings, /使用纯英文界面/)
+  assert.match(languageSettings, /Use the English interface/)
+  assert.doesNotMatch(languageSettings, /部分新增专业术语仍保留中文|some newly added technical terms remain Chinese/)
 })

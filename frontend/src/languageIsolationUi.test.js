@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+
+const badge = readFileSync(new URL('./components/BadgeUnlock.vue', import.meta.url), 'utf8')
+const backendLanguage = readFileSync(new URL('./backendLanguage.js', import.meta.url), 'utf8')
+const liveWrightstone = readFileSync(new URL('./components/WrightstoneMemoryGenerator.vue', import.meta.url), 'utf8')
+const offlineWrightstone = readFileSync(new URL('./components/WrightstoneGenerator.vue', import.meta.url), 'utf8')
+const uiTranslations = readFileSync(new URL('./i18n-ui.js', import.meta.url), 'utf8')
+
+test('title records follow the application language without showing the opposite language underneath', () => {
+  assert.match(badge, /import \{ language \} from '\.\.\/i18n\.js'/)
+  assert.match(badge, /language\.value === 'en' \? badge\.nameEn : badge\.nameZhSimplified/)
+  assert.doesNotMatch(badge, /nameMode/)
+  assert.doesNotMatch(badge, /<small>\{\{\s*[^}]*badge\.name(?:En|Zh)/)
+  assert.doesNotMatch(badge, /称号名称语言|中文名|<option value="en">English/)
+  assert.match(badge, /const copy = computed\(\(\) => language\.value === 'en'/)
+  assert.match(badge, /isolatedError\(err, 'Failed to load title records\.'/)
+})
+
+test('catalog loading fails closed when backend language synchronisation fails', () => {
+  assert.match(backendLanguage, /throw new Error\(`/)
+  assert.doesNotMatch(backendLanguage, /return selectedLanguage/)
+})
+
+test('both wrightstone pages wait for language sync and render dynamic copy from one language', () => {
+  assert.match(liveWrightstone, /await backendLanguageReady[\s\S]*WrightstoneMemoryGetOptions\(\)/)
+  assert.match(liveWrightstone, /function text\(zh, en\)/)
+  assert.match(liveWrightstone, /isolatedError\(error, 'Failed to load the wrightstone catalog\.'/)
+  assert.match(offlineWrightstone, /await backendLanguageReady[\s\S]*GetWrightstoneList\(\)/)
+  assert.match(offlineWrightstone, /displayedLegalityMessage/)
+  assert.match(offlineWrightstone, /Above legal cap/)
+})
+
+test('the title-record shell has exact English copy instead of mixed substring translation', () => {
+  assert.match(uiTranslations, /'任务与称号记录': 'Quest & Title Records'/)
+  assert.match(uiTranslations, /'修改任务完成次数，或搜索并维护称号解锁与已查看记录。': 'Edit quest completion counts, or search and maintain title unlock and viewed records\.'/)
+  assert.match(uiTranslations, /'称号记录': 'Title Records'/)
+})
