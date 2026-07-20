@@ -9,9 +9,9 @@ const groups = [
   {
     id: 'save', mark: '档', label: '存档修改', hint: '退出游戏后离线改存档文件，可批量、可回滚',
     items: [
-      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '素材、武器等级与养成资源' },
-      { id: 'sigil', icon: '◇', title: '因子修改', copy: '批量生成因子与合法性校验' },
       { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看与写入配装、因子加成模拟' },
+      { id: 'sigil', icon: '◇', title: '因子修改', copy: '批量生成因子与合法性校验' },
+      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '素材、武器等级与养成资源' },
       { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '生成祝福石与三条词条' },
     ],
   },
@@ -19,18 +19,20 @@ const groups = [
     id: 'memory', mark: '注', label: '内存注入', hint: '连接运行中的游戏改进程内存，实时生效',
     items: [
       { id: 'runtime', icon: '✧', title: '游戏内实时修改', copy: '金币、MSP、药水、素材与任务掉落' },
+      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
+      { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '改游戏中当前选中的祝福石' },
+      { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '记录、分享并逐项复刻十二个因子' },
+      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
+      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
       { id: 'ctCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'ctCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'ctQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
-      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
-      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
-      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
     ],
   },
   {
     id: 'monitor', mark: '测', label: '内存监测', hint: '只读读取运行中游戏数据，不修改物品或存档',
     items: [
-      { id: 'ctMonitor', icon: '测', title: '运行监测（CT 0.8.4）', copy: '队伍快照、选中素材与关键物品' },
+      { id: 'ctMonitor', icon: '测', title: '运行监测', copy: '队伍快照、选中素材与关键物品' },
     ],
   },
 ]
@@ -39,7 +41,7 @@ const groups = [
 <template>
   <div class="journal-home ui-page is-fluid">
     <section class="illustrated-journal ui-card">
-      <img class="journal-scene" :src="journalScene" alt="格兰、露莉亚与碧围绕冒险记事本的插画" loading="eager" decoding="async" fetchpriority="high">
+      <img class="journal-scene" :src="journalScene" alt="古兰、露莉亚与碧围绕冒险记事本的插画" loading="eager" decoding="async" fetchpriority="high">
       <div class="page-menu">
         <header class="project-heading">
           <span>GRANBLUE FANTASY: RELINK</span>
@@ -75,6 +77,8 @@ const groups = [
   width:100%;
   height:100%;
   min-height:0;
+  display:flex;
+  flex-direction:column;
   padding:var(--space-5);
   color:var(--text-primary);
   font-family:var(--font-ui);
@@ -84,6 +88,7 @@ const groups = [
   width:100%;
   height:100%;
   min-height:520px;
+  flex:1 0 auto;
   overflow:hidden;
   border-radius:var(--radius-lg);
   background:var(--surface-card);
@@ -298,10 +303,12 @@ const groups = [
   .home-group-items { grid-template-columns:minmax(0,1fr); }
   .small-tabs > span { width:100%; margin-left:0; }
 }
-@media (max-height:620px) and (min-width:761px) {
-  .journal-home { padding:var(--space-3); }
-  .illustrated-journal { min-height:500px; }
-  .page-menu { padding-block:var(--space-3); }
+/* Once the complete catalog is taller than a normal desktop viewport, let the
+   outer workspace own scrolling and keep the project heading at the top. */
+@media (max-height:920px) and (min-width:761px) {
+  .journal-home { height:auto; min-height:100%; padding:var(--space-3); }
+  .illustrated-journal { height:auto; min-height:500px; }
+  .page-menu { height:auto; justify-content:flex-start; padding-block:var(--space-3); }
   .project-heading { margin-bottom:var(--space-4); padding-bottom:var(--space-3); }
   .project-heading h1 { font-size:22px; }
   .project-heading .mode-guide { margin-top:var(--space-2); padding-block:var(--space-2); }

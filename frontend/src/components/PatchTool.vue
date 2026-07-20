@@ -5,11 +5,8 @@ import {
   GetAppVersion, CheckUpdate, OpenReleasePage,
 } from '../../wailsjs/go/main/App'
 import {
-  WindowFullscreen,
-  WindowIsFullscreen,
   WindowMinimise,
   WindowToggleMaximise,
-  WindowUnfullscreen,
   Quit,
 } from '../../wailsjs/runtime/runtime'
 import HomeJournal from './HomeJournal.vue'
@@ -28,7 +25,6 @@ import runtimeArt from '../assets/gbfr/cutouts/runtime-official-edge-safe.webp'
 import charaArt from '../assets/gbfr/cutouts/chara-official-edge-safe.webp'
 import saveArt from '../assets/gbfr/cutouts/save-official-edge-safe.webp'
 import compatibilityArt from '../assets/gbfr/cutouts/compatibility-official-edge-safe.webp'
-import legacyRuntimeArt from '../assets/gbfr/cutouts/legacy-runtime-official-edge-safe.webp'
 import monsterArt from '../assets/gbfr/cutouts/monster-official-edge-safe.webp'
 import patchArt from '../assets/gbfr/cutouts/patch-official-edge-safe.webp'
 import languageArt from '../assets/gbfr/cutouts/language-official-edge-safe.webp'
@@ -45,7 +41,6 @@ import runtimeSticker from '../assets/gbfr/stickers/runtime.webp'
 import charaSticker from '../assets/gbfr/stickers/chara.webp'
 import saveSticker from '../assets/gbfr/stickers/save.webp'
 import compatibilitySticker from '../assets/gbfr/stickers/compatibility.webp'
-import legacyRuntimeSticker from '../assets/gbfr/stickers/legacy-runtime-blonde.webp'
 import monsterSticker from '../assets/gbfr/stickers/monster.webp'
 import patchSticker from '../assets/gbfr/stickers/patch.webp'
 import languageSticker from '../assets/gbfr/stickers/language.webp'
@@ -73,7 +68,6 @@ const componentLoaders = {
   summon: () => import('./SummonEditor.vue'),
   overlimit: () => import('./OverLimit.vue'),
   runtime: () => import('./MiscTools.vue'),
-  legacyRuntime: () => import('./MiscTools.vue'),
   chara: () => import('./CharaStats.vue'),
   save: () => import('./SaveEditor.vue'),
   monster: () => import('./MonsterEnhance.vue'),
@@ -167,7 +161,7 @@ const toolMeta = {
     description: '查看游戏配装界面保存的预设（武器/12 因子/4 技能/专精），也可把自定义配装写入指定槽位。',
     usage: ['完全退出游戏', '选择存档位或浏览存档文件', '查看，或切到「编辑写入」自定义配装'],
     caution: '',
-    speaker: '芙劳', note: '想改配装也可以啦——先备份，写完我再帮你核对一遍，不会弄丢的。',
+    speaker: '古兰', note: '先备份，再确认角色和目标槽；已有配装会被覆盖。',
   },
   wrightstone: {
     group: 'save', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
@@ -181,7 +175,7 @@ const toolMeta = {
     description: '捕获游戏内当前选中的祝福石记录，并以一次事务核对、写入三条词条。',
     usage: ['启动游戏并启用读取', '在游戏内祝福石列表选中目标记录', '核对三槽变更后一次性写入'],
     caution: '每次写入后旧记录都会失效；继续操作前必须在游戏内重新选择记录。',
-    speaker: '菲莉', note: '三条词条要一项一项核对。写完以后重新选中目标，我和幽灵朋友都会继续看着。',
+    speaker: '玛琪拉菲菈', note: '写入后旧记录会失效。回到游戏里重新选中目标，再继续。',
   },
   summon: {
     group: 'memory', title: '召唤石修改', eyebrow: '游戏内修改', status: '实时保存', tone: 'live',
@@ -205,28 +199,28 @@ const toolMeta = {
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   ctMonitor: {
-    group: 'monitor', title: '运行监测（CT 0.8.4）', eyebrow: 'CT 0.8.4 · 只读监测', status: '只读 · 需连接游戏', tone: 'live',
+    group: 'monitor', title: '运行监测', eyebrow: '只读监测', status: '只读 · 需连接游戏', tone: 'live',
     description: '只读展示玩家、三名队员、碧的小红龙，以及游戏列表当前选中的素材或关键物品。',
     usage: ['启动游戏并进入稳定场景', '连接后读取队伍快照', '选中素材或关键物品后刷新并读取一次'],
     caution: '页面不会写物品或存档；选中物品捕获 Hook 会在安全断开或离开页面时恢复原字节。',
     speaker: '尤斯塔斯', note: '等数据稳定再读。地址变化就停一下——巡检只看证据，不靠猜。',
   },
   ctCombat: {
-    group: 'memory', title: '战斗规则补丁', eyebrow: 'CT 0.8.4 · 战斗', status: '仅离线/单机', tone: 'live',
+    group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
     description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
     usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '离开页面或断开时恢复全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
     speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。离开页面时，我会把规则全部恢复。',
   },
   ctCharacters: {
-    group: 'memory', title: '角色机制补丁', eyebrow: 'CT 0.8.4 · 角色', status: '仅离线/单机', tone: 'live',
+    group: 'memory', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
     description: '按角色整理已验证的专属机制补丁，可搜索角色与功能名称并查看明确冲突。',
     usage: ['启动游戏并进入单机内容', '选择角色分组后启用机制', '冲突项先恢复当前功能再切换'],
     caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
-    speaker: '姬塔', note: '角色机制已经按名字分好组。看到冲突提示时，先恢复原来的那一项再继续。',
+    speaker: '巴萨拉卡', note: '冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。',
   },
   ctQuest: {
-    group: 'memory', title: '任务与便利补丁', eyebrow: 'CT 0.8.4 · 任务', status: '仅离线/单机', tone: 'live',
+    group: 'memory', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
     description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
     usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
     caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
@@ -253,15 +247,8 @@ const toolMeta = {
     caution: '',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
-  legacyRuntime: {
-    group: 'memory', title: '实验性实时功能', eyebrow: '实验', status: '实验', tone: 'stable',
-    description: '一批仍在打磨的运行时功能与诊断入口。',
-    usage: ['先阅读每项说明', '连接后先扫描或刷新', '字节不匹配时停止'],
-    caution: '',
-    speaker: '泽塔', note: '地址或字节对不上就立刻停手。稳一点，准一点。',
-  },
   monster: {
-    group: 'memory', title: '怪物倍率与伤害记录', eyebrow: '实验', status: '实验', tone: 'stable',
+    group: 'memory', title: '怪物倍率与伤害记录', eyebrow: '实验', status: '实验', tone: 'live',
     description: '怪物倍率、霸体和伤害记录相关功能。',
     usage: ['仅在主机端测试', '先刷新并检查状态', '告知队友后再启用'],
     caution: '',
@@ -286,10 +273,86 @@ const toolMeta = {
 // 顶层把只读内存监测从内存注入中单独分出，避免把观察数据与修改功能混为一谈。
 // 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
-  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['progression', 'sigil', 'wrightstone', 'loadoutPresets', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'ctCombat', 'ctCharacters', 'ctQuest', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'legacyRuntime', 'monster'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'chara', 'save'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'] },
   { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor'] },
-  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'patch', 'language'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
+])
+
+const compatibilityCopy = computed(() => language.value === 'zh' ? {
+  manualFile: '可在游戏文件维护页手动选择',
+  baseline: '适配基线',
+  baselineVersion: 'DLC 2.0.2',
+  baselineSummary: '20 个实际工具页 + 1 个主页已接入。',
+  baselineBoundary: '真实游戏进程 E2E 仍待实机验证',
+  featureKicker: '功能适配',
+  featureTitle: '当前实现与验证边界',
+  featureHint: '只展示能由代码、测试与锁定游戏数据证明的状态。',
+  resourceKicker: '资源适配',
+  resourceTitle: '官方图标映射',
+  resourceHint: '命中率来自当前 2.0.2 图标目录；缺口保持显式，不用相似图片伪装。',
+  scope: '范围',
+  status: '状态',
+  evidence: '证据与边界',
+  experimentKicker: '实验入口',
+  experimentTitle: '不计入稳定完成项',
+  experimentName: '怪物倍率与伤害记录',
+  experimentDetail: '页面已保留；真实游戏进程 E2E 未完成',
+  open: '查看 ›',
+} : {
+  manualFile: 'Select it manually on the Game File Maintenance page',
+  baseline: 'Compatibility Baseline',
+  baselineVersion: 'DLC 2.0.2',
+  baselineSummary: '20 tool pages plus the home page are integrated.',
+  baselineBoundary: 'Real-process E2E validation is still pending',
+  featureKicker: 'Feature Compatibility',
+  featureTitle: 'Current implementation and validation boundary',
+  featureHint: 'Only states supported by code, tests, and locked game data are shown.',
+  resourceKicker: 'Asset Compatibility',
+  resourceTitle: 'Official icon mapping',
+  resourceHint: 'Coverage comes from the current 2.0.2 catalog; gaps stay explicit instead of using look-alike art.',
+  scope: 'Scope',
+  status: 'Status',
+  evidence: 'Evidence and boundary',
+  experimentKicker: 'Experimental Entry',
+  experimentTitle: 'Not counted as stable completion',
+  experimentName: 'Monster Multipliers & Damage Log',
+  experimentDetail: 'The page is retained; real-process E2E is not complete',
+  open: 'Open ›',
+})
+
+const compatibilityRows = computed(() => language.value === 'zh' ? [
+  { scope: '存档修改页面', status: '6 / 6', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、角色次数、任务次数' },
+  { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT 战斗、CT 角色、CT 任务、怪物实验' },
+  { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '运行监测；不执行物品或存档写入' },
+  { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
+  { scope: 'CT 安全直接覆盖', status: '60 / 64', tone: 'ok', detail: '58 个新增功能 + 2 个已有安全实现；4 个拒绝项未作为可用开关暴露' },
+  { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
+  { scope: '真实游戏进程 E2E', status: '待实机验证', tone: 'pending', detail: '本轮未连接正在运行的目标游戏；运行时功能不得视为全场景实机通过' },
+] : [
+  { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest counts' },
+  { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, CT combat, CT characters, CT quests, monster experiments' },
+  { scope: 'Read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Runtime monitoring; does not write items or save data' },
+  { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
+  { scope: 'CT safe direct coverage', status: '60 / 64', tone: 'ok', detail: '58 new features plus 2 existing safe implementations; 4 rejected candidates are not exposed' },
+  { scope: 'CT production catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to DLC 2.0.2 original-byte and unique-hit evidence' },
+  { scope: 'Real game-process E2E', status: 'Pending', tone: 'pending', detail: 'No running target game was connected in this pass; live features are not claimed as fully field-tested' },
+])
+
+const iconCoverageRows = computed(() => language.value === 'zh' ? [
+  { scope: '角色图标', status: '29 / 29', tone: 'ok', detail: '当前角色目录全部精确映射' },
+  { scope: '可玩主动技能', status: '261 / 262', tone: 'flow', detail: '缺 1 个可证明精确对应的官方 PNG' },
+  { scope: '因子图标', status: '183 / 184', tone: 'flow', detail: '缺口保持空缺，不使用近似图标' },
+  { scope: '武器图标', status: '159 / 163', tone: 'flow', detail: '缺 4 个 DLC 武器的可证明精确资源' },
+  { scope: '召唤石图标', status: '189 / 189', tone: 'ok', detail: '当前召唤石目录全部精确映射' },
+  { scope: '物品图标', status: '301 / 312', tone: 'flow', detail: '11 个目录项尚无可证明精确 PNG' },
+] : [
+  { scope: 'Character icons', status: '29 / 29', tone: 'ok', detail: 'Every current character entry has an exact mapping' },
+  { scope: 'Playable active skills', status: '261 / 262', tone: 'flow', detail: '1 exact official PNG is still missing' },
+  { scope: 'Sigil icons', status: '183 / 184', tone: 'flow', detail: 'The gap remains empty instead of using a look-alike icon' },
+  { scope: 'Weapon icons', status: '159 / 163', tone: 'flow', detail: '4 DLC weapons still lack provably exact assets' },
+  { scope: 'Summon icons', status: '189 / 189', tone: 'ok', detail: 'Every current summon entry has an exact mapping' },
+  { scope: 'Item icons', status: '301 / 312', tone: 'flow', detail: '11 catalog entries still lack provably exact PNGs' },
 ])
 
 const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
@@ -312,7 +375,6 @@ const functionArt = {
   chara: charaArt,
   save: saveArt,
   compatibility: compatibilityArt,
-  legacyRuntime: legacyRuntimeArt,
   monster: monsterArt,
   patch: patchArt,
   language: languageArt,
@@ -336,7 +398,6 @@ const functionStickers = {
   chara: charaSticker,
   save: saveSticker,
   compatibility: compatibilitySticker,
-  legacyRuntime: legacyRuntimeSticker,
   monster: monsterSticker,
   patch: patchSticker,
   language: languageSticker,
@@ -417,7 +478,7 @@ function toggleSidebar() {
 
 onMounted(() => {
   GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
-  window.setTimeout(() => warmTool('progression'), 60)
+  window.setTimeout(() => warmTool(navigation.value[0]?.items[0]), 60)
   const warmWorkshop = () => queueWarmTools((navigation.value[0]?.items || []).slice(1))
   if ('requestIdleCallback' in window) window.requestIdleCallback(warmWorkshop, { timeout: 800 })
   else window.setTimeout(warmWorkshop, 180)
@@ -527,14 +588,6 @@ function showStatus(message, type) {
   statusTimer = window.setTimeout(() => { saveStatus.value = '' }, 3600)
 }
 
-async function toggleFullscreen() {
-  try {
-    if (await WindowIsFullscreen()) WindowUnfullscreen()
-    else WindowFullscreen()
-  } catch (error) {
-    showStatus(`切换全屏失败：${String(error)}`, 'error')
-  }
-}
 </script>
 
 <template>
@@ -553,7 +606,6 @@ async function toggleFullscreen() {
       <div class="titlebar-controls" style="--wails-draggable:no-drag">
         <button class="win-btn" @click="WindowMinimise" title="最小化" aria-label="最小化"><span class="minimize-line"></span></button>
         <button class="win-btn" @click="WindowToggleMaximise" title="最大化或还原" aria-label="最大化或还原"><span class="maximise-box"></span></button>
-        <button class="win-btn" @click="toggleFullscreen" title="一键全屏" aria-label="一键全屏"><span class="fullscreen-corners"></span></button>
         <button class="win-btn close" @click="Quit" title="关闭" aria-label="关闭"><span class="close-lines"></span></button>
       </div>
     </header>
@@ -629,7 +681,7 @@ async function toggleFullscreen() {
           <div class="workspace-scene">
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
 
-          <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab">
+          <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
             <section class="tool-center-scroll">
               <header v-if="!isLoadoutWorkspace" class="tool-page-heading">
                 <div class="eyebrow">{{ currentMeta.eyebrow }}</div>
@@ -647,14 +699,13 @@ async function toggleFullscreen() {
             <WrightstoneMemoryGenerator v-else-if="activeTab === 'wrightstoneMemory'" @status="showStatus" />
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
-            <MiscTools v-else-if="activeTab === 'runtime'" mode="stable" @status="showStatus" />
+            <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
             <CT084RuntimeMonitor v-else-if="activeTab === 'ctMonitor'" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCombat'" mode="combat" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctCharacters'" mode="characters" @status="showStatus" />
             <CT084Features v-else-if="activeTab === 'ctQuest'" mode="quest" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
-            <MiscTools v-else-if="activeTab === 'legacyRuntime'" mode="compatibility" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
             <LanguageSettings v-else-if="activeTab === 'language'" />
 
@@ -673,30 +724,35 @@ async function toggleFullscreen() {
                   <div class="card-kicker">游戏文件</div>
                   <strong>{{ isDetecting ? '检测中' : isLoaded ? '已识别' : '未识别' }}</strong>
                   <p :title="state.exePath">{{ state.exePath || '未找到 granblue_fantasy_relink.exe' }}</p>
-                  <span class="file-meta">{{ state.fileSize ? `${(state.fileSize / 1024 / 1024).toFixed(1)} MB` : '可在旧版文件补丁页手动选择' }}</span>
+                  <span class="file-meta">{{ state.fileSize ? `${(state.fileSize / 1024 / 1024).toFixed(1)} MB` : compatibilityCopy.manualFile }}</span>
                 </article>
                 <article class="calibration-card ui-card ui-stat">
-                  <div class="card-kicker">校准目标</div>
-                  <strong>DLC 2.0.2</strong>
-                  <p>实时货币与素材指令已按当前版本特征校验。</p>
-                  <span class="file-meta">未知字节会拒绝写入</span>
+                  <div class="card-kicker">{{ compatibilityCopy.baseline }}</div>
+                  <strong>{{ compatibilityCopy.baselineVersion }}</strong>
+                  <p>{{ compatibilityCopy.baselineSummary }}</p>
+                  <span class="file-meta">{{ compatibilityCopy.baselineBoundary }}</span>
                 </article>
               </section>
 
               <section class="compat-section ui-card ui-panel">
-                <div class="compat-heading"><div><span>功能状态</span><h2>当前版本 DLC 2.0.2</h2></div><p>核心功能已按当前版本校验。</p></div>
+                <div class="compat-heading"><div><span>{{ compatibilityCopy.featureKicker }}</span><h2>{{ compatibilityCopy.featureTitle }}</h2></div><p>{{ compatibilityCopy.featureHint }}</p></div>
                 <div class="matrix">
-                  <div class="matrix-row head"><span>范围</span><span>状态</span><span>说明</span></div>
-                  <div class="matrix-row"><span>物品、武器、因子、祝福、配装</span><b class="ok">存档修改</b><span>离线存档路径，自动备份与回读</span></div>
-                  <div class="matrix-row"><span>货币、药水、素材消耗、巴武掉落</span><b class="ok">内存注入</b><span>运行时连接，地址或字节不符即停止</span></div>
-                  <div class="matrix-row"><span>召唤石、上限突破、即时因子</span><b class="flow">内存注入</b><span>需停留在指定游戏界面后操作</span></div>
+                  <div class="matrix-row head"><span>{{ compatibilityCopy.scope }}</span><span>{{ compatibilityCopy.status }}</span><span>{{ compatibilityCopy.evidence }}</span></div>
+                  <div v-for="row in compatibilityRows" :key="row.scope" class="matrix-row"><span>{{ row.scope }}</span><b :class="row.tone">{{ row.status }}</b><span>{{ row.detail }}</span></div>
+                </div>
+              </section>
+
+              <section class="compat-section ui-card ui-panel">
+                <div class="compat-heading"><div><span>{{ compatibilityCopy.resourceKicker }}</span><h2>{{ compatibilityCopy.resourceTitle }}</h2></div><p>{{ compatibilityCopy.resourceHint }}</p></div>
+                <div class="matrix">
+                  <div class="matrix-row head"><span>{{ compatibilityCopy.scope }}</span><span>{{ compatibilityCopy.status }}</span><span>{{ compatibilityCopy.evidence }}</span></div>
+                  <div v-for="row in iconCoverageRows" :key="row.scope" class="matrix-row"><span>{{ row.scope }}</span><b :class="row.tone">{{ row.status }}</b><span>{{ row.detail }}</span></div>
                 </div>
               </section>
 
               <section class="compat-section legacy-links ui-card ui-panel">
-                <div class="compat-heading"><div><span>实验性功能</span><h2>仍在打磨</h2></div></div>
-                <button class="ui-card" @click="selectTool('legacyRuntime')"><strong>实验性实时功能</strong><small>倒计时、无限挑战、称号、皮肤符文等</small><span>查看 ›</span></button>
-                <button class="ui-card" @click="selectTool('monster')"><strong>怪物倍率与伤害记录</strong><small>倍率、霸体、OD 与团队伤害记录</small><span>查看 ›</span></button>
+                <div class="compat-heading"><div><span>{{ compatibilityCopy.experimentKicker }}</span><h2>{{ compatibilityCopy.experimentTitle }}</h2></div></div>
+                <button class="ui-card" @click="selectTool('monster')"><strong>{{ compatibilityCopy.experimentName }}</strong><small>{{ compatibilityCopy.experimentDetail }}</small><span>{{ compatibilityCopy.open }}</span></button>
               </section>
             </div>
 
@@ -719,13 +775,7 @@ async function toggleFullscreen() {
             </section>
 
             <button v-if="!isLoadoutWorkspace" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
-            <aside v-if="!isLoadoutWorkspace" class="art-rail" aria-hidden="true">
-              <figure class="function-character" :key="`art-${activeTab}`">
-                <img class="character-blend" :src="currentArt" alt="" loading="eager" decoding="async">
-                <img class="character-main" :src="currentArt" :alt="`${currentMeta.title}角色立绘`" loading="eager" decoding="async">
-              </figure>
-              <div class="art-caption"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
-            </aside>
+            <div v-if="!isLoadoutWorkspace && !artCollapsed" class="art-caption" aria-hidden="true"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
           </section>
           </div>
         </div>
@@ -761,17 +811,16 @@ async function toggleFullscreen() {
 button,input,select { font:inherit; }
 
 .titlebar {
-  --window-controls-width:168px;
+  --window-controls-width:126px;
   position:relative;
   z-index:20;
   height:var(--titlebar-size);
   display:flex;
   align-items:center;
   padding-right:var(--window-controls-width);
-  border-bottom:1px solid var(--border-default);
-  background:color-mix(in srgb,var(--surface-card) 82%,transparent);
-  backdrop-filter:blur(12px) saturate(.9);
-  box-shadow:0 1px 0 rgba(255,255,255,.5) inset;
+  border-bottom:1px solid rgba(126,91,42,.35);
+  background:linear-gradient(90deg,#594937,#756044 52%,#5b4a37);
+  box-shadow:0 4px 15px rgba(76,55,28,.18);
   user-select:none;
 }
 .titlebar-brand {
@@ -787,15 +836,16 @@ button,input,select { font:inherit; }
   flex:0 0 22px;
   display:grid;
   place-items:center;
-  border:1px solid var(--accent-border);
+  border:1px solid rgba(255,229,169,.7);
   border-radius:var(--radius-sm);
-  color:var(--accent);
+  color:#ffe5a9;
+  background:rgba(255,255,255,.06);
   font-size:var(--fs-sm);
 }
 .titlebar-title {
   min-width:0;
   overflow:hidden;
-  color:var(--text-primary);
+  color:#fff4d8;
   font-size:var(--fs-sm);
   font-weight:var(--fw-bold);
   letter-spacing:.04em;
@@ -805,10 +855,10 @@ button,input,select { font:inherit; }
 .build-chip {
   flex:0 0 auto;
   padding:2px var(--space-2);
-  border:1px solid var(--border-default);
+  border:1px solid rgba(255,229,169,.35);
   border-radius:var(--radius-pill);
-  color:var(--text-secondary);
-  background:var(--surface-card-pop);
+  color:#f3e3c2;
+  background:rgba(255,255,255,.08);
   font-size:var(--fs-xs);
 }
 .titlebar-status {
@@ -827,7 +877,7 @@ button,input,select { font:inherit; }
   border:1px solid var(--border-default);
   border-radius:var(--radius-pill);
   color:var(--text-secondary);
-  background:var(--surface-card-pop);
+  background:#ead8b2;
   box-shadow:var(--shadow-1);
   font-size:var(--fs-sm);
   text-overflow:ellipsis;
@@ -856,11 +906,11 @@ button,input,select { font:inherit; }
   display:grid;
   place-items:center;
   border:0;
-  color:var(--text-secondary);
+  color:#e5d7bc;
   background:transparent;
   cursor:pointer;
 }
-.win-btn:hover { color:var(--text-primary); background:var(--state-hover); }
+.win-btn:hover { color:#fff; background:rgba(255,255,255,.12); }
 .win-btn.close:hover { color:var(--text-on-accent); background:var(--danger-ink); }
 .minimize-line { width:12px; height:1px; background:currentColor; }
 .maximise-box {
@@ -868,21 +918,6 @@ button,input,select { font:inherit; }
   height:10px;
   border:1px solid currentColor;
   border-radius:1px;
-}
-.fullscreen-corners {
-  position:relative;
-  width:14px;
-  height:14px;
-  border:1px solid transparent;
-  background:
-    linear-gradient(currentColor,currentColor) left top / 5px 1px no-repeat,
-    linear-gradient(currentColor,currentColor) left top / 1px 5px no-repeat,
-    linear-gradient(currentColor,currentColor) right top / 5px 1px no-repeat,
-    linear-gradient(currentColor,currentColor) right top / 1px 5px no-repeat,
-    linear-gradient(currentColor,currentColor) left bottom / 5px 1px no-repeat,
-    linear-gradient(currentColor,currentColor) left bottom / 1px 5px no-repeat,
-    linear-gradient(currentColor,currentColor) right bottom / 5px 1px no-repeat,
-    linear-gradient(currentColor,currentColor) right bottom / 1px 5px no-repeat;
 }
 .close-lines { position:relative; width:13px; height:13px; }
 .close-lines::before,.close-lines::after {
@@ -916,12 +951,27 @@ button,input,select { font:inherit; }
   flex-direction:column;
   padding:var(--space-7) var(--space-4) var(--space-5);
   overflow:hidden;
-  border-right:1px solid var(--border-default);
-  background:
-    linear-gradient(180deg,rgba(255,251,236,.88),rgba(228,207,164,.84)),
-    url('../assets/gbfr/parchment-ui-v2.webp') left center / cover;
-  box-shadow:6px 0 20px rgba(72,50,22,.06);
+  border-right:1px solid rgba(130,96,48,.3);
+  background:#f0e2c2;
+  box-shadow:8px 0 28px rgba(90,66,31,.12),inset -4px 0 rgba(145,110,57,.04);
 }
+.sidebar::before {
+  content:"";
+  position:absolute;
+  z-index:0;
+  left:-7px;
+  top:-4px;
+  width:112px;
+  height:96px;
+  pointer-events:none;
+  background:url('../assets/gbfr/journal-page-corner.svg') left top / contain no-repeat;
+  opacity:.46;
+}
+.sidebar-heading,
+.sidebar-home-compact,
+.primary-nav,
+.sidebar-mascot,
+.sidebar-foot { position:relative; z-index:1; }
 .sidebar-collapse {
   position:absolute;
   z-index:2;
@@ -1137,14 +1187,16 @@ button,input,select { font:inherit; }
 .sidebar-collapsed .sidebar-mascot-say { display:none; }
 
 .workspace {
+  position:relative;
+  isolation:isolate;
   min-width:0;
   min-height:0;
   display:flex;
   flex-direction:column;
   overflow:hidden;
   background:
-    linear-gradient(105deg,rgba(255,251,238,.55),rgba(239,220,180,.35)),
-    url('../assets/gbfr/journal-scene-4k.webp') center / cover fixed;
+    linear-gradient(105deg,rgba(255,251,238,.36),rgba(239,220,180,.18)),
+    url('../assets/gbfr/parchment-ui-v2.webp') center / cover fixed;
 }
 .workspace-bar {
   min-height:44px;
@@ -1155,7 +1207,7 @@ button,input,select { font:inherit; }
   gap:var(--space-4);
   padding:0 var(--content-gutter);
   border-bottom:1px solid var(--border-soft);
-  background:color-mix(in srgb,var(--surface-card) 92%,transparent);
+  background:#ead8b2;
 }
 .breadcrumb {
   min-width:0;
@@ -1200,7 +1252,8 @@ button,input,select { font:inherit; }
   align-items:stretch;
   gap:var(--space-1);
   padding:0 var(--content-gutter);
-  background:var(--surface-card);
+  border-bottom:1px solid rgba(140,104,49,.23);
+  background:#eddfc0;
   scrollbar-width:thin;
 }
 .tool-switcher .ui-tab {
@@ -1210,11 +1263,15 @@ button,input,select { font:inherit; }
   gap:var(--space-2);
   padding-inline:var(--space-4);
   font-size:var(--fs-sm);
+  font-weight:var(--fw-bold);
+  color:#78684f;
+  background:transparent;
 }
 .tool-switcher .ui-tab.active {
-  border-bottom-color:var(--selected-bar);
-  color:var(--accent-hover);
-  background:var(--state-hover);
+  border-bottom-color:#9a7440;
+  color:#4e402e;
+  background:#dfc79b;
+  box-shadow:inset 0 -2px #9a7440;
 }
 .switcher-tag {
   display:inline-flex;
@@ -1238,33 +1295,45 @@ button,input,select { font:inherit; }
   scrollbar-gutter:stable;
 }
 .workspace-scroll.tool-workspace { padding:var(--content-gutter); }
-.home-mode .workspace-scroll { padding:0; }
+.home-mode .workspace-scroll { padding:0; overflow:auto; scrollbar-gutter:auto; }
+.home-mode .workspace-scene { height:100%; min-height:100%; }
 .workspace-scene { min-width:0; min-height:100%; }
 
 .tool-stage {
-  --art-scale:110%;
-  --art-x:-4%;
-  --art-y:0%;
+  --art-scale:160%;
+  --art-x:calc(-32.55dvh + 43px);
+  --art-y:calc(3dvh - 4px);
   position:relative;
   isolation:isolate;
   min-width:0;
   min-height:100%;
-  display:grid;
-  grid-template-columns:minmax(0,62fr) minmax(260px,38fr);
-  align-items:stretch;
-  gap:clamp(4px,1vw,16px);
+  display:block;
   overflow:clip;
 }
-.tool-stage.art-collapsed { grid-template-columns:minmax(0,1fr) 0; gap:0; }
-.tool-stage.loadout-dedicated { grid-template-columns:minmax(0,1fr); gap:0; }
+.tool-stage::before {
+  content:"";
+  position:fixed;
+  z-index:0;
+  inset:calc(var(--titlebar-size) + 90px) 0 0;
+  background-image:var(--function-art);
+  background-repeat:no-repeat;
+  background-position:right var(--art-x) top var(--art-y);
+  background-size:auto var(--art-scale);
+  pointer-events:none;
+}
+.tool-stage.art-collapsed::before,
+.tool-stage.loadout-dedicated::before { display:none; }
 .tool-center-scroll {
   position:relative;
   z-index:2;
+  width:62%;
   min-width:0;
   min-height:0;
   padding-bottom:var(--space-8);
   container:tool-center / inline-size;
 }
+.tool-stage.art-collapsed .tool-center-scroll,
+.tool-stage.loadout-dedicated .tool-center-scroll { width:100%; }
 .tool-page-heading,.tool-panel {
   width:100%;
   max-width:none;
@@ -1273,9 +1342,9 @@ button,input,select { font:inherit; }
 .tool-page-heading {
   margin-bottom:var(--space-5);
   padding:var(--space-6) var(--space-7);
-  border:1px solid var(--border-default);
+  border:1px solid rgba(127,88,38,.42);
   border-radius:var(--radius-lg);
-  background:var(--surface-card);
+  background:#f7ebcf;
   box-shadow:var(--shadow-1);
 }
 .tool-page-heading .eyebrow {
@@ -1317,7 +1386,6 @@ button,input,select { font:inherit; }
   margin:0;
 }
 .tool-panel[data-tool="runtime"] :deep(.root > .section > .header),
-.tool-panel[data-tool="legacyRuntime"] :deep(.root > .section > .header),
 .tool-panel[data-tool="chara"] :deep(.root > .section > .header),
 .tool-panel[data-tool="overlimit"] :deep(.root > .section > .header),
 .tool-panel[data-tool="monster"] :deep(.root > .section > .header),
@@ -1325,102 +1393,48 @@ button,input,select { font:inherit; }
 .tool-panel[data-tool="progression"] :deep(.save-title > div:first-child) { display:none; }
 .tool-panel[data-tool="progression"] :deep(.save-title) { min-height:0; justify-content:flex-end; }
 
-.art-rail {
-  position:sticky;
-  z-index:1;
-  top:0;
-  min-width:0;
-  height:clamp(420px,calc(100dvh - 166px),1400px);
-  min-height:420px;
-  overflow:visible;
-  border:0;
-  border-radius:0;
-  background:transparent;
-  box-shadow:none;
-  pointer-events:none;
-}
-.art-rail::before {
-  content:"";
-  position:absolute;
-  inset:5% -4% 2% -18%;
-  z-index:0;
-  background:radial-gradient(ellipse at 68% 46%,rgba(255,250,229,.54),rgba(219,191,139,.14) 54%,transparent 74%);
-  filter:blur(3px);
-}
-.art-rail .function-character {
-  position:absolute;
-  z-index:1;
-  inset:0 0 0 -34%;
-  margin:0;
-  overflow:visible;
-}
-.art-rail .function-character img {
-  position:absolute;
-  right:var(--art-x);
-  bottom:var(--art-y);
-  width:auto;
-  height:var(--art-scale);
-  max-width:none;
-  max-height:none;
-  object-position:right bottom;
-  transform-origin:right bottom;
-  -webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.58) 24%,#000 43%);
-  mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.58) 24%,#000 43%);
-}
-.art-rail .character-blend {
-  z-index:0;
-  opacity:.2;
-  filter:blur(9px) saturate(.82);
-  transform:scale(1.025);
-}
-.art-rail .character-main {
-  z-index:1;
-  filter:drop-shadow(0 8px 8px rgba(72,50,22,.12));
-}
-.tool-stage[data-tool="progression"] { --art-scale:112%; --art-x:-5%; --art-y:1%; }
-.tool-stage[data-tool="sigil"] { --art-scale:110%; --art-x:-16%; --art-y:0%; }
-.tool-stage[data-tool="sigilMemory"] { --art-scale:110%; --art-x:-4%; --art-y:0%; }
-.tool-stage[data-tool="loadout"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="loadoutPresets"] { --art-scale:116%; --art-x:-2%; --art-y:-10%; }
-.tool-stage[data-tool="wrightstone"] { --art-scale:108%; --art-x:-4%; --art-y:0%; }
-.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="summon"] { --art-scale:106%; --art-x:-4%; --art-y:0%; }
-.tool-stage[data-tool="overlimit"] { --art-scale:104%; --art-x:-2%; --art-y:0%; }
-.tool-stage[data-tool="runtime"] { --art-scale:112%; --art-x:-6%; --art-y:0%; }
-.tool-stage[data-tool="ctMonitor"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="ctCombat"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="ctCharacters"] { --art-scale:128%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="ctQuest"] { --art-scale:132%; --art-x:-2%; --art-y:-14%; }
-.tool-stage[data-tool="chara"] { --art-scale:108%; --art-x:-1%; --art-y:0%; }
-.tool-stage[data-tool="save"] { --art-scale:106%; --art-x:-4%; --art-y:0%; }
-.tool-stage[data-tool="compatibility"] { --art-scale:106%; --art-x:-3%; --art-y:0%; }
-.tool-stage[data-tool="legacyRuntime"] { --art-scale:104%; --art-x:-3%; --art-y:6%; }
-.tool-stage[data-tool="monster"] { --art-scale:110%; --art-x:-2%; --art-y:0%; }
-.tool-stage[data-tool="patch"] { --art-scale:108%; --art-x:-4%; --art-y:0%; }
-.tool-stage[data-tool="language"] { --art-scale:110%; --art-x:-5%; --art-y:0%; }
+.tool-stage[data-tool="progression"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="sigil"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="sigilMemory"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="loadout"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-x:calc(-8.33dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-x:calc(-6.77dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="chara"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="save"] { --art-scale:160%; --art-x:calc(-43.10dvh + 57px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-x:calc(-35.81dvh + 47px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="monster"] { --art-scale:160%; --art-x:calc(-21.48dvh + 28px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="patch"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="language"] { --art-scale:178%; --art-x:calc(-39.06dvh + 52px); --art-y:calc(-17dvh + 22px); }
 .art-caption {
-  position:absolute;
-  z-index:2;
+  position:fixed;
+  z-index:3;
   right:var(--space-3);
   bottom:var(--space-3);
   left:auto;
   padding:var(--space-2) var(--space-3);
-  border:0;
-  border-right:3px solid color-mix(in srgb,var(--accent) 68%,transparent);
-  border-radius:0;
-  background:color-mix(in srgb,var(--surface-card-pop) 62%,transparent);
-  box-shadow:none;
-  backdrop-filter:blur(4px);
+  border:1px solid var(--border-default);
+  border-right:3px solid rgba(154,116,64,.72);
+  border-radius:var(--radius-sm);
+  background:#f4e6c7;
+  box-shadow:var(--shadow-1);
   text-align:right;
 }
 .art-caption span,.art-caption small { display:block; }
 .art-caption span { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
 .art-caption small { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); }
 .art-toggle {
-  position:absolute;
+  position:fixed;
   z-index:4;
-  top:var(--space-4);
-  right:38%;
+  top:calc(var(--titlebar-size) + 94px);
+  right:var(--space-2);
   width:30px;
   height:36px;
   border:1px solid var(--border-default);
@@ -1432,7 +1446,6 @@ button,input,select { font:inherit; }
   cursor:pointer;
 }
 .art-toggle:hover { color:var(--accent-hover); background:var(--surface-field-hover); }
-.tool-stage.art-collapsed .art-rail { visibility:hidden; opacity:0; }
 .tool-stage.art-collapsed .art-toggle { right:0; border-radius:var(--radius-sm); transform:none; }
 
 .compat-dashboard,.legacy-patch { min-width:0; }
@@ -1479,7 +1492,7 @@ button,input,select { font:inherit; }
 }
 .matrix-row {
   display:grid;
-  grid-template-columns:minmax(160px,1.1fr) 96px minmax(180px,1.4fr);
+  grid-template-columns:minmax(160px,1.1fr) minmax(96px,max-content) minmax(180px,1.4fr);
   gap:var(--space-3);
   align-items:center;
   padding:var(--space-3) var(--space-4);
@@ -1491,9 +1504,10 @@ button,input,select { font:inherit; }
 }
 .matrix-row:last-child { border-bottom:0; }
 .matrix-row.head { color:var(--text-muted); background:var(--surface-field); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
-.matrix-row b { justify-self:start; padding:2px var(--space-2); border-radius:var(--radius-pill); font-size:var(--fs-xs); }
+.matrix-row b { justify-self:start; padding:2px var(--space-2); border-radius:var(--radius-pill); font-size:var(--fs-xs); white-space:nowrap; }
 .matrix-row b.ok { color:var(--success-ink); background:var(--success-bg); }
 .matrix-row b.flow { color:var(--info-ink); background:var(--info-bg); }
+.matrix-row b.pending { color:var(--warning-ink); background:var(--warning-bg); }
 .legacy-links {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -1656,8 +1670,8 @@ button,input,select { font:inherit; }
   .sidebar-mascot-say { display:none; }
 }
 @media (max-width:900px) {
-  .tool-stage { grid-template-columns:minmax(0,1fr); gap:0; }
-  .art-rail,.art-toggle { display:none; }
+  .tool-center-scroll { width:100%; }
+  .tool-stage::before,.art-toggle,.art-caption { display:none; }
 }
 @media (max-width:1024px) {
   .app-body { grid-template-columns:70px minmax(0,1fr); }

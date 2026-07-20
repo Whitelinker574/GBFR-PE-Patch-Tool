@@ -45,6 +45,21 @@ test('runtime pages no longer call unconditional compatibility lifecycle APIs', 
   assert.doesNotMatch(sources['OverLimit.vue'], /OverLimit(?:Enable|Disable)/)
 })
 
+test('MiscTools keeps the owned stable runtime surface without experimental bindings', () => {
+  const miscSource = sources['MiscTools.vue']
+  for (const symbol of [
+    'Countdown',
+    'FaceAccessory',
+    'InfiniteChallenge',
+    'UnlockAllTrophy',
+    'OtherSkinPurpleRune',
+    'DamageMeter',
+    'DamageOverlay',
+  ]) {
+    assert.doesNotMatch(miscSource, new RegExp(symbol), `MiscTools.vue: ${symbol} is not part of the stable runtime lease surface`)
+  }
+})
+
 test('live writes carry the current owner token and never call compatibility writes', () => {
   const writeContracts = {
     'SigilMemoryGenerator.vue': ['SigilMemoryUpdateOwned', 'SigilMemoryUpdate'],
@@ -89,7 +104,6 @@ test('live writes carry the current owner token and never call compatibility wri
   }
   assert.ok(miscSource.includes("MonsterEnhanceSetPatchValueEnabledOwned(connectionOwnerToken, 'inventory_set_45'"), 'MiscTools.vue: inventory patch must carry the current owner token')
   assert.ok(!miscSource.includes("MonsterEnhanceSetPatchValueEnabled('inventory_set_45'"), 'MiscTools.vue: inventory patch must not bypass ownership')
-  assert.match(miscSource, /MonsterEnhanceSetPatchValueEnabledOwned\(connectionOwnerToken, 'monster_hp'/, 'MiscTools.vue: monster HP hook must carry the current owner token')
-  assert.match(miscSource, /MonsterEnhanceSetPatchValueEnabledOwned\(connectionOwnerToken, 'crocodile_damage'/, 'MiscTools.vue: crocodile hook must carry the current owner token')
+  assert.doesNotMatch(miscSource, /['"](?:monster_hp|crocodile_damage)['"]/, 'MiscTools.vue: damage-meter monster hooks must not remain on the stable page')
   assert.doesNotMatch(miscSource, /\bMonsterEnhanceSetPatchValueEnabled\(/, 'MiscTools.vue: monster hooks must not bypass ownership')
 })

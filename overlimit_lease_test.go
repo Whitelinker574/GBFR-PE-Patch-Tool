@@ -47,20 +47,20 @@ func blockCallsSelector(body *ast.BlockStmt, receiver, method string) bool {
 
 func TestOverLimitMemoryEntrypointsAcquireStableProcessLease(t *testing.T) {
 	bodies := overLimitFunctionBodies(t)
-	for _, check := range []struct{ name, implementation string }{
-		{name: "OverLimitScan", implementation: "OverLimitScan"},
-		{name: "OverLimitGetStatus", implementation: "OverLimitGetStatus"},
-		{name: "OverLimitEnable", implementation: "OverLimitEnable"},
-		{name: "OverLimitDisable", implementation: "OverLimitDisable"},
-		{name: "OverLimitSetSlot", implementation: "OverLimitSetSlot"},
-		{name: "OverLimitSetAll", implementation: "overLimitSetAll"},
-		{name: "OverLimitCommit", implementation: "OverLimitCommit"},
+	for _, check := range []struct{ name, implementation, lease string }{
+		{name: "OverLimitScan", implementation: "OverLimitScan", lease: "acquireGameProcessLease"},
+		{name: "OverLimitGetStatus", implementation: "OverLimitGetStatus", lease: "acquireGameProcessLease"},
+		{name: "OverLimitEnable", implementation: "OverLimitEnable", lease: "acquireLegacyRuntimeMutationLease"},
+		{name: "OverLimitDisable", implementation: "OverLimitDisable", lease: "acquireLegacyRuntimeMutationLease"},
+		{name: "OverLimitSetSlot", implementation: "OverLimitSetSlot", lease: "acquireLegacyRuntimeMutationLease"},
+		{name: "OverLimitSetAll", implementation: "overLimitSetAll", lease: "acquireLegacyRuntimeMutationLease"},
+		{name: "OverLimitCommit", implementation: "OverLimitCommit", lease: "acquireGameProcessLease"},
 	} {
 		body := bodies[check.implementation]
 		if body == nil {
 			t.Fatalf("missing %s implementation %s", check.name, check.implementation)
 		}
-		if !blockCallsSelector(body, "a", "acquireGameProcessLease") {
+		if !blockCallsSelector(body, "a", check.lease) {
 			t.Errorf("%s must pin hProcess/moduleBase/PID for its full operation", check.name)
 		}
 	}

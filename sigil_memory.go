@@ -295,15 +295,16 @@ func (a *App) SigilMemoryDisable() (SigilMemoryStatus, error) {
 	// A never-enabled page can unmount after the game has already exited.
 	// Avoid opening a connection solely for that idempotent no-op.
 	a.procMu.Lock()
-	idle := a.sigilMemoryHookAddr == 0 && a.sigilMemoryCaveAddr == 0 && len(a.sigilMemoryOriginal) == 0
-	if idle {
-		a.sigilMemoryOwnerToken = ""
+	if a.sigilMemoryOwnerToken != "" {
+		a.procMu.Unlock()
+		return SigilMemoryStatus{}, errRuntimeOwnerLeaseStale
 	}
+	idle := a.sigilMemoryHookAddr == 0 && a.sigilMemoryCaveAddr == 0 && len(a.sigilMemoryOriginal) == 0
 	a.procMu.Unlock()
 	if idle {
 		return SigilMemoryStatus{}, nil
 	}
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerSigil); err != nil {
 		return SigilMemoryStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -349,7 +350,7 @@ func (a *App) SigilMemoryRelease(token string) (SigilMemoryStatus, error) {
 }
 
 func (a *App) SigilMemoryEnable() (SigilMemoryStatus, error) {
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerSigil); err != nil {
 		return SigilMemoryStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -460,7 +461,7 @@ func (a *App) sigilMemoryUpdate(token string, owned bool, update SigilMemoryUpda
 	if owned {
 		leaseErr = a.acquireOwnedRuntimeWriteLease(runtimeOwnerSigil, token)
 	} else {
-		leaseErr = a.acquireGameProcessLease()
+		leaseErr = a.acquireLegacyRuntimeMutationLease(runtimeOwnerSigil)
 	}
 	if leaseErr != nil {
 		return SigilMemoryStatus{}, leaseErr

@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.9.1-local-dlc202-ct081"
+	appVersion  = "v1.9.1-local-dlc202"
 	repoOwner   = "BitterG"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -2838,6 +2838,31 @@ func (a *App) runtimeOwnerTokenLocked(scope runtimeOwnerScope) string {
 	default:
 		return ""
 	}
+}
+
+// acquireLegacyRuntimeMutationLease preserves compatibility for callers that
+// predate owner tokens, but never lets them mutate a resource currently leased
+// by an owned page. The owner check happens before process discovery and stays
+// protected by procMu through the caller's full lifecycle or write operation.
+func (a *App) acquireLegacyRuntimeMutationLease(scope runtimeOwnerScope) error {
+	a.procMu.Lock()
+	if a.runtimeOwnerTokenLocked(scope) != "" {
+		a.procMu.Unlock()
+		return errRuntimeOwnerLeaseStale
+	}
+	if err := a.ensureGameProcessLocked(); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
+	if a.runtimeOwnerTokenLocked(scope) != "" {
+		a.procMu.Unlock()
+		return errRuntimeOwnerLeaseStale
+	}
+	if a.hProcess == 0 || a.moduleBase == 0 || a.charaPID == 0 || a.charaCreated == 0 || !processHandleAlive(a.hProcess) {
+		a.procMu.Unlock()
+		return fmt.Errorf("游戏进程连接已失效，请重新连接")
+	}
+	return nil
 }
 
 // acquireOwnedRuntimeWriteLease validates the page token before any process IO

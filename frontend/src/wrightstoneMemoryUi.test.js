@@ -57,6 +57,24 @@ test('live wrightstone editor exposes current and target values for all three sl
   assert.match(component, /<details[^>]*class="[^"]*ui-disclosure[^"]*change-summary/)
 })
 
+test('live wrightstone configuration mirrors the offline parchment editor without a dark or floating sub-skin', () => {
+  assert.match(component, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
+  assert.match(component, /class="connection-card section ui-card"/)
+  assert.match(component, /class="record-panel section ui-card"/)
+  assert.match(component, /class="trait-card ui-card"/)
+  assert.match(component, /class="trait-current-icon"[\s\S]*?v-if="traitIcon\(currentHash\(slot\), currentName\(slot\)\)"[\s\S]*?v-else[^>]*>—</)
+  assert.match(component, /<CatalogSelect[\s\S]*?:icon-resolver="traitIconForOption"[\s\S]*?search-placeholder="搜索特性名称"/)
+  assert.match(component, /\.section\s*\{[^}]*padding:\s*var\(--space-6\)/is)
+  assert.match(component, /\.trait-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*240px\),\s*1fr\)\)/is)
+  assert.match(component, /\.trait-card\s*\{[^}]*background:\s*var\(--surface-card-pop\)[^}]*box-shadow:\s*none/is)
+  assert.match(component, /\.trait-current\s*\{[^}]*background:\s*var\(--surface-card-pop\)/is)
+  assert.match(component, /\.trait-current code\s*\{[^}]*white-space:\s*nowrap/is)
+  assert.doesNotMatch(component, /\.trait-current\s*\{[^}]*background:\s*var\(--surface-sunken\)/is)
+  assert.match(component, /class="record-footer"/)
+  assert.match(component, /\.record-footer\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(300px,\s*\.8fr\)/is)
+  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*760px\)[\s\S]*?\.trait-card:last-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/is)
+})
+
 test('successful writes restore the hook immediately and explain the blacksmith safety boundary', () => {
   assert.match(component, /await WrightstoneMemoryUpdateOwned\(ownerToken,/)
   assert.match(component, /expectedSelectedAddr/)
@@ -82,14 +100,13 @@ test('live wrightstone editor uses shared atoms, one scroll container and respon
   for (const atom of ['ui-page', 'ui-page-stack', 'ui-card', 'ui-panel', 'ui-btn', 'ui-field', 'ui-input', 'ui-select']) {
     assert.match(component, new RegExp(`\\b${atom}\\b`), `missing shared ${atom} primitive`)
   }
-  assert.match(component, /\.wrightstone-memory-actions\s*\{[^}]*position:\s*sticky/is)
+  assert.doesNotMatch(component, /\.wrightstone-memory-actions\s*\{[^}]*position:\s*sticky/is)
   assert.match(component, /\.wrightstone-memory-actions\s*\{[^}]*font-family:\s*var\(--font-data\)/is)
   assert.equal((component.match(/overflow(?:-y)?:\s*(?:auto|scroll)/g) || []).length, 0, 'page must not nest another scrolling surface')
   assert.match(shell, /\.workspace-scroll\s*\{[^}]*overflow:\s*auto/is)
-  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*375px\)/)
-  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*768px\)/)
-  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*1024px\)/)
-  assert.match(component, /@container\s+ui-page\s*\(min-width:\s*1080px\)/)
+  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*440px\)/)
+  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*620px\)/)
+  assert.match(component, /@container\s+ui-page\s*\(max-width:\s*760px\)/)
   assert.doesNotMatch(component, /@container\s+ui-page\s*\(min-width:\s*1440px\)/)
   assert.match(component, /previousSelectedAddr[\s\S]*liveMessage\.value\s*=\s*'已读取当前祝福石记录。'/)
 })

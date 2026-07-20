@@ -22,7 +22,7 @@ test('runtime monitor is routed as its own read-only memory-monitoring category'
 
 test('the home journal exposes monitoring separately from injection and save editing', () => {
   assert.match(home, /id:\s*['"]monitor['"],\s*mark:\s*['"]测['"],\s*label:\s*['"]内存监测['"]/)
-  assert.match(home, /id:\s*['"]ctMonitor['"],\s*icon:\s*['"]测['"],\s*title:\s*['"]运行监测（CT 0\.8\.4）['"]/)
+  assert.match(home, /id:\s*['"]ctMonitor['"],\s*icon:\s*['"]测['"],\s*title:\s*['"]运行监测['"]/);
   assert.match(home, /队伍快照、选中素材与关键物品/)
 })
 
@@ -55,9 +55,9 @@ test('new shell and home copy has exact English localization', () => {
   const expected = {
     '内存监测': 'Memory Monitoring',
     '只读读取运行中游戏数据，不修改物品或存档': 'Read live game data without modifying items or save data',
-    '运行监测（CT 0.8.4）': 'Runtime Monitor (CT 0.8.4)',
+    '运行监测': 'Runtime Monitor',
     '队伍快照、选中素材与关键物品': 'Party snapshots, selected materials, and key items',
-    'CT 0.8.4 · 只读监测': 'CT 0.8.4 · Read-Only Monitoring',
+    '只读监测': 'Read-Only Monitoring',
     '只读 · 需连接游戏': 'Read Only · Game Connection Required',
   }
   for (const [chinese, english] of Object.entries(expected)) {

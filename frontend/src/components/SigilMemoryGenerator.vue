@@ -546,7 +546,7 @@ onMounted(async () => {
             <span class="current-value" :class="{ 'is-dim': sigilRead.dim }" :title="sigilRead.text">当前：{{ sigilRead.text }} <b v-if="status.sigilHash">Lv {{ status.sigilLevel }}</b></span>
           </div>
           <div class="editor-control-grid">
-            <SigilMemoryPicker v-model="form.sigilHash" :options="allSigilOptions" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSigil" placeholder="选择因子" />
+            <SigilMemoryPicker v-model="form.sigilHash" class="aligned-picker" :options="allSigilOptions" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSigil" placeholder="选择因子" />
             <label class="ui-field level-control">
               <span class="ui-field-label">等级</span>
               <input v-model.number="form.sigilLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="sigilWritableMax" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, sigilWritableMax)" />
@@ -567,7 +567,7 @@ onMounted(async () => {
             <span class="current-value" :class="{ 'is-dim': primaryRead.dim }" :title="primaryRead.text">当前：{{ primaryRead.text }} <b v-if="status.primaryTraitHash">Lv {{ status.primaryTraitLevel }}</b></span>
           </div>
           <div class="editor-control-grid">
-            <SigilMemoryPicker v-model="form.primaryTraitHash" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickPrimary" placeholder="选择主词条" />
+            <SigilMemoryPicker v-model="form.primaryTraitHash" class="aligned-picker" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickPrimary" placeholder="选择主词条" />
             <label class="ui-field level-control">
               <span class="ui-field-label">等级</span>
               <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
@@ -588,7 +588,7 @@ onMounted(async () => {
             <span class="current-value" :class="{ 'is-dim': secondaryRead.dim }" :title="secondaryRead.text">当前：{{ secondaryRead.text }} <b v-if="status.secondaryTraitHash">Lv {{ status.secondaryTraitLevel }}</b></span>
           </div>
           <div class="editor-control-grid">
-            <SigilMemoryPicker v-model="form.secondaryTraitHash" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSecondary" optional placeholder="未选择（可选）" />
+            <SigilMemoryPicker v-model="form.secondaryTraitHash" class="aligned-picker" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSecondary" optional placeholder="未选择（可选）" />
             <label class="ui-field level-control" :class="{ 'is-disabled': !form.secondaryTraitHash }">
               <span class="ui-field-label">等级</span>
               <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="secondaryWritableMax" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, secondaryWritableMax)" />
@@ -709,12 +709,13 @@ onMounted(async () => {
 .current-value { min-width:0; color:var(--text-secondary); font-size:var(--fs-sm); overflow-wrap:anywhere; }
 .current-value b { color:var(--text-primary); font-family:var(--font-data); }
 .current-value.is-dim { color:var(--text-muted); }
-.editor-control-grid { display:grid; min-width:0; max-width:760px; grid-template-columns:minmax(240px,520px) 124px 88px; align-items:start; gap:var(--space-3); }
-.level-control { display:grid; grid-template-rows:auto var(--control-height) auto; }
+.editor-control-grid { display:grid; width:100%; min-width:0; max-width:none; grid-template-columns:minmax(0,1fr) minmax(180px,220px) auto; align-items:start; gap:var(--space-3); }
+.aligned-picker,.limit-button { margin-top:22px; }
+.level-control { display:grid; min-width:0; grid-template-rows:auto var(--control-height) auto; }
 .level-control .ui-input { text-align:center; }
 .level-control.is-disabled { opacity:var(--state-disabled-opacity); }
 .empty-level { display:flex; min-height:var(--control-height); align-items:center; justify-content:center; border:1px solid var(--border-soft); border-radius:var(--radius-sm); color:var(--text-muted); background:var(--surface-sunken); font-size:var(--fs-sm); }
-.limit-button { align-self:end; min-height:var(--control-height); }
+.limit-button { min-width:88px; align-self:start; min-height:var(--control-height); }
 .warning-list { display:flex; flex-direction:column; gap:var(--space-1); }
 .write-toolbar { align-items:center; justify-content:space-between; }
 .write-summary { display:flex; min-width:0; flex:1 1 360px; flex-wrap:wrap; align-items:center; gap:var(--space-3); }
@@ -737,16 +738,19 @@ onMounted(async () => {
 .rename-input { flex:1 1 220px; }
 
 @container ui-page (max-width:760px) {
-  .editor-control-grid { max-width:none; grid-template-columns:minmax(0,1fr) 112px 84px; }
   .template-entry { grid-template-columns:minmax(0,1fr); }
   .row-tools,.entry-apply,.entry-meta { grid-column:1; grid-row:auto; justify-self:start; }
   .entry-apply { width:100%; }
 }
 
+@container ui-page (max-width:620px) {
+  .editor-control-grid { grid-template-columns:minmax(0,1fr); }
+  .aligned-picker,.limit-button { margin-top:0; }
+  .limit-button { width:100%; min-width:0; }
+}
+
 @container ui-page (max-width:560px) {
   .connection-card { position:static; }
-  .editor-control-grid { grid-template-columns:minmax(0,1fr) 108px; }
-  .limit-button { grid-column:1 / -1; width:100%; }
   .editor-field-head > strong { flex-basis:100%; }
   .write-actions { width:100%; margin-left:0; }
   .write-actions .ui-btn { flex:1 1 180px; }

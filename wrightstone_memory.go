@@ -140,7 +140,7 @@ func (a *App) WrightstoneMemoryGetStatus() (WrightstoneMemoryStatus, error) {
 }
 
 func (a *App) WrightstoneMemoryEnable() (WrightstoneMemoryStatus, error) {
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerWrightstone); err != nil {
 		return WrightstoneMemoryStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -255,7 +255,7 @@ func (a *App) wrightstoneMemoryUpdate(token string, owned bool, update Wrightsto
 	if owned {
 		leaseErr = a.acquireOwnedRuntimeWriteLease(runtimeOwnerWrightstone, token)
 	} else {
-		leaseErr = a.acquireGameProcessLease()
+		leaseErr = a.acquireLegacyRuntimeMutationLease(runtimeOwnerWrightstone)
 	}
 	if leaseErr != nil {
 		return WrightstoneMemoryStatus{}, leaseErr
@@ -393,15 +393,16 @@ func (a *App) WrightstoneMemoryDisable() (WrightstoneMemoryStatus, error) {
 	// Preserve idempotence when this page was never enabled, while ensuring any
 	// actual hook teardown pins the process until the lifecycle lock is released.
 	a.procMu.Lock()
-	idle := a.wrightstoneMemoryHookAddr == 0 && a.wrightstoneMemoryCaveAddr == 0 && len(a.wrightstoneMemoryOriginal) == 0
-	if idle {
-		a.wrightstoneMemoryOwnerToken = ""
+	if a.wrightstoneMemoryOwnerToken != "" {
+		a.procMu.Unlock()
+		return WrightstoneMemoryStatus{}, errRuntimeOwnerLeaseStale
 	}
+	idle := a.wrightstoneMemoryHookAddr == 0 && a.wrightstoneMemoryCaveAddr == 0 && len(a.wrightstoneMemoryOriginal) == 0
 	a.procMu.Unlock()
 	if idle {
 		return WrightstoneMemoryStatus{}, nil
 	}
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerWrightstone); err != nil {
 		return WrightstoneMemoryStatus{}, err
 	}
 	defer a.procMu.Unlock()

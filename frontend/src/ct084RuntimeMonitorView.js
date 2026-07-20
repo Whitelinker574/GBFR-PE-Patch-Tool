@@ -4,8 +4,8 @@ const SELECTED_RVAS = Object.freeze({ material: 0x3F4BAC3, keyItem: 0x3F2061C })
 
 const COPY = Object.freeze({
   memoryMonitoring: ['内存监测', 'Memory Monitoring'],
-  sourceLabel: ['CT 0.8.4 · 游戏 2.0.2', 'CT 0.8.4 · Game 2.0.2'],
-  pageTitle: ['运行监测（CT 0.8.4）', 'Runtime Monitor (CT 0.8.4)'],
+  sourceLabel: ['游戏 2.0.2', 'Game 2.0.2'],
+  pageTitle: ['运行监测', 'Runtime Monitor'],
   pageSummary: ['读取当前队伍与游戏列表中选中的物品；所有结果都来自本次游戏进程。', 'Read the current party and the item selected in an in-game list. Every result comes from this game process.'],
   readOnly: ['只读', 'Read Only'],
   notConnected: ['未连接', 'Not Connected'],

@@ -3,36 +3,19 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { CharaAcquire, CharaRelease,
          CurrencyGetAllOwned, CurrencySetOneOwned,
          PotionGetAllOwned, PotionSetOneOwned,
-         CountdownGetStatus, CountdownScan, CountdownSet,
-         FaceAccessoryGetStatus, FaceAccessoryScan, FaceAccessorySetHidden,
-         InfiniteChallengeGetStatus, InfiniteChallengeSetEnabled,
          MaterialConsumeGetStatusOwned, MaterialConsumeSetEnabledOwned,
          CollectibleTaskCompleteOwned,
          TerminusDropGetStatusOwned, TerminusDropScanOwned, TerminusDropSetEnabledOwned,
-         UnlockAllTrophyGetStatus, UnlockAllTrophyScan, UnlockAllTrophySetEnabled,
-         OtherSkinPurpleRuneGetStatus, OtherSkinPurpleRuneSetEnabled,
-         MonsterEnhanceSetPatchValueEnabledOwned,
-         DamageMeterGetStatus, DamageMeterReset,
-         DamageOverlaySetEnabled, DamageOverlaySetValue, DamageOverlaySetFontSize } from '../../wailsjs/go/main/App'
+         MonsterEnhanceSetPatchValueEnabledOwned } from '../../wailsjs/go/main/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])
 const RUNTIME_LEASE_SCOPE = 'misc-tools'
-const props = defineProps({
-  mode: { type: String, default: 'stable' },
-})
 
 const connected = ref(false)
 const info = reactive({ pid: 0, moduleBase: 0, manager: 0 })
 const loading = ref(false)
 
-const countdownValue = ref('30')
-const countdownStatus = reactive({ found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
-const countdownLoading = ref(false)
-const faceAccessoryStatus = reactive({ found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
-const faceAccessoryLoading = ref(false)
-const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
-const infiniteChallengeLoading = ref(false)
 const materialConsumeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const materialConsumeLoading = ref(false)
 const collectibleTaskLoading = ref(false)
@@ -42,24 +25,13 @@ const inventorySet45Seconds = ref(0)
 const inventorySetQuantity = ref(45)
 const terminusDropStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
 const terminusDropLoading = ref(false)
-const unlockAllTrophyStatus = reactive({ found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
-const unlockAllTrophyLoading = ref(false)
-const showUnlockAllTrophyConfirm = ref(false)
-const otherSkinPurpleRuneStatus = reactive({ rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
-const otherSkinPurpleRuneLoading = ref(false)
-const damageMeterStatus = reactive({ connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
-const damageMeterLoading = ref(false)
 const currencies = ref([])
 const currencyInputs = reactive({})
 const currencyLoading = ref(false)
 const potions = ref([])
 const potionInputs = reactive({})
 const potionLoading = ref(false)
-const damageOverlayEnabled = ref(false)
-const damageOverlayFontSize = ref(Number(localStorage.getItem('gbfrDamageOverlayFontSize') || 48))
-const showOutdatedFeatures = computed(() => props.mode === 'compatibility')
-const showStableFeatures = computed(() => props.mode !== 'compatibility')
-const activeRuntimeGroup = ref(props.mode === 'compatibility' ? 'battle' : 'resources')
+const activeRuntimeGroup = ref('resources')
 const runtimeCatalog = computed(() => {
   const catalogs = {
     resources: [
@@ -71,48 +43,21 @@ const runtimeCatalog = computed(() => {
     mission: [
       ['巴武掉落 100%', '移除巴武掉落的随机排除，保留原始资格检查', 'AOB 定位'],
     ],
-    battle: [
-      ['团队伤害记录', '共享内存统计与悬浮显示', '等待适配'],
-      ['任务结算倒计时', '修改结算等待时间与零帧开箱', '等待适配'],
-      ['无限挑战', '阻止挑战次数递增', '等待适配'],
-      ['任务得分倍率', '0.8.1 新增：调整任务结算得分倍率', '等待 2.0.2 特征定位'],
-      ['强制支线目标奖励', '0.8.1 新增：结算时强制取得支线目标奖励', '等待 2.0.2 特征定位'],
-      ['任务内倍率', '0.8.1 新增的通用倍率入口，字段含义仍需逐项核对', '仅保留资料'],
-    ],
-    display: [
-      ['脸部符文显示', '控制特定皮肤脸部符文', '等待适配'],
-      ['游戏内全称号', '临时切换称号解锁判断', '等待适配'],
-      ['其他皮肤紫色符文', '让紫色符文显示在其他皮肤', '等待适配'],
-    ],
   }
   return catalogs[activeRuntimeGroup.value] || []
 })
-let damageMeterTimer = 0
 let inventorySet45Timer = 0
 let disposed = false
 let lifecycleEpoch = 0
 let connectionOwnerToken = ''
 
-function getMonsterEnhanceMultiplier(id) {
-  const saved = window.gbfrMonsterEnhanceMultipliers || {}
-  const value = parseFloat(saved[id] || '1')
-  return isNaN(value) || value <= 0 || value > 9999 ? 1 : value
-}
-
 function clearConnectionState() {
   connected.value = false
-  stopDamageMeterTimer()
   stopInventorySet45Timer()
   inventorySet45Enabled.value = false
   Object.assign(info, { pid: 0, moduleBase: 0, manager: 0 })
-  Object.assign(countdownStatus, { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
-  Object.assign(faceAccessoryStatus, { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
-  Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, currentBytes: '' })
   Object.assign(materialConsumeStatus, { rva: 0, enabled: false, currentBytes: '' })
   Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
-  Object.assign(unlockAllTrophyStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
-  Object.assign(otherSkinPurpleRuneStatus, { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
-  Object.assign(damageMeterStatus, { connected: false, totalDamage: 0, monsterDamage: 0, crocodileDamage: 0 })
   currencies.value = []
   Object.keys(currencyInputs).forEach((key) => delete currencyInputs[key])
   potions.value = []
@@ -135,20 +80,10 @@ async function connect() {
     connectionOwnerToken = acquiredOwnerToken
     connected.value = true
     Object.assign(info, res)
-    if (showOutdatedFeatures.value) {
-      loadCountdownStatus()
-      loadFaceAccessoryStatus()
-      loadInfiniteChallengeStatus()
-      loadUnlockAllTrophyStatus()
-      loadOtherSkinPurpleRuneStatus()
-      startDamageMeterTimer()
-    }
-    if (showStableFeatures.value) {
-      loadMaterialConsumeStatus()
-      loadTerminusDropStatus()
-      loadCurrencyValues()
-      loadPotionValues()
-    }
+    loadMaterialConsumeStatus()
+    loadTerminusDropStatus()
+    loadCurrencyValues()
+    loadPotionValues()
   } catch (err) {
     let cleanupError = null
     if (acquiredOwnerToken) {
@@ -188,102 +123,6 @@ async function disconnect() {
 function formatHex(value) {
   if (!value) return '—'
   return '0x' + Number(value).toString(16).toUpperCase()
-}
-
-function formatFloat(value) {
-  if (value === undefined || value === null) return '—'
-  return Number(value).toFixed(2)
-}
-
-function isCountdownActive() {
-  return countdownStatus.found && Math.abs(Number(countdownStatus.value1) - 30) > 0.001
-}
-
-function applyCountdownStatus(status) {
-  Object.assign(countdownStatus, status || { found: false, address: 0, rva: 0, value1: 0, value2: 0, currentBytes: '' })
-  if (status && status.found) countdownValue.value = String(Number(status.value1.toFixed(2)))
-}
-
-function loadCountdownStatus() {
-  if (!connected.value) return
-  countdownLoading.value = true
-  CountdownGetStatus()
-    .then(applyCountdownStatus)
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { countdownLoading.value = false })
-}
-
-function scanCountdown() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  countdownLoading.value = true
-  CountdownScan()
-    .then((status) => { applyCountdownStatus(status); emit('status', '倒计时特征定位成功', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { countdownLoading.value = false })
-}
-
-function setCountdown() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  const v = parseFloat(countdownValue.value)
-  if (isNaN(v) || v < 0 || v > 9999) { emit('status', '请输入 0 到 9999 之间的数值', 'error'); return }
-  countdownLoading.value = true
-  CountdownSet(v)
-    .then((status) => { applyCountdownStatus(status); emit('status', '倒计时写入成功', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { countdownLoading.value = false })
-}
-
-function applyFaceAccessoryStatus(status) {
-  Object.assign(faceAccessoryStatus, status || { found: false, address: 0, rva: 0, hidden: false, jumpOpcode: '', currentBytes: '' })
-}
-
-function loadFaceAccessoryStatus() {
-  if (!connected.value) return
-  faceAccessoryLoading.value = true
-  FaceAccessoryGetStatus()
-    .then(applyFaceAccessoryStatus)
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { faceAccessoryLoading.value = false })
-}
-
-function scanFaceAccessory() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  faceAccessoryLoading.value = true
-  FaceAccessoryScan()
-    .then((status) => { applyFaceAccessoryStatus(status); emit('status', '脸部符文特征定位成功', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { faceAccessoryLoading.value = false })
-}
-
-function setFaceAccessoryHidden(hidden) {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  faceAccessoryLoading.value = true
-  FaceAccessorySetHidden(hidden)
-    .then((status) => { applyFaceAccessoryStatus(status); emit('status', hidden ? '已隐藏脸部符文' : '已恢复脸部符文显示', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { faceAccessoryLoading.value = false })
-}
-
-function applyInfiniteChallengeStatus(status) {
-  Object.assign(infiniteChallengeStatus, status || { rva: 0, enabled: false, currentBytes: '' })
-}
-
-function loadInfiniteChallengeStatus() {
-  if (!connected.value) return
-  infiniteChallengeLoading.value = true
-  InfiniteChallengeGetStatus()
-    .then(applyInfiniteChallengeStatus)
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { infiniteChallengeLoading.value = false })
-}
-
-function setInfiniteChallengeEnabled(enabled) {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  infiniteChallengeLoading.value = true
-  InfiniteChallengeSetEnabled(enabled)
-    .then((status) => { applyInfiniteChallengeStatus(status); emit('status', enabled ? '已开启无限挑战' : '已恢复挑战次数递增', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { infiniteChallengeLoading.value = false })
 }
 
 function applyMaterialConsumeStatus(status) {
@@ -382,73 +221,6 @@ function setTerminusDropEnabled(enabled) {
     .finally(() => { terminusDropLoading.value = false })
 }
 
-function applyUnlockAllTrophyStatus(status) {
-  Object.assign(unlockAllTrophyStatus, status || { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
-}
-
-function loadUnlockAllTrophyStatus() {
-  if (!connected.value) return
-  unlockAllTrophyLoading.value = true
-  UnlockAllTrophyGetStatus()
-    .then(applyUnlockAllTrophyStatus)
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { unlockAllTrophyLoading.value = false })
-}
-
-function scanUnlockAllTrophy() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  unlockAllTrophyLoading.value = true
-  UnlockAllTrophyScan()
-    .then((status) => { applyUnlockAllTrophyStatus(status); emit('status', '全称号解锁特征定位成功', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { unlockAllTrophyLoading.value = false })
-}
-
-function setUnlockAllTrophyEnabled(enabled) {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  if (enabled) { showUnlockAllTrophyConfirm.value = true; return }
-  applyUnlockAllTrophyEnabled(false)
-}
-
-function confirmUnlockAllTrophy() {
-  showUnlockAllTrophyConfirm.value = false
-  applyUnlockAllTrophyEnabled(true)
-}
-
-function applyUnlockAllTrophyEnabled(enabled) {
-  unlockAllTrophyLoading.value = true
-  UnlockAllTrophySetEnabled(enabled)
-    .then((status) => { applyUnlockAllTrophyStatus(status); emit('status', enabled ? '已开启游戏内全称号解锁' : '已恢复称号默认判断', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { unlockAllTrophyLoading.value = false })
-}
-
-function applyOtherSkinPurpleRuneStatus(status) {
-  Object.assign(otherSkinPurpleRuneStatus, status || { rva: 0, enabled: false, jumpOpcode: '', currentBytes: '' })
-}
-
-function loadOtherSkinPurpleRuneStatus() {
-  if (!connected.value) return
-  otherSkinPurpleRuneLoading.value = true
-  OtherSkinPurpleRuneGetStatus()
-    .then(applyOtherSkinPurpleRuneStatus)
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { otherSkinPurpleRuneLoading.value = false })
-}
-
-function setOtherSkinPurpleRuneEnabled(enabled) {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  otherSkinPurpleRuneLoading.value = true
-  OtherSkinPurpleRuneSetEnabled(enabled)
-    .then((status) => { applyOtherSkinPurpleRuneStatus(status); emit('status', enabled ? '已开启其他皮肤紫色符文显示' : '已恢复其他皮肤紫色符文判断', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { otherSkinPurpleRuneLoading.value = false })
-}
-
-function formatDamage(value) {
-  return Number(value || 0).toLocaleString()
-}
-
 function formatInt(value) {
   return Number(value || 0).toLocaleString()
 }
@@ -527,107 +299,13 @@ function setPotion(item) {
     .finally(() => { potionLoading.value = false })
 }
 
-function applyDamageMeterStatus(status) {
-  Object.assign(damageMeterStatus, {
-    connected: !!(status && status.connected),
-    totalDamage: Number((status && status.totalDamage) || 0),
-    monsterDamage: Number((status && status.monsterDamage) || 0),
-    crocodileDamage: Number((status && status.crocodileDamage) || 0),
-  })
-  if (damageOverlayEnabled.value) DamageOverlaySetValue(displayDamage()).catch(() => {})
-}
-
-function displayDamage() {
-  return Math.round(damageMeterStatus.monsterDamage * getMonsterEnhanceMultiplier('monster_hp') + damageMeterStatus.crocodileDamage * getMonsterEnhanceMultiplier('crocodile_damage'))
-}
-
-function startDamageMeterTimer() {
-  stopDamageMeterTimer()
-  loadDamageMeterStatus()
-  damageMeterTimer = window.setInterval(() => loadDamageMeterStatus(true), 500)
-}
-
-function stopDamageMeterTimer() {
-  if (!damageMeterTimer) return
-  window.clearInterval(damageMeterTimer)
-  damageMeterTimer = 0
-}
-
-function loadDamageMeterStatus(silent = false) {
-  if (!connected.value) return
-  if (!silent) damageMeterLoading.value = true
-  DamageMeterGetStatus()
-    .then(applyDamageMeterStatus)
-    .catch((err) => { if (!silent) emit('status', String(err), 'error') })
-    .finally(() => { if (!silent) damageMeterLoading.value = false })
-}
-
-function enableDamageMeter() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  damageMeterLoading.value = true
-  MonsterEnhanceSetPatchValueEnabledOwned(connectionOwnerToken, 'monster_hp', true, getMonsterEnhanceMultiplier('monster_hp'))
-    .then(() => MonsterEnhanceSetPatchValueEnabledOwned(connectionOwnerToken, 'crocodile_damage', true, getMonsterEnhanceMultiplier('crocodile_damage')))
-    .then(() => DamageMeterGetStatus())
-    .then((status) => {
-      applyDamageMeterStatus(status)
-      emit('status', '伤害记录已开启，已自动开启怪物多倍血和鳄鱼多倍血', 'success')
-    })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { damageMeterLoading.value = false })
-}
-
-function resetDamageMeter() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  damageMeterLoading.value = true
-  DamageMeterReset()
-    .then((status) => { applyDamageMeterStatus(status); emit('status', '团队伤害已清零', 'success') })
-    .catch((err) => emit('status', String(err), 'error'))
-    .finally(() => { damageMeterLoading.value = false })
-}
-
-function clampOverlayFontSize(value) {
-  return Math.min(120, Math.max(18, Number(value) || 48))
-}
-
-function setDamageOverlayFontSize(value) {
-  damageOverlayFontSize.value = clampOverlayFontSize(value)
-  localStorage.setItem('gbfrDamageOverlayFontSize', String(damageOverlayFontSize.value))
-  DamageOverlaySetFontSize(damageOverlayFontSize.value).catch(() => {})
-}
-
-function enableDamageOverlay() {
-  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
-  DamageOverlaySetFontSize(damageOverlayFontSize.value)
-    .then(() => DamageOverlaySetValue(displayDamage()))
-    .then(() => DamageOverlaySetEnabled(true))
-    .then(() => {
-      damageOverlayEnabled.value = true
-      startDamageMeterTimer()
-      emit('status', '伤害悬浮窗已开启', 'success')
-    })
-    .catch((err) => emit('status', String(err), 'error'))
-}
-
-function disableDamageOverlay() {
-  DamageOverlaySetEnabled(false).catch(() => {})
-  damageOverlayEnabled.value = false
-  emit('status', '伤害悬浮窗已关闭', 'success')
-}
-
-function toggleDamageOverlay() {
-  if (damageOverlayEnabled.value) disableDamageOverlay()
-  else enableDamageOverlay()
-}
-
 onBeforeUnmount(() => {
   disposed = true
   lifecycleEpoch += 1
   const ownerToken = connectionOwnerToken
   connectionOwnerToken = ''
   if (ownerToken) queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, ownerToken, CharaRelease)
-  stopDamageMeterTimer()
   stopInventorySet45Timer()
-  if (damageOverlayEnabled.value) disableDamageOverlay()
 })
 
 </script>
@@ -636,9 +314,9 @@ onBeforeUnmount(() => {
   <div class="root ui-page is-wide ui-page-stack">
     <div class="section ui-card ui-panel">
       <div class="header">
-        <span class="title">{{ showOutdatedFeatures ? '待适配运行时功能' : '游戏内工具' }}</span>
+        <span class="title">游戏内工具</span>
         <span class="info-dot" title="这些功能会修改游戏运行时内存，不写入存档；重启游戏或切换版本后需要重新连接并设置。">!</span>
-        <span class="hint">{{ showOutdatedFeatures ? '兼容性实验室 · 默认仅建议扫描与诊断' : '需游戏运行中使用 · 重启后重新连接' }}</span>
+        <span class="hint">需游戏运行中使用 · 重启后重新连接</span>
       </div>
       <div class="connect-row ui-toolbar">
         <button v-if="!connected" class="btn-connect ui-btn is-primary" @click="connect" :disabled="loading">
@@ -649,17 +327,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="runtime-tabs ui-seg">
-        <template v-if="showStableFeatures">
-          <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'resources' }" @click="activeRuntimeGroup = 'resources'">资源与药水</button>
-          <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'mission' }" @click="activeRuntimeGroup = 'mission'">任务与掉落</button>
-        </template>
-        <template v-else>
-          <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'battle' }" @click="activeRuntimeGroup = 'battle'">战斗与任务</button>
-          <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'display' }" @click="activeRuntimeGroup = 'display'">显示与解锁</button>
-        </template>
+        <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'resources' }" @click="activeRuntimeGroup = 'resources'">资源与药水</button>
+        <button class="ui-seg-btn" :class="{ 'is-on': activeRuntimeGroup === 'mission' }" @click="activeRuntimeGroup = 'mission'">任务与掉落</button>
       </div>
 
-      <div v-if="showStableFeatures" class="memory-card compatibility-note ui-card ui-panel is-compact">
+      <div class="memory-card compatibility-note ui-card ui-panel is-compact">
         <div class="memory-header">
           <span class="memory-title">实时修改与离线编辑</span>
           <span class="memory-hint">DLC 2.0.2 分工</span>
@@ -672,7 +344,7 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-if="connected">
-        <div v-if="showStableFeatures && activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: currencies.length }">
+        <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: currencies.length }">
           <div class="memory-header">
             <span class="memory-title">实时货币编辑</span>
             <span class="memory-hint">AOB 捕获玩家结构 · 写入后回读</span>
@@ -693,7 +365,7 @@ onBeforeUnmount(() => {
           <div v-if="!currencies.length" class="memory-info"><span>首次连接会安装临时读取点；若尚无数据，请在游戏内打开主菜单或让金币/MSP刷新一次后再点刷新。</span></div>
         </div>
 
-        <div v-if="showStableFeatures && activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: potions.length }">
+        <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: potions.length }">
           <div class="memory-header">
             <span class="memory-title">副本药水</span>
             <span class="memory-hint">稳定指针链读取/写入 int32</span>
@@ -713,88 +385,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'battle'" class="memory-card ui-card ui-panel is-compact" :class="{ active: damageMeterStatus.connected && damageMeterStatus.totalDamage > 0 }">
-          <div class="memory-header">
-            <span class="memory-title">团队伤害记录</span>
-            <span class="memory-hint">依赖怪物增强中倍率血量，本功能自动开启默认1倍</span>
-          </div>
-          <p class="feature-help waiting">待适配：依赖怪物增强共享内存与倍率换算。当前仅建议确认共享内存是否建立。</p>
-          <div class="memory-info damage-meter-info">
-            <span>状态: {{ damageMeterStatus.connected ? '记录中' : '等待共享内存' }}</span>
-            <span>原始扣血点会按怪物增强倍率折算显示</span>
-          </div>
-          <div class="damage-meter-value">{{ formatDamage(displayDamage()) }}</div>
-          <div class="damage-meter-raw">原始: {{ formatDamage(damageMeterStatus.totalDamage) }}</div>
-          <div class="memory-row">
-            <button class="btn-batch ui-btn is-primary is-sm" @click="enableDamageMeter" :disabled="damageMeterLoading">开启记录</button>
-            <button class="btn-refresh ui-btn is-sm" @click="toggleDamageOverlay" :disabled="damageMeterLoading || !damageMeterStatus.connected">{{ damageOverlayEnabled ? '关闭悬浮窗' : '开启悬浮窗' }}</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadDamageMeterStatus" :disabled="damageMeterLoading">刷新</button>
-            <button class="btn-refresh ui-btn is-sm" @click="resetDamageMeter" :disabled="damageMeterLoading">清零</button>
-            <button class="btn-sort ui-btn is-ghost is-sm" @click="setDamageOverlayFontSize(damageOverlayFontSize - 4)" :disabled="!damageOverlayEnabled">字号 -</button>
-            <button class="btn-sort ui-btn is-ghost is-sm" @click="setDamageOverlayFontSize(damageOverlayFontSize + 4)" :disabled="!damageOverlayEnabled">字号 +</button>
-          </div>
-        </div>
-
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'battle'" class="memory-card ui-card ui-panel is-compact" :class="{ active: isCountdownActive() }">
-          <div class="memory-header">
-            <span class="memory-title">任务结算倒计时/零帧开箱</span>
-            <span class="info-dot" title="任务结算倒计时超过30s会导致进度条消失，但计时正常；零帧开箱需设置为0s。">!</span>
-            <span class="memory-hint">AOB 定位后动态写入两个 float 值</span>
-          </div>
-          <p class="feature-help waiting">待适配：控制任务结算等待时间；设为 0 用于零帧开箱。扫描字节不一致时不要继续。</p>
-          <div class="memory-info">
-            <span>RVA: {{ formatHex(countdownStatus.rva) }}</span>
-            <span>状态: {{ isCountdownActive() ? '开启' : '默认' }}</span>
-            <span>当前: {{ formatFloat(countdownStatus.value1) }} / {{ formatFloat(countdownStatus.value2) }}</span>
-          </div>
-          <div class="memory-row">
-            <input v-model="countdownValue" type="number" min="0" max="9999" step="0.1" class="batch-input countdown-input ui-input" placeholder="秒数" />
-            <button class="btn-batch ui-btn is-primary is-sm" @click="setCountdown" :disabled="countdownLoading">设置倒计时</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadCountdownStatus" :disabled="countdownLoading">刷新</button>
-            <button class="btn-sort ui-btn is-ghost is-sm" @click="scanCountdown" :disabled="countdownLoading">重新扫描</button>
-          </div>
-          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ countdownStatus.currentBytes || '未定位' }}</code></details>
-        </div>
-
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'display'" class="memory-card ui-card ui-panel is-compact" :class="{ active: faceAccessoryStatus.hidden }">
-          <div class="memory-header">
-            <span class="memory-title">脸部符文显示(紫色皮肤包)</span>
-            <span class="memory-hint">切换 JE/JNE 控制渲染判断</span>
-          </div>
-          <p class="feature-help waiting">待适配：切换脸部符文的渲染判断，仅用于特定紫色皮肤组合。</p>
-          <div class="memory-info">
-            <span>RVA: {{ formatHex(faceAccessoryStatus.rva) }}</span>
-            <span>状态: {{ faceAccessoryStatus.hidden ? '隐藏' : '显示' }}</span>
-            <span>跳转: {{ faceAccessoryStatus.jumpOpcode || '—' }}</span>
-          </div>
-          <div class="memory-row">
-            <button class="btn-batch ui-btn is-primary is-sm" @click="setFaceAccessoryHidden(true)" :disabled="faceAccessoryLoading || faceAccessoryStatus.hidden">隐藏脸部符文</button>
-            <button class="btn-refresh ui-btn is-sm" @click="setFaceAccessoryHidden(false)" :disabled="faceAccessoryLoading || !faceAccessoryStatus.hidden">恢复符文显示</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadFaceAccessoryStatus" :disabled="faceAccessoryLoading">刷新</button>
-            <button class="btn-sort ui-btn is-ghost is-sm" @click="scanFaceAccessory" :disabled="faceAccessoryLoading">重新扫描</button>
-          </div>
-          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ faceAccessoryStatus.currentBytes || '未定位' }}</code></details>
-        </div>
-
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'battle'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled }">
-          <div class="memory-header">
-            <span class="memory-title">无限挑战</span>
-            <span class="memory-hint">NOP 挑战次数递增</span>
-          </div>
-          <p class="feature-help waiting">待适配：阻止挑战次数递增。确认当前字节与预期一致后才可测试。</p>
-          <div class="memory-info">
-            <span>RVA: {{ formatHex(infiniteChallengeStatus.rva) }}</span>
-            <span>状态: {{ infiniteChallengeStatus.enabled ? '开启' : '默认' }}</span>
-          </div>
-          <div class="memory-row">
-            <button class="btn-batch ui-btn is-primary is-sm" @click="setInfiniteChallengeEnabled(true)" :disabled="infiniteChallengeLoading || infiniteChallengeStatus.enabled">开启无限挑战</button>
-            <button class="btn-refresh ui-btn is-sm" @click="setInfiniteChallengeEnabled(false)" :disabled="infiniteChallengeLoading || !infiniteChallengeStatus.enabled">恢复默认</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadInfiniteChallengeStatus" :disabled="infiniteChallengeLoading">刷新</button>
-          </div>
-          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ infiniteChallengeStatus.currentBytes || '未读取' }}</code></details>
-        </div>
-
-        <div v-if="showStableFeatures && activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: materialConsumeStatus.enabled }">
+        <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: materialConsumeStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">素材不消耗</span>
             <span class="info-dot" title="开启后材料数量不会减少；同一指令也会阻止材料增加。">!</span>
@@ -814,7 +405,7 @@ onBeforeUnmount(() => {
           <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ materialConsumeStatus.currentBytes || '未读取' }}</code></details>
         </div>
 
-        <div v-if="showStableFeatures && activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: inventorySet45Enabled }">
+        <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: inventorySet45Enabled }">
           <div class="memory-header">
             <span class="memory-title">小钳蟹相关</span>
             <span class="info-dot" title="使用后需要拾取一次对应种类螃蟹，不要提前开，拾取之前开，记得用完关闭">!</span>
@@ -829,7 +420,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="showStableFeatures && activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: terminusDropStatus.enabled }">
+        <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: terminusDropStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">巴武掉落 100%</span>
             <span class="info-dot" title="仅让原型巴哈姆特任务的巴武 lot 不再被 80% 排除；仍保留未拥有、角色已解锁等游戏原始检查。">!</span>
@@ -849,52 +440,6 @@ onBeforeUnmount(() => {
           <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ terminusDropStatus.currentBytes || '未定位' }}</code></details>
         </div>
 
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'display'" class="memory-card ui-card ui-panel is-compact" :class="{ active: unlockAllTrophyStatus.enabled }">
-          <div class="memory-header">
-            <span class="memory-title">游戏内全称号解锁</span>
-            <span class="memory-hint">AOB 定位后切换 SETNE/SETNO</span>
-          </div>
-          <p class="feature-help waiting">待适配：临时改变游戏内称号解锁判断，持久化时机尚未完整确认。</p>
-          <div class="memory-info">
-            <span>RVA: {{ formatHex(unlockAllTrophyStatus.rva) }}</span>
-            <span>状态: {{ unlockAllTrophyStatus.enabled ? '开启' : '默认' }}</span>
-          </div>
-          <div class="memory-row">
-            <button class="btn-batch ui-btn is-primary is-sm" @click="setUnlockAllTrophyEnabled(true)" :disabled="unlockAllTrophyLoading || unlockAllTrophyStatus.enabled">开启全称号</button>
-            <button class="btn-refresh ui-btn is-sm" @click="setUnlockAllTrophyEnabled(false)" :disabled="unlockAllTrophyLoading || !unlockAllTrophyStatus.enabled">恢复默认</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadUnlockAllTrophyStatus" :disabled="unlockAllTrophyLoading">刷新</button>
-            <button class="btn-sort ui-btn is-ghost is-sm" @click="scanUnlockAllTrophy" :disabled="unlockAllTrophyLoading">重新扫描</button>
-          </div>
-          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ unlockAllTrophyStatus.currentBytes || '未定位' }}</code></details>
-        </div>
-
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'display'" class="memory-card ui-card ui-panel is-compact" :class="{ active: otherSkinPurpleRuneStatus.enabled }">
-          <div class="memory-header">
-            <span class="memory-title">在其他皮肤显示紫色符文</span>
-            <span class="memory-hint">固定 RVA 切换 JNE/JE</span>
-          </div>
-          <p class="feature-help waiting">待适配：让紫色符文在其他皮肤上显示，依赖旧版固定指令位置。</p>
-          <div class="memory-info">
-            <span>RVA: {{ formatHex(otherSkinPurpleRuneStatus.rva) }}</span>
-            <span>状态: {{ otherSkinPurpleRuneStatus.enabled ? '开启' : '默认' }}</span>
-            <span>跳转: {{ otherSkinPurpleRuneStatus.jumpOpcode || '—' }}</span>
-          </div>
-          <div class="memory-row">
-            <button class="btn-batch ui-btn is-primary is-sm" @click="setOtherSkinPurpleRuneEnabled(true)" :disabled="otherSkinPurpleRuneLoading || otherSkinPurpleRuneStatus.enabled">开启显示</button>
-            <button class="btn-refresh ui-btn is-sm" @click="setOtherSkinPurpleRuneEnabled(false)" :disabled="otherSkinPurpleRuneLoading || !otherSkinPurpleRuneStatus.enabled">恢复默认</button>
-            <button class="btn-refresh ui-btn is-sm" @click="loadOtherSkinPurpleRuneStatus" :disabled="otherSkinPurpleRuneLoading">刷新</button>
-          </div>
-          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ otherSkinPurpleRuneStatus.currentBytes || '未读取' }}</code></details>
-
-        <div v-if="showOutdatedFeatures && activeRuntimeGroup === 'battle'" class="reference-grid ui-card-grid">
-          <article v-for="item in runtimeCatalog.slice(3)" :key="item[0]" class="memory-card reference-card ui-card ui-panel is-compact">
-            <div class="memory-header"><span class="memory-title">{{ item[0] }}</span><span class="ui-tag is-warn">{{ item[2] }}</span></div>
-            <p class="feature-help waiting">{{ item[1] }}</p>
-            <small class="ui-hint">资料入口保留；当前版本没有可安全操作的控件。</small>
-          </article>
-        </div>
-        </div>
-
       </template>
       <div v-else class="preflight-grid ui-card-grid">
         <article v-for="item in runtimeCatalog" :key="item[0]" class="ui-card ui-panel is-compact">
@@ -902,16 +447,6 @@ onBeforeUnmount(() => {
           <span :class="{ waiting: item[2] === '等待适配' }">{{ item[2] }}</span>
         </article>
         <div class="empty ui-empty">连接游戏进程后显示读取值和操作按钮</div>
-      </div>
-    </div>
-    <div v-if="showUnlockAllTrophyConfirm" class="confirm-overlay" @click.self="showUnlockAllTrophyConfirm = false">
-      <div class="confirm-dialog">
-        <div class="confirm-title">确认开启游戏内全称号解锁</div>
-        <div class="confirm-body">目前存档时机尚不明确，可以领取任务奖励、佩戴选定称号、选择佩戴界面有多个“未设置”是正常现象</div>
-        <div class="confirm-actions">
-          <button class="btn-refresh ui-btn is-sm" @click="showUnlockAllTrophyConfirm = false">取消</button>
-          <button class="btn-warn ui-btn is-danger is-sm" @click="confirmUnlockAllTrophy" :disabled="unlockAllTrophyLoading">确认开启</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1127,26 +662,6 @@ onBeforeUnmount(() => {
   color:var(--warning-ink);
 }
 
-.damage-meter-info {
-  justify-content:space-between;
-}
-
-.damage-meter-value {
-  color:var(--info-ink);
-  font-family:var(--font-data);
-  font-size:var(--fs-xl);
-  font-weight:var(--fw-bold);
-  line-height:var(--lh-tight);
-  font-variant-numeric:tabular-nums;
-}
-
-.damage-meter-raw {
-  margin-top:calc(-1 * var(--space-1));
-  color:var(--text-muted);
-  font-family:var(--font-data);
-  font-size:var(--fs-sm);
-}
-
 .currency-grid {
   display:flex;
   flex-direction:column;
@@ -1189,10 +704,6 @@ onBeforeUnmount(() => {
   font-size:var(--fs-md);
 }
 
-.countdown-input {
-  width:96px;
-}
-
 .batch-input::-webkit-outer-spin-button,
 .batch-input::-webkit-inner-spin-button {
   margin:0;
@@ -1215,61 +726,11 @@ onBeforeUnmount(() => {
   margin:0 var(--space-4) var(--space-4);
 }
 
-.reference-grid {
-  --ui-grid-min:260px;
-}
-
-.reference-card {
-  min-height:130px;
-}
-
 .empty {
   padding:var(--space-5) 0;
   color:var(--text-muted);
   font-size:var(--fs-md);
   text-align:center;
-}
-
-.confirm-overlay {
-  position:fixed;
-  inset:0;
-  z-index:20;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:var(--space-7);
-  background:color-mix(in srgb,var(--text-primary) 42%,transparent);
-}
-
-.confirm-dialog {
-  display:flex;
-  width:min(420px,100%);
-  padding:var(--space-7);
-  flex-direction:column;
-  gap:var(--space-5);
-  border:1px solid var(--border-strong);
-  border-radius:var(--radius-lg);
-  background:var(--surface-card-pop);
-  box-shadow:var(--shadow-3);
-}
-
-.confirm-title {
-  color:var(--text-primary);
-  font-size:var(--fs-lg);
-  font-weight:var(--fw-bold);
-}
-
-.confirm-body {
-  color:var(--text-secondary);
-  font-size:var(--fs-md);
-  line-height:var(--lh-relaxed);
-}
-
-.confirm-actions {
-  display:flex;
-  justify-content:flex-end;
-  gap:var(--space-2);
-  flex-wrap:wrap;
 }
 
 @container runtime-page (max-width:720px) {

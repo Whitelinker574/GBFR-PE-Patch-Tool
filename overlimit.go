@@ -397,7 +397,7 @@ func (a *App) getOverLimitStatusLocked() (OverLimitStatus, error) {
 }
 
 func (a *App) OverLimitEnable() (OverLimitStatus, error) {
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerOverLimit); err != nil {
 		return OverLimitStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -519,15 +519,16 @@ func (a *App) OverLimitDisable() (OverLimitStatus, error) {
 	// Avoid opening a game-process connection just because a never-enabled page
 	// is being unmounted. Any cached hook state still takes the full lease below.
 	a.procMu.Lock()
-	idle := a.overLimitHookAddr == 0 && a.overLimitCaveAddr == 0
-	if idle {
-		a.overLimitOwnerToken = ""
+	if a.overLimitOwnerToken != "" {
+		a.procMu.Unlock()
+		return OverLimitStatus{}, errRuntimeOwnerLeaseStale
 	}
+	idle := a.overLimitHookAddr == 0 && a.overLimitCaveAddr == 0
 	a.procMu.Unlock()
 	if idle {
 		return OverLimitStatus{}, nil
 	}
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerOverLimit); err != nil {
 		return OverLimitStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -550,7 +551,7 @@ func (a *App) OverLimitSetSlot(update OverLimitUpdate) (OverLimitStatus, error) 
 	if err != nil {
 		return OverLimitStatus{}, err
 	}
-	if err := a.acquireGameProcessLease(); err != nil {
+	if err := a.acquireLegacyRuntimeMutationLease(runtimeOwnerOverLimit); err != nil {
 		return OverLimitStatus{}, err
 	}
 	defer a.procMu.Unlock()
@@ -610,7 +611,7 @@ func (a *App) overLimitSetAll(token string, owned bool, updates []OverLimitUpdat
 	if owned {
 		leaseErr = a.acquireOwnedRuntimeWriteLease(runtimeOwnerOverLimit, token)
 	} else {
-		leaseErr = a.acquireGameProcessLease()
+		leaseErr = a.acquireLegacyRuntimeMutationLease(runtimeOwnerOverLimit)
 	}
 	if leaseErr != nil {
 		return OverLimitStatus{}, leaseErr

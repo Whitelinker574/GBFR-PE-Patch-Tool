@@ -9,6 +9,7 @@ import {
 } from '../../wailsjs/go/main/App'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
+import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const EMPTY_HASH = 0x887AE0B0
@@ -39,6 +40,13 @@ const traitSlots = reactive([
   { label: '第二槽', hashKey: 'secondHash', nameKey: 'secondName', levelKey: 'secondLevel', maxLevel: 15, hash: 0, level: 0 },
   { label: '第三槽', hashKey: 'thirdHash', nameKey: 'thirdName', levelKey: 'thirdLevel', maxLevel: 10, hash: 0, level: 0 },
 ])
+const traitCatalogOptions = computed(() => traits.value
+  .map(trait => ({
+    ...trait,
+    internalId: String(normaliseHash(trait?.hash) || ''),
+    maxLevel: Number(trait?.maxLevel || 0),
+  }))
+  .filter(trait => trait.internalId))
 let pollTimer = 0
 let lastSelectedAddr = 0
 let disposed = false
@@ -68,6 +76,12 @@ function currentLevel(slot) { return Number(status[slot.levelKey] || 0) }
 function traitOption(hash) { return traits.value.find(item => normaliseHash(item.hash) === normaliseHash(hash)) }
 function targetName(slot) { return traitOption(slot.hash)?.displayName || formatHex(slot.hash) }
 function traitIcon(hash, name = '') { return traitAssetIcon({ hash, name }) }
+function traitIconForOption(trait) { return traitAssetIcon({ internalId: trait?.internalId, hash: trait?.hash, name: trait?.displayName }) }
+function traitCatalogValue(slot) { return slot.hash ? String(normaliseHash(slot.hash)) : '' }
+function selectTrait(slot, value) {
+  slot.hash = normaliseHash(value)
+  normaliseLevel(slot)
+}
 function levelMax(slot) { return Math.min(slot.maxLevel, Number(traitOption(slot.hash)?.maxLevel || 0)) }
 function allowedLevels(slot) {
   const option = traitOption(slot.hash)
@@ -325,7 +339,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="wrightstone-memory-page ui-page is-wide ui-page-stack">
     <div class="wrightstone-memory-content">
-      <section class="connection-card ui-card ui-panel">
+      <section class="connection-card section ui-card">
         <header class="ui-split">
           <div>
             <h2 class="ui-section-title">捕获状态</h2>
@@ -333,16 +347,18 @@ onBeforeUnmount(() => {
           </div>
           <span class="ui-tag" :class="status.selectedAddr && !stale ? 'is-ok' : status.hooked ? 'is-info' : ''">{{ statusLabel }}</span>
         </header>
-        <div class="connection-actions ui-actions">
-          <button type="button" class="ui-btn is-primary" :disabled="loading || status.hooked" @click="enable">启用读取</button>
-          <button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">刷新状态</button>
-          <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">停止读取</button>
+        <div class="connection-body">
+          <div class="connection-actions ui-actions">
+            <button type="button" class="ui-btn is-primary" :disabled="loading || status.hooked" @click="enable">启用读取</button>
+            <button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">刷新状态</button>
+            <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">停止读取</button>
+          </div>
+          <p class="connection-message ui-notice" :class="{ 'is-warn': stale }" aria-live="polite">{{ liveMessage }}</p>
         </div>
-        <p class="connection-message ui-notice" :class="{ 'is-warn': stale }" aria-live="polite">{{ liveMessage }}</p>
         <p class="ui-hint">读取 Hook 启用期间不要切入铁匠铺的其他操作；写入成功后会自动停止读取，避免游戏闪退。</p>
       </section>
 
-      <section class="record-panel ui-card ui-panel">
+      <section class="record-panel section ui-card">
         <header class="ui-split">
           <div>
             <h3 class="ui-section-title">三槽记录</h3>
@@ -355,25 +371,36 @@ onBeforeUnmount(() => {
           <span>{{ stale ? '写入后的旧记录不可复用，请在游戏内重新选中一条记录。' : '启用读取后，在游戏内祝福石列表选中目标记录。' }}</span>
         </div>
 
-        <div class="trait-grid ui-card-grid" :aria-disabled="!status.selectedAddr || stale">
-          <article v-for="(slot, index) in traitSlots" :key="slot.label" class="trait-card ui-card ui-panel is-compact">
-            <header class="ui-split"><h4 class="ui-section-title">{{ slot.label }}</h4><span class="ui-tag">{{ index + 1 }} / 3</span></header>
+        <div class="trait-grid" :aria-disabled="!status.selectedAddr || stale">
+          <article v-for="(slot, index) in traitSlots" :key="slot.label" class="trait-card ui-card">
+            <header class="trait-card-heading ui-split"><h4 class="ui-section-title">{{ slot.label }}</h4><span class="ui-tag">{{ index + 1 }} / 3</span></header>
             <div class="trait-current">
-              <img v-if="traitIcon(currentHash(slot), currentName(slot))" :src="traitIcon(currentHash(slot), currentName(slot))" alt="" />
-              <small>当前</small>
-              <strong>{{ currentName(slot) }}</strong>
-              <code>{{ formatHex(currentHash(slot)) }} · Lv {{ currentLevel(slot) }}</code>
+              <span class="trait-current-icon">
+                <img v-if="traitIcon(currentHash(slot), currentName(slot))" :src="traitIcon(currentHash(slot), currentName(slot))" alt="" />
+                <span v-else aria-hidden="true">—</span>
+              </span>
+              <span class="trait-current-copy">
+                <small>当前配置</small>
+                <strong>{{ currentName(slot) }}</strong>
+              </span>
+              <code>Lv {{ currentLevel(slot) }} · {{ formatHex(currentHash(slot)) }}</code>
             </div>
             <div class="trait-target">
-              <img v-if="traitIcon(slot.hash, targetName(slot))" class="trait-target-icon" :src="traitIcon(slot.hash, targetName(slot))" alt="" />
               <label class="ui-field">
                 <span class="ui-field-label">目标词条</span>
-                <select v-model.number="slot.hash" class="ui-select" :disabled="!status.selectedAddr || stale" @change="normaliseLevel(slot)">
-                  <option :value="0">— 空槽 —</option>
-                  <option v-for="trait in traits" :key="trait.hash" :value="Number(trait.hash)">{{ trait.displayName }} · {{ formatHex(trait.hash) }}</option>
-                </select>
+                <CatalogSelect
+                  :model-value="traitCatalogValue(slot)"
+                  :options="traitCatalogOptions"
+                  :icon-resolver="traitIconForOption"
+                  :optional="index > 0"
+                  :disabled="!status.selectedAddr || stale"
+                  placeholder="尚未选择特性"
+                  search-placeholder="搜索特性名称"
+                  detail-key="maxLevel"
+                  @update:model-value="selectTrait(slot, $event)"
+                />
               </label>
-              <label class="ui-field">
+              <label class="ui-field trait-level-field">
                 <span class="ui-field-label">目标等级</span>
                 <select v-model.number="slot.level" class="ui-select ui-input" :disabled="!slot.hash || !status.selectedAddr || stale">
                   <option v-for="level in allowedLevels(slot)" :key="level" :value="level">Lv {{ level }}</option>
@@ -383,18 +410,20 @@ onBeforeUnmount(() => {
           </article>
         </div>
 
-        <details class="ui-disclosure change-summary">
-          <summary>变更摘要 · {{ changes.length }} 项</summary>
-          <ul v-if="changes.length"><li v-for="item in changes" :key="item.key">{{ item.text }}</li></ul>
-          <p v-else class="ui-hint">当前没有待写入变更。</p>
-        </details>
-      </section>
+        <div class="record-footer">
+          <details class="ui-disclosure change-summary">
+            <summary>变更摘要 · {{ changes.length }} 项</summary>
+            <ul v-if="changes.length"><li v-for="item in changes" :key="item.key">{{ item.text }}</li></ul>
+            <p v-else class="ui-hint">当前没有待写入变更。</p>
+          </details>
 
-      <aside class="wrightstone-memory-actions ui-card ui-panel is-compact">
-        <span><b>{{ statusLabel }}</b><small>{{ validationMessage || `${changes.length} 项待写入` }}</small></span>
-        <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">还原当前值</button>
-        <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? '写入中…' : '写入三槽' }}</button>
-      </aside>
+          <aside class="wrightstone-memory-actions ui-card ui-panel is-compact">
+            <span><b>{{ statusLabel }}</b><small>{{ validationMessage || `${changes.length} 项待写入` }}</small></span>
+            <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">还原当前值</button>
+            <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? '写入中…' : '写入三槽' }}</button>
+          </aside>
+        </div>
+      </section>
     </div>
     <ConfirmDialog ref="confirmDialog" />
   </div>
@@ -402,11 +431,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .wrightstone-memory-page { min-height:0; padding:0; }
-.wrightstone-memory-content { min-height:0; padding:0 var(--space-1) var(--space-8) 0; }
+.wrightstone-memory-content { width:100%; max-width:1000px; min-height:0; padding:0 var(--space-1) var(--space-8) 0; }
 .wrightstone-memory-content > * + * { margin-top:var(--space-4); }
-.connection-card,.record-panel { background:var(--surface-card-pop); }
-.connection-actions { margin-top:var(--space-4); }
-.connection-message { margin:var(--space-4) 0 0; }
+.section { min-width:0; padding:var(--space-6); }
+.connection-card,.record-panel { background:var(--surface-card); }
+.connection-body { display:grid; grid-template-columns:auto minmax(240px,1fr); gap:var(--space-4); align-items:center; margin-top:var(--space-4); }
+.connection-message { min-width:0; margin:0; }
+.connection-card > .ui-hint { margin-top:var(--space-3); }
 .record-panel > header code { color:var(--text-muted); font-family:var(--font-data); }
 .selection-inline-notice {
   min-height:0;
@@ -414,44 +445,65 @@ onBeforeUnmount(() => {
   align-items:center;
   margin-top:var(--space-3);
   padding:var(--space-2) var(--space-3);
-  border-left:3px solid var(--info);
+  border-left:3px solid var(--accent);
   color:var(--text-secondary);
-  background:color-mix(in srgb,var(--info-bg) 58%,transparent);
+  background:var(--surface-field);
   font-size:var(--fs-sm);
   line-height:var(--lh-normal);
   text-align:left;
 }
-.trait-grid { --ui-grid-min:260px; margin-top:var(--space-4); }
-.trait-card { display:grid; gap:var(--space-4); }
-.trait-current { display:grid; grid-template-columns:44px minmax(0,1fr); gap:var(--space-1) var(--space-3); align-items:center; padding:var(--space-3); border-radius:var(--radius-sm); background:var(--surface-sunken); }
-.trait-current img { width:44px; height:44px; grid-row:1/4; object-fit:cover; border:1px solid var(--line-soft); border-radius:7px; background:rgba(255,255,255,.65); }
+.trait-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
+  gap:var(--space-3);
+  margin-top:var(--space-4);
+}
+.trait-card {
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:var(--space-4);
+  padding:var(--space-4);
+  background:var(--surface-card-pop);
+  box-shadow:none;
+}
+.trait-card-heading { align-items:center; }
+.trait-current {
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  gap:var(--space-3);
+  align-items:center;
+  padding:var(--space-3);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);
+  background:var(--surface-card-pop);
+}
+.trait-current-icon { display:grid; width:38px; height:38px; place-items:center; border:1px solid var(--line-soft); border-radius:7px; background:var(--surface-field); color:var(--text-muted); font-family:var(--font-data); }
+.trait-current-icon img { width:100%; height:100%; object-fit:cover; border-radius:6px; }
+.trait-current-copy { display:flex; min-width:0; flex-direction:column; gap:1px; }
 .trait-current small { color:var(--text-muted); font-size:var(--fs-xs); }
-.trait-current strong { color:var(--text-primary); }
-.trait-current code { color:var(--text-secondary); font-family:var(--font-data); font-size:var(--fs-sm); overflow-wrap:anywhere; }
-.trait-target { display:grid; grid-template-columns:42px minmax(0,1fr) 92px; gap:var(--space-3); align-items:end; }
-.trait-target-icon { width:42px; height:42px; object-fit:cover; align-self:end; border:1px solid var(--line-soft); border-radius:7px; background:rgba(255,255,255,.65); }
-.change-summary { margin-top:var(--space-4); }
+.trait-current strong { min-width:0; overflow:hidden; color:var(--text-primary); text-overflow:ellipsis; white-space:nowrap; }
+.trait-current code { color:var(--text-secondary); font-family:var(--font-data); font-size:var(--fs-sm); overflow-wrap:normal; text-align:right; white-space:nowrap; }
+.trait-target { display:grid; grid-template-columns:minmax(0,1fr) 104px; gap:var(--space-3); align-items:end; }
+.trait-level-field { width:100%; }
+.record-footer { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,.8fr); gap:var(--space-4); align-items:stretch; margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px solid var(--border-soft); }
+.change-summary { height:100%; }
 .change-summary ul { display:grid; gap:var(--space-2); margin:0; padding-left:var(--space-5); color:var(--text-secondary); }
-.wrightstone-memory-actions { position:sticky; z-index:4; bottom:0; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:var(--space-3); align-items:center; border-top:3px solid var(--accent); background:var(--surface-card-pop); box-shadow:var(--shadow-3); font-family:var(--font-data); }
-.wrightstone-memory-actions span { display:grid; min-width:0; gap:var(--space-1); }
+.wrightstone-memory-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); align-content:center; border-color:var(--border-default); border-top:3px solid var(--accent); background:var(--surface-card-pop); box-shadow:none; font-family:var(--font-data); }
+.wrightstone-memory-actions span { display:grid; min-width:0; grid-column:1 / -1; gap:var(--space-1); }
 .wrightstone-memory-actions small { color:var(--text-muted); overflow-wrap:anywhere; }
 
-@container ui-page (max-width:1024px) {
-  .trait-grid { --ui-grid-min:220px; }
+@container ui-page (max-width:760px) {
+  .connection-body,.record-footer { grid-template-columns:minmax(0,1fr); }
+  .trait-card:last-child { grid-column:1 / -1; }
 }
-@container ui-page (max-width:768px) {
-  .trait-grid { --ui-grid-min:100%; }
-  .wrightstone-memory-actions { grid-template-columns:minmax(0,1fr) auto; }
-  .wrightstone-memory-actions span { grid-column:1 / -1; }
+@container ui-page (max-width:620px) {
+  .section { padding:var(--space-4); }
+  .trait-target { grid-template-columns:minmax(0,1fr); }
 }
-@container ui-page (max-width:375px) {
-  .connection-actions { display:grid; grid-template-columns:minmax(0,1fr); }
-  .trait-target,.wrightstone-memory-actions { grid-template-columns:minmax(0,1fr); }
+@container ui-page (max-width:440px) {
+  .connection-actions,.wrightstone-memory-actions { display:grid; grid-template-columns:minmax(0,1fr); }
   .wrightstone-memory-actions span { grid-column:auto; }
   .wrightstone-memory-actions .ui-btn { width:100%; }
-}
-@container ui-page (min-width:1080px) {
-  .trait-grid { --ui-grid-min:320px; }
-  .record-panel { padding-inline:var(--space-8); }
 }
 </style>

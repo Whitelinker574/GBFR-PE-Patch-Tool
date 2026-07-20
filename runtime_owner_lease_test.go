@@ -195,6 +195,84 @@ func TestOwnedIdleHookReleaseConsumesOnlyMatchingToken(t *testing.T) {
 	}
 }
 
+func TestLegacyHookMutationsRejectActiveOwnedLeasesBeforeProcessIO(t *testing.T) {
+	const selected = uint64(0x140700000)
+	overLimitUpdates := []OverLimitUpdate{
+		{Index: 0, ExpectedSelectedAddr: selected, Attribute: 0xC4925BD7, Level: 1, Value: 100},
+		{Index: 1, ExpectedSelectedAddr: selected, Attribute: 0x52A207B5, Level: 2, Value: 200},
+		{Index: 2, ExpectedSelectedAddr: selected, Attribute: 0x45C65767, Level: 4, Value: 2},
+		{Index: 3, ExpectedSelectedAddr: selected, Attribute: 0x6CB38EF3, Level: 8, Value: 0.4},
+	}
+	tests := []struct {
+		name       string
+		owner      func(*App) string
+		current    func(*App) string
+		operations []func(*App) error
+		release    func(*App, string) error
+	}{
+		{
+			name: "sigil",
+			owner: func(app *App) string {
+				return app.grantSigilMemoryOwner(SigilMemoryStatus{Hooked: true}).OwnerToken
+			},
+			current: func(app *App) string { return app.sigilMemoryOwnerToken },
+			operations: []func(*App) error{
+				func(app *App) error { _, err := app.SigilMemoryEnable(); return err },
+				func(app *App) error { _, err := app.SigilMemoryUpdate(SigilMemoryUpdate{}); return err },
+				func(app *App) error { _, err := app.SigilMemoryDisable(); return err },
+			},
+			release: func(app *App, token string) error { _, err := app.SigilMemoryRelease(token); return err },
+		},
+		{
+			name: "wrightstone",
+			owner: func(app *App) string {
+				return app.grantWrightstoneMemoryOwner(WrightstoneMemoryStatus{Hooked: true}).OwnerToken
+			},
+			current: func(app *App) string { return app.wrightstoneMemoryOwnerToken },
+			operations: []func(*App) error{
+				func(app *App) error { _, err := app.WrightstoneMemoryEnable(); return err },
+				func(app *App) error { _, err := app.WrightstoneMemoryUpdate(WrightstoneMemoryUpdate{}); return err },
+				func(app *App) error { _, err := app.WrightstoneMemoryDisable(); return err },
+			},
+			release: func(app *App, token string) error { _, err := app.WrightstoneMemoryRelease(token); return err },
+		},
+		{
+			name: "overlimit",
+			owner: func(app *App) string {
+				return app.grantOverLimitOwner(OverLimitStatus{Hooked: true}).OwnerToken
+			},
+			current: func(app *App) string { return app.overLimitOwnerToken },
+			operations: []func(*App) error{
+				func(app *App) error { _, err := app.OverLimitEnable(); return err },
+				func(app *App) error { _, err := app.OverLimitSetSlot(overLimitUpdates[0]); return err },
+				func(app *App) error { _, err := app.OverLimitSetAll(overLimitUpdates); return err },
+				func(app *App) error { _, err := app.OverLimitDisable(); return err },
+			},
+			release: func(app *App, token string) error { _, err := app.OverLimitRelease(token); return err },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{}
+			token := tt.owner(app)
+			for index, operation := range tt.operations {
+				if err := operation(app); !errors.Is(err, errRuntimeOwnerLeaseStale) {
+					t.Fatalf("legacy operation %d error = %v, want stale owner", index, err)
+				}
+				if tt.current(app) != token || app.hProcess != 0 || app.moduleBase != 0 {
+					t.Fatalf("legacy operation %d changed owner or process state: owner=%q process=%v module=0x%X", index, tt.current(app), app.hProcess, app.moduleBase)
+				}
+			}
+			if err := tt.release(app, token); err != nil {
+				t.Fatalf("owned release after rejected legacy calls: %v", err)
+			}
+			if tt.current(app) != "" {
+				t.Fatalf("owned release retained token %q", tt.current(app))
+			}
+		})
+	}
+}
+
 func TestOwnedWritesRejectEmptyAndStaleTokensBeforeProcessIO(t *testing.T) {
 	const selected = uint64(0x140700000)
 	overLimitUpdates := []OverLimitUpdate{

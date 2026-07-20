@@ -35,7 +35,7 @@ func TestSigilAndWrightstoneDisablePinProcessBeforeLifecycleLock(t *testing.T) {
 			if body == nil {
 				t.Fatalf("missing %s", check.name)
 			}
-			if !blockCallsSelector(body, "a", "acquireGameProcessLease") {
+			if !blockCallsSelector(body, "a", "acquireLegacyRuntimeMutationLease") {
 				t.Fatalf("%s must pin hProcess/moduleBase/PID while detaching its hook", check.name)
 			}
 		})

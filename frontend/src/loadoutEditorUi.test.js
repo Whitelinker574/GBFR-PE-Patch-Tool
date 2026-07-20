@@ -148,11 +148,12 @@ test('weapon skill rows keep missing fields honest instead of rendering undefine
 	assert.match(source, /来源 · \{\{ skill\.sourceWeapon \|\| '未收录武器' \}\}/)
 })
 
-test('dedicated editing hides the global art rail while ordinary viewing retains it', () => {
+test('dedicated editing hides the global portrait background while ordinary viewing retains it', () => {
 	assert.match(viewer, /defineEmits\(\['status', 'editing-change'\]\)/)
 	assert.match(viewer, /emit\('editing-change', value\)/)
 	assert.match(patchTool, /const isLoadoutWorkspace = computed\(\(\) => activeTab\.value === 'loadoutPresets' && loadoutEditing\.value\)/)
-	assert.match(patchTool, /<aside v-if="!isLoadoutWorkspace" class="art-rail"/)
+	assert.match(patchTool, /class="tool-stage"[^>]*:style="\{ '--function-art': `url\('\$\{currentArt\}'\)` \}"/)
+	assert.match(patchTool, /\.tool-stage\.loadout-dedicated::before\s*\{[^}]*display:none/)
 	assert.doesNotMatch(source, /class="art-rail"/)
 })
 

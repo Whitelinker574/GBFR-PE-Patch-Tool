@@ -116,6 +116,19 @@ test('the factor picker uses shared controls without nesting an interactive clea
   assert.match(picker, /<button[^>]*picker-inline-clear[^>]*:disabled="disabled"/)
 })
 
+test('live sigil factor and trait fields match the save editor responsive form geometry', () => {
+  const source = sources['SigilMemoryGenerator.vue']
+  assert.equal((source.match(/class="aligned-picker"/g) || []).length, 3)
+  assert.match(source, /\.editor-control-grid\s*\{[^}]*width:100%;[^}]*max-width:none;[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(180px,220px\) auto;/s)
+  assert.match(source, /\.aligned-picker,\.limit-button\s*\{[^}]*margin-top:22px;/s)
+  assert.match(source, /\.limit-button\s*\{[^}]*align-self:start;/s)
+  assert.match(source, /@container ui-page \(max-width:620px\)\s*\{[\s\S]*?\.editor-control-grid\s*\{\s*grid-template-columns:minmax\(0,1fr\);\s*\}/)
+  assert.match(source, /@container ui-page \(max-width:620px\)\s*\{[\s\S]*?\.aligned-picker,\.limit-button\s*\{[^}]*margin-top:0;/)
+  assert.match(source, /@container ui-page \(max-width:620px\)\s*\{[\s\S]*?\.limit-button\s*\{[^}]*width:100%;[^}]*min-width:0;/)
+  assert.doesNotMatch(source, /\.editor-control-grid\s*\{[^}]*max-width:760px;/s)
+  assert.doesNotMatch(source, /grid-template-columns:minmax\(240px,520px\) 124px 88px;/)
+})
+
 test('loadout workflow uses a responsive overview instead of three full-width bars', () => {
   const source = sources['SigilLoadoutRestore.vue']
   assert.match(source, /class="loadout-overview"/)
