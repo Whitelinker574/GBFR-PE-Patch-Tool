@@ -988,6 +988,10 @@ async function apply() {
               <dt class="profile-stat-label">昏厥值</dt>
               <dd class="profile-stat-value">{{ formatPanelStat('stunPower') }}</dd>
             </div>
+            <div class="profile-stat">
+              <dt class="profile-stat-label">防御力加成</dt>
+              <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.defenseBonus, 'signedPct') }}</dd>
+            </div>
             <div class="profile-stat profile-stat-cap">
               <dt class="profile-stat-label">伤害上限</dt>
               <dd class="profile-stat-value">{{ formatPanelStat('damageCap', 'signedPct') }}</dd>
@@ -1018,6 +1022,7 @@ async function apply() {
             <span><small>能力伤害上限</small><b>{{ formatFinalStat(finalStats?.abilityDamageCap, 'signedPct') }}</b></span>
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
           </div>
+          <p class="defense-scope-note"><b>配装防御加成</b>仅汇总无条件防御力百分比；战斗状态、格挡、减伤和无敌仍保留在效果明细中，不换算成虚假的最终防御力。</p>
           <div class="formula-audit-row" :class="{ verified: calculationFormulaVerified }">
             <b>{{ calculationFormulaVerified ? '草稿公式证据已闭环' : '草稿公式未完全验证' }}</b>
             <span>带“≈”的离线值只用于草稿比较；只有游戏运行时回读不带近似标记。</span>
@@ -1554,7 +1559,7 @@ async function apply() {
 .profile-stat:nth-child(2) { border-left-color:#88704e; }
 .profile-stat:nth-child(3) { border-left-color:#a34b50; }
 .profile-stat:nth-child(4) { border-left-color:#81704f; }
-.profile-stat-cap { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; }
+.profile-stat:nth-child(5) { border-left-color:#5f8067; }
 .profile-stat-cap .profile-stat-value { color:#a23f65; }
 .profile-stat-label { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
 .profile-stat-value { margin:0; white-space:nowrap; color:var(--text-primary); font-size:calc(15px * var(--editor-scale)); font-weight:700; font-variant-numeric:tabular-nums; }
@@ -1574,6 +1579,8 @@ async function apply() {
 .cap-detail-grid > span { min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:2px; padding:5px 4px; border:1px solid rgba(162,63,101,.16); border-radius:5px; background:rgba(162,63,101,.045); text-align:center; }
 .cap-detail-grid small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.3; }
 .cap-detail-grid b { color:#a23f65; font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.defense-scope-note { margin:5px 0 0; padding:5px 7px; border-left:2px solid #5f8067; background:rgba(95,128,103,.06); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
+.defense-scope-note b { margin-right:.4em; color:#466a51; font-weight:700; }
 .formula-audit-row { display:grid; gap:2px; margin-top:6px; padding:6px 8px; border:1px solid var(--warning); border-radius:var(--radius-sm); background:var(--warning-bg); color:var(--warning-ink); font-size:var(--fs-xs); line-height:1.4; }
 .formula-audit-row.verified { border-color:var(--success); background:var(--success-bg); color:var(--success-ink); }
 .formula-audit-row span { color:inherit; }

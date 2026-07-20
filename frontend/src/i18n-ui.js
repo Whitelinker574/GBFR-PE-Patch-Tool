@@ -2,6 +2,11 @@
 // Full-sentence matches take priority over the legacy term dictionary so the
 // English UI never falls back to mixed strings such as "Sigil批量Edit".
 export const uiTranslations = {
+  '防御力': 'Defense',
+  '防御类': 'Defense',
+  '防御力加成': 'Defense Bonus',
+  '配装防御加成': 'Loadout Defense Bonus',
+  '仅汇总无条件防御力百分比；战斗状态、格挡、减伤和无敌仍保留在效果明细中，不换算成虚假的最终防御力。': 'Only unconditional defense percentages are totaled. Combat states, guarding, damage cuts, and invincibility remain in the effect details and are not converted into a misleading final defense value.',
   // Application shell and home journal
   'GBFR 存档修改工具': 'GBFR Save Editor',
   '碧蓝幻想 Relink 养成工具集': 'Granblue Fantasy: Relink Progression Toolkit',

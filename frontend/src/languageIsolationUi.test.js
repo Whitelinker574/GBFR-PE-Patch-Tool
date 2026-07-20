@@ -54,3 +54,15 @@ test('new freeform factor and inferred mastery copy has exact English translatio
     assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
   }
 })
+
+test('defense totals and scope copy remain English-only in English mode', () => {
+  for (const text of [
+    '防御力',
+    '防御类',
+    '防御力加成',
+    '配装防御加成',
+    '仅汇总无条件防御力百分比；战斗状态、格挡、减伤和无敌仍保留在效果明细中，不换算成虚假的最终防御力。',
+  ]) {
+    assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
+  }
+})

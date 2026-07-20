@@ -13,7 +13,7 @@ const loadoutFinalStatsScope = "人物属性以存档中的角色基础值、命
 const loadoutFinalStatsFormulaWarning = "角色基础值、命运篇章与角色强化固定基准按 2.0.2 存档及游戏表精确读取；HP/攻击的配装百分比乘区与中间量化顺序尚未闭环，最终值仍为草稿估算。已确认最终聚合使用 float32 并向零截断。"
 
 // LoadoutPanelBonus is an unconditional value that is safe to apply to the
-// five compact character-panel stats. Conditional skillboard text is kept in
+// compact character-panel stats. Conditional skillboard text is kept in
 // the detailed mastery list, but deliberately does not enter this structure.
 type LoadoutPanelBonus struct {
 	Label  string  `json:"label"`
@@ -22,7 +22,10 @@ type LoadoutPanelBonus struct {
 	Source string  `json:"source"`
 }
 
-// LoadoutFinalStats mirrors the five values shown by the in-game-style panel.
+// LoadoutFinalStats mirrors the values shown by the in-game-style panel and
+// exposes the separately audited, loadout-only defense percentage. GBFR does
+// not expose an absolute defense number on that panel, so DefenseBonus must
+// not be presented as a fabricated final defense stat.
 // The three damage-cap fields remain available so the single compact value can
 // use the conservative common increase while the detailed totals stay honest.
 type LoadoutFinalStats struct {
@@ -30,6 +33,7 @@ type LoadoutFinalStats struct {
 	Attack            int      `json:"attack"`
 	CritRate          float64  `json:"critRate"`
 	StunPower         float64  `json:"stunPower"`
+	DefenseBonus      float64  `json:"defenseBonus"`
 	DamageCap         float64  `json:"damageCap"`
 	NormalDamageCap   float64  `json:"normalDamageCap"`
 	AbilityDamageCap  float64  `json:"abilityDamageCap"`
@@ -57,7 +61,7 @@ type loadoutPanelInputs struct {
 }
 
 // loadoutFactorCategoryCounts counts only each equipped sigil's primary
-// trait. The three mastery synergies explicitly say “因子装备数量”; the
+// trait. The four mastery synergies explicitly say “因子装备数量”; the
 // reference calculator and the unpacked node layout both treat the primary
 // factor slot as the counted category, not every secondary trait.
 type loadoutFactorCategoryCounts struct {
@@ -93,7 +97,7 @@ func loadoutPrimaryFactorCategoryCounts(cat *Catalog, primaryHashes []uint32) lo
 	return counts
 }
 
-var masteryPanelBonusPattern = regexp.MustCompile(`^(最大HP|攻击力|暴击率|昏厥值|伤害上限|攻击的伤害上限|普通攻击的伤害上限|普通攻击伤害上限|能力的伤害上限|能力伤害上限|奥义的伤害上限|奥义伤害上限)([+-])([0-9]+(?:\.[0-9]+)?)(%)?$`)
+var masteryPanelBonusPattern = regexp.MustCompile(`^(最大HP|攻击力|暴击率|昏厥值|防御力|伤害上限|攻击的伤害上限|普通攻击的伤害上限|普通攻击伤害上限|能力的伤害上限|能力伤害上限|奥义的伤害上限|奥义伤害上限)([+-])([0-9]+(?:\.[0-9]+)?)(%)?$`)
 
 // parseMasteryPanelBonus accepts only a complete, unconditional panel line.
 // Text such as “花耀七闪的伤害上限…” or “中毒状态期间…” intentionally fails
@@ -148,7 +152,7 @@ func loadoutMasteryPanelBonuses(ownerCode string, hexes []string, factorCounts l
 			bonuses = append(bonuses, panel)
 			continue
 		}
-		// These three strings are shared by every character's audited R3/EX
+		// These four strings are shared by every character's audited R3/EX
 		// tables. Whitespace is layout-only, so normalize it before matching.
 		// The HP line says “+10000%” in the Chinese table, but both its integer
 		// parameter and the in-game calculator semantics are a flat +10000 HP.
@@ -161,6 +165,8 @@ func loadoutMasteryPanelBonuses(ownerCode string, hexes []string, factorCounts l
 			bonuses = append(bonuses, LoadoutPanelBonus{Label: "伤害上限", Unit: "pct", Value: float64(min(factorCounts.Basic, 5) * 20), Source: synergySource})
 		case "最大HP随防御类因子和支援类因子装备数量增加而提升每装备1个相应因子+10000%（4个因子时效果最大）":
 			bonuses = append(bonuses, LoadoutPanelBonus{Label: "最大HP", Unit: "flat", Value: float64(min(factorCounts.DefenseSupport, 4) * 10000), Source: synergySource})
+		case "防御力随防御类因子和支援类因子装备数量增加而提升每装备1个相应因子+6%（5个因子时效果最大）":
+			bonuses = append(bonuses, LoadoutPanelBonus{Label: "防御力", Unit: "pct", Value: float64(min(factorCounts.DefenseSupport, 5) * 6), Source: synergySource})
 		}
 	}
 	return bonuses, nil
@@ -173,6 +179,8 @@ func addPanelBonusesToTotals(totals *[]EffectTotal, bonuses []LoadoutPanelBonus)
 			catLabel = "攻击类"
 		} else if bonus.Label == "最大HP" || bonus.Label == "暴击率" || bonus.Label == "昏厥值" {
 			catLabel = "基础能力"
+		} else if bonus.Label == "防御力" {
+			catLabel = "防御类"
 		}
 		labels := []string{bonus.Label}
 		if strings.Contains(bonus.Label, "伤害上限") {
@@ -252,6 +260,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 	atkFlat := float32(input.CharacterATK) + float32(input.WeaponATK)
 	crit := input.CharacterCritRate + input.WeaponCritRate
 	stun := input.CharacterStun + input.WeaponStun
+	defenseBonus := float64(0)
 	hpMultiplier := float32(1)
 	atkMultiplier := float32(1)
 	masteryHPPct := float32(0)
@@ -316,6 +325,8 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			crit += bonus.Value
 		case bonus.Label == "昏厥值" && bonus.Unit == "flat":
 			stun += bonus.Value
+		case bonus.Label == "防御力" && bonus.Unit == "pct":
+			defenseBonus += bonus.Value
 		case bonus.Unit == "pct" && strings.Contains(bonus.Label, "伤害上限"):
 			addPanelCap(bonus.Label, bonus.Value, &normalCap, &abilityCap, &skyboundCap)
 		}
@@ -331,6 +342,8 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			crit += bonus.Value
 		case bonus.Name == "昏厥值" && bonus.Unit == "flat":
 			stun += bonus.Value
+		case bonus.Name == "防御力" && bonus.Unit == "pct":
+			defenseBonus += bonus.Value
 		case bonus.Unit == "pct" && strings.Contains(bonus.Name, "伤害上限"):
 			addPanelCap(bonus.Name, bonus.Value, &normalCap, &abilityCap, &skyboundCap)
 		}
@@ -376,6 +389,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		Attack:            int(atkFlat * atkMultiplier),
 		CritRate:          crit,
 		StunPower:         stun,
+		DefenseBonus:      defenseBonus,
 		DamageCap:         commonCap,
 		NormalDamageCap:   normalCap,
 		AbilityDamageCap:  abilityCap,

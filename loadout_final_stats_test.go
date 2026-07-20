@@ -19,6 +19,7 @@ func TestParseMasteryPanelBonusesOnlyCountsUnconditionalPanelStats(t *testing.T)
 		{"攻击力+12.5%", "攻击力", "pct", 12.5, true},
 		{"暴击率+25%", "暴击率", "pct", 25, true},
 		{"昏厥值+0.4", "昏厥值", "flat", 0.4, true},
+		{"防御力+18%", "防御力", "pct", 18, true},
 		{"伤害上限+30%", "伤害上限", "pct", 30, true},
 		{"攻击的伤害上限+35%", "攻击的伤害上限", "pct", 35, true},
 		{"能力的伤害上限+35%", "能力的伤害上限", "pct", 35, true},
@@ -112,6 +113,7 @@ func TestCalculateLoadoutFinalStatsUsesSafeUnconditionalSources(t *testing.T) {
 			{Label: "攻击力", Unit: "pct", Value: 10, Source: "专精"},
 			{Label: "暴击率", Unit: "pct", Value: 25, Source: "专精"},
 			{Label: "昏厥值", Unit: "flat", Value: 0.4, Source: "专精"},
+			{Label: "防御力", Unit: "pct", Value: 30, Source: "专精"},
 			{Label: "伤害上限", Unit: "pct", Value: 30, Source: "专精"},
 		},
 		OverLimit: []LoadoutOverLimitBonus{
@@ -133,6 +135,9 @@ func TestCalculateLoadoutFinalStatsUsesSafeUnconditionalSources(t *testing.T) {
 	if got.CritRate != 83 || math.Abs(got.StunPower-24.4) > 1e-9 {
 		t.Fatalf("crit/stun wrong: %+v", got)
 	}
+	if got.DefenseBonus != 30 {
+		t.Fatalf("defense bonus=%g, want 30: %+v", got.DefenseBonus, got)
+	}
 	if got.DamageCap != 310 || got.NormalDamageCap != 330 || got.AbilityDamageCap != 330 || got.SkyboundDamageCap != 310 {
 		t.Fatalf("damage caps wrong: %+v", got)
 	}
@@ -142,7 +147,7 @@ func TestCalculateLoadoutFinalStatsUsesSafeUnconditionalSources(t *testing.T) {
 }
 
 func TestLoadoutMasteryPanelBonusesApplyVerifiedFactorSynergies(t *testing.T) {
-	// 伊欧的 R3/EX 解包节点分别提供攻击、基础能力、防御/支援三类联动。
+	// 伊欧的 R3/EX 解包节点分别提供攻击、基础能力、防御/支援四条联动。
 	// 这些是普通子词条，不依赖 2/3 阶主方向；每选中一次就应用一次。
 	bonuses, err := loadoutMasteryPanelBonuses("PL0400", []string{
 		"DE9B3B33", // R3: 每个攻击类主因子 +10%，至多5个
@@ -150,6 +155,7 @@ func TestLoadoutMasteryPanelBonusesApplyVerifiedFactorSynergies(t *testing.T) {
 		"E03C3AD2", // R3: 每个基础能力主因子伤害上限 +20%，至多5个
 		"EEE3407D", // EX: 同上，可与 R3 叠加
 		"DF6E655E", // R3: 每个防御/支援主因子最大HP +10000，至多4个
+		"B6360686", // EX: 每个防御/支援主因子防御力 +6%，至多5个
 	}, loadoutFactorCategoryCounts{Basic: 8, Attack: 3, DefenseSupport: 6})
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +172,27 @@ func TestLoadoutMasteryPanelBonusesApplyVerifiedFactorSynergies(t *testing.T) {
 	}
 	if totals["flat|最大HP"] != 40000 {
 		t.Fatalf("防御/支援因子联动=%g，期望 4×10000=40000: %+v", totals["flat|最大HP"], bonuses)
+	}
+	if totals["pct|防御力"] != 30 {
+		t.Fatalf("防御/支援防御联动=%g，期望 5×6%%=30%%: %+v", totals["pct|防御力"], bonuses)
+	}
+}
+
+func TestLoadoutMasteryPanelBonusesIncludeRealUnconditionalDefenseNode(t *testing.T) {
+	bonuses, err := loadoutMasteryPanelBonuses("PL0400", []string{"2BE0D486"}, loadoutFactorCategoryCounts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bonuses) != 1 || bonuses[0].Label != "防御力" || bonuses[0].Unit != "pct" || bonuses[0].Value != 5 {
+		t.Fatalf("伊欧真实 1 阶无条件防御节点未进入静态防御加成: %+v", bonuses)
+	}
+}
+
+func TestAddPanelBonusesToTotalsClassifiesDefenseSynergy(t *testing.T) {
+	totals := []EffectTotal{}
+	addPanelBonusesToTotals(&totals, []LoadoutPanelBonus{{Label: "防御力", Unit: "pct", Value: 30, Source: "专精 · EX · 因子联动"}})
+	if len(totals) != 1 || totals[0].Label != "防御力" || totals[0].Value != 30 || totals[0].CatLabel != "防御类" {
+		t.Fatalf("防御力联动应进入防御类总计并保留来源: %+v", totals)
 	}
 }
 

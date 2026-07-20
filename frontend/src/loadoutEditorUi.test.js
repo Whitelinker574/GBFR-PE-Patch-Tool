@@ -51,7 +51,7 @@ test('character profile distinguishes four runtime-exact values from the draft e
   assert.match(source, /LoadoutStatContext/)
 	assert.match(source, /LoadoutRuntimePanelStats/)
 	assert.match(source, /aria-label="人物属性面板"/)
-	for (const label of ['HP', '攻击力', '暴击率', '昏厥值', '伤害上限']) {
+	for (const label of ['HP', '攻击力', '暴击率', '昏厥值', '防御力加成', '伤害上限']) {
 		assert.match(source, new RegExp(`>${label}<`))
 	}
 	assert.match(source, /游戏真实回读/)
@@ -60,7 +60,7 @@ test('character profile distinguishes four runtime-exact values from the draft e
 	assert.match(source, /formatPanelStat/)
 	assert.doesNotMatch(source, /最终人物属性/)
 	assert.match(source, /formatFinalStat/)
-	assert.match(source, /\.profile-stat-cap\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1/is)
+	assert.doesNotMatch(source, /\.profile-stat-cap\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1/is)
   assert.match(source, /v-for="index in 4"/)
   assert.match(source, /statContext\.summons/)
 })
@@ -69,10 +69,18 @@ test('character values have a visible hierarchy and use the full profile width',
 	assert.match(source, /class="profile-stat-card"/)
 	assert.match(source, /class="profile-stat-heading"[\s\S]*<strong>人物属性<\/strong>[\s\S]*游戏真实回读/)
 	assert.match(source, /<dl class="profile-stats" aria-label="人物属性面板">/)
-	assert.equal((source.match(/class="profile-stat-value"/g) || []).length, 5)
+	assert.equal((source.match(/class="profile-stat-value"/g) || []).length, 6)
 	assert.match(source, /\.profile-stat-card\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1/is)
 	assert.match(source, /\.profile-stats\s*\{[^}]*grid-template-columns\s*:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/is)
 	assert.match(source, /\.profile-stat-value\s*\{[^}]*white-space\s*:\s*nowrap/is)
+})
+
+test('defense calculation is explicit, sourced and does not pretend to be an absolute panel stat', () => {
+	assert.match(source, /formatFinalStat\(finalStats\?\.defenseBonus, 'signedPct'\)/)
+	assert.match(source, /配装防御加成/)
+	assert.match(source, /仅汇总无条件防御力百分比/)
+	assert.match(source, /\.defense-scope-note\s*\{[^}]*border-left\s*:\s*2px/is)
+	assert.doesNotMatch(source, />最终防御力</)
 })
 
 test('offline values expose approximation and every backend warning without claiming false precision', () => {
