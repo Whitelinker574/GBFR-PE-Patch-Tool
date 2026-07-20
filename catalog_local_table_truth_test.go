@@ -32,20 +32,17 @@ func TestFerryWrightstoneNamesMatchSharedTraitTruth(t *testing.T) {
 
 func TestSummonSkillNamesMatchLocalSimplifiedChineseText(t *testing.T) {
 	// These mappings are the exact TXT_SKILL_* strings from the locally
-	// unpacked 2.0.2 simplified-Chinese message table. Hashes are fixed by
-	// GBFRDataTools.Database/Data/ids.txt and sigil_ctdata.go.
+	// unpacked 2.0.2 simplified-Chinese message table. The eight entries are
+	// independently referenced by summon_lot and summon_preset.
 	want := map[string]string{
-		"0xD908223D": "幽幻之谊",
-		"0x7351D602": "幽幻之应",
-		"0x0FBA47E8": "强健甘露",
-		"0xA4D6B880": "修炼甘露",
-		"0xCDEB73F6": "幸运甘露",
-		"0x1DE14C65": "狼王的激昂",
-		"0x26956F25": "狼王的大转轮",
-		"0xD176D262": "群青的剑光",
-		"0x895ABBF6": "狼王之觉醒",
-		"0xF21404B1": "狼王的大转轮",
-		"0x9EC6C56D": "群青的剑光",
+		"0x0DE887A0": "天星之炼",
+		"0xA7726190": "天星之煌",
+		"0x9232DC17": "天星之界",
+		"0x36E3848D": "天星之焰",
+		"0xA898E283": "天星之雪",
+		"0xD029FE08": "浪迹天涯",
+		"0x73220725": "天星之止息",
+		"0xF26BAEA5": "分歧",
 	}
 	var payload summonSkillFile
 	if err := json.Unmarshal(summonSkillsJSON, &payload); err != nil {

@@ -27,6 +27,9 @@ var traitValuesJSON []byte
 //go:embed data/trait_values_202.json
 var traitValues202JSON []byte
 
+//go:embed data/summon_main_trait_values_202.json
+var summonMainTraitValues202JSON []byte
+
 type traitPlaceholder struct {
 	Ph     int       `json:"ph"`
 	Col    int       `json:"col"`
@@ -81,17 +84,19 @@ func loadTraitValues() map[string]*traitValueDef {
 			return
 		}
 		traitValuesByID = payload.Traits
-		var supplement struct {
-			Traits      map[string]*traitValueDef `json:"traits"`
-			HashAliases map[string]string         `json:"hashAliases"`
-		}
-		if err := json.Unmarshal(traitValues202JSON, &supplement); err == nil {
-			for id, definition := range supplement.Traits {
-				traitValuesByID[id] = definition
+		for _, data := range [][]byte{traitValues202JSON, summonMainTraitValues202JSON} {
+			var supplement struct {
+				Traits      map[string]*traitValueDef `json:"traits"`
+				HashAliases map[string]string         `json:"hashAliases"`
 			}
-			for hash, id := range supplement.HashAliases {
-				if definition := traitValuesByID[id]; definition != nil {
-					traitValuesByID[hash] = definition
+			if err := json.Unmarshal(data, &supplement); err == nil {
+				for id, definition := range supplement.Traits {
+					traitValuesByID[id] = definition
+				}
+				for hash, id := range supplement.HashAliases {
+					if definition := traitValuesByID[id]; definition != nil {
+						traitValuesByID[hash] = definition
+					}
 				}
 			}
 		}
@@ -116,38 +121,6 @@ func loadTraitValues() map[string]*traitValueDef {
 				{Ph: 4, Col: 5, Unit: "flat", Values: levelValues(45000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000)},
 			},
 		}
-		// DLC summon catalogs expose Celestial Terra through two raw hashes.
-		// Their skill_status text record is blank in the generated JSON, while
-		// the audited Lv15 row is the same for both: HP -30%, global cap +70%.
-		fixedLevel15 := func(value float64) []float64 {
-			values := make([]float64, 15)
-			values[14] = value
-			return values
-		}
-		for _, id := range []string{"9232DC17", "D29CD8E0"} {
-			traitValuesByID[id] = &traitValueDef{
-				Name: "天星之界", Cat: &attackCategory, CatLabel: "攻击类", MaxLevel: 15,
-				Format: "最大HP-{0}%\n伤害上限+{1}%",
-				Placeholders: []traitPlaceholder{
-					{Ph: 0, Col: 1, Unit: "pct", Values: fixedLevel15(30)},
-					{Ph: 1, Col: 2, Unit: "pct", Values: fixedLevel15(70)},
-				},
-			}
-		}
-		// 20492635 is the item-side alias of A7726190. The effect depends on
-		// current battle HP, so restoring the full curve is for honest detail
-		// display only; the static final panel deliberately does not apply it.
-		celestialLumen := &traitValueDef{
-			Name: "天星之煌", Cat: &attackCategory, CatLabel: "攻击类", MaxLevel: 15,
-			Format: "HP不低于{2}%时\n攻击力+{0}%\n伤害上限+{1}%",
-			Placeholders: []traitPlaceholder{
-				{Ph: 0, Col: 1, Unit: "pct", Values: []float64{6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}},
-				{Ph: 1, Col: 2, Unit: "pct", Values: []float64{2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70}},
-				{Ph: 2, Col: 3, Unit: "pct", Values: []float64{75, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75}},
-			},
-		}
-		traitValuesByID["A7726190"] = celestialLumen
-		traitValuesByID["20492635"] = celestialLumen
 		// The local trait/summon catalogs spell this verified Io trait 伶俐;
 		// retain its skill_status values while fixing the older text typo.
 		if mageSavvy := traitValuesByID["SKILL_117_01"]; mageSavvy != nil {

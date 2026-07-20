@@ -18,28 +18,28 @@ func simulateSingleSummonMainSkill(t *testing.T, hash uint32) TraitBonus {
 		level int
 	}{{hash: hash, level: 15}}, traitHashMapWithRawKeys(catalog))
 	if len(bonuses) != 1 {
-		t.Fatalf("summon main skill %08X produced %d bonuses; missing definitions must return one visible diagnostic bonus", hash, len(bonuses))
+		t.Fatalf("summon main skill %08X produced %d bonuses; every locally verified pool entry must resolve once", hash, len(bonuses))
 	}
 	return bonuses[0]
 }
 
-func TestSummonMainSkillMissingDefinitionProducesVisibleWarning(t *testing.T) {
-	const hash = uint32(0x9300FADB)
+func TestCelestialVentusUsesLocalDefinition(t *testing.T) {
+	const hash = uint32(0x73220725)
 	bonus := simulateSingleSummonMainSkill(t, hash)
 	stats := calculateLoadoutFinalStats(loadoutPanelInputs{Bonuses: []TraitBonus{bonus}})
 	warnings := strings.Join(stats.Warnings, "\n")
-	if stats.FormulaVerified || !strings.Contains(warnings, "9300FADB") || !strings.Contains(warnings, "未计入") {
-		t.Fatalf("missing summon warning did not reach final stats or formula became verified: %+v", stats)
+	if bonus.Warning != "" || strings.Contains(warnings, "73220725") || !strings.Contains(bonus.Effect, "10.0%") {
+		t.Fatalf("Celestial Ventus Lv15 did not use its local table definition: bonus=%+v stats=%+v", bonus, stats)
 	}
 }
 
-func TestSummonMainSkillBlankNameAndFormatProducesVisibleWarning(t *testing.T) {
+func TestDivergenceUsesLocalDefinition(t *testing.T) {
 	const hash = uint32(0xF26BAEA5)
 	bonus := simulateSingleSummonMainSkill(t, hash)
 	stats := calculateLoadoutFinalStats(loadoutPanelInputs{Bonuses: []TraitBonus{bonus}})
 	warnings := strings.Join(stats.Warnings, "\n")
-	if stats.FormulaVerified || !strings.Contains(warnings, "F26BAEA5") || !strings.Contains(warnings, "未计入") {
-		t.Fatalf("blank summon warning did not reach final stats or formula became verified: %+v", stats)
+	if bonus.Warning != "" || strings.Contains(warnings, "F26BAEA5") || !strings.Contains(bonus.Effect, "2.0%") || !strings.Contains(bonus.Effect, "15%") {
+		t.Fatalf("Divergence Lv15 did not use its local table definition: bonus=%+v stats=%+v", bonus, stats)
 	}
 }
 
@@ -48,8 +48,8 @@ func TestSummonMainSkillCatalogCoverageIsExplicit(t *testing.T) {
 	if err := json.Unmarshal(summonSkillsJSON, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Skills) != 230 {
-		t.Fatalf("summon main-skill denominator = %d, want audited 230", len(payload.Skills))
+	if len(payload.Skills) != 82 {
+		t.Fatalf("summon main-skill denominator = %d, want local summon_lot/summon_preset pool of 82", len(payload.Skills))
 	}
 	catalog, err := LoadCatalog()
 	if err != nil {
@@ -80,8 +80,8 @@ func TestSummonMainSkillCatalogCoverageIsExplicit(t *testing.T) {
 			t.Errorf("summon main skill %s returned neither an effect nor a warning: %+v", skill.Hash, bonuses[0])
 		}
 	}
-	if resolved != 170 || warned != 60 {
-		t.Fatalf("summon main-skill coverage = resolved %d, warned %d; want 170 authoritative effects and 60 explicit unresolved warnings out of 230", resolved, warned)
+	if resolved != 82 || warned != 0 {
+		t.Fatalf("summon main-skill coverage = resolved %d, warned %d; want 82 authoritative effects and no unresolved pool entries", resolved, warned)
 	}
 	t.Logf("summon main-skill coverage: total=%d authoritativeEffects=%d explicitWarnings=%d", len(payload.Skills), resolved, warned)
 }

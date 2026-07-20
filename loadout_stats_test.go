@@ -412,7 +412,7 @@ func TestLoadoutSimulateBuildIncludesRealWeaponSkillsMasteryAndFinalStats(t *tes
 			mageSavvyFound = bonus.Level == 15 && strings.Contains(bonus.Effect, "50")
 		}
 		if bonus.TraitID == "9232DC17" || bonus.TraitID == "D29CD8E0" {
-			celestialTerraFound = bonus.Level == 15 && strings.Contains(bonus.Effect, "最大HP-30%") && strings.Contains(bonus.Effect, "伤害上限+70%")
+			celestialTerraFound = bonus.Level == 15 && strings.Contains(bonus.Effect, "最大HP-30.0%") && strings.Contains(bonus.Effect, "伤害上限+70.0%")
 		}
 	}
 	if !mageSavvyFound {

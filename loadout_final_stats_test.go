@@ -264,7 +264,7 @@ func TestCelestialTerraAliasesApplyAuditedHPTradeoffAndGlobalCap(t *testing.T) {
 			hash  uint32
 			level int
 		}{{hash: hash, level: 15}}, map[uint32]string{hash: id})
-		if len(bonuses) != 1 || bonuses[0].Name != "天星之界" || !strings.Contains(bonuses[0].Effect, "最大HP-30%") || !strings.Contains(bonuses[0].Effect, "伤害上限+70%") {
+		if len(bonuses) != 1 || bonuses[0].Name != "天星之界" || !strings.Contains(bonuses[0].Effect, "最大HP-30.0%") || !strings.Contains(bonuses[0].Effect, "伤害上限+70.0%") {
 			t.Fatalf("天星之界 alias %s 定义未恢复: %+v", id, bonuses)
 		}
 		got := calculateLoadoutFinalStats(loadoutPanelInputs{CharacterHP: 10000, Bonuses: bonuses})
@@ -302,7 +302,7 @@ func TestCelestialLumenAliasesStayVisibleButOutOfStaticPanel(t *testing.T) {
 			hash  uint32
 			level int
 		}{{hash: hash, level: 15}}, map[uint32]string{hash: id})
-		if len(bonuses) != 1 || bonuses[0].Name != "天星之煌" || !strings.Contains(bonuses[0].Effect, "HP不低于75%") || !strings.Contains(bonuses[0].Effect, "攻击力+20%") || !strings.Contains(bonuses[0].Effect, "伤害上限+70%") {
+		if len(bonuses) != 1 || bonuses[0].Name != "天星之煌" || !strings.Contains(bonuses[0].Effect, "HP不低于75.0%") || !strings.Contains(bonuses[0].Effect, "攻击力+20.0%") || !strings.Contains(bonuses[0].Effect, "伤害上限+70.0%") {
 			t.Fatalf("天星之煌 alias %s 条件效果未恢复: %+v", id, bonuses)
 		}
 		got := calculateLoadoutFinalStats(loadoutPanelInputs{CharacterHP: 10000, CharacterATK: 1000, Bonuses: bonuses})

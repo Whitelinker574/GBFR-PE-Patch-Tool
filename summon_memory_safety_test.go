@@ -52,6 +52,32 @@ func TestValidateSummonMemoryUpdateRejectsUnknownCatalogHashes(t *testing.T) {
 	}
 }
 
+func TestValidateSummonMemoryUpdateAllowsOnlyUnchangedLegacyMainTrait(t *testing.T) {
+	catalog, update := validSummonMemoryUpdate(t)
+	update.MainTraitHash = 0xDEADBEEF
+	update.MainTraitLevel = 42
+	existing := SummonInfo{
+		Index:          update.Index,
+		TypeHash:       update.TypeHash,
+		MainTraitHash:  update.MainTraitHash,
+		MainTraitLevel: update.MainTraitLevel,
+	}
+	if err := validateSummonMemoryUpdateAgainstExisting(catalog, update, existing); err != nil {
+		t.Fatalf("unchanged legacy main trait must allow a sub-parameter/rank-only update: %v", err)
+	}
+
+	changedLevel := update
+	changedLevel.MainTraitLevel++
+	if err := validateSummonMemoryUpdateAgainstExisting(catalog, changedLevel, existing); err == nil {
+		t.Fatal("legacy main-trait level change must remain fail-closed")
+	}
+	changedHash := update
+	changedHash.MainTraitHash++
+	if err := validateSummonMemoryUpdateAgainstExisting(catalog, changedHash, existing); err == nil {
+		t.Fatal("legacy main-trait hash change must remain fail-closed")
+	}
+}
+
 func TestValidateSummonMemoryUpdateEnforcesNaturalAndSafetyCaps(t *testing.T) {
 	catalog, valid := validSummonMemoryUpdate(t)
 	mainMax := catalog.main[valid.MainTraitHash].MaxLevel

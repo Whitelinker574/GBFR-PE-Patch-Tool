@@ -52,6 +52,13 @@ const filteredSummons = computed(() => {
     .some((value) => matchText(value, query)))
 })
 const selected = computed(() => summons.value.find((item) => item.index === selectedIndex.value))
+const currentMainTraitIsLegacy = computed(() => {
+  if (!selected.value) return false
+  const mainHash = parsedHashOrNull(edit.mainTraitHash)
+  return mainHash !== null &&
+    mainHash === (selected.value.mainTraitHash >>> 0) &&
+    !traitByHash.value.has(mainHash)
+})
 const rarityLabelsByCost = { 3: 'I', 4: 'II', 5: 'III' }
 
 function hex(value) { return '0x' + Number(value || 0).toString(16).toUpperCase().padStart(8, '0') }
@@ -78,7 +85,15 @@ function parseHash(value, label) {
 function parsedHashOrNull(value) {
   try { return parseHash(value, 'Hash') } catch (_) { return null }
 }
-function traitMax(hash) { return traitByHash.value.get(parseHash(hash, '因子'))?.maxLevel || 999 }
+function traitMax(hash) {
+  const parsed = parseHash(hash, '因子')
+  const known = traitByHash.value.get(parsed)?.maxLevel
+  if (Number.isInteger(known) && known > 0) return known
+  if (currentMainTraitIsLegacy.value && selected.value && parsed === (selected.value.mainTraitHash >>> 0)) {
+    return selected.value.mainTraitLevel
+  }
+  return 15
+}
 
 const legality = computed(() => {
   if (!selected.value) return { status: 'impossible', writable: false, message: '请先选择召唤石' }
@@ -94,14 +109,18 @@ const legality = computed(() => {
   if (typeHash !== (selected.value.typeHash >>> 0)) return { status: 'impossible', writable: false, message: '当前保存函数不支持更换召唤石种类' }
   if (subLevel < 0 || subLevel > subParamMaxLevel.value) return { status: 'impossible', writable: false, message: `副参数档位必须为 0 到 ${subParamMaxLevel.value}，越界会读取错误数值表` }
   if (mainLevel < 0 || mainLevel > 0x7FFFFFFF) return { status: 'impossible', writable: false, message: '主因子等级超出存档可写范围' }
+  const legacyMainUnchanged = !traitByHash.value.has(mainHash) &&
+    mainHash === (selected.value.mainTraitHash >>> 0) &&
+    mainLevel === selected.value.mainTraitLevel
   const reasons = []
   if (!typeByHash.value.has(typeHash)) reasons.push('种类不在本地资料库中')
   if (!mainHash) reasons.push('主因子为空，游戏内通常不会自然生成')
-  else if (!traitByHash.value.has(mainHash)) reasons.push('主因子不在本地资料库中')
+  else if (!traitByHash.value.has(mainHash) && !legacyMainUnchanged) reasons.push('非天然主因子只能原样保留')
   if (subHash && !subParamByHash.value.has(subHash)) reasons.push('副参数不在本地资料库中')
   const max = traitByHash.value.get(mainHash)?.maxLevel
   if (Number.isInteger(max) && mainLevel > max) reasons.push(`主因子等级超过已知上限 ${max}`)
   if (reasons.length) return { status: 'impossible', writable: false, message: `${reasons.join('；')}；后端会拒绝这次写入` }
+  if (legacyMainUnchanged) return { status: 'unknown', writable: true, message: '当前主因子为非天然或旧值；主因子已锁定，仍可修改副词条和 Rank' }
   return { status: 'unknown', writable: true, message: 'Hash 与等级可写；召唤石的完整天然主因子/副参数词池尚未完全验证' }
 })
 
@@ -317,6 +336,7 @@ onBeforeUnmount(() => {
                 <span class="trait-select-row">
                   <img v-if="currentTraitIcon()" :src="currentTraitIcon()" alt="" />
                   <select v-model="edit.mainTraitHash" class="ui-select" :disabled="loading || saving">
+                    <option v-if="currentMainTraitIsLegacy" :value="edit.mainTraitHash">当前值（非天然） · {{ edit.mainTraitHash }}</option>
                     <option v-for="item in filteredTraits" :key="item.hash" :value="hex(item.hash)">{{ optionLabel(item) }}</option>
                   </select>
                 </span>
@@ -324,8 +344,8 @@ onBeforeUnmount(() => {
               <label class="ui-field wide-field">
                 <span class="ui-field-label">主因子等级</span>
                 <span class="number-combo ui-control-group">
-                  <input v-model="edit.mainTraitLevel" class="ui-input" type="number" min="0" :max="traitMax(edit.mainTraitHash)" :disabled="loading || saving" />
-                  <button type="button" class="ui-btn is-sm" :disabled="loading || saving" @click="edit.mainTraitLevel=String(traitMax(edit.mainTraitHash))">最大</button>
+                  <input v-model="edit.mainTraitLevel" class="ui-input" type="number" min="0" :max="traitMax(edit.mainTraitHash)" :disabled="loading || saving || currentMainTraitIsLegacy" />
+                  <button type="button" class="ui-btn is-sm" :disabled="loading || saving || currentMainTraitIsLegacy" @click="edit.mainTraitLevel=String(traitMax(edit.mainTraitHash))">最大</button>
                 </span>
               </label>
             </div>

@@ -18,11 +18,11 @@ const (
 	summonInvalidTypeHash = 0x887AE0B0
 	summonSaveFunctionRVA = 0x79D820
 
-	// The bundled, game-derived catalogs currently top out at 65 for a main
-	// trait and 9 for a sub-parameter table index. Keep independent safety
-	// ceilings so malformed or replaced catalog data cannot expand the writable
-	// runtime range.
-	summonMainTraitSafetyMaxLevel uint32 = 65
+	// Local 2.0.2 summon_curve and summon_preset rows cap one summon's main
+	// trait at 15, while 9 is the highest sub-parameter table index. Keep
+	// independent safety ceilings so malformed or replaced catalog data cannot
+	// expand the writable runtime range.
+	summonMainTraitSafetyMaxLevel uint32 = 15
 	summonSubParamSafetyMaxLevel  uint32 = 9
 )
 
@@ -189,6 +189,37 @@ func validateSummonMemoryUpdate(catalog *summonStatCatalog, item SummonUpdate) e
 	if item.Rank > 3 {
 		return fmt.Errorf("召唤石阶级必须为 0 到 3")
 	}
+	return nil
+}
+
+func validateSummonMemoryUpdateNonMainFields(catalog *summonStatCatalog, item SummonUpdate) error {
+	if catalog == nil || len(catalog.main) == 0 {
+		return fmt.Errorf("召唤石主因子目录为空")
+	}
+	probe := item
+	for hash, option := range catalog.main {
+		if option.MaxLevel > 0 {
+			probe.MainTraitHash = hash
+			probe.MainTraitLevel = 1
+			return validateSummonMemoryUpdate(catalog, probe)
+		}
+	}
+	return fmt.Errorf("召唤石主因子目录没有有效等级范围")
+}
+
+func validateSummonMemoryUpdateAgainstExisting(catalog *summonStatCatalog, item SummonUpdate, existing SummonInfo) error {
+	if err := validateSummonMemoryUpdateNonMainFields(catalog, item); err != nil {
+		return err
+	}
+	if err := validateSummonMemoryUpdate(catalog, item); err == nil {
+		return nil
+	} else if item.MainTraitHash != existing.MainTraitHash || item.MainTraitLevel != existing.MainTraitLevel {
+		return err
+	}
+	// A legacy or externally modified main trait may be preserved byte-for-byte
+	// so the user can still change the audited sub-parameter or rank. It never
+	// becomes a selectable natural trait, and changing either main field remains
+	// fail-closed.
 	return nil
 }
 
@@ -382,7 +413,7 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err != nil {
 		return SummonInfo{}, fmt.Errorf("加载召唤石写入目录失败: %w", err)
 	}
-	if err := validateSummonMemoryUpdate(catalog, item); err != nil {
+	if err := validateSummonMemoryUpdateNonMainFields(catalog, item); err != nil {
 		return SummonInfo{}, fmt.Errorf("召唤石写入参数无效: %w", err)
 	}
 
@@ -417,6 +448,9 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	}
 	if item.TypeHash != existing.TypeHash {
 		return SummonInfo{}, fmt.Errorf("召唤石种类不支持修改：索引 %d 当前为 0x%08X", item.Index, existing.TypeHash)
+	}
+	if err := validateSummonMemoryUpdateAgainstExisting(catalog, item, existing); err != nil {
+		return SummonInfo{}, fmt.Errorf("召唤石写入参数无效: %w", err)
 	}
 	desired, err := encodeSummonMemoryRecord(original, item)
 	if err != nil {

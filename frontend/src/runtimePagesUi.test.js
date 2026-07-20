@@ -147,6 +147,16 @@ test('summon search exposes an explicit no-match state and one searchable editor
   assert.doesNotMatch(source, /@container\s*\(max-width:680px\)[\s\S]*grid-template-columns:minmax\(180px/is)
 })
 
+test('summon editor preserves a legacy current main trait without reopening the natural pool', () => {
+  const source = sources['SummonEditor.vue']
+  assert.match(source, /currentMainTraitIsLegacy/)
+  assert.match(source, /当前值（非天然）/)
+  assert.match(source, /mainHash\s*===\s*\(selected\.value\.mainTraitHash\s*>>>\s*0\)/)
+  assert.match(source, /mainLevel\s*===\s*selected\.value\.mainTraitLevel/)
+  assert.doesNotMatch(source, /function traitMax\([^)]*\)\s*\{[^}]*\|\|\s*999/)
+  assert.match(source, /:disabled="loading \|\| saving \|\| currentMainTraitIsLegacy"/)
+})
+
 test('summon memory page exposes an explicit global-process disconnect boundary', () => {
   const source = sources['SummonEditor.vue']
   assert.match(source, /CharaAcquire/)
