@@ -283,7 +283,20 @@ catch {
     throw 'Failed to load CT XML safely.'
 }
 
-$sourceSHA256 = (Get-FileHash -LiteralPath $InputCT -Algorithm SHA256).Hash.ToUpperInvariant()
+$resolvedInputPath = (Resolve-Path -LiteralPath $InputCT).Path
+$sourceSHA256Stream = [System.IO.File]::OpenRead($resolvedInputPath)
+try {
+    $sourceSHA256Algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $sourceSHA256 = ([System.BitConverter]::ToString($sourceSHA256Algorithm.ComputeHash($sourceSHA256Stream))).Replace('-', '')
+    }
+    finally {
+        $sourceSHA256Algorithm.Dispose()
+    }
+}
+finally {
+    $sourceSHA256Stream.Dispose()
+}
 $originalEvidenceByKey = @{}
 $usedOriginalEvidence = [System.Collections.Generic.HashSet[string]]::new()
 $hasOriginalEvidence = -not [string]::IsNullOrWhiteSpace($OriginalEvidence)

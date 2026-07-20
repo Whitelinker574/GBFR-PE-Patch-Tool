@@ -104,8 +104,67 @@ func TestFormulaSamplerOwnedOperationsRejectEmptyOwnerToken(t *testing.T) {
 	if err := app.FormulaSamplerCloseOwned(""); err == nil {
 		t.Fatal("close accepted an empty owner token")
 	}
+	if _, err := app.FormulaSamplerStartChangeRecordingOwned(""); err == nil {
+		t.Fatal("change recording accepted an empty owner token")
+	}
+	if _, err := app.FormulaSamplerStopChangeRecordingOwned(""); err == nil {
+		t.Fatal("change analysis accepted an empty owner token")
+	}
 	if app.formulaSamplerSession == nil {
 		t.Fatal("empty owner token cleared the active session")
+	}
+}
+
+func TestFormulaChangeRecordingCapturesStableEndpointsAndCandidateDiff(t *testing.T) {
+	before := RuntimeCharacterPanelStats{CharacterHash: "AABBCCDD", RuntimeID: "AABBCCDD", HP: 100, Attack: 200, StunPower: 30, RawStunPower: 3, CritRate: 4}
+	after := before
+	after.Attack = 225
+	reads := 0
+	sampler := newFormulaSampler(func() error { return nil }, func() (RuntimeCharacterPanelStats, error) {
+		reads++
+		if reads <= formulaSamplerStableSnapshotCount {
+			return before, nil
+		}
+		return after, nil
+	})
+	startRaw := make([]byte, formulaStatusObjectScanSize)
+	endRaw := append([]byte(nil), startRaw...)
+	endRaw[0x100] = 25
+	captures := 0
+	session := &formulaSamplerSession{
+		process:         &readOnlyGameProcess{},
+		sampler:         sampler,
+		isMappedAddress: func(uint64) (bool, error) { return false, nil },
+		captureStatus: func() ([]byte, error) {
+			captures++
+			if captures == 1 {
+				return append([]byte(nil), startRaw...), nil
+			}
+			return append([]byte(nil), endRaw...), nil
+		},
+	}
+	started, err := session.startChangeRecording()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.Recording || started.Before.Attack != 200 || started.Before.AttackField.StableReads != 3 {
+		t.Fatalf("unexpected recording start: %+v", started)
+	}
+	analysis, err := session.stopChangeRecording()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !analysis.PanelChanged || analysis.After.Attack != 225 || analysis.PanelDelta.Attack != 25 || analysis.EvidenceLevel != "candidate_single_transition_stable_endpoints" {
+		t.Fatalf("unexpected transition analysis: %+v", analysis)
+	}
+	found := false
+	for _, candidate := range analysis.Candidates {
+		if candidate.Offset == 0x100 && candidate.Kind == FormulaScalarI32 && candidate.Delta == 25 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("transition analysis missed 0x100 i32 candidate: %+v", analysis.Candidates)
 	}
 }
 

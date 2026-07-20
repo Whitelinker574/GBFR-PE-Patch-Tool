@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const formulaSampleSchemaVersion = "gbfr-formula-sample/v2"
+const formulaSampleSchemaVersion = "gbfr-formula-sample/v3"
 const formulaSampleCandidateLimit = 4096
 
 var formulaExperimentTypes = map[string]struct{}{
@@ -52,13 +52,21 @@ type FormulaSampleManifest struct {
 }
 
 type FormulaRedactedPanel struct {
-	CharacterHash   string  `json:"characterHash"`
-	HP              int32   `json:"hp"`
-	Attack          int32   `json:"attack"`
-	StunPower       float32 `json:"stunPower"`
-	CritRate        float32 `json:"critRate"`
-	GameVersion     string  `json:"gameVersion"`
-	RuntimeVerified bool    `json:"runtimeVerified"`
+	CharacterHash       string                            `json:"characterHash"`
+	RuntimeID           string                            `json:"runtimeId"`
+	CandidateObjectHash string                            `json:"candidateObjectHash"`
+	IdentitySource      string                            `json:"identitySource"`
+	HP                  int32                             `json:"hp"`
+	Attack              int32                             `json:"attack"`
+	StunPower           float32                           `json:"stunPower"`
+	RawStunPower        float32                           `json:"rawStunPower"`
+	CritRate            float32                           `json:"critRate"`
+	HPField             RuntimeCharacterPanelFieldReading `json:"hpField"`
+	AttackField         RuntimeCharacterPanelFieldReading `json:"attackField"`
+	StunField           RuntimeCharacterPanelFieldReading `json:"stunField"`
+	CritField           RuntimeCharacterPanelFieldReading `json:"critField"`
+	GameVersion         string                            `json:"gameVersion"`
+	RuntimeVerified     bool                              `json:"runtimeVerified"`
 }
 
 type FormulaRedactedEvent struct {
@@ -183,7 +191,7 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 
 	entryNames := []string{
 		"manifest.json", "events.json", "observations.json", "candidates.json",
-		"formula-model.json", "redaction-report.json", "README.txt", "SHA256SUMS",
+		"formula-model.json", "runtime-layout.json", "redaction-report.json", "README.txt", "SHA256SUMS",
 	}
 	manifest := FormulaSampleManifest{
 		SchemaVersion:  formulaSampleSchemaVersion,
@@ -200,7 +208,8 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 	entries := map[string][]byte{}
 	for name, value := range map[string]any{
 		"manifest.json": manifest, "events.json": redactedEvents, "observations.json": observations,
-		"candidates.json": candidates, "formula-model.json": model, "redaction-report.json": redaction,
+		"candidates.json": candidates, "formula-model.json": model,
+		"runtime-layout.json": runtimeCharacterPanelLayoutDescriptor(), "redaction-report.json": redaction,
 	} {
 		payload, marshalErr := json.MarshalIndent(value, "", "  ")
 		if marshalErr != nil {
@@ -214,8 +223,12 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 
 func redactFormulaPanel(panel RuntimeCharacterPanelStats) FormulaRedactedPanel {
 	return FormulaRedactedPanel{
-		CharacterHash: panel.CharacterHash, HP: panel.HP, Attack: panel.Attack,
-		StunPower: panel.StunPower, CritRate: panel.CritRate,
+		CharacterHash: panel.CharacterHash, RuntimeID: panel.RuntimeID,
+		CandidateObjectHash: panel.CandidateObjectHash, IdentitySource: panel.IdentitySource,
+		HP: panel.HP, Attack: panel.Attack, StunPower: panel.StunPower,
+		RawStunPower: panel.RawStunPower, CritRate: panel.CritRate,
+		HPField: panel.HPField, AttackField: panel.AttackField,
+		StunField: panel.StunField, CritField: panel.CritField,
 		GameVersion: panel.GameVersion, RuntimeVerified: panel.RuntimeVerified,
 	}
 }
@@ -225,7 +238,7 @@ func formulaPanelObservations(event FormulaSampleEvent) []FormulaObservation {
 	return []FormulaObservation{
 		{Phase: event.Phase, Field: "hp", DisplayValue: fmt.Sprintf("%d", event.Panel.HP), RawBits: fmt.Sprintf("0x%08X", uint32(event.Panel.HP)), Evidence: evidence},
 		{Phase: event.Phase, Field: "attack", DisplayValue: fmt.Sprintf("%d", event.Panel.Attack), RawBits: fmt.Sprintf("0x%08X", uint32(event.Panel.Attack)), Evidence: evidence},
-		{Phase: event.Phase, Field: "stunPower", DisplayValue: fmt.Sprintf("%g", event.Panel.StunPower), RawBits: fmt.Sprintf("0x%08X", math.Float32bits(event.Panel.StunPower)), Evidence: evidence},
+		{Phase: event.Phase, Field: "stunPower", DisplayValue: fmt.Sprintf("%g", event.Panel.StunPower), RawBits: fmt.Sprintf("0x%08X", math.Float32bits(event.Panel.RawStunPower)), Evidence: evidence + "; raw f32 scaled by runtime-layout displayScale"},
 		{Phase: event.Phase, Field: "critRate", DisplayValue: fmt.Sprintf("%g", event.Panel.CritRate), RawBits: fmt.Sprintf("0x%08X", math.Float32bits(event.Panel.CritRate)), Evidence: evidence},
 	}
 }
@@ -272,12 +285,14 @@ const formulaSampleReadme = `GBFR character-formula evidence bundle / GBFR 角�
 
 This archive contains a strict read-only A1/B1/A2/B2 experiment. It does not contain raw memory,
 process identity, absolute addresses, local paths, usernames, timestamps, or free-form notes.
-Validate every listed file against SHA256SUMS before analysis. Relative scalar candidates are clues,
+Validate every listed file against SHA256SUMS before analysis. runtime-layout.json records the guarded
+access chain, field types, relative offsets, display scales, executable hash and evidence grade. Relative scalar candidates are clues,
 not verified formulas; formula-model.json deliberately reports evidence only. A no-change mastery,
 defense, or damage-cap bundle is a negative observation that requires operator records and repetitions,
 not proof that the game has no effect.
 
 本包来自严格只读的 A1/B1/A2/B2 单变量实验，不包含原始内存、进程身份、绝对地址、本地路径、
-用户名、时间戳或自由备注。分析前请核对 SHA256SUMS。相对偏移候选只是线索，不等于已验证公式。
+用户名、时间戳或自由备注。分析前请核对 SHA256SUMS。runtime-layout.json 记录受守卫保护的访问链、
+字段类型、相对偏移、显示倍率、EXE 哈希及证据等级。相对偏移候选只是线索，不等于已验证公式。
 专精、防御力或伤害上限实验若没有观察到变化，只能作为需要操作记录和重复实验支持的负观察，不能单独证明游戏没有该效果。
 `

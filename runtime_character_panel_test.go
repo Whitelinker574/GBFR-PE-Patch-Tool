@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -125,15 +126,18 @@ func (fixture runtimePanelFixture) addStatus(id uint32, node, status uintptr, ch
 func TestReadRuntimeCharacterPanelReturnsExactGameValuesForRequestedCharacter(t *testing.T) {
 	fixture := newRuntimePanelFixture()
 	fixture.setIDs(0x11, 0x22)
-	fixture.addStatus(0x11, 0x240000000, 0x250000000, 0xAABBCCDD, 188975, 101641, 293.25, 83.5)
+	fixture.addStatus(0x11, 0x240000000, 0x250000000, 0xAABBCCDD, 188975, 101641, 29.325, 83.5)
 	fixture.addStatus(0x22, 0x240001000, 0x250010000, 0x10203040, 43210, 9876, 77, 25)
 
 	got, err := readRuntimeCharacterPanel(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.CharacterHash != "AABBCCDD" || got.HP != 188975 || got.Attack != 101641 || got.StunPower != 293.25 || got.CritRate != 83.5 {
-		t.Fatalf("runtime panel values were transformed instead of read exactly: %+v", got)
+	if got.CharacterHash != "AABBCCDD" || got.RuntimeID != "00000011" || got.HP != 188975 || got.Attack != 101641 || got.StunPower != 293.25 || got.RawStunPower != 29.325 || got.CritRate != 83.5 {
+		t.Fatalf("runtime panel values or identity were not read with the verified display scale: %+v", got)
+	}
+	if got.StunField.RawType != "f32" || got.StunField.RelativeOffset != 0x10 || got.StunField.DisplayScale != 10 || got.StunField.StableReads != 1 {
+		t.Fatalf("stun field evidence is incomplete: %+v", got.StunField)
 	}
 	if got.RuntimeVerified || got.Source != "game_runtime_2.0.2" || got.Verification != runtimeCharacterPanelVerification || got.GameVersion != "2.0.2" {
 		t.Fatalf("one snapshot must identify its source but remain unverified until the stability gate: %+v", got)
@@ -156,6 +160,99 @@ func TestLocateRuntimeCharacterPanelStatusReturnsTheMatchedStatusObject(t *testi
 	}
 }
 
+func TestLocateRuntimeCharacterPanelStatusUsesMapKeyWhenObjectHashIsUnavailable(t *testing.T) {
+	fixture := newRuntimePanelFixture()
+	fixture.setIDs(0xAABBCCDD)
+	wantStatus := uintptr(0x250000000)
+	// Field evidence from the live 2.0.2 build shows that the map key is the
+	// directory hash while the old +0x59F0 candidate is zero for every object.
+	fixture.addStatus(0xAABBCCDD, 0x240000000, wantStatus, 0, 188975, 101641, 29.3, 83.5)
+
+	status, err := locateRuntimeCharacterPanelStatus(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != wantStatus {
+		t.Fatalf("status object = 0x%X, want map-key object 0x%X", status, wantStatus)
+	}
+}
+
+func TestLocateRuntimeCharacterPanelStatusDoesNotUseReadyEligibilityAsEnumerationFilters(t *testing.T) {
+	fixture := newRuntimePanelFixture()
+	fixture.setIDs(0xAABBCCDD)
+	wantStatus := uintptr(0x250000000)
+	fixture.addStatus(0xAABBCCDD, 0x240000000, wantStatus, 0, 188975, 101641, 29.3, 83.5)
+	fixture.memory.putU16(wantStatus+runtimeCharacterPanelReadyOffset, 0)
+	fixture.memory.putU16(wantStatus+runtimeCharacterPanelEligibilityOffset, 0)
+
+	status, err := locateRuntimeCharacterPanelStatus(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != wantStatus {
+		t.Fatalf("status object = 0x%X, want usable exact-key object 0x%X", status, wantStatus)
+	}
+}
+
+func TestLocateRuntimeCharacterPanelStatusChoosesExactMapKeyAmongMultipleObjects(t *testing.T) {
+	fixture := newRuntimePanelFixture()
+	fixture.setIDs(0x10203040, 0xAABBCCDD)
+	fixture.addStatus(0x10203040, 0x240000000, 0x250000000, 0, 43210, 9876, 7.7, 25)
+	wantStatus := uintptr(0x250010000)
+	fixture.addStatus(0xAABBCCDD, 0x240001000, wantStatus, 0, 188975, 101641, 29.3, 83.5)
+
+	status, err := locateRuntimeCharacterPanelStatus(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != wantStatus {
+		t.Fatalf("status object = 0x%X, want exact map-key object 0x%X", status, wantStatus)
+	}
+}
+
+func TestRuntimeCharacterPanelDiagnosticsExposeMappingFieldsWithoutAddresses(t *testing.T) {
+	fixture := newRuntimePanelFixture()
+	fixture.setIDs(0x4D0A60C3)
+	fixture.addStatus(0x4D0A60C3, 0x240000000, 0x250000000, 0, 132977, 111259, 30.599998, 124)
+
+	diagnostic, err := enumerateRuntimeCharacterPanelDiagnostics(fixture.memory, fixture.moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostic.Objects) != 1 {
+		t.Fatalf("diagnostic objects = %d, want 1", len(diagnostic.Objects))
+	}
+	object := diagnostic.Objects[0]
+	if object.DirectoryName != "伊欧" || object.DirectoryHash != "4D0A60C3" || object.RuntimeID != "4D0A60C3" || object.MapKey != "4D0A60C3" || object.CandidateObjectHash != "00000000" {
+		t.Fatalf("diagnostic identity mapping is incomplete: %+v", object)
+	}
+	if object.Panel == nil || object.Panel.StunPower != 306 || object.Panel.RawStunPower != 30.599998 || object.Panel.StunField.RelativeOffset != 0x10 || object.Panel.StunField.StableReads != 3 {
+		t.Fatalf("diagnostic panel evidence is incomplete: %+v", object.Panel)
+	}
+	encoded, err := json.Marshal(diagnostic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"0x250000000", "moduleBase", "statusAddress", "pid"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("diagnostic JSON leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestRuntimeCharacterPanelLayoutDescriptorIsVersionedAndEvidenceBound(t *testing.T) {
+	layout := runtimeCharacterPanelLayoutDescriptor()
+	if layout.SchemaVersion != 1 || layout.LayoutID == "" || layout.GameExecutableSHA256 != runtimeCharacterPanelGameEXESHA256 || len(layout.Guards) != len(runtimeCharacterPanelVersionGuards) {
+		t.Fatalf("layout identity is incomplete: %+v", layout)
+	}
+	if len(layout.AccessChain) < 4 || len(layout.Fields) != 4 {
+		t.Fatalf("layout access chain/fields are incomplete: %+v", layout)
+	}
+	if layout.Fields[2].Name != "stunPower" || layout.Fields[2].RawType != "f32" || layout.Fields[2].RelativeOffset != "0x10" || layout.Fields[2].DisplayScale != 10 || layout.Fields[2].SampleRoleCount < 2 {
+		t.Fatalf("stun layout evidence is incomplete: %+v", layout.Fields[2])
+	}
+}
+
 func TestStableRuntimeCharacterPanelRequiresThreeIdenticalSnapshots(t *testing.T) {
 	want := RuntimeCharacterPanelStats{
 		CharacterHash:   "AABBCCDD",
@@ -168,6 +265,10 @@ func TestStableRuntimeCharacterPanelRequiresThreeIdenticalSnapshots(t *testing.T
 		GameVersion:     "2.0.2",
 		RuntimeVerified: true,
 	}
+	want.HPField.StableReads = 3
+	want.AttackField.StableReads = 3
+	want.StunField.StableReads = 3
+	want.CritField.StableReads = 3
 	snapshot := want
 	snapshot.RuntimeVerified = false
 	calls := 0
@@ -270,6 +371,11 @@ func TestReadRuntimeCharacterPanelRejectsCorruptContainers(t *testing.T) {
 		fixture.memory.putPtr(fixture.table+runtimeCharacterPanelBucketStride+runtimeCharacterPanelBucketHeadOffset, node)
 		fixture.memory.putPtr(node+runtimeCharacterPanelNodeNextOffset, node)
 		fixture.memory.putU32(node+runtimeCharacterPanelNodeKeyOffset, 9)
+		status := uintptr(0x250000000)
+		fixture.memory.putPtr(node+runtimeCharacterPanelNodeStatusOffset, status)
+		fixture.memory.putU16(status+runtimeCharacterPanelReadyOffset, 1)
+		fixture.memory.putU16(status+runtimeCharacterPanelEligibilityOffset, 1)
+		fixture.memory.putU32(status+runtimeCharacterPanelCharacterHashOffset, 0)
 		_, err := readRuntimeCharacterPanel(fixture.memory, fixture.moduleBase, 0xAABBCCDD)
 		if err == nil || !strings.Contains(err.Error(), "循环") {
 			t.Fatalf("cyclic chain must fail closed, got %v", err)

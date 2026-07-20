@@ -10,6 +10,9 @@ import (
 
 func prepareBackupTestEnv(t *testing.T) (string, string) {
 	t.Helper()
+	previousFinder := saveRestoreFindProcessByName
+	saveRestoreFindProcessByName = func(string) (uint32, error) { return 0, fmt.Errorf("test process is not running") }
+	t.Cleanup(func() { saveRestoreFindProcessByName = previousFinder })
 	base := t.TempDir()
 	t.Setenv("LOCALAPPDATA", filepath.Join(base, "local"))
 	t.Setenv("APPDATA", filepath.Join(base, "roaming"))

@@ -1,11 +1,15 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   FormulaSamplerAttach,
   FormulaSamplerCaptureOwned,
   FormulaSamplerCloseOwned,
   FormulaSamplerExport,
+	FormulaSamplerObserveOwned,
+	FormulaSamplerRuntimeObjects,
+	FormulaSamplerStartChangeRecordingOwned,
   FormulaSamplerStatus,
+	FormulaSamplerStopChangeRecordingOwned,
 } from '../../wailsjs/go/main/App'
 import { characterAssetIcon } from '../gameAssetIcons.js'
 import { language } from '../i18n.js'
@@ -13,6 +17,7 @@ import {
   FORMULA_PHASES,
   formulaNextPhase,
   formulaPhaseCopy,
+	normalizeFormulaPanel,
   normalizeFormulaSamplerStatus,
 } from '../formulaSamplerView.js'
 
@@ -51,6 +56,14 @@ const busy = ref(false)
 const message = ref(copy('ready'))
 const tone = ref('info')
 const lastExportPath = ref('')
+const currentPanel = ref(null)
+const runtimeCatalog = ref(null)
+const runtimeCatalogMessage = ref('')
+const recording = ref(false)
+const transitionSamples = ref([])
+const changeAnalysis = ref(null)
+let observeTimer = null
+let observing = false
 let disposed = false
 
 const connected = computed(() => sampler.value.connected)
@@ -58,6 +71,77 @@ const complete = computed(() => sampler.value.complete)
 const nextPhase = computed(() => formulaNextPhase(sampler.value.events))
 const selectedCharacter = computed(() => characters.find(item => item.hash === selectedHash.value) || characters[0])
 const controlMode = computed(() => (sampler.value.experimentType || selectedExperimentType.value) === 'control')
+const selectedRuntimeObject = computed(() => runtimeCatalog.value?.objects?.find(item => item.directoryHash === selectedHash.value) || null)
+
+function fieldEvidence(field) {
+	if (!field) return '—'
+	return `${field.rawType} @ +0x${Number(field.relativeOffset).toString(16).toUpperCase()} · ×${field.displayScale} · ${field.stableReads}/3`
+}
+
+async function refreshRuntimeObjects() {
+	try {
+		runtimeCatalog.value = await FormulaSamplerRuntimeObjects()
+		runtimeCatalogMessage.value = runtimeCatalog.value?.selectionObservation || ''
+	} catch (error) {
+		runtimeCatalog.value = null
+		runtimeCatalogMessage.value = errorText(error)
+	}
+}
+
+async function observeCurrent() {
+	if (!sampler.value.connected || !sampler.value.sessionToken || observing || disposed) return
+	observing = true
+	try {
+		const panel = normalizeFormulaPanel(await FormulaSamplerObserveOwned(sampler.value.sessionToken))
+		currentPanel.value = panel
+		if (recording.value) {
+			const previous = transitionSamples.value.at(-1)
+			const signature = `${panel.hp}/${panel.attack}/${panel.critRate}/${panel.stunPower}`
+			const previousSignature = previous ? `${previous.hp}/${previous.attack}/${previous.critRate}/${previous.stunPower}` : ''
+			if (signature !== previousSignature) transitionSamples.value = [...transitionSamples.value, panel]
+		}
+	} catch (error) {
+		if (!disposed) announce(errorText(error), 'danger')
+	} finally {
+		observing = false
+	}
+}
+
+async function startChangeRecording() {
+	if (!connected.value || busy.value || recording.value) return
+	busy.value = true
+	try {
+		const started = await FormulaSamplerStartChangeRecordingOwned(sampler.value.sessionToken)
+		const before = normalizeFormulaPanel(started.before)
+		currentPanel.value = before
+		transitionSamples.value = [before]
+		changeAnalysis.value = null
+		recording.value = true
+		announce(language.value === 'en' ? 'Change recording started. Change exactly one item.' : '变化记录已开始；现在只切换一个项目。', 'ok')
+	} catch (error) {
+		announce(errorText(error), 'danger')
+	} finally {
+		busy.value = false
+	}
+}
+
+async function stopChangeRecording() {
+	if (!connected.value || busy.value || !recording.value) return
+	busy.value = true
+	try {
+		const analysis = await FormulaSamplerStopChangeRecordingOwned(sampler.value.sessionToken)
+		changeAnalysis.value = Object.freeze({ ...analysis, before: normalizeFormulaPanel(analysis.before), after: normalizeFormulaPanel(analysis.after) })
+		currentPanel.value = changeAnalysis.value.after
+		recording.value = false
+		announce(analysis.evidenceLevel === 'negative_observation'
+			? (language.value === 'en' ? 'Stopped: negative observation, not proof of no effect.' : '已停止：这是负观察，不代表无效果。')
+			: (language.value === 'en' ? 'Stopped and produced transition candidates.' : '已停止并生成变化候选。'), 'ok')
+	} catch (error) {
+		announce(errorText(error), 'danger')
+	} finally {
+		busy.value = false
+	}
+}
 
 function copy(key) {
   const texts = {
@@ -119,6 +203,7 @@ async function attach() {
       return
     }
     sampler.value = status
+		await observeCurrent()
     announce(language.value === 'en' ? 'Read-only sampler attached.' : '只读采样器已连接。', 'ok')
   } catch (error) {
     try {
@@ -186,6 +271,10 @@ async function close() {
   try {
     await FormulaSamplerCloseOwned(sampler.value.sessionToken)
     sampler.value = normalizeFormulaSamplerStatus(null)
+		currentPanel.value = null
+		recording.value = false
+		transitionSamples.value = []
+		changeAnalysis.value = null
     lastExportPath.value = ''
     announce(copy('disconnected'), 'info')
   } catch (error) {
@@ -211,8 +300,14 @@ function formatStat(value, digits = 0) {
   return Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—'
 }
 
+onMounted(() => {
+	void refreshRuntimeObjects()
+	observeTimer = window.setInterval(() => { void observeCurrent() }, 750)
+})
+
 onBeforeUnmount(() => {
   disposed = true
+	if (observeTimer != null) window.clearInterval(observeTimer)
   if (sampler.value.sessionToken) void FormulaSamplerCloseOwned(sampler.value.sessionToken).catch(() => {})
 })
 </script>
@@ -250,6 +345,51 @@ onBeforeUnmount(() => {
     <div v-if="lastExportPath" class="export-path ui-card" aria-live="polite">
       <b>{{ language === 'en' ? 'Saved to' : '保存路径' }}</b><span>{{ lastExportPath }}</span>
     </div>
+
+		<section v-if="currentPanel" class="live-panel ui-card ui-panel" aria-live="polite">
+			<header class="live-panel-heading">
+				<div><span>LIVE · 3× STABLE</span><h2>{{ language === 'en' ? 'Final game panel' : '游戏最终面板连续观测' }}</h2></div>
+				<code>{{ currentPanel.characterHash }} ⇄ {{ currentPanel.runtimeId }}</code>
+			</header>
+			<div class="live-stat-grid">
+				<article><span>HP</span><b>{{ formatStat(currentPanel.hp) }}</b><small>{{ fieldEvidence(currentPanel.hpField) }}</small></article>
+				<article><span>{{ language === 'en' ? 'ATK' : '攻击力' }}</span><b>{{ formatStat(currentPanel.attack) }}</b><small>{{ fieldEvidence(currentPanel.attackField) }}</small></article>
+				<article><span>{{ language === 'en' ? 'CRIT' : '暴击率' }}</span><b>{{ formatStat(currentPanel.critRate, 2) }}%</b><small>{{ fieldEvidence(currentPanel.critField) }}</small></article>
+				<article><span>{{ language === 'en' ? 'STUN' : '昏厥值' }}</span><b>{{ formatStat(currentPanel.stunPower, 2) }}</b><small>{{ fieldEvidence(currentPanel.stunField) }} · raw {{ currentPanel.rawStunPower }}</small></article>
+			</div>
+			<p class="identity-evidence">{{ selectedRuntimeObject?.directoryName || selectedCharacter.zh }} · directory {{ currentPanel.characterHash }} · runtime {{ currentPanel.runtimeId }} · {{ currentPanel.identitySource }}</p>
+		</section>
+
+		<section class="change-recorder ui-card ui-panel is-compact">
+			<header><div><span>AUTO TRANSITION</span><h3>{{ language === 'en' ? 'Record one change' : '自动记录一次变化' }}</h3></div>
+				<div class="change-actions">
+					<button v-if="!recording" class="ui-btn is-primary" :disabled="!connected || busy" @click="startChangeRecording">{{ language === 'en' ? 'Start recording' : '开始记录变化' }}</button>
+					<button v-else class="ui-btn is-danger" :disabled="busy" @click="stopChangeRecording">{{ language === 'en' ? 'Stop & analyse' : '停止并分析' }}</button>
+				</div>
+			</header>
+			<p>{{ recording ? (language === 'en' ? 'Recording stable endpoints and transition states; change one item only.' : '正在记录稳定前值、过渡状态与稳定后值；只改变一个项目。') : (language === 'en' ? 'This produces candidates from one stable transition. Strict A/B/A/B remains below for formula verification.' : '单次稳定变化只生成候选；下方 A/B/A/B 仍用于严格公式验证。') }}</p>
+			<div v-if="changeAnalysis" class="change-result">
+				<b>{{ changeAnalysis.evidenceLevel }}</b>
+				<span>ΔHP {{ changeAnalysis.panelDelta?.hp ?? 0 }} · ΔATK {{ changeAnalysis.panelDelta?.attack ?? 0 }} · ΔCRIT {{ changeAnalysis.panelDelta?.critRate ?? 0 }} · ΔSTUN {{ changeAnalysis.panelDelta?.stunPower ?? 0 }}</span>
+				<small>{{ changeAnalysis.candidates?.length || 0 }} {{ language === 'en' ? 'relative scalar candidates' : '个相对标量候选' }} · {{ transitionSamples.length }} {{ language === 'en' ? 'observed panel states' : '个已观测面板状态' }}</small>
+				<em v-if="changeAnalysis.negativeObservation">{{ changeAnalysis.negativeObservation }}</em>
+			</div>
+		</section>
+
+		<details class="runtime-objects ui-card ui-panel is-compact">
+			<summary>{{ language === 'en' ? 'Runtime object enumeration' : '运行时对象枚举' }} · {{ runtimeCatalog?.objects?.length || 0 }}</summary>
+			<div class="runtime-object-copy">
+				<p>{{ runtimeCatalogMessage || (language === 'en' ? 'Refresh to enumerate the guarded manager.' : '刷新以枚举已通过版本守卫的 manager。') }}</p>
+				<button class="ui-btn is-secondary" :disabled="busy" @click="refreshRuntimeObjects">{{ language === 'en' ? 'Refresh objects' : '刷新对象' }}</button>
+			</div>
+			<div v-if="runtimeCatalog?.objects?.length" class="runtime-object-table">
+				<div v-for="item in runtimeCatalog.objects" :key="item.runtimeId" :class="{ 'is-selected': item.directoryHash === selectedHash }">
+					<b>{{ item.directoryName || (language === 'en' ? 'Unmapped' : '未映射') }}</b><code>{{ item.directoryHash }} / {{ item.runtimeId }}</code>
+					<span>map {{ item.mapKey }} · hash {{ item.candidateObjectHash }} · ready {{ item.ready }} · eligibility {{ item.eligibility }}</span>
+					<small>{{ item.evidenceLevel }}<template v-if="item.negativeObservation"> · {{ item.negativeObservation }}</template></small>
+				</div>
+			</div>
+		</details>
 
     <details class="sampling-scope ui-card ui-panel is-compact">
       <summary>{{ language === 'en' ? 'Advanced sampling scope' : '高级采样范围' }}</summary>
@@ -312,6 +452,32 @@ onBeforeUnmount(() => {
 .export-path { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--space-3); align-items:center; padding:var(--space-3) var(--space-4); }
 .export-path b { color:var(--text-primary); font-size:var(--fs-xs); }
 .export-path span { min-width:0; overflow-wrap:anywhere; color:var(--text-secondary); font-family:var(--font-mono); font-size:var(--fs-xs); }
+.live-panel { display:grid; gap:var(--space-4); }
+.live-panel-heading,.change-recorder > header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); }
+.live-panel-heading span,.change-recorder > header span { color:var(--accent); font-size:10px; font-weight:var(--fw-bold); letter-spacing:.12em; }
+.live-panel-heading h2,.change-recorder h3 { margin:2px 0 0; color:var(--text-primary); font-size:var(--fs-lg); }
+.live-panel-heading code { color:var(--text-secondary); font-size:var(--fs-xs); }
+.live-stat-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--space-3); }
+.live-stat-grid article { min-width:0; display:grid; gap:4px; padding:var(--space-3); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-sunken); }
+.live-stat-grid span { color:var(--text-muted); font-size:10px; font-weight:var(--fw-bold); }
+.live-stat-grid b { color:var(--text-primary); font-size:clamp(20px,2.4cqi,30px); font-variant-numeric:tabular-nums; }
+.live-stat-grid small,.identity-evidence { color:var(--text-secondary); font-family:var(--font-mono); font-size:10px; overflow-wrap:anywhere; }
+.identity-evidence { margin:0; }
+.change-recorder { display:grid; gap:var(--space-3); }
+.change-recorder p { margin:0; color:var(--text-secondary); font-size:var(--fs-xs); }
+.change-actions { display:flex; gap:var(--space-2); }
+.change-result { display:grid; grid-template-columns:auto 1fr; gap:4px var(--space-3); padding:var(--space-3); border:1px solid var(--accent-border); border-radius:var(--radius-sm); background:var(--accent-soft); }
+.change-result b { color:var(--accent-hover); font-family:var(--font-mono); font-size:var(--fs-xs); }
+.change-result span,.change-result small,.change-result em { color:var(--text-secondary); font-size:var(--fs-xs); }
+.change-result small,.change-result em { grid-column:1/-1; }
+.runtime-objects summary { cursor:pointer; color:var(--text-primary); font-weight:var(--fw-bold); }
+.runtime-object-copy { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-top:var(--space-3); }
+.runtime-object-copy p { margin:0; color:var(--text-secondary); font-size:var(--fs-xs); }
+.runtime-object-table { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); max-height:360px; margin-top:var(--space-3); overflow:auto; }
+.runtime-object-table > div { min-width:0; display:grid; gap:2px; padding:var(--space-2); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-sunken); }
+.runtime-object-table > div.is-selected { border-color:var(--accent-border); box-shadow:inset 3px 0 0 var(--selected-bar); }
+.runtime-object-table b,.runtime-object-table code,.runtime-object-table span,.runtime-object-table small { overflow-wrap:anywhere; font-size:10px; }
+.runtime-object-table span,.runtime-object-table small { color:var(--text-secondary); }
 .sampling-scope { padding-block:var(--space-3); }
 .sampling-scope summary { color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-bold); cursor:pointer; }
 .sampling-scope p { margin:var(--space-3) 0 0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
@@ -354,5 +520,7 @@ onBeforeUnmount(() => {
   .phase-card > p { min-height:0; }
   .sampler-actions { grid-template-columns:minmax(0,1fr); }
   .sampler-actions button { width:100%; }
+	.live-panel-heading,.change-recorder > header,.runtime-object-copy { align-items:stretch; flex-direction:column; }
+	.live-stat-grid,.runtime-object-table { grid-template-columns:minmax(0,1fr); }
 }
 </style>

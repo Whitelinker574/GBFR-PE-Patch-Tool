@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 )
@@ -19,6 +20,15 @@ func completeFormulaExperimentFixture(t *testing.T) ([]FormulaSampleEvent, map[F
 		{CharacterHash: "AABBCCDD", HP: 100, Attack: 250, StunPower: 30, CritRate: 40, RuntimeVerified: true},
 		{CharacterHash: "AABBCCDD", HP: 100, Attack: 200, StunPower: 30, CritRate: 40, RuntimeVerified: true},
 		{CharacterHash: "AABBCCDD", HP: 100, Attack: 250, StunPower: 30, CritRate: 40, RuntimeVerified: true},
+	}
+	for index := range panels {
+		panels[index].RuntimeID = "AABBCCDD"
+		panels[index].IdentitySource = "map_key"
+		panels[index].RawStunPower = panels[index].StunPower / runtimeCharacterPanelStunDisplayScale
+		panels[index].HPField = RuntimeCharacterPanelFieldReading{RawType: "i32", RelativeOffset: 4, RawBits: fmt.Sprintf("0x%08X", uint32(panels[index].HP)), DisplayScale: 1, StableReads: 3}
+		panels[index].AttackField = RuntimeCharacterPanelFieldReading{RawType: "i32", RelativeOffset: 8, RawBits: fmt.Sprintf("0x%08X", uint32(panels[index].Attack)), DisplayScale: 1, StableReads: 3}
+		panels[index].StunField = RuntimeCharacterPanelFieldReading{RawType: "f32", RelativeOffset: 0x10, RawBits: fmt.Sprintf("0x%08X", math.Float32bits(panels[index].RawStunPower)), DisplayScale: runtimeCharacterPanelStunDisplayScale, StableReads: 3}
+		panels[index].CritField = RuntimeCharacterPanelFieldReading{RawType: "f32", RelativeOffset: 0x14, RawBits: fmt.Sprintf("0x%08X", math.Float32bits(panels[index].CritRate)), DisplayScale: 1, StableReads: 3}
 	}
 	events := make([]FormulaSampleEvent, len(formulaSamplePhaseOrder))
 	raw := make(map[FormulaSamplePhase][]byte, len(events))
@@ -72,7 +82,7 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 	wantEntries := map[string]bool{
 		"manifest.json": false, "events.json": false, "observations.json": false,
 		"candidates.json": false, "formula-model.json": false, "redaction-report.json": false,
-		"README.txt": false, "SHA256SUMS": false,
+		"runtime-layout.json": false, "README.txt": false, "SHA256SUMS": false,
 	}
 	contents := make(map[string][]byte, len(reader.File))
 	for _, file := range reader.File {
@@ -101,8 +111,15 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 	if err := json.Unmarshal(contents["manifest.json"], &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.SchemaVersion != "gbfr-formula-sample/v2" || !manifest.StrictReadOnly || manifest.PhaseCount != 4 {
+	if manifest.SchemaVersion != "gbfr-formula-sample/v3" || !manifest.StrictReadOnly || manifest.PhaseCount != 4 {
 		t.Fatalf("unexpected manifest: %+v", manifest)
+	}
+	var layout RuntimeCharacterPanelLayoutDescriptor
+	if err := json.Unmarshal(contents["runtime-layout.json"], &layout); err != nil {
+		t.Fatal(err)
+	}
+	if layout.GameExecutableSHA256 != runtimeCharacterPanelGameEXESHA256 || len(layout.Fields) != 4 || layout.Fields[2].DisplayScale != 10 {
+		t.Fatalf("incomplete runtime layout evidence: %+v", layout)
 	}
 	var candidates []FormulaScalarCandidate
 	if err := json.Unmarshal(contents["candidates.json"], &candidates); err != nil {
@@ -128,7 +145,7 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 		t.Fatal("candidate export retained absolute A/B bit patterns")
 	}
 
-	joined := string(contents["manifest.json"]) + string(contents["events.json"]) + string(contents["observations.json"]) + string(contents["candidates.json"])
+	joined := string(contents["manifest.json"]) + string(contents["events.json"]) + string(contents["observations.json"]) + string(contents["candidates.json"]) + string(contents["runtime-layout.json"])
 	for _, forbidden := range []string{"processId", "moduleBase", "address", "absoluteTime", "sourcePath", "customName", "notes", "24576"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("redacted evidence leaked %q", forbidden)

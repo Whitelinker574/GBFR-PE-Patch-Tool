@@ -21,6 +21,22 @@ type FormulaSamplerStatus struct {
 	ExperimentType string               `json:"experimentType"`
 }
 
+type FormulaChangeRecordingStatus struct {
+	Recording     bool                       `json:"recording"`
+	Before        RuntimeCharacterPanelStats `json:"before"`
+	EvidenceLevel string                     `json:"evidenceLevel"`
+}
+
+type FormulaChangeAnalysis struct {
+	Before              RuntimeCharacterPanelStats `json:"before"`
+	After               RuntimeCharacterPanelStats `json:"after"`
+	PanelDelta          FormulaPanelDelta          `json:"panelDelta"`
+	Candidates          []FormulaScalarCandidate   `json:"candidates"`
+	PanelChanged        bool                       `json:"panelChanged"`
+	EvidenceLevel       string                     `json:"evidenceLevel"`
+	NegativeObservation string                     `json:"negativeObservation,omitempty"`
+}
+
 type formulaSamplerSession struct {
 	mu              sync.Mutex
 	process         *readOnlyGameProcess
@@ -31,8 +47,121 @@ type formulaSamplerSession struct {
 	isMappedAddress formulaMappedAddressProbe
 	token           string
 	experimentType  string
+	targetHash      uint32
+	statusAddress   uintptr
+	recording       bool
+	recordingPanel  RuntimeCharacterPanelStats
+	recordingRaw    []byte
+	recordingWords  map[int]struct{}
 	ctx             context.Context
 	cancel          context.CancelFunc
+}
+
+func (session *formulaSamplerSession) startChangeRecording() (FormulaChangeRecordingStatus, error) {
+	if session == nil || session.sampler == nil || session.captureStatus == nil {
+		return FormulaChangeRecordingStatus{}, fmt.Errorf("公式变化记录器未初始化")
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.recording {
+		return FormulaChangeRecordingStatus{}, fmt.Errorf("公式变化记录已经开始")
+	}
+	if session.process == nil {
+		return FormulaChangeRecordingStatus{}, fmt.Errorf("只读公式采样连接已关闭")
+	}
+	panel, err := readStableFormulaPanelSnapshots(session.sampler.readSnapshot)
+	if err != nil {
+		return FormulaChangeRecordingStatus{}, err
+	}
+	raw, err := session.captureStatus()
+	if err != nil {
+		return FormulaChangeRecordingStatus{}, err
+	}
+	raw, words, err := redactFormulaMappedPointerWords(raw, session.isMappedAddress)
+	if err != nil {
+		return FormulaChangeRecordingStatus{}, err
+	}
+	session.recording = true
+	session.recordingPanel = panel
+	session.recordingRaw = raw
+	session.recordingWords = words
+	return FormulaChangeRecordingStatus{Recording: true, Before: panel, EvidenceLevel: "stable_before_candidate_transition"}, nil
+}
+
+func (session *formulaSamplerSession) stopChangeRecording() (FormulaChangeAnalysis, error) {
+	if session == nil || session.sampler == nil || session.captureStatus == nil {
+		return FormulaChangeAnalysis{}, fmt.Errorf("公式变化记录器未初始化")
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if !session.recording || len(session.recordingRaw) != formulaStatusObjectScanSize {
+		return FormulaChangeAnalysis{}, fmt.Errorf("公式变化记录尚未开始")
+	}
+	if session.process == nil {
+		return FormulaChangeAnalysis{}, fmt.Errorf("只读公式采样连接已关闭")
+	}
+	after, err := readStableFormulaPanelSnapshots(session.sampler.readSnapshot)
+	if err != nil {
+		return FormulaChangeAnalysis{}, err
+	}
+	raw, err := session.captureStatus()
+	if err != nil {
+		return FormulaChangeAnalysis{}, err
+	}
+	raw, afterWords, err := redactFormulaMappedPointerWords(raw, session.isMappedAddress)
+	if err != nil {
+		return FormulaChangeAnalysis{}, err
+	}
+	excluded := make(map[int]struct{}, len(session.recordingWords)+len(afterWords))
+	for offset := range session.recordingWords {
+		excluded[offset] = struct{}{}
+	}
+	for offset := range afterWords {
+		excluded[offset] = struct{}{}
+	}
+	candidates, err := diffFormulaStatusABAB(session.recordingRaw, raw, session.recordingRaw, raw, session.isMappedAddress, excluded)
+	if err != nil {
+		return FormulaChangeAnalysis{}, err
+	}
+	analysis := FormulaChangeAnalysis{
+		Before:        session.recordingPanel,
+		After:         after,
+		PanelDelta:    formulaPanelDelta(session.recordingPanel, after),
+		Candidates:    candidates,
+		PanelChanged:  !formulaPanelValuesBitEqual(session.recordingPanel, after),
+		EvidenceLevel: "candidate_single_transition_stable_endpoints",
+	}
+	if !analysis.PanelChanged && len(candidates) == 0 {
+		analysis.EvidenceLevel = "negative_observation"
+		analysis.NegativeObservation = "稳定前后四项面板及 24 KiB 状态窗口均未观察到变化；这不是无效果证明。"
+	}
+	session.recording = false
+	session.recordingPanel = RuntimeCharacterPanelStats{}
+	session.recordingRaw = nil
+	session.recordingWords = nil
+	return analysis, nil
+}
+
+func (session *formulaSamplerSession) observe() (RuntimeCharacterPanelStats, error) {
+	if session == nil || session.sampler == nil || session.sampler.readSnapshot == nil {
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("公式采样会话未初始化")
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.process == nil {
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("只读公式采样连接已关闭")
+	}
+	if err := session.process.Validate(); err != nil {
+		return RuntimeCharacterPanelStats{}, err
+	}
+	currentAddress, err := locateRuntimeCharacterPanelStatus(session.process, session.process.moduleBase, session.targetHash)
+	if err != nil {
+		return RuntimeCharacterPanelStats{}, err
+	}
+	if currentAddress != session.statusAddress {
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("角色状态对象已重建，请断开后重新连接采样器")
+	}
+	return readStableFormulaPanelSnapshots(session.sampler.readSnapshot)
 }
 
 func captureStableFormulaStatusSnapshots(validate func() error, readSnapshot func() ([]byte, error)) ([]byte, error) {
@@ -204,6 +333,8 @@ func (a *App) FormulaSamplerAttach(charaHex, experimentType string) (FormulaSamp
 		raw:             make(map[FormulaSamplePhase][]byte, len(formulaSamplePhaseOrder)),
 		pointerWords:    make(map[FormulaSamplePhase]map[int]struct{}, len(formulaSamplePhaseOrder)),
 		experimentType:  experimentType,
+		targetHash:      targetHash,
+		statusAddress:   statusAddress,
 		isMappedAddress: process.IsMappedAddress,
 	}
 	a.formulaSamplerGeneration++
@@ -228,6 +359,47 @@ func (a *App) FormulaSamplerAttach(charaHex, experimentType string) (FormulaSamp
 	}
 	a.formulaSamplerSession = session
 	return session.status(), nil
+}
+
+func (a *App) FormulaSamplerObserveOwned(token string) (RuntimeCharacterPanelStats, error) {
+	a.formulaSamplerMu.Lock()
+	session := a.formulaSamplerSession
+	if token == "" {
+		a.formulaSamplerMu.Unlock()
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("公式采样器必须提供页面所有权令牌")
+	}
+	if session == nil {
+		a.formulaSamplerMu.Unlock()
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("请先连接只读公式采样器")
+	}
+	if token != session.token {
+		a.formulaSamplerMu.Unlock()
+		return RuntimeCharacterPanelStats{}, fmt.Errorf("公式采样会话已被替换")
+	}
+	a.formulaSamplerMu.Unlock()
+	return session.observe()
+}
+
+func (a *App) FormulaSamplerStartChangeRecordingOwned(token string) (FormulaChangeRecordingStatus, error) {
+	a.formulaSamplerMu.Lock()
+	session := a.formulaSamplerSession
+	if token == "" || session == nil || token != session.token {
+		a.formulaSamplerMu.Unlock()
+		return FormulaChangeRecordingStatus{}, fmt.Errorf("公式变化记录需要当前页面的有效所有权令牌")
+	}
+	a.formulaSamplerMu.Unlock()
+	return session.startChangeRecording()
+}
+
+func (a *App) FormulaSamplerStopChangeRecordingOwned(token string) (FormulaChangeAnalysis, error) {
+	a.formulaSamplerMu.Lock()
+	session := a.formulaSamplerSession
+	if token == "" || session == nil || token != session.token {
+		a.formulaSamplerMu.Unlock()
+		return FormulaChangeAnalysis{}, fmt.Errorf("公式变化分析需要当前页面的有效所有权令牌")
+	}
+	a.formulaSamplerMu.Unlock()
+	return session.stopChangeRecording()
 }
 
 func (a *App) FormulaSamplerStatus() FormulaSamplerStatus {

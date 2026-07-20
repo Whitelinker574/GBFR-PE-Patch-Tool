@@ -124,12 +124,18 @@ func readStableFormulaPanelSnapshots(readSnapshot func() (RuntimeCharacterPanelS
 	if !formulaPanelSnapshotsBitEqual(frames[0], frames[1]) || !formulaPanelSnapshotsBitEqual(frames[0], frames[2]) {
 		return RuntimeCharacterPanelStats{}, fmt.Errorf("formula panel changed across three bit-exact snapshots")
 	}
-	frames[0].RuntimeVerified = true
+	frames[0] = markRuntimeCharacterPanelStable(frames[0], len(frames))
 	return frames[0], nil
 }
 
 func formulaPanelSnapshotsBitEqual(left, right RuntimeCharacterPanelStats) bool {
 	return formulaPanelValuesBitEqual(left, right) &&
+		left.CandidateObjectHash == right.CandidateObjectHash &&
+		left.IdentitySource == right.IdentitySource &&
+		left.HPField == right.HPField &&
+		left.AttackField == right.AttackField &&
+		left.StunField == right.StunField &&
+		left.CritField == right.CritField &&
 		left.Source == right.Source &&
 		left.Verification == right.Verification &&
 		left.GameVersion == right.GameVersion &&
@@ -138,8 +144,10 @@ func formulaPanelSnapshotsBitEqual(left, right RuntimeCharacterPanelStats) bool 
 
 func formulaPanelValuesBitEqual(left, right RuntimeCharacterPanelStats) bool {
 	return left.CharacterHash == right.CharacterHash &&
+		left.RuntimeID == right.RuntimeID &&
 		left.HP == right.HP &&
 		left.Attack == right.Attack &&
 		math.Float32bits(left.StunPower) == math.Float32bits(right.StunPower) &&
+		math.Float32bits(left.RawStunPower) == math.Float32bits(right.RawStunPower) &&
 		math.Float32bits(left.CritRate) == math.Float32bits(right.CritRate)
 }

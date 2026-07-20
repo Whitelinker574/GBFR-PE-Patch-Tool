@@ -35,17 +35,40 @@ function normalizePanel(panel) {
   if (!panel || typeof panel !== 'object') throw new TypeError('formula panel is missing')
   const characterHash = String(panel.characterHash ?? '').trim().replace(/^0x/i, '').toUpperCase()
   if (!/^[0-9A-F]{8}$/.test(characterHash)) throw new TypeError('formula panel characterHash must be eight hexadecimal digits')
+	const runtimeId = String(panel.runtimeId ?? characterHash).trim().replace(/^0x/i, '').toUpperCase()
+	if (!/^[0-9A-F]{8}$/.test(runtimeId)) throw new TypeError('formula panel runtimeId must be eight hexadecimal digits')
+	const candidateObjectHash = String(panel.candidateObjectHash ?? '00000000').trim().replace(/^0x/i, '').toUpperCase()
+	if (!/^[0-9A-F]{8}$/.test(candidateObjectHash)) throw new TypeError('formula panel candidateObjectHash must be eight hexadecimal digits')
+	const normalizeField = (field, rawType, relativeOffset, displayScale) => Object.freeze({
+		rawType: String(field?.rawType ?? rawType),
+		relativeOffset: finiteNumber(field?.relativeOffset ?? relativeOffset, 'relativeOffset', { integer: true }),
+		rawBits: String(field?.rawBits ?? ''),
+		displayScale: finiteNumber(field?.displayScale ?? displayScale, 'displayScale'),
+		stableReads: finiteNumber(field?.stableReads ?? 0, 'stableReads', { integer: true }),
+	})
   return Object.freeze({
     characterHash,
+		runtimeId,
+		candidateObjectHash,
+		identitySource: String(panel.identitySource ?? ''),
     hp: finiteNumber(panel.hp, 'hp', { integer: true }),
     attack: finiteNumber(panel.attack, 'attack', { integer: true }),
     stunPower: finiteNumber(panel.stunPower, 'stunPower'),
+		rawStunPower: finiteNumber(panel.rawStunPower ?? panel.stunPower, 'rawStunPower'),
     critRate: finiteNumber(panel.critRate, 'critRate'),
+		hpField: normalizeField(panel.hpField, 'i32', 0x04, 1),
+		attackField: normalizeField(panel.attackField, 'i32', 0x08, 1),
+		stunField: normalizeField(panel.stunField, 'f32', 0x10, 10),
+		critField: normalizeField(panel.critField, 'f32', 0x14, 1),
     source: String(panel.source ?? ''),
     verification: String(panel.verification ?? ''),
     gameVersion: String(panel.gameVersion ?? ''),
     runtimeVerified: panel.runtimeVerified === true,
   })
+}
+
+export function normalizeFormulaPanel(panel) {
+	return normalizePanel(panel)
 }
 
 export function formulaPhaseCopy(phase, selectedLanguage = 'zh') {

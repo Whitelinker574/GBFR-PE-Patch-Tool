@@ -346,8 +346,10 @@ func (a *App) ListSaveSnapshots() ([]SaveSnapshot, error) {
 
 // RestoreSaveSnapshot verifies a snapshot, saves the current slots as a new
 // safety point, then restores every slot contained in the selected snapshot.
+var saveRestoreFindProcessByName = findProcessByName
+
 func (a *App) RestoreSaveSnapshot(id string) (SaveRestoreResult, error) {
-	if _, err := findProcessByName(charaProcessName); err == nil {
+	if _, err := saveRestoreFindProcessByName(charaProcessName); err == nil {
 		return SaveRestoreResult{}, fmt.Errorf("恢复存档前请先完全退出游戏")
 	}
 	offlineSaveMutationMu.Lock()
