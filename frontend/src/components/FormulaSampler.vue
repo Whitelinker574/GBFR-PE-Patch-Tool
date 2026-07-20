@@ -63,7 +63,8 @@ const recording = ref(false)
 const transitionSamples = ref([])
 const changeAnalysis = ref(null)
 let observeTimer = null
-let observing = false
+let observeEpoch = 0
+let observingToken = ''
 let disposed = false
 
 const connected = computed(() => sampler.value.connected)
@@ -89,10 +90,13 @@ async function refreshRuntimeObjects() {
 }
 
 async function observeCurrent() {
-	if (!sampler.value.connected || !sampler.value.sessionToken || observing || disposed) return
-	observing = true
+	const token = sampler.value.sessionToken
+	if (!sampler.value.connected || !token || observingToken === token || disposed) return
+	const epoch = observeEpoch
+	observingToken = token
 	try {
-		const panel = normalizeFormulaPanel(await FormulaSamplerObserveOwned(sampler.value.sessionToken))
+		const panel = normalizeFormulaPanel(await FormulaSamplerObserveOwned(token))
+		if (disposed || epoch !== observeEpoch || sampler.value.sessionToken !== token) return
 		currentPanel.value = panel
 		if (recording.value) {
 			const previous = transitionSamples.value.at(-1)
@@ -101,9 +105,9 @@ async function observeCurrent() {
 			if (signature !== previousSignature) transitionSamples.value = [...transitionSamples.value, panel]
 		}
 	} catch (error) {
-		if (!disposed) announce(errorText(error), 'danger')
+		if (!disposed && epoch === observeEpoch && sampler.value.sessionToken === token) announce(errorText(error), 'danger')
 	} finally {
-		observing = false
+		if (observingToken === token) observingToken = ''
 	}
 }
 
@@ -195,6 +199,11 @@ function announce(text, nextTone = 'info') {
 async function attach() {
   if (busy.value || connected.value) return
   busy.value = true
+  observeEpoch++
+  currentPanel.value = null
+  recording.value = false
+  transitionSamples.value = []
+  changeAnalysis.value = null
   lastExportPath.value = ''
   try {
     const status = normalizeFormulaSamplerStatus(await FormulaSamplerAttach(selectedHash.value, selectedExperimentType.value))
@@ -268,6 +277,8 @@ async function exportBundle() {
 async function close() {
   if (busy.value) return
   busy.value = true
+  observeEpoch++
+  observingToken = ''
   try {
     await FormulaSamplerCloseOwned(sampler.value.sessionToken)
     sampler.value = normalizeFormulaSamplerStatus(null)
@@ -307,6 +318,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true
+	observeEpoch++
+	observingToken = ''
 	if (observeTimer != null) window.clearInterval(observeTimer)
   if (sampler.value.sessionToken) void FormulaSamplerCloseOwned(sampler.value.sessionToken).catch(() => {})
 })

@@ -23,6 +23,15 @@ test('an attach that finishes after navigation closes only its own read-only ses
   assert.match(source, /onBeforeUnmount\([\s\S]*?disposed\s*=\s*true[\s\S]*?FormulaSamplerCloseOwned\(sampler\.value\.sessionToken\)/)
 })
 
+test('a stale observation cannot suppress or overwrite a replacement sampler session', () => {
+  assert.match(source, /let observeEpoch\s*=\s*0/)
+  assert.match(source, /const token\s*=\s*sampler\.value\.sessionToken/)
+  assert.match(source, /const epoch\s*=\s*observeEpoch/)
+  assert.match(source, /epoch\s*!==\s*observeEpoch/)
+  assert.match(source, /sampler\.value\.sessionToken\s*!==\s*token/)
+  assert.match(source, /observeEpoch\+\+/)
+})
+
 test('formula sampler never exposes process identifiers or raw addresses', () => {
   assert.doesNotMatch(source, /\bpid\b/i)
   assert.doesNotMatch(source, /moduleBase|memoryAddress|rawAddress/i)
