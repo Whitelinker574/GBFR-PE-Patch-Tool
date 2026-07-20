@@ -37,3 +37,20 @@ test('the title-record shell has exact English copy instead of mixed substring t
   assert.match(uiTranslations, /'修改任务完成次数，或搜索并维护称号解锁与已查看记录。': 'Edit quest completion counts, or search and maintain title unlock and viewed records\.'/)
   assert.match(uiTranslations, /'称号记录': 'Title Records'/)
 })
+
+test('new freeform factor and inferred mastery copy has exact English translations', () => {
+  for (const text of [
+    '主方向由已点节点自动推导',
+    '继续配置2阶节点；未形成或存在冲突时只提示，不会删除选择。',
+    '方向与激活状态实时计算',
+    '写入检查与提示',
+    '自然配置',
+    '可写警告',
+    '结构不可写',
+    '搜索主词条',
+    '搜索副词条',
+    '搜索主特性名称',
+  ]) {
+    assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
+  }
+})

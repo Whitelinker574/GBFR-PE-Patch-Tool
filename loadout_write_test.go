@@ -780,47 +780,34 @@ func TestLoadoutApplyClonesExactRealSaveSigilTemplateOnSaveCopy(t *testing.T) {
 	}
 }
 
-func TestPrepareLoadoutSigilRejectsNonNaturalDraftValues(t *testing.T) {
+func TestPrepareLoadoutSigilAcceptsWritableFreeformTraitsAndLevels(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
 	item := naturalConstructedSigilItem(t)
-
-	badLevel := item
-	badLevel.Level = 999
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: badLevel}); err == nil || !strings.Contains(err.Error(), "自然范围") {
-		t.Fatalf("应拒绝目录外因子等级，实际错误: %v", err)
+	var freeTrait *TraitDef
+	for index := range cat.Traits {
+		trait := &cat.Traits[index]
+		if isSelectableTrait(trait) && highestLevel(trait.AllowedLevels, derefInt(trait.MaxLevel)) >= 16 {
+			freeTrait = trait
+			break
+		}
 	}
-	badPrimaryLevel := item
-	badPrimaryLevel.PrimaryLevel = 16
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: badPrimaryLevel}); err == nil || !strings.Contains(err.Error(), "自然范围") {
-		t.Fatalf("应拒绝存储范围内但非自然的主词条等级，实际错误: %v", err)
+	if freeTrait == nil {
+		t.Fatal("目录中没有修改上限至少 16 的可选词条")
 	}
-
-	sigil, err := cat.RequireSigil(item.SigilID)
+	item.Level = 16
+	item.PrimaryTraitID = freeTrait.InternalID
+	item.PrimaryLevel = 16
+	item.SecondaryTraitID = freeTrait.InternalID
+	item.SecondaryLevel = 16
+	prepared, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("可编码的非自然配置只能警告，不应拒绝: %v", err)
 	}
-	badSecondary := item
-	badSecondary.SecondaryTraitID = sigil.PrimaryTraitID
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: badSecondary}); err == nil || !strings.Contains(err.Error(), "主副词条") {
-		t.Fatalf("应拒绝不兼容的同名主副词条，实际错误: %v", err)
-	}
-
-	badSecondaryLevel := item
-	badSecondaryLevel.SecondaryLevel = 16
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: badSecondaryLevel}); err == nil || !strings.Contains(err.Error(), "自然范围") {
-		t.Fatalf("应拒绝存储范围内但非自然的副词条等级，实际错误: %v", err)
-	}
-
-	broadFallback := QueueItem{
-		SigilID: "GEEN_146_24", Level: 15, PrimaryLevel: 15,
-		SecondaryTraitID: "SKILL_000_00", SecondaryLevel: 15, Quantity: 1,
-	}
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: broadFallback}); err == nil ||
-		!strings.Contains(err.Error(), "可信") || !strings.Contains(err.Error(), "自然生成") {
-		t.Fatalf("应拒绝只有临时宽泛池、没有显式兼容白名单的副词条组合，实际错误: %v", err)
+	if prepared.item.PrimaryTraitID != freeTrait.InternalID || prepared.item.SecondaryTraitID != freeTrait.InternalID {
+		t.Fatalf("自由主副词条未保留: %+v", prepared.item)
 	}
 }
 
@@ -865,18 +852,18 @@ func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *test
 		t.Fatalf("valid natural draft report=%+v", report)
 	}
 
-	invalid := valid
-	invalid.ConstructedSigils = append([]LoadoutConstructedSigil(nil), valid.ConstructedSigils...)
-	invalid.ConstructedSigils[0].Item.Level = 999
-	report, err = app.LoadoutCheckCompliance(path, invalid)
+	warning := valid
+	warning.ConstructedSigils = append([]LoadoutConstructedSigil(nil), valid.ConstructedSigils...)
+	warning.ConstructedSigils[0].Item.Level = 16
+	report, err = app.LoadoutCheckCompliance(path, warning)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Writable || report.Status != LegalityImpossible || len(report.Items) != 1 || report.Items[0].Status != LegalityImpossible {
-		t.Fatalf("impossible draft report=%+v", report)
+	if !report.Writable || report.Status != LegalityForced || len(report.Items) != 1 || report.Items[0].Status != LegalityForced {
+		t.Fatalf("writable non-natural draft report=%+v", report)
 	}
-	if !strings.Contains(report.Message, "自然范围") || !strings.Contains(report.Items[0].Message, "自然范围") {
-		t.Fatalf("compliance reasons must explain the rejected value: %+v", report)
+	if !strings.Contains(report.Message, "自然") || !strings.Contains(report.Items[0].Message, "自然") {
+		t.Fatalf("compliance warning must explain the non-natural value: %+v", report)
 	}
 
 	after, err := os.ReadFile(path)
@@ -888,7 +875,7 @@ func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *test
 	}
 }
 
-func TestPrepareLoadoutSigilRejectsCatalogEntriesWithoutConstructibleProof(t *testing.T) {
+func TestPrepareLoadoutSigilAllowsCatalogEntriesWithoutNaturalProof(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -914,28 +901,29 @@ func TestPrepareLoadoutSigilRejectsCatalogEntriesWithoutConstructibleProof(t *te
 			SigilID: sigil.InternalID, Level: sigilLevels[0], PrimaryLevel: primaryLevels[0],
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "可信") {
-		t.Fatalf("配装原子构造必须拒绝非可信目录项，实际错误: %v", err)
+	if err != nil {
+		t.Fatalf("已知且可编码的目录项只能提示自然依据不足，不能拒绝: %v", err)
 	}
 }
 
-func TestLoadoutSigilConstructionRejectsUnverifiedSevenNet(t *testing.T) {
+func TestLoadoutSigilConstructionUsesVerifiedSevenNetFlags(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{
+	prepared, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{
 		Index: 0, Item: QueueItem{SigilID: "GEEN_142_02", Level: 1, PrimaryLevel: 1},
-	}); err == nil || !strings.Contains(err.Error(), "GEEN_142_02") {
-		t.Fatalf("配装原子构造应拒绝 GEEN_142_02，实际错误: %v", err)
+	})
+	if err != nil || prepared.flags != 22 {
+		t.Fatalf("配装原子构造应使用 GEEN_142_02 的 flags=22，结果=%+v 错误=%v", prepared, err)
 	}
 
 	originalFinder := loadoutFindProcessByName
 	loadoutFindProcessByName = func(string) (uint32, error) { return 0, errors.New("not running") }
 	t.Cleanup(func() { loadoutFindProcessByName = originalFinder })
-	_, err = (&App{}).LoadoutConstructSigil(filepath.Join(t.TempDir(), "missing.dat"), QueueItem{SigilID: "geen_142_02"})
-	if err == nil || !strings.Contains(err.Error(), "GEEN_142_02") {
-		t.Fatalf("独立构造兼容入口也应拒绝 GEEN_142_02，实际错误: %v", err)
+	_, err = (&App{}).LoadoutConstructSigil(filepath.Join(t.TempDir(), "missing.dat"), QueueItem{SigilID: "GEEN_142_02", Level: 6, PrimaryLevel: 6})
+	if err == nil || strings.Contains(err.Error(), "拒绝伪造") {
+		t.Fatalf("独立构造兼容入口不应再按特殊 flags 拒绝 Seven Net，实际错误: %v", err)
 	}
 }
 
@@ -1129,7 +1117,6 @@ func TestLoadoutApplyRejections(t *testing.T) {
 		{"重复技能", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", WeaponSlotID: ctx.Weapons[0].SlotID, SkillHashes: []string{ctx.Skills[0].Hash, ctx.Skills[0].Hash}}},
 		{"构造因子目录外等级", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, Item: invalidNaturalDraft}}}},
 		{"构造因子索引越界", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 12, Item: naturalConstructedSigilItem(t)}}}},
-		{"未验证构造因子", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, Item: QueueItem{SigilID: "GEEN_142_02", Level: 1, PrimaryLevel: 1}}}}},
 		{"未知操作", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "frobnicate"}},
 	}
 	for _, c := range cases {
@@ -1157,7 +1144,7 @@ func TestLoadoutApplyRejections(t *testing.T) {
 	}
 }
 
-func TestLoadoutWriteLimitsMasteryByTargetCharacterMasterLevel(t *testing.T) {
+func TestLoadoutWriteAllowsMasteryBeyondNormalCharacterUnlockWithWarning(t *testing.T) {
 	path := requireIsolatedSaveQA(t)
 	parsed, err := LoadSaveFile(path)
 	if err != nil {
@@ -1224,15 +1211,12 @@ func TestLoadoutWriteLimitsMasteryByTargetCharacterMasterLevel(t *testing.T) {
 		UnitID: target, ExpectCharaHash: hashText(charaHash), Op: "write", Name: "level-cap-check",
 		MasteryHashes: hashes,
 	})
-	if err == nil {
-		t.Fatalf("Lv1 target accepted two R1 mastery nodes: %v", hashes)
-	}
-	if !strings.Contains(err.Error(), "R1") || !strings.Contains(err.Error(), "1") {
-		t.Fatalf("capacity rejection does not identify the target rank/cap: %v", err)
+	if err != nil {
+		t.Fatalf("Lv1 normal unlock capacity is a gameplay warning, not a structural write limit: %v", err)
 	}
 }
 
-func TestLoadoutCloneCannotBypassTargetCharacterMasteryCapacity(t *testing.T) {
+func TestLoadoutClonePreservesMasteryBeyondNormalCharacterUnlock(t *testing.T) {
 	path := requireIsolatedSaveQA(t)
 	parsed, err := LoadSaveFile(path)
 	if err != nil {
@@ -1305,11 +1289,8 @@ func TestLoadoutCloneCannotBypassTargetCharacterMasteryCapacity(t *testing.T) {
 	_, err = validateLoadoutWrite(save, index, catalog, LoadoutWrite{
 		UnitID: target, ExpectCharaHash: hashText(charaHash), Op: "clone", CloneFromUnitID: source,
 	})
-	if err == nil {
-		t.Fatalf("Lv1 target cloned over-cap mastery from slot %d", source)
-	}
-	if !strings.Contains(err.Error(), "Master Lv1") || !strings.Contains(err.Error(), "容量") {
-		t.Fatalf("clone capacity rejection is not explicit: %v", err)
+	if err != nil {
+		t.Fatalf("clone must preserve structurally valid mastery even beyond normal unlock: %v", err)
 	}
 }
 

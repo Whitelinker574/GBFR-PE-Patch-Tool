@@ -34,7 +34,7 @@ test('自由配置与复制现有都能生成右栏汇总所需的真实节点 h
   }), ['AA', 'BB'])
 })
 
-test('stage one allows all named specializations while stage two and three lock unpacked specialization roots to the primary direction', () => {
+test('all known mastery nodes remain selectable while direction is inferred from picks', () => {
   const attackNamed = { hash: 'A', cat: 'SB_ATK', name: '攻击专精', specialization: true }
   const defenceNamed = { hash: 'D', cat: 'SB_DEF', name: '防御专精', specialization: true }
   const defenceSubstat = { hash: 'DS', cat: 'SB_DEF', name: '', specialization: false }
@@ -43,12 +43,12 @@ test('stage one allows all named specializations while stage two and three lock 
   assert.equal(isMasteryNodeSelectable('R1', defenceNamed, 'SB_ATK'), true)
   assert.equal(isMasteryNodeSelectable('R2', defenceSubstat, 'SB_ATK'), true)
   assert.equal(isMasteryNodeSelectable('R3', defenceSubstat, 'SB_ATK'), true)
-  assert.equal(isMasteryNodeSelectable('R2', attackNamed, ''), false)
+  assert.equal(isMasteryNodeSelectable('R2', attackNamed, ''), true)
   assert.equal(isMasteryNodeSelectable('R2', attackNamed, 'SB_ATK'), true)
-  assert.equal(isMasteryNodeSelectable('R3', defenceNamed, 'SB_ATK'), false)
+  assert.equal(isMasteryNodeSelectable('R3', defenceNamed, 'SB_ATK'), true)
 })
 
-test('changing primary direction removes only off-direction named stage two and three skills', () => {
+test('derived direction never deletes selected mastery nodes', () => {
   const nodes = new Map([
     ['R1-A', { hash: 'R1-A', rank: 'R1', cat: 'SB_ATK', name: '一阶攻击专精', specialization: true }],
     ['R2-A', { hash: 'R2-A', rank: 'R2', cat: 'SB_ATK', name: '', specialization: true }],
@@ -67,8 +67,8 @@ test('changing primary direction removes only off-direction named stage two and 
 
   assert.deepEqual(applyMasteryDirection(picks, 'SB_DEF', nodes), {
     R1: ['R1-A'],
-    R2: ['R2-D', 'R2-DS'],
-    R3: ['R3-LS'],
+    R2: ['R2-A', 'R2-D', 'R2-DS'],
+    R3: ['R3-A', 'R3-LS'],
     EX: ['EX-A'],
   })
 })
@@ -83,4 +83,12 @@ test('primary mastery direction is inferred from the six-node stage-two threshol
   }
   nodes.set('A-NAMED', { hash: 'A-NAMED', rank: 'R2', cat: 'SB_ATK', name: '', specialization: true })
   assert.equal(inferMasteryDirection({ R1: [], R2: [...r2, 'A-NAMED'], R3: [], EX: [] }, nodes), 'SB_DEF')
+})
+
+test('conflicting stage-two specialization roots stay ambiguous instead of choosing by catalog order', () => {
+  const nodes = new Map([
+    ['A', { hash: 'A', rank: 'R2', cat: 'SB_ATK', specialization: true }],
+    ['D', { hash: 'D', rank: 'R2', cat: 'SB_DEF', specialization: true }],
+  ])
+  assert.equal(inferMasteryDirection({ R1: [], R2: ['A', 'D'], R3: [], EX: [] }, nodes), '')
 })

@@ -137,11 +137,11 @@ func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("GEEN_114_90 non-fixed secondary must be rejected, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("GEEN_114_90 non-fixed secondary must warn but remain writable, got %+v", report)
 	}
-	if err := gen.AddToQueue(nonFixed); err == nil {
-		t.Fatal("GEEN_114_90 non-fixed secondary entered the writable queue")
+	if err := gen.AddToQueue(nonFixed); err != nil {
+		t.Fatalf("GEEN_114_90 non-fixed secondary should enter the writable queue: %v", err)
 	}
 
 	missing := fixed
@@ -151,15 +151,15 @@ func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("GEEN_114_90 fixed SkillId2 cannot be omitted, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("GEEN_114_90 missing fixed SkillId2 must warn but remain writable, got %+v", report)
 	}
-	if err := gen.AddToQueue(missing); err == nil {
-		t.Fatal("GEEN_114_90 without its fixed SkillId2 entered the writable queue")
+	if err := gen.AddToQueue(missing); err != nil {
+		t.Fatalf("GEEN_114_90 without fixed SkillId2 should enter the writable queue: %v", err)
 	}
 }
 
-func TestLoadoutDraftRejectsMissingFixedCharacterSecondary(t *testing.T) {
+func TestLoadoutDraftAllowsMissingFixedCharacterSecondaryWithWarning(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -170,8 +170,8 @@ func TestLoadoutDraftRejectsMissingFixedCharacterSecondary(t *testing.T) {
 			SigilID: "GEEN_114_90", Level: 15, PrimaryLevel: 15, Quantity: 1,
 		},
 	})
-	if err == nil {
-		t.Fatal("loadout draft accepted GEEN_114_90 without its fixed SKILL_114_01 secondary")
+	if err != nil {
+		t.Fatalf("loadout draft should preserve a writable non-natural character factor: %v", err)
 	}
 }
 
@@ -363,12 +363,16 @@ func TestCompatibleSecondaryTraitsFailClosedWithoutVerifiedExplicitAllowlist(t *
 	}
 }
 
-func TestSigilQueueRejectsSevenNetSpecialFlagsInOrdinaryConstructor(t *testing.T) {
+func TestSigilQueueAcceptsSevenNetWithSpecialFlagsWarning(t *testing.T) {
 	gen := NewSigilGen()
-	err := gen.AddToQueue(QueueItem{
+	item := QueueItem{
 		SigilID: "GEEN_142_02", Level: 6, PrimaryLevel: 6, Quantity: 1,
-	})
-	if err == nil || !strings.Contains(strings.ToUpper(err.Error()), "GEEN_142_02") || !strings.Contains(err.Error(), "flags=22") {
-		t.Fatalf("普通构造入口必须说明 GEEN_142_02 的特殊 flags，实际错误: %v", err)
+	}
+	report, err := gen.CheckLegality(item)
+	if err != nil || report.Status != LegalityForced || !report.Writable || !strings.Contains(report.Message, "flags=22") {
+		t.Fatalf("Seven Net 应提示特殊 flags 并保持可写，报告=%+v 错误=%v", report, err)
+	}
+	if err := gen.AddToQueue(item); err != nil {
+		t.Fatalf("Seven Net 应进入使用 flags=22 的写入队列: %v", err)
 	}
 }

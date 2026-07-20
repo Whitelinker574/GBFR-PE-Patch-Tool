@@ -1,14 +1,15 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, SummonGetOptions } from '../../wailsjs/go/main/App'
-import { GetCompatibleSecondaryTraits, GetSecondaryTraitLevels, GetSigilList } from '../../wailsjs/go/main/SigilGen'
-import { applyMasteryDirection, groupMasteryNodes, inferMasteryDirection, isMasteryNodeSelectable, resolveMasteryHashes } from '../loadoutMastery'
+import { GetSigilList, GetTraitList } from '../../wailsjs/go/main/SigilGen'
+import { groupMasteryNodes, inferMasteryDirection, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
 import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { buildConstructCatalog, collectBagTraitOptions, filterAndSortBagSigils, filterConstructCatalog, resolveConstructSelection } from '../loadoutCatalogFilters'
 import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import skillIconFiles from '../loadoutSkillIcons.json'
+import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps({
@@ -46,12 +47,12 @@ const bagViewportHeight = ref(420)
 let bagResizeObserver = null
 const factorMode = ref('construct')
 const masteryExpanded = ref(false)
-const masteryDirection = ref('')
 const pendingSkillHash = ref('')
 const constructCatalog = ref([])
-const constructSecondaries = ref([])
+const constructTraits = ref([])
 const constructSearch = ref('')
 const constructSigilId = ref('')
+const constructPrimaryId = ref('')
 const constructSecondaryId = ref('')
 const constructSigilLevel = ref(0)
 const constructPrimaryLevel = ref(0)
@@ -163,6 +164,7 @@ function skillIcon(skill) {
   return assetPath('skills', verifiedFile || 'Plain_Skill_Frame.png')
 }
 function traitIcon(name, hash = '', internalId = '') { return traitAssetIcon({ name, hash, internalId }) }
+function traitIconForOption(trait) { return traitAssetIcon({ name: trait?.displayName, hash: trait?.hash, internalId: trait?.internalId }) }
 
 function normalizedHash(value) { return String(value || '').replace(/^0x/i, '').toUpperCase() }
 const characterAvatar = computed(() => characterAssetIcon(props.charaHash))
@@ -321,26 +323,33 @@ function summonOptionLabel(summon) {
   const sub = summon.subParamName ? `${summon.subParamName} ${formatSignedValue(summon.subParamValue, summon.subParamUnit)}` : '无副参数'
   return `${summon.name} · ${main} · ${sub}`
 }
-const usableConstructCatalog = computed(() => {
-  const existing = new Set((ctx.value?.sigils || []).map(item => normalizedHash(item.hash)))
-  return constructCatalog.value.filter(item => item.constructible !== false && item.internalId !== 'GEEN_142_02' && (item.category !== 'character_sigil' || existing.has(normalizedHash(item.hash))))
-})
-const fullConstructCatalog = computed(() => buildConstructCatalog(usableConstructCatalog.value, ctx.value?.sigils || []))
+const fullConstructCatalog = computed(() => buildConstructCatalog(constructCatalog.value, ctx.value?.sigils || []))
 const filteredConstructCatalog = computed(() => {
   return filterConstructCatalog(fullConstructCatalog.value, constructSearch.value)
 })
 const selectedConstructSigil = computed(() => fullConstructCatalog.value.find(item => item.internalId === constructSigilId.value) || null)
-const selectedConstructSecondary = computed(() => constructSecondaries.value.find(item => item.internalId === constructSecondaryId.value) || null)
+const selectedConstructPrimary = computed(() => constructTraits.value.find(item => item.internalId === constructPrimaryId.value) || null)
+const selectedConstructSecondary = computed(() => constructTraits.value.find(item => item.internalId === constructSecondaryId.value) || null)
 function highestAllowed(levels, fallback = 0) {
   return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
 }
-function naturalLevels(levels) { return (levels || []).filter(level => level >= 1 && level <= 15) }
+function constructTraitWritableMax(trait) { return Math.min(50, Math.max(15, Number(trait?.maxLevel || 0))) }
+function clampConstructLevel(value, max = 50) {
+  const number = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0
+  return Math.min(max, Math.max(0, number))
+}
+function onConstructPrimaryPick(trait) {
+  constructPrimaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
+}
+function onConstructSecondaryPick(trait) {
+  constructSecondaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
+}
 
 async function loadConstructCatalog() {
   if (constructCatalog.value.length || constructLoading.value) return
   constructLoading.value = true
   try {
-    constructCatalog.value = (await GetSigilList()) || []
+    ;[constructCatalog.value, constructTraits.value] = await Promise.all([GetSigilList(), GetTraitList()])
     const first = fullConstructCatalog.value.find(item => item.allowedSigilLevels?.length && item.allowedFirstTraitLevels?.length)
     if (first) constructSigilId.value = first.internalId
   } catch (err) {
@@ -360,64 +369,20 @@ watch(filteredConstructCatalog, matches => {
   constructSigilId.value = resolveConstructSelection(matches, constructSigilId.value, constructSearch.value)
 })
 let pendingConstructRestore = null
-let secondaryRequestId = 0
-watch(constructSigilId, async value => {
-  const requestId = ++secondaryRequestId
+watch(constructSigilId, value => {
   const sigil = fullConstructCatalog.value.find(item => item.internalId === value)
   constructSigilLevel.value = highestAllowed(sigil?.allowedSigilLevels, sigil?.defaultSigilLevel || 0)
   constructPrimaryLevel.value = highestAllowed(sigil?.allowedFirstTraitLevels, sigil?.firstTraitMaxLevel || 0)
-  constructSecondaries.value = []
+  constructPrimaryId.value = sigil?.primaryTraitId || ''
   constructSecondaryId.value = ''
   constructSecondaryLevel.value = 0
   const restore = pendingConstructRestore?.sigilId === value ? pendingConstructRestore : null
   constructSigilLevel.value = restore?.level || constructSigilLevel.value
+  constructPrimaryId.value = restore?.primaryTraitId || constructPrimaryId.value
   constructPrimaryLevel.value = restore?.primaryLevel || constructPrimaryLevel.value
-  if (sigil?.templateSlotId) {
-    if (sigil.supportsSecondaryTrait) {
-      constructSecondaries.value = [{
-        internalId: 'template-secondary',
-        displayName: sigil.templateSecondaryTraitName,
-        allowedLevels: [sigil.templateSecondaryTraitLevel],
-      }]
-      constructSecondaryId.value = 'template-secondary'
-      constructSecondaryLevel.value = sigil.templateSecondaryTraitLevel
-    }
-    if (restore) pendingConstructRestore = null
-    return
-  }
-  if (!sigil?.supportsSecondaryTrait) {
-    if (restore) pendingConstructRestore = null
-    return
-  }
-  try {
-    const result = (await GetCompatibleSecondaryTraits(value)) || []
-    if (requestId !== secondaryRequestId || constructSigilId.value !== value) return
-    constructSecondaries.value = result
-    constructSecondaryId.value = restore?.secondaryTraitId || constructSecondaries.value[0]?.internalId || ''
-  } catch (err) {
-    emit('status', String(err), 'error')
-  }
-})
-let secondaryLevelRequestId = 0
-watch(constructSecondaryId, async value => {
-  const requestId = ++secondaryLevelRequestId
-  const sigilId = constructSigilId.value
-  constructSecondaryLevel.value = 0
-  if (!value || !sigilId) return
-  const sigil = fullConstructCatalog.value.find(item => item.internalId === sigilId)
-  if (sigil?.templateSlotId) {
-    constructSecondaryLevel.value = sigil.templateSecondaryTraitLevel
-    return
-  }
-  try {
-    const levels = await GetSecondaryTraitLevels(sigilId, value)
-    if (requestId !== secondaryLevelRequestId || constructSigilId.value !== sigilId || constructSecondaryId.value !== value) return
-    const restore = pendingConstructRestore?.sigilId === sigilId && pendingConstructRestore?.secondaryTraitId === value ? pendingConstructRestore : null
-    constructSecondaryLevel.value = restore?.secondaryLevel || highestAllowed(levels)
-    if (restore) pendingConstructRestore = null
-  } catch (err) {
-    emit('status', String(err), 'error')
-  }
+  constructSecondaryId.value = restore?.secondaryTraitId || ''
+  constructSecondaryLevel.value = restore?.secondaryLevel || 0
+  if (restore) pendingConstructRestore = null
 })
 
 // 专精：复制现有 or 自由配置（4 档 10/10/10/20）
@@ -433,10 +398,7 @@ function rankPicked(rank) { return (masteryPick.value[rank] || []).length }
 const masteryTotal = computed(() => Object.values(masteryPick.value).reduce((n, a) => n + a.length, 0))
 const masteryRanks = ['R1', 'R2', 'R3', 'EX']
 const masteryRankCap = rank => {
-  const poolCap = Number(masteryPool.value.find(pool => pool.rank === rank)?.cap || 0)
-  const savedCap = statContext.value?.permanentGrowth?.masteryRankCaps?.[rank]
-  if (savedCap === undefined || savedCap === null) return poolCap
-  return Math.min(poolCap, Math.max(0, Number(savedCap) || 0))
+  return Number(masteryPool.value.find(pool => pool.rank === rank)?.cap || 0)
 }
 const masteryCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryRankCap(rank), 0))
 function toggleNode(rank, hash, cap) {
@@ -444,26 +406,18 @@ function toggleNode(rank, hash, cap) {
   const i = arr.indexOf(hash)
   if (i >= 0) arr.splice(i, 1)
   else {
-    const node = masteryNodeByHash.value.get(hash)
-    if (!isMasteryNodeSelectable(rank, node, masteryDirection.value)) return
     if (arr.length < cap) arr.push(hash)
   }
 }
 
-function chooseMasteryDirection(cat) {
-  masteryPick.value = applyMasteryDirection(masteryPick.value, cat, masteryNodeByHash.value)
-  masteryDirection.value = cat
-}
-
 function masteryNodeDisabled(rank, node) {
   const selected = (masteryPick.value[rank] || []).includes(node.hash)
-  return !selected && (rankPicked(rank) >= masteryRankCap(rank) || !isMasteryNodeSelectable(rank, node, masteryDirection.value))
+  return !selected && rankPicked(rank) >= masteryRankCap(rank)
 }
 
 async function loadMasteryPool() {
   masteryPool.value = []
   masteryPick.value = { R1: [], R2: [], R3: [], EX: [] }
-  masteryDirection.value = ''
   if (!ctx.value?.ownerCode) return
   try { masteryPool.value = (await MasteryNodePool(ctx.value.ownerCode)) || [] }
   catch (err) { emit('status', String(err), 'error') }
@@ -482,6 +436,7 @@ const masteryNodeByHash = computed(() => {
   for (const pool of masteryPool.value) for (const node of pool.nodes || []) result.set(node.hash, { ...node, rank: pool.rank, rankLabel: pool.label })
   return result
 })
+const masteryDirection = computed(() => inferMasteryDirection(masteryPick.value, masteryNodeByHash.value))
 function masteryCategoryPicked(rank, cat) {
   return (masteryPick.value[rank] || []).filter(hash => masteryNodeByHash.value.get(hash)?.cat === cat).length
 }
@@ -491,15 +446,6 @@ function masteryStageSkillPicked(rank, cat) {
     return node?.cat === cat && node.specialization
   })
 }
-const masteryDirectionReady = computed(() => {
-  if (masteryTotal.value !== masteryCapacity.value) return true
-  const directionRanks = ['R2', 'R3'].filter(rank => masteryRankCap(rank) >= 6)
-  if (!directionRanks.length) return true
-  return Boolean(
-    masteryDirection.value
-    && directionRanks.every(rank => masteryCategoryPicked(rank, masteryDirection.value) >= 6),
-  )
-})
 const displayedMasteryDirection = computed(() => masteryMode.value === 'free' ? masteryDirection.value : (masterySummary.value?.primaryCat || ''))
 const selectedMasteryDetails = computed(() => selectedMasteryHashes.value.map(hash => masteryNodeByHash.value.get(hash)).filter(Boolean))
 const selectedSkills = computed(() => form.value.skillHashes.map(hash => ctx.value?.skills?.find(skill => skill.hash === hash)).filter(Boolean))
@@ -520,8 +466,8 @@ const masteryDirectionCards = computed(() => {
         let reason = ''
         if (rankCap === 0) reason = `角色强化 Lv${statContext.value?.permanentGrowth?.masterLevel || 1} 尚未解锁`
         else if (rankCap < threshold) reason = `本阶已解锁 ${rankCap}/${threshold}，尚不能激活效果`
-        else if (rank !== 'R1' && !masteryDirection.value) reason = '请选择2阶起主方向'
-        else if (rank !== 'R1' && !directionMatches) reason = '非主方向，仅保留普通子词条'
+        else if (rank !== 'R1' && !masteryDirection.value) reason = '2阶节点尚未形成唯一主方向'
+        else if (rank !== 'R1' && !directionMatches) reason = '非推导主方向，专精技能通常不生效'
         else if (!hasStageSkill) reason = `未选择${rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶'}专精技能`
         else if (count < threshold) reason = `需 ${threshold} 项，当前 ${count} 项`
         return {
@@ -531,6 +477,7 @@ const masteryDirectionCards = computed(() => {
           threshold,
           active: rankCap >= threshold && directionMatches && hasStageSkill && count >= threshold,
           reason,
+          effect: category?.effect || masteryPool.value.find(pool => pool.rank === rank)?.nodes?.find(node => node.cat === group.cat && node.specialization)?.desc || '',
         }
       }
       return {
@@ -540,6 +487,7 @@ const masteryDirectionCards = computed(() => {
         threshold,
         active: !!category?.active,
         reason: category?.reason || (rank === 'R1' ? '三个方向均可激活' : rank === 'R2' ? '达到门槛后成为唯一主方向' : '必须沿用2阶主方向'),
+        effect: category?.effect || masteryPool.value.find(pool => pool.rank === rank)?.nodes?.find(node => node.cat === group.cat && node.specialization)?.desc || '',
       }
     })
     const summaryCategory = masterySummary.value?.ranks?.find(item => item.rank === 'R1')?.categories?.find(item => item.cat === group.cat)
@@ -644,10 +592,6 @@ function setMasteryHashes(hashes) {
     const rank = (typeof value === 'object' && value.rank) || masteryNodeByHash.value.get(hash)?.rank
     if (rank && masteryPick.value[rank]) masteryPick.value[rank].push(hash)
   }
-  masteryDirection.value = inferMasteryDirection(masteryPick.value, masteryNodeByHash.value)
-  if (masteryDirection.value) {
-    masteryPick.value = applyMasteryDirection(masteryPick.value, masteryDirection.value, masteryNodeByHash.value)
-  }
 }
 
 function hydrateFromTarget() {
@@ -744,6 +688,7 @@ function selectFactorSlot(index) {
   pendingConstructRestore = { ...entry.item }
   if (constructSigilId.value === entry.item.sigilId) {
     constructSigilLevel.value = entry.item.level
+    constructPrimaryId.value = entry.item.primaryTraitId || ''
     constructPrimaryLevel.value = entry.item.primaryLevel
     constructSecondaryId.value = entry.item.secondaryTraitId || ''
     constructSecondaryLevel.value = entry.item.secondaryLevel || 0
@@ -798,15 +743,15 @@ watch(op, (nextOp) => {
 
 function stageConstructedFactor() {
   const sigil = selectedConstructSigil.value
+  const primary = selectedConstructPrimary.value
   const secondary = selectedConstructSecondary.value
-  if (!sigil) return
+  if (!sigil || !primary) return
   const item = {
     sigilId: sigil.internalId,
-    templateSlotId: Number(sigil.templateSlotId || 0),
     sigilName: sigil.displayName,
     level: constructSigilLevel.value,
-    primaryTraitId: sigil.primaryTraitId,
-    primaryTraitName: sigil.primaryTraitName,
+    primaryTraitId: primary.internalId,
+    primaryTraitName: primary.displayName,
     primaryLevel: constructPrimaryLevel.value,
     secondaryTraitId: secondary?.internalId || '',
     secondaryTraitName: secondary?.displayName || '',
@@ -816,8 +761,8 @@ function stageConstructedFactor() {
   factorSlots.value = putConstructedFactor(factorSlots.value, activeFactorIndex.value, item, {
     name: sigil.displayName,
     level: constructSigilLevel.value,
-    primaryTraitName: sigil.primaryTraitName,
-    primaryTraitId: sigil.primaryTraitId,
+    primaryTraitName: primary.displayName,
+    primaryTraitId: primary.internalId,
     primaryTraitLevel: constructPrimaryLevel.value,
     secondaryTraitName: secondary?.displayName || '',
     secondaryTraitId: secondary?.internalId || '',
@@ -848,7 +793,7 @@ function buildWriteRequest() {
 }
 
 function complianceLabel(status) {
-  return ({ legal: '合法', forced: '固定组合', unknown: '未证明', impossible: '不可写' })[status] || '待检测'
+  return ({ legal: '自然配置', forced: '可写警告', unknown: '来源未验证', impossible: '结构不可写' })[status] || '待检测'
 }
 
 function scheduleCompliance() {
@@ -880,9 +825,6 @@ const writeInvalid = computed(() => {
   return !form.value.name.trim()
     || nameTooLong.value
     || (writeGlobalSummons.value && !summonSelectionValid.value)
-    || (masteryMode.value === 'free' && masteryTotal.value !== 0 && masteryTotal.value !== masteryCapacity.value)
-    || (masteryMode.value === 'free' && !masteryDirectionReady.value)
-    || (complianceReport.value && !complianceReport.value.writable)
 })
 
 watch([targetSlot, op, form, factorSlots, cloneFrom, writeGlobalSummons, summonSlotIds, () => selectedMasteryHashes.value.slice()], scheduleCompliance, { deep: true })
@@ -1357,20 +1299,23 @@ async function apply() {
                 <small v-if="constructSearch && !filteredConstructCatalog.length" class="catalog-empty">构造目录无匹配结果。</small>
               </label>
               <label><span>因子等级</span>
-                <select v-model.number="constructSigilLevel" class="ui-select"><option v-for="level in naturalLevels(selectedConstructSigil?.allowedSigilLevels)" :key="level" :value="level">Lv{{ level }}</option></select>
+                <input v-model.number="constructSigilLevel" type="number" min="0" max="50" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel)" />
+              </label>
+              <label class="constructor-wide"><span>主词条</span>
+                <CatalogSelect v-model="constructPrimaryId" :options="constructTraits" :icon-resolver="traitIconForOption" placeholder="选择主词条" search-placeholder="搜索主词条" @pick="onConstructPrimaryPick" />
               </label>
               <label><span>主词条等级</span>
-                <select v-model.number="constructPrimaryLevel" class="ui-select"><option v-for="level in naturalLevels(selectedConstructSigil?.allowedFirstTraitLevels)" :key="level" :value="level">Lv{{ level }}</option></select>
+                <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructTraitWritableMax(selectedConstructPrimary)" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructTraitWritableMax(selectedConstructPrimary))" />
               </label>
-              <label v-if="selectedConstructSigil?.supportsSecondaryTrait" class="constructor-wide"><span>副词条</span>
-                <select v-model="constructSecondaryId" class="ui-select"><option value="">— 不设置副词条 —</option><option v-for="item in constructSecondaries" :key="item.internalId" :value="item.internalId">{{ item.displayName }}</option></select>
+              <label class="constructor-wide"><span>副词条</span>
+                <CatalogSelect v-model="constructSecondaryId" :options="constructTraits" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
               </label>
-              <label v-if="selectedConstructSecondary"><span>副词条等级</span><input :value="`Lv${constructSecondaryLevel}`" class="ui-input" readonly /></label>
+              <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructTraitWritableMax(selectedConstructSecondary)" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructTraitWritableMax(selectedConstructSecondary))" /></label>
             </div>
             <div v-if="selectedConstructSigil" class="constructor-preview">
-              <span class="sigil-icon-frame large"><img v-if="traitIcon(selectedConstructSigil.primaryTraitName, '', selectedConstructSigil.primaryTraitId)" :src="traitIcon(selectedConstructSigil.primaryTraitName, '', selectedConstructSigil.primaryTraitId)" alt="" /><i v-else>◆</i></span>
-              <div><b>{{ selectedConstructSigil.displayName }}</b><span>主 · {{ selectedConstructSigil.primaryTraitName }} Lv{{ constructPrimaryLevel }}</span><span v-if="selectedConstructSecondary">副 · {{ selectedConstructSecondary.displayName }} Lv{{ constructSecondaryLevel }}</span></div>
-              <button class="ui-btn is-primary" :disabled="!constructSigilId" @click="stageConstructedFactor">替换槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</button>
+              <span class="sigil-icon-frame large"><img v-if="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" :src="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" alt="" /><i v-else>◆</i></span>
+              <div><b>{{ selectedConstructSigil.displayName }}</b><span>主 · {{ selectedConstructPrimary?.displayName || '未设置' }} Lv{{ constructPrimaryLevel }}</span><span v-if="selectedConstructSecondary">副 · {{ selectedConstructSecondary.displayName }} Lv{{ constructSecondaryLevel }}</span></div>
+              <button class="ui-btn is-primary" :disabled="!constructSigilId || !constructPrimaryId" @click="stageConstructedFactor">替换槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</button>
             </div>
           </div>
         </div>
@@ -1386,6 +1331,7 @@ async function apply() {
               <header><span class="cat-mark">{{ catAbbr(direction.cat) }}</span><div><small>{{ direction.label }}</small><b>{{ direction.specialization }}</b></div><em v-if="displayedMasteryDirection === direction.cat">当前主方向</em></header>
               <div v-for="row in direction.rows" :key="row.rank" class="direction-stage" :class="{ active: row.active }">
                 <b>{{ row.label }}</b><span>{{ row.count }}/{{ row.threshold }}</span><small>{{ row.active ? '专精效果生效' : row.reason }}</small>
+                <p v-if="row.effect" class="direction-effect">{{ row.effect }}</p>
               </div>
             </article>
           </div>
@@ -1407,11 +1353,9 @@ async function apply() {
           </template>
 
           <template v-else>
-            <div class="direction-picker">
-              <div><strong>2阶起主方向</strong><small>1阶三方向均可点；2/3阶沿同一方向各配置至少 6 个节点</small></div>
-              <button v-for="direction in masteryDirectionCards" :key="direction.cat" :class="{ on: masteryDirection === direction.cat }" @click="chooseMasteryDirection(direction.cat)">
-                {{ direction.label }} · {{ direction.specialization }}
-              </button>
+            <div class="mastery-auto-direction">
+              <strong>主方向由已点节点自动推导</strong>
+              <small>{{ masteryDirection ? `当前推导：${masteryDirectionCards.find(item => item.cat === masteryDirection)?.label || masteryDirection}` : '继续配置2阶节点；未形成或存在冲突时只提示，不会删除选择。' }}</small>
             </div>
             <div class="rank-tabs">
               <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" :disabled="masteryRankCap(p.rank) === 0" @click="masteryRankTab = p.rank">
@@ -1419,8 +1363,8 @@ async function apply() {
               </button>
             </div>
             <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="mastery-rule direction-rule">
-              <b>2阶起只保留一个专精方向</b>
-              <span>所选主方向在 2阶与3阶都需达到 6 个节点。其他方向的普通子词条仍可配置，但对应专精效果不会生效，也不能选择非主方向的具名专精技能。</span>
+              <b>方向与激活状态实时计算</b>
+              <span>可自由选择任意已收录节点；偏离游戏通常的2/3阶方向规则时只给提示，原选择保持不变。</span>
             </div>
             <div v-if="masteryRankTab === 'R1'" class="mastery-rule">
               1阶三个方向互不排斥：每组达到 3 项即可激活该方向的1阶专精技能。
@@ -1448,14 +1392,14 @@ async function apply() {
                 </div>
               </section>
             </div>
-            <small class="hint">当前角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} 可配置 {{ masteryRankCap('R1') }} / {{ masteryRankCap('R2') }} / {{ masteryRankCap('R3') }} / {{ masteryRankCap('EX') }}；已解锁的2阶与3阶需沿同一主方向配置。</small>
+            <small class="hint">存档结构容量 {{ masteryRankCap('R1') }} / {{ masteryRankCap('R2') }} / {{ masteryRankCap('R3') }} / {{ masteryRankCap('EX') }}；角色当前强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} 的正常解锁差异会在结果中提示。</small>
           </template>
           </div>
         </div>
       </template>
 
       <section class="compliance-panel ui-card" :class="complianceReport?.status || 'pending'" aria-live="polite">
-        <header><strong>写入合规检测</strong><span>{{ complianceLoading ? '检测中…' : complianceLabel(complianceReport?.status) }}</span></header>
+        <header><strong>写入检查与提示</strong><span>{{ complianceLoading ? '检测中…' : complianceLabel(complianceReport?.status) }}</span></header>
         <p>{{ complianceReport?.message || (writeInvalid ? '完成必填配置后自动检测。' : '正在使用与最终写入相同的后端规则预检。') }}</p>
         <details v-if="complianceReport?.items?.length">
           <summary>查看 {{ complianceReport.items.length }} 个因子槽的检测结果</summary>
@@ -1543,6 +1487,7 @@ async function apply() {
                   <span>{{ cat.specialization || cat.label }}</span>
                   <b>{{ cat.count }}/{{ cat.threshold }}</b>
                   <i>{{ cat.active ? '生效' : cat.reason }}</i>
+                  <p v-if="cat.effect">{{ cat.effect }}</p>
                 </div>
               </template>
               <div v-else class="ex-result">
@@ -1696,10 +1641,11 @@ async function apply() {
 .inline-resource-toggle b { color:var(--text-primary); }
 .inline-resource-toggle small { color:var(--text-muted); }
 .weapon-skill-edit-list { display:flex; flex-direction:column; gap:6px; }
-.weapon-skill-edit-row { min-width:0; display:grid; grid-template-columns:minmax(100px,.7fr) minmax(150px,1.3fr); gap:7px; align-items:center; padding:6px 7px; border:1px solid var(--line-soft); border-radius:6px; background:rgba(255,255,255,.5); }
+.weapon-skill-edit-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:7px; align-items:stretch; padding:6px 7px; border:1px solid var(--line-soft); border-radius:6px; background:rgba(255,255,255,.5); }
 .weapon-skill-edit-row > span { min-width:0; display:flex; flex-direction:column; }
 .weapon-skill-edit-row b { color:var(--text-primary); font-size:var(--fs-xs); }
-.weapon-skill-edit-row small { color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-skill-edit-row small { overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-skill-edit-row .ui-select { width:100%; min-width:0; }
 .summon-slot-list { display:flex; flex-direction:column; gap:8px; }
 .summon-write-toggle { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; padding:7px 8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.055); cursor:pointer; }
 .summon-write-toggle.disabled { opacity:.55; cursor:not-allowed; }
@@ -1802,9 +1748,9 @@ async function apply() {
 .sim-row.def { border-left-color:var(--info); }
 .sim-row.sup { border-left-color:var(--success); }
 .sim-row:nth-child(even) { background:var(--surface-row); }
-.sim-name { font-weight:600; color:var(--text-primary); white-space:nowrap; }
+.sim-name { min-width:0; font-weight:600; color:var(--text-primary); white-space:normal; overflow-wrap:anywhere; }
 .sim-cap { font-style:normal; margin-left:4px; font-size:var(--fs-xs); color:var(--warning-ink); }
-.sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .sim-lv small { color:var(--text-muted); }
 .sim-eff { color:var(--text-secondary); white-space:pre-line; line-height:1.4; }
 .skill-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
@@ -1855,12 +1801,9 @@ async function apply() {
 .rank-tab i { font-style:normal; margin-left:5px; font-size:var(--fs-xs); opacity:.8; }
 .rank-tab i.full { color:var(--success); font-weight:600; }
 .rank-tab.on i.full { color:#bfe6cd; }
-.direction-picker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
-.direction-picker > div { grid-column:1/-1; display:flex; flex-direction:column; gap:1px; }
-.direction-picker strong { font-size:var(--fs-xs); color:var(--text-primary); }
-.direction-picker small { font-size:var(--fs-xs); color:var(--text-muted); }
-.direction-picker button { min-height:38px; padding:5px 8px; border:1px solid var(--line-soft); border-radius:5px; background:var(--panel); color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.3; cursor:pointer; }
-.direction-picker button.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
+.mastery-auto-direction { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 10px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
+.mastery-auto-direction strong { font-size:var(--fs-xs); color:var(--text-primary); }
+.mastery-auto-direction small { min-width:0; color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
 .mastery-rule { display:flex; gap:6px; align-items:center; padding:7px 9px; border:1px solid var(--line-soft); border-radius:6px; background:rgba(63,125,92,.07); color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.45; }
 .mastery-rule.direction-rule { flex-direction:column; align-items:flex-start; }
 .mastery-rule.ex-rule { flex-direction:column; align-items:flex-start; border-color:var(--line-gold); background:rgba(139,103,55,.08); }
@@ -2015,6 +1958,8 @@ async function apply() {
 .direction-stage > span { margin-left:auto; color:var(--gold); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; }
 .direction-stage > small { grid-column:1/-1; min-height:2.8em; color:var(--text-muted); line-height:1.35; }
 .direction-stage.active > small { color:#3f7d5c; font-weight:600; }
+.direction-effect { grid-column:1/-1; margin:2px 0 0; padding-top:4px; border-top:1px dotted var(--line-soft); color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.45; overflow-wrap:anywhere; }
+.mastery-result-cat p { grid-column:1/-1; margin:2px 0 0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.45; overflow-wrap:anywhere; }
 
 .loadout-editor .skill-chips span { display:flex; align-items:center; gap:5px; padding:4px 7px; }
 .loadout-editor .skill-chips span b { width:16px; height:16px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:white; font-size:var(--fs-xs); }

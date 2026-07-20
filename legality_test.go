@@ -57,7 +57,37 @@ func TestSigilLegalityAllowsForcedSecondary(t *testing.T) {
 	}
 }
 
-func TestSigilLegalityRejectsUnrepresentableSecondarySlot(t *testing.T) {
+func TestSigilLegalityPreservesFreeformPrimaryTrait(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigil := &catalog.Sigils[0]
+	var primary *TraitDef
+	for index := range catalog.Traits {
+		candidate := &catalog.Traits[index]
+		if isSelectableTrait(candidate) && candidate.InternalID != sigil.PrimaryTraitID {
+			primary = candidate
+			break
+		}
+	}
+	if primary == nil {
+		t.Fatal("test catalog has no alternate primary trait")
+	}
+	item := QueueItem{SigilID: sigil.InternalID, Level: 15, PrimaryTraitID: primary.InternalID, PrimaryLevel: 15, Quantity: 1}
+	normalized, report, err := (&SigilGen{catalog: catalog}).normalizeQueueItem(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Writable || report.Status != LegalityForced {
+		t.Fatalf("alternate primary must be forced+writable: %+v", report)
+	}
+	if normalized.PrimaryTraitID != primary.InternalID {
+		t.Fatalf("selected primary was replaced: got %s want %s", normalized.PrimaryTraitID, primary.InternalID)
+	}
+}
+
+func TestSigilLegalityAllowsForcedSecondaryOnNaturalSingleSlot(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +111,8 @@ func TestSigilLegalityRejectsUnrepresentableSecondarySlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("expected impossible+blocked, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("non-natural secondary must warn but remain writable, got %+v", report)
 	}
 }
 

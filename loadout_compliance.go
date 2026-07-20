@@ -62,6 +62,15 @@ func (a *App) LoadoutCheckCompliance(path string, write LoadoutWrite) (*LoadoutC
 			item.SigilName = prepared.item.SigilName
 			item.PrimaryTrait = prepared.item.PrimaryTraitName
 			item.SecondaryTrait = prepared.item.SecondaryTraitName
+			_, legality, legalityErr := (&SigilGen{catalog: catalog}).normalizeQueueItem(prepared.item)
+			if legalityErr != nil {
+				item.Status, item.Writable, item.Message = LegalityUnknown, true, legalityErr.Error()
+			} else if legality.Status != LegalityLegal {
+				item.Status, item.Writable, item.Message = legality.Status, legality.Writable, legality.Message
+			} else if _, naturalErr := prepareLoadoutSigilNatural(catalog, draft); naturalErr != nil {
+				item.Status, item.Writable = LegalityForced, true
+				item.Message = fmt.Sprintf("偏离自然生成目录：%s", naturalErr)
+			}
 		}
 		constructed[draft.Index] = draft
 		report.Items = append(report.Items, item)
@@ -104,6 +113,10 @@ func (a *App) LoadoutCheckCompliance(path string, write LoadoutWrite) (*LoadoutC
 		if item.Status == LegalityUnknown && report.Status == LegalityLegal {
 			report.Status = LegalityUnknown
 			report.Message = "写入预检通过；存档现有实例可引用，自然掉落来源未重建"
+		}
+		if item.Status == LegalityForced && report.Status == LegalityLegal {
+			report.Status = LegalityForced
+			report.Message = "结构写入检查通过；部分配置偏离自然生成规则，请按需确认"
 		}
 	}
 	return report, nil

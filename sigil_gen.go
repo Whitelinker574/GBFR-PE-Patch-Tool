@@ -489,30 +489,32 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("数量不能超过 %d", generatorQuantityMax))
 		return item, report, nil
 	}
-	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
-		report := newLegalityReport(LegalityImpossible, false, "因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
-		return item, report, nil
-	}
-
 	sigil, err := sg.catalog.RequireSigil(item.SigilID)
 	if err != nil {
 		report := newLegalityReport(LegalityImpossible, false, err.Error())
 		return item, report, nil
 	}
 	item.SigilName = displaySigilName(sigil)
-	reasons := make([]string, 0, 4)
+	reasons := make([]string, 0, 8)
+	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+		reasons = append(reasons, "Seven Net 使用特殊记录标记，将按已验证的 flags=22 写入")
+	}
 
 	if item.Level < 1 || item.Level > 15 {
 		reasons = append(reasons, fmt.Sprintf("因子等级 %d 超出自然范围 1 到 15", item.Level))
 	}
 
-	primaryTrait, err := sg.catalog.RequireTrait(sigil.PrimaryTraitID)
+	primaryID := item.PrimaryTraitID
+	if primaryID == "" {
+		primaryID = sigil.PrimaryTraitID
+	}
+	primaryTrait, err := sg.catalog.RequireTrait(primaryID)
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
 	item.PrimaryTraitID = primaryTrait.InternalID
 	item.PrimaryTraitName = cnTrait(primaryTrait.DisplayName)
-	primaryLevels, err := sg.catalog.RequirePrimaryTraitLevels(sigil)
+	primaryLevels, err := requireTraitLevels(primaryTrait, "主特性")
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
@@ -520,6 +522,9 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	if item.PrimaryLevel > primaryWritableMax {
 		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的修改上限是 %d，不能写入 %d", item.PrimaryTraitName, primaryWritableMax, item.PrimaryLevel))
 		return item, report, nil
+	}
+	if primaryTrait.InternalID != sigil.PrimaryTraitID {
+		reasons = append(reasons, fmt.Sprintf("主特性「%s」不是因子「%s」的自然主特性", item.PrimaryTraitName, item.SigilName))
 	}
 	if item.Level > sigilWritableLevelMax {
 		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子等级修改上限是 %d，不能写入 %d", sigilWritableLevelMax, item.Level))
@@ -530,66 +535,48 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		reasons = append(reasons, fmt.Sprintf("主特性等级 %d 超出自然范围 1 到 15", item.PrimaryLevel))
 	}
 
-	supports := supportsGeneratedPlusSigil(sigil)
-	if supports {
-		// V+ records still contain a secondary-trait storage slot, but the game
-		// also accepts an empty hash in that slot.  This is how single-trait
-		// factors such as Stout Heart and crab factors are generated in v1.8.0.
-		// Keep the slot in the record and write EmptyHash/0 later; do not invent
-		// a secondary trait or reject the user's explicit "none" choice.
-		if item.SecondaryTraitID == "" {
-			if requiresCharacterSigilSecondary(sigil) {
-				report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("角色因子「%s」必须使用本地 2.0.2 gem/lot 白名单中的副特性，不能留空", item.SigilName))
-				return item, report, nil
-			}
-			item.SecondaryTraitName = ""
-			item.SecondaryLevel = 0
-		} else {
-			secondaryTrait, err := sg.catalog.RequireTrait(item.SecondaryTraitID)
-			if err != nil {
-				report := newLegalityReport(LegalityImpossible, false, err.Error())
-				return item, report, nil
-			}
-			item.SecondaryTraitName = cnTrait(secondaryTrait.DisplayName)
-			secondaryLevels, err := sg.catalog.RequireSecondaryTraitLevels(sigil, secondaryTrait)
-			if err != nil {
-				return item, LegalityReport{}, err
-			}
-			secondaryWritableMax := highestLevel(secondaryLevels, 15)
-			if item.SecondaryLevel > secondaryWritableMax {
-				report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的修改上限是 %d，不能写入 %d", item.SecondaryTraitName, secondaryWritableMax, item.SecondaryLevel))
-				return item, report, nil
-			}
-			if secondaryTrait.InternalID == primaryTrait.InternalID {
-				reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」重复冲突，游戏不会自然生成同名双词条", item.PrimaryTraitName, item.SecondaryTraitName))
-			}
-
-			allowed, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
-			found := false
-			for _, a := range allowed {
-				if a.InternalID == item.SecondaryTraitID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				if strings.EqualFold(derefStr(sigil.Category), "character_sigil") {
-					report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」不在角色因子「%s」的本地 2.0.2 gem/lot 白名单中，拒绝写入", item.SecondaryTraitName, item.SigilName))
-					return item, report, nil
-				}
-				reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」不属于因子「%s」的自然组合，写入后可能不生效", item.PrimaryTraitName, item.SecondaryTraitName, item.SigilName))
-			}
-
-			// Trait metadata describes the storage range (some entries can hold up
-			// to 50), not the naturally obtainable sigil range.  Values above 15
-			// remain structurally writable, but must be reported as forced.
-			if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
-				reasons = append(reasons, fmt.Sprintf("副特性等级 %d 超出自然范围 1 到 15", item.SecondaryLevel))
+	if item.SecondaryTraitID == "" {
+		item.SecondaryTraitName = ""
+		item.SecondaryLevel = 0
+		if requiresCharacterSigilSecondary(sigil) {
+			reasons = append(reasons, "角色因子自然配置通常包含副特性")
+		}
+	} else {
+		secondaryTrait, err := sg.catalog.RequireTrait(item.SecondaryTraitID)
+		if err != nil {
+			report := newLegalityReport(LegalityImpossible, false, err.Error())
+			return item, report, nil
+		}
+		item.SecondaryTraitName = cnTrait(secondaryTrait.DisplayName)
+		secondaryLevels, err := requireTraitLevels(secondaryTrait, "副特性")
+		if err != nil {
+			return item, LegalityReport{}, err
+		}
+		secondaryWritableMax := highestLevel(secondaryLevels, 15)
+		if item.SecondaryLevel > secondaryWritableMax {
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的修改上限是 %d，不能写入 %d", item.SecondaryTraitName, secondaryWritableMax, item.SecondaryLevel))
+			return item, report, nil
+		}
+		if !supportsGeneratedPlusSigil(sigil) {
+			reasons = append(reasons, fmt.Sprintf("因子「%s」自然记录不含副特性", item.SigilName))
+		}
+		if secondaryTrait.InternalID == primaryTrait.InternalID {
+			reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」重复，游戏不会自然生成同名双词条", item.PrimaryTraitName, item.SecondaryTraitName))
+		}
+		allowed, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
+		found := false
+		for _, candidate := range allowed {
+			if candidate.InternalID == secondaryTrait.InternalID {
+				found = true
+				break
 			}
 		}
-	} else if item.SecondaryTraitID != "" {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("%s 的记录没有副特性槽，无法保留所选副特性", item.SigilName))
-		return item, report, nil
+		if !found {
+			reasons = append(reasons, fmt.Sprintf("副特性「%s」不属于因子「%s」的自然组合", item.SecondaryTraitName, item.SigilName))
+		}
+		if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
+			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 超出自然范围 1 到 15", item.SecondaryLevel))
+		}
 	}
 
 	if item.Level < 0 || item.PrimaryLevel < 0 || item.SecondaryLevel < 0 {
@@ -749,7 +736,7 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 			return nil, fmt.Errorf("%s 哈希无效: %s", sigil.DisplayName, sigil.Hash)
 		}
 
-		primaryTrait, _ := sg.catalog.RequireTrait(sigil.PrimaryTraitID)
+		primaryTrait, _ := sg.catalog.RequireTrait(item.PrimaryTraitID)
 		primaryHash, err := ParseHashHex(primaryTrait.Hash)
 		if err != nil {
 			return nil, fmt.Errorf("%s 哈希无效", primaryTrait.DisplayName)
@@ -757,8 +744,8 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 
 		secondaryHash := EmptyHash
 		var secondaryLevel int
-		hasSecondary := supportsGeneratedPlusSigil(sigil)
-		if hasSecondary && item.SecondaryTraitID != "" {
+		hasSecondary := item.SecondaryTraitID != ""
+		if hasSecondary {
 			secondaryTrait, _ := sg.catalog.RequireTrait(item.SecondaryTraitID)
 			secondaryHash, err = ParseHashHex(secondaryTrait.Hash)
 			if err != nil {
@@ -767,9 +754,13 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 			secondaryLevel = item.SecondaryLevel
 		}
 
-		if err := sg.save.PatchSigil(gemUnitID, newSlotID, sigilHash, item.Level,
+		flags := uint32(NormalSigilFlags)
+		if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+			flags = 22
+		}
+		if err := sg.save.PatchSigilWithFlags(gemUnitID, newSlotID, sigilHash, item.Level,
 			primaryHash, item.PrimaryLevel,
-			secondaryHash, secondaryLevel, hasSecondary); err != nil {
+			secondaryHash, secondaryLevel, hasSecondary, flags); err != nil {
 			return nil, fmt.Errorf("写入 %s 失败: %w", item.SigilName, err)
 		}
 		created++
@@ -802,21 +793,25 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		expectedSlotID := uint32(firstNewSlotID + i)
 		sigil, _ := sg.catalog.RequireSigil(item.SigilID)
 		sigilHash, _ := ParseHashHex(sigil.Hash)
-		primaryTrait, _ := sg.catalog.RequireTrait(sigil.PrimaryTraitID)
+		primaryTrait, _ := sg.catalog.RequireTrait(item.PrimaryTraitID)
 		primaryHash, _ := ParseHashHex(primaryTrait.Hash)
 
 		secondaryHash := EmptyHash
 		var secondaryLevel int
-		hasSecondary := supportsGeneratedPlusSigil(sigil)
-		if hasSecondary && item.SecondaryTraitID != "" {
+		hasSecondary := item.SecondaryTraitID != ""
+		if hasSecondary {
 			secondaryTrait, _ := sg.catalog.RequireTrait(item.SecondaryTraitID)
 			secondaryHash, _ = ParseHashHex(secondaryTrait.Hash)
 			secondaryLevel = item.SecondaryLevel
 		}
 
-		if err := verifySave.VerifySigil(gemUnitID, expectedSlotID, sigilHash, item.Level,
+		flags := uint32(NormalSigilFlags)
+		if strings.EqualFold(item.SigilID, "GEEN_142_02") {
+			flags = 22
+		}
+		if err := verifySave.VerifySigilWithFlags(gemUnitID, expectedSlotID, sigilHash, item.Level,
 			primaryHash, item.PrimaryLevel,
-			secondaryHash, secondaryLevel, hasSecondary); err != nil {
+			secondaryHash, secondaryLevel, hasSecondary, flags); err != nil {
 			return nil, fmt.Errorf("因子已写入，但第 %d 个因子回读验证失败: %w", i+1, err)
 		}
 		verified++

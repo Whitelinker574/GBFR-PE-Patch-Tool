@@ -23,7 +23,7 @@ test('constructor search selects the first real match instead of leaving the nat
   assert.equal(resolveConstructSelection([], 'A', '不存在'), '')
 })
 
-test('constructor catalog includes exact real-save templates missing from the natural synthesis catalog', () => {
+test('constructor catalog stays independent from real-save bag instances', () => {
   const merged = buildConstructCatalog(
     [{ internalId: 'A', hash: '11111111', displayName: '攻击力 V+', primaryTraitName: '攻击力' }],
     [{
@@ -32,10 +32,9 @@ test('constructor catalog includes exact real-save templates missing from the na
       secondaryTraitHash: 'C4925BD7', secondaryTraitName: '攻击力', secondaryTraitLevel: 15,
     }],
   )
-  assert.equal(merged.length, 2)
-  assert.equal(merged[1].templateSlotId, 3179)
-  assert.equal(merged[1].displayName, '浪迹天涯V+')
-  assert.deepEqual(filterConstructCatalog(merged, '浪').map(item => item.internalId), ['template:3179'])
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].internalId, 'A')
+  assert.deepEqual(filterConstructCatalog(merged, '浪').map(item => item.internalId), [])
 })
 
 const bag = [

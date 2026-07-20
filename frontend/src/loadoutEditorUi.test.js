@@ -15,10 +15,17 @@ test('mastery starts collapsed while the three-direction summary stays visible',
     'the direction summary must sit between the toggle and collapsible details')
 })
 
-test('a full real-save mastery remains writable without forcing optional named specialization skills', () => {
-  const readyBody = source.match(/const masteryDirectionReady = computed\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
-  assert.match(readyBody, /masteryCategoryPicked\(rank, masteryDirection\.value\) >= 6/)
-  assert.doesNotMatch(readyBody, /masteryStageSkillPicked/)
+test('mastery direction is derived from selected nodes without a manual direction picker', () => {
+  assert.match(source, /inferMasteryDirection\(masteryPick\.value, masteryNodeByHash\.value\)/)
+  assert.doesNotMatch(source, /class="direction-picker"/)
+  assert.doesNotMatch(source, /chooseMasteryDirection/)
+  assert.doesNotMatch(source, /applyMasteryDirection/)
+  assert.doesNotMatch(source, /isMasteryNodeSelectable/)
+})
+
+test('specialization effects remain directly visible in the three-direction summary', () => {
+  assert.match(source, /row\.effect/)
+  assert.match(source, /class="direction-effect"/)
 })
 
 test('result sidebar follows the stable overview, skills, totals, mastery, share order', () => {
@@ -115,11 +122,11 @@ test('character detail separates save base, permanent growth and the fixed basel
   assert.match(source, /角色强化伤害上限/)
 })
 
-test('character mastery level drives the unlocked rank capacity instead of assuming level 50', () => {
-	assert.match(source, /permanentGrowth\?\.masteryRankCaps/)
+test('mastery keeps structural rank capacity while character unlock differences are warnings', () => {
+	assert.doesNotMatch(source, /permanentGrowth\?\.masteryRankCaps/)
 	assert.match(source, /const masteryRankCap =/)
 	assert.match(source, /const masteryCapacity = computed/)
-	assert.match(source, /masteryTotal\.value !== masteryCapacity\.value/)
+	assert.doesNotMatch(source, /masteryTotal\.value !== masteryCapacity\.value/)
 	assert.match(source, /toggleNode\(activeRankPool\.rank, n\.hash, masteryRankCap\(activeRankPool\.rank\)\)/)
 	assert.match(source, /rankPicked\(p\.rank\)[\s\S]*masteryRankCap\(p\.rank\)/)
 	assert.match(source, /已点 \{\{ masteryTotal \}\}\/\{\{ masteryCapacity \}\}/)
@@ -237,4 +244,22 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 	}
 	assert.match(source, /未装入当前草稿/)
 	assert.match(source, /主词条等级从高到低/)
+})
+
+test('constructor searches the factor catalog while primary and secondary traits are freely editable', () => {
+	assert.match(source, /GetTraitList/)
+	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
+	assert.match(source, /v-model="constructPrimaryId"/)
+	assert.match(source, /search-placeholder="搜索主词条"/)
+	assert.match(source, /v-model="constructSecondaryId"/)
+	assert.match(source, /search-placeholder="搜索副词条"/)
+	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
+	assert.doesNotMatch(source, /GetCompatibleSecondaryTraits/)
+})
+
+test('narrow weapon skill editor uses a single shrinkable column', () => {
+	assert.match(source, /\.weapon-skill-edit-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/is)
+	assert.match(source, /\.weapon-skill-edit-row\s+\.ui-select\s*\{[^}]*width\s*:\s*100%/is)
+	assert.match(source, /\.sim-name\s*\{[^}]*min-width\s*:\s*0[^}]*white-space\s*:\s*normal[^}]*overflow-wrap\s*:\s*anywhere/is)
+	assert.match(source, /\.sim-lv\s*\{[^}]*white-space\s*:\s*nowrap/is)
 })

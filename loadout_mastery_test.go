@@ -144,6 +144,9 @@ func TestMasterySummaryFollowsThreeDirectionActivationRules(t *testing.T) {
 	if r2 == nil || !r2.category("SB_DEF").Active || r2.activeCategoryCount() != 1 {
 		t.Fatalf("2阶应仅觉醒生效: %+v", r2)
 	}
+	if strings.TrimSpace(r2.category("SB_DEF").Effect) == "" {
+		t.Fatalf("2阶方向摘要必须直接携带真实专精效果: %+v", r2.category("SB_DEF"))
+	}
 	r3 := summary.rank("R3")
 	if r3 == nil || !r3.category("SB_DEF").Active || r3.activeCategoryCount() != 1 {
 		t.Fatalf("3阶应沿用觉醒: %+v", r3)
@@ -225,23 +228,26 @@ func TestMasteryQuota(t *testing.T) {
 	if _, err := validateMasteryQuota(full, "PL0400", true); err != nil {
 		t.Errorf("满盘 10/10/10/20 应通过，得错误: %v", err)
 	}
-	// 后端写入调用 requireFull=false；一旦实际收到完整 50 节点，仍必须执行方向校验。
+	// 方向是对已选节点的推导结果，不是写入限制；混合方向必须原样保留。
 	wrongDirection := append([]uint32{}, pick("R1", "", 10)...)
 	wrongDirection = append(wrongDirection, pickDirectionalRank("R2", "SB_DEF")...)
 	wrongDirection = append(wrongDirection, pickDirectionalRank("R3", "SB_ATK")...)
 	wrongDirection = append(wrongDirection, pick("EX", "", 20)...)
-	if _, err := validateMasteryQuota(wrongDirection, "PL0400", false); err == nil {
-		t.Error("2/3 阶主方向不一致的满盘应被拒绝")
+	if _, err := validateMasteryQuota(wrongDirection, "PL0400", false); err != nil {
+		t.Errorf("2/3 阶混合方向应可写并由摘要提示，得错误: %v", err)
 	}
-	// 2 阶 4/3/3 没有达到任一主方向门槛，满盘应拒绝。
+	// 2 阶 4/3/3 没有达到任一主方向门槛，也只能提示而不能阻止写入。
 	noPrimary := append([]uint32{}, pick("R1", "", 10)...)
 	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_ATK", 4)...)
 	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_DEF", 3)...)
 	noPrimary = append(noPrimary, pickSubtraits("R2", "SB_LIMIT", 3)...)
 	noPrimary = append(noPrimary, pickDirectionalRank("R3", "SB_DEF")...)
 	noPrimary = append(noPrimary, pick("EX", "", 20)...)
-	if _, err := validateMasteryQuota(noPrimary, "PL0400", true); err == nil {
-		t.Error("2 阶没有达到六节点主方向门槛的满盘应被拒绝")
+	if _, err := validateMasteryQuota(noPrimary, "PL0400", true); err != nil {
+		t.Errorf("没有六节点主方向的满盘仍应可写，得错误: %v", err)
+	}
+	if _, err := validateMasteryQuota(pick("R1", "", 3), "PL0400", true); err != nil {
+		t.Errorf("部分专精向量可编码，只能提示未点满，得错误: %v", err)
 	}
 	// 真实存档允许 2/3 阶只配置方向内的子词条而不选择 100-MSP 专精技能。
 	// 这种满盘必须能保存/分享，但摘要应明确该阶专精效果未生效。

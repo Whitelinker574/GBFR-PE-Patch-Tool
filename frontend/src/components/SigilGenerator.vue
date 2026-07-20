@@ -2,7 +2,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/main/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits, GetAllowedLevels,
-         GetPrimaryTraitLevels, GetSecondaryTraitLevels, GetPrimaryTrait,
+         GetPrimaryTraitLevels, GetSecondaryTraitLevels,
          LoadSaveFile, GetLoadedSaveInfo,
          GetQueue, AddToQueue, RemoveFromQueue, ClearQueue, CheckLegality,
          ApplyQueue, RemoveAllSigils,
@@ -32,6 +32,7 @@ let applyFlashTimer = 0
 // 表单
 const selectedSigilID = ref('')
 const selectedLevel = ref(0)
+const selectedPrimaryTraitID = ref('')
 const selectedPrimaryLevel = ref(0)
 const selectedSecondaryTraitID = ref('')
 const selectedSecondaryLevel = ref(0)
@@ -61,10 +62,7 @@ const showExisting = ref(false)
 const isDeleting = ref(false)
 const loadingExisting = ref(false)
 
-const secondaryPickerOptions = computed(() => secondaryTraits.value.map(trait => ({
-  ...trait,
-  displayName: `${trait.displayName}${allowedSecondaryIDs.value.has(trait.internalId) ? '' : ' · 强制组合'}`,
-})))
+const secondaryPickerOptions = computed(() => secondaryTraits.value)
 
 function traitIconForOption(trait) {
   return traitAssetIcon({
@@ -243,11 +241,12 @@ async function deleteSelected() {
 watch(selectedSigilID, async (id) => {
   selectedPrimaryTrait.value = null
   primaryTraitName.value = ''
+  selectedPrimaryTraitID.value = ''
   if (!id) return
   const sigil = sigils.value.find(s => s.internalId === id)
   if (!sigil) return
 
-  supportsSecondary.value = sigil.supportsSecondaryTrait
+  supportsSecondary.value = true
 
   // 加载等级
   try {
@@ -255,18 +254,10 @@ watch(selectedSigilID, async (id) => {
     primaryTraitLevels.value = await GetPrimaryTraitLevels(id)
   } catch (e) { showStatus(String(e), 'error'); return }
 
-  // 主特性
-  try {
-    const pt = await GetPrimaryTrait(id)
-    selectedPrimaryTrait.value = pt || null
-    primaryTraitName.value = pt ? pt.displayName : ''
-  } catch (e) {
-    selectedPrimaryTrait.value = null
-    primaryTraitName.value = ''
-  }
+  selectedPrimaryTraitID.value = sigil.primaryTraitId || ''
 
   // 副特性
-  if (sigil.supportsSecondaryTrait) {
+  if (supportsSecondary.value) {
     try {
       const allowed = await GetCompatibleSecondaryTraits(id)
       allowedSecondaryIDs.value = new Set(allowed.map(t => t.internalId))
@@ -297,7 +288,7 @@ function buildCurrentItem() {
     sigilId: selectedSigilID.value,
     sigilName: '',
     level: selectedLevel.value,
-    primaryTraitId: '',
+    primaryTraitId: selectedPrimaryTraitID.value,
     primaryTraitName: '',
     primaryLevel: selectedPrimaryLevel.value,
     secondaryTraitId: supportsSecondary.value ? selectedSecondaryTraitID.value : '',
@@ -321,7 +312,17 @@ async function refreshLegality() {
   }
 }
 
-watch([selectedSigilID, selectedLevel, selectedPrimaryLevel, selectedSecondaryTraitID, selectedSecondaryLevel, quantity], refreshLegality)
+watch([selectedSigilID, selectedLevel, selectedPrimaryTraitID, selectedPrimaryLevel, selectedSecondaryTraitID, selectedSecondaryLevel, quantity], refreshLegality)
+
+watch(selectedPrimaryTraitID, id => {
+  const trait = allTraits.value.find(item => item.internalId === id) || null
+  selectedPrimaryTrait.value = trait
+  primaryTraitName.value = trait?.displayName || ''
+  primaryTraitLevels.value = trait?.allowedLevels?.length
+    ? [...trait.allowedLevels]
+    : Array.from({ length: Math.max(0, Number(trait?.maxLevel || 0)) }, (_, index) => index + 1)
+  selectedPrimaryLevel.value = trait ? Math.min(15, Math.max(...primaryTraitLevels.value, 15)) : 0
+})
 
 watch(selectedSecondaryTraitID, async (id) => {
   if (!id || !selectedSigilID.value) {
@@ -485,11 +486,8 @@ async function removeAll() {
       <!-- 主特性 -->
       <div class="field-row">
       <div class="field ui-field">
-        <label class="ui-field-label">主特性</label>
-        <div class="readonly-field ui-input">
-          <img v-if="traitIconForOption(selectedPrimaryTrait)" class="factor-icon" :src="traitIconForOption(selectedPrimaryTrait)" alt="" />
-          <span>{{ primaryTraitName || '—' }}</span>
-        </div>
+        <label class="ui-field-label">主特性 <small>非自然主词条会提示，但不会阻止写入</small></label>
+        <CatalogSelect v-model="selectedPrimaryTraitID" :options="allTraits" :disabled="!selectedSigilID" :icon-resolver="traitIconForOption" placeholder="选择主特性" search-placeholder="搜索主特性名称" />
       </div>
 
       <div class="field level-field ui-field">

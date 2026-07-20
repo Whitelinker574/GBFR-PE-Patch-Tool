@@ -23,23 +23,15 @@ function masteryNode(nodeByHash, hash) {
 }
 
 export function isMasteryNodeSelectable(rank, node, direction) {
-  if (!node) return false
-  if (!['R2', 'R3'].includes(rank) || !node.specialization) return true
-  return Boolean(direction && node.cat === direction)
+  void rank
+  void direction
+  return Boolean(node)
 }
 
 export function applyMasteryDirection(picks = {}, direction, nodeByHash) {
-  const next = {}
-  for (const rank of ['R1', 'R2', 'R3', 'EX']) {
-    const selected = [...(picks[rank] || [])]
-    next[rank] = !['R2', 'R3'].includes(rank)
-      ? selected
-      : selected.filter(hash => {
-          const node = masteryNode(nodeByHash, hash)
-          return !node?.specialization || node.cat === direction
-        })
-  }
-  return next
+  void direction
+  void nodeByHash
+  return Object.fromEntries(['R1', 'R2', 'R3', 'EX'].map(rank => [rank, [...(picks[rank] || [])]]))
 }
 
 export function inferMasteryDirection(picks = {}, nodeByHash) {
@@ -48,17 +40,17 @@ export function inferMasteryDirection(picks = {}, nodeByHash) {
     const node = masteryNode(nodeByHash, hash)
     if (node?.cat in counts) counts[node.cat] += 1
   }
-  const thresholdDirection = CATEGORY_ORDER
+  const thresholdDirections = CATEGORY_ORDER
     .map(cat => ({ cat, count: counts[cat] }))
     .filter(item => item.count >= 6)
-    .sort((a, b) => b.count - a.count)[0]?.cat
-  if (thresholdDirection) return thresholdDirection
+    .sort((a, b) => b.count - a.count)
+  if (thresholdDirections.length === 1) return thresholdDirections[0].cat
+  if (thresholdDirections.length > 1) return ''
 
-  for (const rank of ['R2', 'R3']) {
-    for (const hash of picks[rank] || []) {
-      const node = masteryNode(nodeByHash, hash)
-      if (node?.specialization && CATEGORY_ORDER.includes(node.cat)) return node.cat
-    }
+  const roots = new Set()
+  for (const hash of picks.R2 || []) {
+    const node = masteryNode(nodeByHash, hash)
+    if (node?.specialization && CATEGORY_ORDER.includes(node.cat)) roots.add(node.cat)
   }
-  return ''
+  return roots.size === 1 ? [...roots][0] : ''
 }

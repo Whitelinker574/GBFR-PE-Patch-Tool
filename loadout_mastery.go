@@ -67,6 +67,7 @@ type MasteryCategorySummary struct {
 	Cat            string `json:"cat"`
 	Label          string `json:"label"`
 	Specialization string `json:"specialization"`
+	Effect         string `json:"effect"`
 	Count          int    `json:"count"`
 	Threshold      int    `json:"threshold"`
 	Active         bool   `json:"active"`
@@ -193,6 +194,24 @@ func masterySpecializationName(ownerCode, cat string) string {
 	return catLabelOf(cat)
 }
 
+func masterySpecializationEffect(ownerCode, rank, cat string) string {
+	loadSkillboard()
+	for _, node := range skillboardAllNodes {
+		if node.Char != ownerCode || node.Cat != cat || strings.TrimSpace(node.Desc) == "" {
+			continue
+		}
+		nodeRank, _, ok := masteryRankOfGrp(node.Grp)
+		if !ok || nodeRank != rank {
+			continue
+		}
+		hash, _ := ParseHashHex(node.Hash)
+		if (rank == "R1" && strings.TrimSpace(node.Name) != "") || isMasterySpecializationHash(hash) {
+			return node.Desc
+		}
+	}
+	return ""
+}
+
 func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSummary, error) {
 	if ownerCode == "" {
 		return nil, fmt.Errorf("无法确定专精盘归属码")
@@ -230,7 +249,7 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 
 	r2Primary := ""
 	for _, cat := range catOrder {
-		if counts["R2"][cat] >= 6 && stageSkillSelected["R2"][cat] {
+		if counts["R2"][cat] >= 6 {
 			r2Primary = cat
 			break
 		}
@@ -248,7 +267,7 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 			count := counts[rank.Rank][cat]
 			cs := MasteryCategorySummary{
 				Cat: cat, Label: catLabelOf(cat), Specialization: masterySpecializationName(ownerCode, cat),
-				Count: count, Threshold: threshold,
+				Effect: masterySpecializationEffect(ownerCode, rank.Rank, cat), Count: count, Threshold: threshold,
 			}
 			switch rank.Rank {
 			case "R1":
@@ -313,12 +332,9 @@ func (a *App) MasterySummarize(ownerCode string, hexes []string) (*MasteryBuildS
 // 并可选地要求正好点满 50（10/10/10/20）。返回每档实际计数。
 // 用于 loadout_write 写入前的合法性校验。
 func validateMasteryQuota(hashes []uint32, ownerCode string, requireFull bool) (map[string]int, error) {
+	_ = requireFull
 	loadSkillboard()
 	counts := map[string]int{"R1": 0, "R2": 0, "R3": 0, "EX": 0}
-	categoryCounts := map[string]map[string]int{
-		"R1": {}, "R2": {}, "R3": {}, "EX": {},
-	}
-	selectedRoots := map[string]map[string]SkillboardNode{"R2": {}, "R3": {}}
 	seen := map[uint32]bool{}
 	for _, h := range hashes {
 		if h == EmptyHash || h == 0 {
@@ -340,53 +356,8 @@ func validateMasteryQuota(hashes []uint32, ownerCode string, requireFull bool) (
 			return counts, fmt.Errorf("专精节点 %08X 档位未知", h)
 		}
 		counts[rank]++
-		categoryCounts[rank][n.Cat]++
-		if (rank == "R2" || rank == "R3") && isMasterySpecializationHash(h) {
-			selectedRoots[rank][n.Cat] = n
-		}
 		if counts[rank] > cap {
 			return counts, fmt.Errorf("%s 档专精超过上限 %d 个", masteryRankLabel(rank), cap)
-		}
-	}
-	fullBuild := true
-	for _, r := range masteryRanks {
-		if counts[r.Rank] != r.Cap {
-			fullBuild = false
-			break
-		}
-	}
-	if requireFull {
-		for _, r := range masteryRanks {
-			if counts[r.Rank] != r.Cap {
-				return counts, fmt.Errorf("满级专精盘需正好 10/10/10/20，%s 档当前 %d/%d", r.Label, counts[r.Rank], r.Cap)
-			}
-		}
-	}
-	// 前端只允许 0 或完整 50 节点写入，但后端也必须独立保护方向规则。
-	// 这里同时覆盖 requireFull=false 的写入 API，避免绕过 UI 写出 4/3/3 的伪满盘。
-	if requireFull || fullBuild {
-		primary := ""
-		for _, cat := range []string{"SB_ATK", "SB_DEF", "SB_LIMIT"} {
-			if categoryCounts["R2"][cat] >= 6 {
-				primary = cat
-				break
-			}
-		}
-		if primary == "" {
-			return counts, fmt.Errorf("2阶专精必须选择一个主方向并达到 6 个节点")
-		}
-		if categoryCounts["R3"][primary] < 6 {
-			return counts, fmt.Errorf("3阶专精必须沿用2阶主方向 %s 并达到 6 个节点", catLabelOf(primary))
-		}
-		// 100-MSP 专精技能是可选节点：真实满级存档可以只点满该
-		// 方向的子词条。摘要会把这类配置标成“未选择专精技能”，
-		// 因而不会错误计入专精效果，但分享和原样回写必须保留它。
-		for _, rank := range []string{"R2", "R3"} {
-			for cat, node := range selectedRoots[rank] {
-				if cat != primary {
-					return counts, fmt.Errorf("%s 的非主方向专精技能节点 %s（%s）不可选择", masteryRankLabel(rank), node.Desc, catLabelOf(cat))
-				}
-			}
 		}
 	}
 	return counts, nil

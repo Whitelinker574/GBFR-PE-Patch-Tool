@@ -2,40 +2,9 @@ function normalizedText(value) {
   return String(value || '').trim().toLocaleLowerCase()
 }
 
-function normalizedHash(value) {
-  const cleaned = String(value || '').replace(/^0x/i, '').trim()
-  return cleaned ? cleaned.padStart(8, '0').toUpperCase() : ''
-}
-
 export function buildConstructCatalog(naturalItems, bagItems) {
-  const result = [...(naturalItems || [])]
-  const catalogHashes = new Set(result.map(item => normalizedHash(item.hash)).filter(Boolean))
-  const templateSignatures = new Set()
-  for (const item of bagItems || []) {
-    const slotId = Number(item.slotId || 0)
-    const hash = normalizedHash(item.hash)
-    if (!slotId || !hash || catalogHashes.has(hash)) continue
-    const signature = [hash, item.level, item.primaryTraitHash, item.primaryTraitLevel, item.secondaryTraitHash, item.secondaryTraitLevel].join(':')
-    if (templateSignatures.has(signature)) continue
-    templateSignatures.add(signature)
-    result.push({
-      internalId: `template:${slotId}`,
-      templateSlotId: slotId,
-      hash,
-      displayName: item.name || item.primaryTraitName || `背包因子 #${slotId}`,
-      primaryTraitId: '',
-      primaryTraitName: item.primaryTraitName || '',
-      allowedSigilLevels: [Number(item.level || 0)].filter(Boolean),
-      defaultSigilLevel: Number(item.level || 0),
-      allowedFirstTraitLevels: [Number(item.primaryTraitLevel || 0)].filter(Boolean),
-      firstTraitMaxLevel: Number(item.primaryTraitLevel || 0),
-      supportsSecondaryTrait: Boolean(item.secondaryTraitHash && normalizedHash(item.secondaryTraitHash) !== '887AE0B0'),
-      templateSecondaryTraitName: item.secondaryTraitName || '',
-      templateSecondaryTraitLevel: Number(item.secondaryTraitLevel || 0),
-      source: 'save-template',
-    })
-  }
-  return result
+  void bagItems
+  return [...(naturalItems || [])]
 }
 
 export function filterConstructCatalog(items, query) {

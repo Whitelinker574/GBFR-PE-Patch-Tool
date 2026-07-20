@@ -132,9 +132,6 @@ func (a *App) LoadoutConstructSigil(path string, item QueueItem) (*ApplyResult, 
 	if path == "" {
 		return nil, fmt.Errorf("存档路径不能为空")
 	}
-	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
-		return nil, fmt.Errorf("因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
-	}
 	if _, err := loadoutFindProcessByName(charaProcessName); err == nil {
 		return nil, fmt.Errorf("写入存档前请先完全退出游戏，避免游戏把旧数据写回")
 	}
@@ -404,6 +401,63 @@ func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*prepared
 		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
 	}
 	item := draft.Item
+	item.Quantity = 1
+	normalized, report, err := (&SigilGen{catalog: cat}).normalizeQueueItem(item)
+	if err != nil {
+		return nil, err
+	}
+	if !report.Writable {
+		return nil, fmt.Errorf("%s", report.Message)
+	}
+	sigil, err := cat.RequireSigil(normalized.SigilID)
+	if err != nil {
+		return nil, err
+	}
+	primary, err := cat.RequireTrait(normalized.PrimaryTraitID)
+	if err != nil {
+		return nil, err
+	}
+	sigilHash, err := ParseHashHex(sigil.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("因子「%s」哈希无效: %w", displaySigilName(sigil), err)
+	}
+	primaryHash, err := ParseHashHex(primary.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("主词条「%s」哈希无效: %w", cnTrait(primary.DisplayName), err)
+	}
+	flags := uint32(NormalSigilFlags)
+	if strings.EqualFold(normalized.SigilID, "GEEN_142_02") {
+		flags = 22
+	}
+	prepared := &preparedLoadoutSigil{
+		index: draft.Index, item: normalized, sigilHash: sigilHash,
+		primaryHash: primaryHash, secondaryHash: EmptyHash,
+		hasSecondary: normalized.SecondaryTraitID != "", flags: flags,
+	}
+	if !prepared.hasSecondary {
+		prepared.item.SecondaryLevel = 0
+		return prepared, nil
+	}
+	secondary, err := cat.RequireTrait(normalized.SecondaryTraitID)
+	if err != nil {
+		return nil, err
+	}
+	secondaryHash, err := ParseHashHex(secondary.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("副词条「%s」哈希无效: %w", cnTrait(secondary.DisplayName), err)
+	}
+	prepared.secondaryHash = secondaryHash
+	prepared.secondaryLevel = normalized.SecondaryLevel
+	return prepared, nil
+}
+
+// prepareLoadoutSigilNatural 保留自然目录判定，仅用于生成可读警告；
+// 是否能够编码和写入由 prepareLoadoutSigil 单独决定。
+func prepareLoadoutSigilNatural(cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if draft.Index < 0 || draft.Index >= loadoutMaxSigils {
+		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
+	}
+	item := draft.Item
 	if strings.EqualFold(item.SigilID, "GEEN_142_02") {
 		return nil, fmt.Errorf("因子 GEEN_142_02 是已验证的 Seven Net 商店特典，真实记录使用特殊 flags=22；普通构造器只写 flags=2，拒绝伪造")
 	}
@@ -663,11 +717,9 @@ func validateCharacterMasteryRankCaps(save *SaveData, charaHash uint32, counts m
 }
 
 func validateLoadoutMasteryForCharacter(save *SaveData, charaHash uint32, ownerCode string, hashes []uint32) error {
-	counts, err := validateMasteryQuota(hashes, ownerCode, false)
-	if err != nil {
-		return err
-	}
-	return validateCharacterMasteryRankCaps(save, charaHash, counts)
+	_, _ = save, charaHash
+	_, err := validateMasteryQuota(hashes, ownerCode, false)
+	return err
 }
 
 // validateLoadoutWrite 对一条写入请求做完整预校验，返回可落盘的 resolvedWrite。
@@ -780,7 +832,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 	if len(w.SigilSlotIDs) > loadoutMaxSigils {
 		return nil, fmt.Errorf("因子最多 %d 个，收到 %d", loadoutMaxSigils, len(w.SigilSlotIDs))
 	}
-	precSigils, precSkills := ix.charaPrecedent(save, blockChara)
+	_, precSkills := ix.charaPrecedent(save, blockChara)
 	constructedIndexes := make(map[int]bool, len(w.ConstructedSigils))
 	for _, draft := range w.ConstructedSigils {
 		if constructedIndexes[draft.Index] {
@@ -789,9 +841,6 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		prepared, err := prepareLoadoutSigilForSave(save, ix, cat, draft)
 		if err != nil {
 			return nil, fmt.Errorf("构造第 %d 个因子失败: %w", draft.Index+1, err)
-		}
-		if _, allowed := loadoutSigilAccess(cat, prepared.sigilHash, precSigils); !allowed {
-			return nil, fmt.Errorf("因子「%s」是角色专属或未收录因子，但该角色现有配装没有可验证的使用先例", prepared.item.SigilName)
 		}
 		constructedIndexes[draft.Index] = true
 		rw.constructed = append(rw.constructed, prepared)
@@ -824,10 +873,6 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		h := ix.gemHash[gu]
 		if h == nil {
 			return nil, fmt.Errorf("因子 SlotID %d 无 hash", sid)
-		}
-		hv := h.Uint32()
-		if _, allowed := loadoutSigilAccess(cat, hv, precSigils); !allowed {
-			return nil, fmt.Errorf("因子「%s」是角色专属或未收录因子，且该角色的现有配装从未用过它，无法确认可装", sigilDisplayNameOr(hv))
 		}
 	}
 
