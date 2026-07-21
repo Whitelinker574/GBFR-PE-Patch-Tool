@@ -63,17 +63,14 @@ func TestSigilCatalogMarksOnlyVerifiedNaturalEntriesConstructible(t *testing.T) 
 		t.Fatalf("已验证且有显式副词条白名单的因子应可构造: %#v", safe)
 	}
 
-	temporaryPool := sigilInfoJSONByID(t, "GEEN_000_24")
-	if boolField(t, temporaryPool, "verified") || boolField(t, temporaryPool, "constructible") {
-		t.Fatalf("medium 且备注明确为临时全词条池的记录不得标为可构造: %#v", temporaryPool)
+	tableBackedPool := sigilInfoJSONByID(t, "GEEN_000_24")
+	if !boolField(t, tableBackedPool, "verified") || !boolField(t, tableBackedPool, "constructible") {
+		t.Fatalf("gem/lot 三表验证的记录应可构造: %#v", tableBackedPool)
 	}
 
-	noExplicitAllowlist := sigilInfoJSONByID(t, "GEEN_063_24")
-	if !boolField(t, noExplicitAllowlist, "verified") {
-		t.Fatalf("物品与主词条已验证的记录仍应保留 verified 状态: %#v", noExplicitAllowlist)
-	}
-	if boolField(t, noExplicitAllowlist, "constructible") {
-		t.Fatalf("带副词条槽但没有显式兼容白名单的 + 因子不得作为安全构造项: %#v", noExplicitAllowlist)
+	tableBackedDodge := sigilInfoJSONByID(t, "GEEN_063_24")
+	if !boolField(t, tableBackedDodge, "verified") || !boolField(t, tableBackedDodge, "constructible") {
+		t.Fatalf("Improved Dodge+ 的本地 lot 7 已闭环，应可构造: %#v", tableBackedDodge)
 	}
 
 	sevenNet := sigilInfoJSONByID(t, "GEEN_142_02")
@@ -332,15 +329,15 @@ func TestConstructibleSigilMetadataUsesOnlyNaturalLevels(t *testing.T) {
 	}
 }
 
-func TestCompatibleSecondaryTraitsFailClosedWithoutVerifiedExplicitAllowlist(t *testing.T) {
+func TestCompatibleSecondaryTraitsMatchFreshLocalLots(t *testing.T) {
 	gen := NewSigilGen()
-	for _, id := range []string{"GEEN_063_24", "GEEN_146_24", "GEEN_000_24"} {
+	for id, wantCount := range map[string]int{"GEEN_063_24": 16, "GEEN_146_24": 38, "GEEN_000_24": 59} {
 		traits, err := gen.GetCompatibleSecondaryTraits(id)
 		if err != nil {
 			t.Fatalf("%s 读取兼容副词条失败: %v", id, err)
 		}
-		if len(traits) != 0 {
-			t.Fatalf("%s 没有可信显式白名单却返回 %d 个兼容副词条", id, len(traits))
+		if len(traits) != wantCount {
+			t.Fatalf("%s 兼容副词条=%d，2.0.2 本地 lot 应为 %d", id, len(traits), wantCount)
 		}
 	}
 

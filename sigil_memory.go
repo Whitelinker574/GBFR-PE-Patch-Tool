@@ -139,14 +139,16 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		sigilMaxLevel := maxNaturalSigilLevel(naturalSigilLevelSet)
 		primaryMaxLevel := maxNaturalSigilLevel(naturalPrimaryLevels)
 		// Keep the memory editor's legality hints in sync with the save
-		// generator. GetAllowedSecondaryTraits applies the catalog-wide
-		// eligibility flags and the DLC compatibility additions (for example
-		// Precise Wrath) that are not always materialised in every sigil's raw
-		// allowedSecondaryTraitIds array.
+		// generator. The explicit IDs are the exact local gem/lot join; the
+		// shared resolver applies the same trait eligibility and duplicate-primary
+		// exclusions as offline construction.
 		var allowedSecHashes []uint32
 		if allowedTraits, err := catalog.GetAllowedSecondaryTraits(sigil); err == nil {
 			allowedSecHashes = make([]uint32, 0, len(allowedTraits))
 			for _, trait := range allowedTraits {
+				if trait.InternalID == sigil.PrimaryTraitID {
+					continue
+				}
 				if h, ok := traitHashByID[trait.InternalID]; ok {
 					allowedSecHashes = append(allowedSecHashes, h)
 				}

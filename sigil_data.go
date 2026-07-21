@@ -244,13 +244,7 @@ func isSelectableTrait(trait *TraitDef) bool {
 }
 
 func supportsGeneratedPlusSigil(sigil *SigilDef) bool {
-	if sigil == nil {
-		return false
-	}
-	if sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait {
-		return true
-	}
-	return strings.HasSuffix(sigil.DisplayName, " V") || strings.EqualFold(sigil.DisplayName, "Stout Heart")
+	return sigil != nil && sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait
 }
 
 func requiresCharacterSigilSecondary(sigil *SigilDef) bool {
@@ -356,17 +350,8 @@ func displaySigilName(sigil *SigilDef) string {
 	if sigil == nil {
 		return ""
 	}
-	// Stout Heart keeps its real in-game item name even when the save record
-	// carries a constructed secondary trait.  Appending "+" here invents a
-	// name that the freshly written save never reports back.
-	if strings.EqualFold(sigil.DisplayName, "Stout Heart") {
-		return cnName(sigil.DisplayName)
-	}
 	if supportsGeneratedPlusSigil(sigil) {
-		if sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait {
-			return cnName(sigil.DisplayName)
-		}
-		return cnName(sigil.DisplayName) + "+"
+		return cnName(sigil.DisplayName)
 	}
 	return cnName(sigil.DisplayName)
 }
@@ -406,18 +391,13 @@ func (c *Catalog) GetAllowedSecondaryTraits(sigil *SigilDef) ([]*TraitDef, error
 	}
 
 	if len(sigil.AllowedSecondaryTraitIDs) > 0 {
-		result := make([]*TraitDef, 0, len(sigil.AllowedSecondaryTraitIDs)+1)
+		result := make([]*TraitDef, 0, len(sigil.AllowedSecondaryTraitIDs))
 		for _, id := range sigil.AllowedSecondaryTraitIDs {
 			trait, err := c.RequireTrait(id)
 			if err != nil {
 				continue
 			}
 			result = appendIfAllowed(result, trait)
-		}
-		if !strings.EqualFold(derefStr(sigil.Category), "character_sigil") {
-			if trait, err := c.RequireTrait("SKILL_109_00"); err == nil {
-				result = appendIfAllowed(result, trait)
-			}
 		}
 		return result, nil
 	}

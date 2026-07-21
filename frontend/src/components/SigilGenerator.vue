@@ -246,7 +246,7 @@ watch(selectedSigilID, async (id) => {
   const sigil = sigils.value.find(s => s.internalId === id)
   if (!sigil) return
 
-  supportsSecondary.value = true
+  supportsSecondary.value = Boolean(sigil.supportsSecondaryTrait)
 
   // 加载等级
   try {
@@ -261,7 +261,7 @@ watch(selectedSigilID, async (id) => {
     try {
       const allowed = await GetCompatibleSecondaryTraits(id)
       allowedSecondaryIDs.value = new Set(allowed.map(t => t.internalId))
-      secondaryTraits.value = allTraits.value
+      secondaryTraits.value = allowed
       // v1.8.0 supports intentionally leaving the secondary slot empty to
       // generate a single-trait factor.  Do not silently restore a default
       // trait when the user changes the primary factor.
@@ -478,21 +478,21 @@ async function removeAll() {
 
       <!-- 因子等级 -->
       <div class="field level-field ui-field">
-        <label class="ui-field-label">因子等级 <small :class="{ overcap: selectedLevel > 15 }">{{ selectedLevel > 15 ? `超过合规上限 15 / 修改上限 ${sigilWritableMax}` : `合规上限 15 / 修改上限 ${sigilWritableMax}` }}</small></label>
-        <input v-model.number="selectedLevel" type="number" min="0" :max="sigilWritableMax" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedLevel > 15 }" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, sigilWritableMax)" />
+        <label class="ui-field-label">因子等级 <small>本地表自然上限 15</small></label>
+        <input v-model.number="selectedLevel" type="number" min="1" max="15" class="text-input compact-number ui-input" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, 15)" />
       </div>
       </div>
 
       <!-- 主特性 -->
       <div class="field-row">
       <div class="field ui-field">
-        <label class="ui-field-label">主特性 <small>非自然主词条会提示，但不会阻止写入</small></label>
-        <CatalogSelect v-model="selectedPrimaryTraitID" :options="allTraits" :disabled="!selectedSigilID" :icon-resolver="traitIconForOption" placeholder="选择主特性" search-placeholder="搜索主特性名称" />
+        <label class="ui-field-label">主特性 <small>由 gem.tbl 固定</small></label>
+        <div class="text-input ui-input">{{ selectedPrimaryTrait?.displayName || '尚未选择因子' }}</div>
       </div>
 
       <div class="field level-field ui-field">
         <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `超过合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
-        <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedPrimaryLevel > primaryNaturalMax }" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
+        <input v-model.number="selectedPrimaryLevel" type="number" min="1" :max="primaryNaturalMax" class="text-input compact-number ui-input" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryNaturalMax)" />
       </div>
       </div>
 
@@ -500,12 +500,12 @@ async function removeAll() {
       <template v-if="supportsSecondary">
         <div class="field-row">
         <div class="field ui-field">
-          <label class="ui-field-label">副特性 <small>非自然组合会提示，但不会阻止写入</small></label>
+          <label class="ui-field-label">副特性 <small>仅显示本地 2.0.2 gem/lot 表允许项</small></label>
           <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryTraits.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
         </div>
         <div class="field level-field ui-field">
           <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `超过合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
-          <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedSecondaryLevel > secondaryNaturalMax }" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
+          <input v-model.number="selectedSecondaryLevel" type="number" min="1" :max="secondaryNaturalMax" class="text-input compact-number ui-input" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryNaturalMax)" />
         </div>
         </div>
       </template>

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, SummonGetOptions } from '../../wailsjs/go/main/App'
-import { GetSigilList, GetTraitList } from '../../wailsjs/go/main/SigilGen'
+import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/main/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
 import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
@@ -50,6 +50,7 @@ const masteryExpanded = ref(false)
 const pendingSkillHash = ref('')
 const constructCatalog = ref([])
 const constructTraits = ref([])
+const constructCompatibleTraits = ref([])
 const constructSearch = ref('')
 const constructSigilId = ref('')
 const constructPrimaryId = ref('')
@@ -425,7 +426,7 @@ const filteredConstructCatalog = computed(() => {
 })
 const selectedConstructSigil = computed(() => fullConstructCatalog.value.find(item => item.internalId === constructSigilId.value) || null)
 const selectedConstructPrimary = computed(() => constructTraits.value.find(item => item.internalId === constructPrimaryId.value) || null)
-const selectedConstructSecondary = computed(() => constructTraits.value.find(item => item.internalId === constructSecondaryId.value) || null)
+const selectedConstructSecondary = computed(() => constructCompatibleTraits.value.find(item => item.internalId === constructSecondaryId.value) || null)
 function highestAllowed(levels, fallback = 0) {
   return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
 }
@@ -433,9 +434,6 @@ function constructTraitWritableMax(trait) { return Math.min(50, Math.max(15, Num
 function clampConstructLevel(value, max = 50) {
   const number = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0
   return Math.min(max, Math.max(0, number))
-}
-function onConstructPrimaryPick(trait) {
-  constructPrimaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
 }
 function onConstructSecondaryPick(trait) {
   constructSecondaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
@@ -465,19 +463,31 @@ watch(filteredConstructCatalog, matches => {
   constructSigilId.value = resolveConstructSelection(matches, constructSigilId.value, constructSearch.value)
 })
 let pendingConstructRestore = null
-watch(constructSigilId, value => {
+let constructCompatibilityTicket = 0
+watch(constructSigilId, async value => {
+  const ticket = ++constructCompatibilityTicket
   const sigil = fullConstructCatalog.value.find(item => item.internalId === value)
   constructSigilLevel.value = highestAllowed(sigil?.allowedSigilLevels, sigil?.defaultSigilLevel || 0)
   constructPrimaryLevel.value = highestAllowed(sigil?.allowedFirstTraitLevels, sigil?.firstTraitMaxLevel || 0)
   constructPrimaryId.value = sigil?.primaryTraitId || ''
   constructSecondaryId.value = ''
   constructSecondaryLevel.value = 0
+  try {
+    const compatible = value && sigil?.supportsSecondaryTrait ? await GetCompatibleSecondaryTraits(value) : []
+    if (ticket !== constructCompatibilityTicket) return
+    constructCompatibleTraits.value = compatible || []
+  } catch (err) {
+    if (ticket !== constructCompatibilityTicket) return
+    constructCompatibleTraits.value = []
+    emit('status', `读取因子副词条池失败：${String(err)}`, 'error')
+  }
   const restore = pendingConstructRestore?.sigilId === value ? pendingConstructRestore : null
   constructSigilLevel.value = restore?.level || constructSigilLevel.value
-  constructPrimaryId.value = restore?.primaryTraitId || constructPrimaryId.value
   constructPrimaryLevel.value = restore?.primaryLevel || constructPrimaryLevel.value
-  constructSecondaryId.value = restore?.secondaryTraitId || ''
-  constructSecondaryLevel.value = restore?.secondaryLevel || 0
+  if (restore && constructCompatibleTraits.value.some(item => item.internalId === restore.secondaryTraitId)) {
+    constructSecondaryId.value = restore.secondaryTraitId
+    constructSecondaryLevel.value = restore.secondaryLevel || 0
+  }
   if (restore) pendingConstructRestore = null
 })
 
@@ -1462,16 +1472,16 @@ async function apply() {
                 <small v-if="constructSearch && !filteredConstructCatalog.length" class="catalog-empty">构造目录无匹配结果。</small>
               </label>
               <label><span>因子等级</span>
-                <input v-model.number="constructSigilLevel" type="number" min="0" max="50" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel)" />
+                <input v-model.number="constructSigilLevel" type="number" min="1" :max="highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15)" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15))" />
               </label>
               <label class="constructor-wide"><span>主词条</span>
-                <CatalogSelect v-model="constructPrimaryId" :options="constructTraits" :icon-resolver="traitIconForOption" placeholder="选择主词条" search-placeholder="搜索主词条" @pick="onConstructPrimaryPick" />
+                <div class="ui-input">{{ selectedConstructPrimary?.displayName || '未收录固定主词条' }}</div>
               </label>
               <label><span>主词条等级</span>
-                <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructTraitWritableMax(selectedConstructPrimary)" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructTraitWritableMax(selectedConstructPrimary))" />
+                <input v-model.number="constructPrimaryLevel" type="number" min="1" :max="selectedConstructSigil?.firstTraitMaxLevel || 15" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, selectedConstructSigil?.firstTraitMaxLevel || 15)" />
               </label>
-              <label class="constructor-wide"><span>副词条</span>
-                <CatalogSelect v-model="constructSecondaryId" :options="constructTraits" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
+              <label v-if="selectedConstructSigil?.supportsSecondaryTrait" class="constructor-wide"><span>副词条 · 本地表允许项</span>
+                <CatalogSelect v-model="constructSecondaryId" :options="constructCompatibleTraits" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
               </label>
               <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructTraitWritableMax(selectedConstructSecondary)" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructTraitWritableMax(selectedConstructSecondary))" /></label>
             </div>

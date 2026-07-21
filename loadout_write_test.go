@@ -875,34 +875,15 @@ func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *test
 	}
 }
 
-func TestPrepareLoadoutSigilAllowsCatalogEntriesWithoutNaturalProof(t *testing.T) {
+func TestPrepareLoadoutSigilRejectsLegacyEntriesAbsentFromLocalTable(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	sigil, err := cat.RequireSigil("GEEN_000_24")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cat.IsSigilConstructible(sigil) {
-		t.Fatal("测试前提失效：GEEN_000_24 不应是可信可构造项")
-	}
-	sigilLevels, err := cat.RequireSigilLevels(sigil)
-	if err != nil || len(sigilLevels) == 0 {
-		t.Fatalf("读取因子等级失败: %v", err)
-	}
-	primaryLevels, err := cat.RequirePrimaryTraitLevels(sigil)
-	if err != nil || len(primaryLevels) == 0 {
-		t.Fatalf("读取主词条等级失败: %v", err)
-	}
-	_, err = prepareLoadoutSigil(cat, LoadoutConstructedSigil{
-		Index: 0,
-		Item: QueueItem{
-			SigilID: sigil.InternalID, Level: sigilLevels[0], PrimaryLevel: primaryLevels[0],
-		},
-	})
-	if err != nil {
-		t.Fatalf("已知且可编码的目录项只能提示自然依据不足，不能拒绝: %v", err)
+	for _, id := range []string{"GEEN_100_04", "GEEN_112_04", "GEEN_113_04"} {
+		if _, err := cat.RequireSigil(id); err == nil {
+			t.Fatalf("2.0.2 gem.tbl 中不存在的旧因子 %s 不得留在构造目录", id)
+		}
 	}
 }
 

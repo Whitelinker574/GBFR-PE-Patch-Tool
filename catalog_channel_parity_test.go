@@ -90,6 +90,10 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 	if len(runtimeSigils) != len(saveSigils) || len(runtimeTraits) != len(saveTraits) {
 		t.Fatalf("unified factor table count differs: save=%d/%d runtime=%d/%d", len(saveSigils), len(saveTraits), len(runtimeSigils), len(runtimeTraits))
 	}
+	if len(saveSigils) != 184 {
+		t.Fatalf("unified factor table has %d items; fresh local 2.0.2 gem.tbl proves 184", len(saveSigils))
+	}
+	gen := NewSigilGen()
 	for _, item := range saveSigils {
 		hash, err := ParseHashHex(item.Hash)
 		if err != nil {
@@ -102,6 +106,21 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 		if item.DisplayName != runtimeItem.DisplayName || item.FirstTraitMaxLevel != derefInt(runtimeItem.FirstTraitMaxLevel) ||
 			!reflect.DeepEqual(item.AllowedSigilLevels, runtimeItem.AllowedLevels) || !reflect.DeepEqual(item.AllowedFirstTraitLevels, runtimeItem.AllowedPrimaryTraitLevels) {
 			t.Fatalf("save/runtime sigil metadata differs for %s", item.Hash)
+		}
+		compatible, err := gen.GetCompatibleSecondaryTraits(item.InternalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		compatibleHashes := make([]uint32, 0, len(compatible))
+		for _, trait := range compatible {
+			traitHash, err := ParseHashHex(trait.Hash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compatibleHashes = append(compatibleHashes, traitHash)
+		}
+		if !reflect.DeepEqual(compatibleHashes, runtimeItem.AllowedSecondaryTraitHashes) {
+			t.Fatalf("save/runtime secondary pool differs for %s: save=%d runtime=%d", item.Hash, len(compatibleHashes), len(runtimeItem.AllowedSecondaryTraitHashes))
 		}
 	}
 	for _, item := range saveTraits {

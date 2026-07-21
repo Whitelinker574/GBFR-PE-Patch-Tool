@@ -97,8 +97,11 @@ func TestFirmStanceGradeFiveUsesNaturalLevelFifteen(t *testing.T) {
 	if firm.PrimaryTraitID != "SKILL_087_00" || !slices.Equal(firm.AllowedFirstTraitLevels, []int{15}) {
 		t.Fatalf("GEEN_087_04 primary = %s levels %v; want SKILL_087_00 [15]", firm.PrimaryTraitID, firm.AllowedFirstTraitLevels)
 	}
-	if catalog.IsSigilConstructible(firm) {
-		t.Fatal("GEEN_087_04 must remain nonconstructible until its secondary/lot legality is verified")
+	if !catalog.IsSigilConstructible(firm) {
+		t.Fatal("GEEN_087_04 must be constructible after gem.tbl verifies it has no secondary slot")
+	}
+	if len(firm.AllowedSecondaryTraitIDs) != 0 {
+		t.Fatalf("GEEN_087_04 secondary pool = %v; local 2.0.2 gem.tbl has no secondary lot", firm.AllowedSecondaryTraitIDs)
 	}
 }
 

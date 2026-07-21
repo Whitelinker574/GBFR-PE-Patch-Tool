@@ -306,17 +306,18 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 	assert.match(source, /主词条等级从高到低/)
 })
 
-test('constructor searches the factor catalog while primary and secondary traits are freely editable', () => {
+test('constructor uses the fixed primary and exact local secondary pool', () => {
 	assert.match(source, /GetSigilList/)
 	assert.match(source, /GetTraitList/)
+	assert.match(source, /GetCompatibleSecondaryTraits/)
 	assert.match(source, /Promise\.all\(\[GetSigilList\(\), GetTraitList\(\)\]\)/)
 	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
-	assert.match(source, /v-model="constructPrimaryId"/)
-	assert.match(source, /search-placeholder="搜索主词条"/)
+	assert.match(source, /未收录固定主词条/)
+	assert.doesNotMatch(source, /v-model="constructPrimaryId"/)
 	assert.match(source, /v-model="constructSecondaryId"/)
 	assert.match(source, /search-placeholder="搜索副词条"/)
+	assert.match(source, /:options="constructCompatibleTraits"/)
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
-	assert.doesNotMatch(source, /GetCompatibleSecondaryTraits/)
 })
 
 test('narrow weapon skill editor uses a single shrinkable column', () => {

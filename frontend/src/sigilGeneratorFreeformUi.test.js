@@ -4,11 +4,12 @@ import test from 'node:test'
 
 const source = readFileSync(new URL('./components/SigilGenerator.vue', import.meta.url), 'utf8')
 
-test('standalone factor generator uses clean searchable primary and secondary trait names', () => {
+test('standalone factor generator fixes the primary and searches only table-backed secondary traits', () => {
   assert.match(source, /const selectedPrimaryTraitID = ref\(''\)/)
-  assert.match(source, /<CatalogSelect v-model="selectedPrimaryTraitID"/)
-  assert.match(source, /search-placeholder="搜索主特性名称"/)
+  assert.match(source, /由 gem\.tbl 固定/)
+  assert.doesNotMatch(source, /<CatalogSelect v-model="selectedPrimaryTraitID"/)
   assert.match(source, /<CatalogSelect v-model="selectedSecondaryTraitID"/)
+  assert.match(source, /secondaryTraits\.value = allowed/)
   assert.doesNotMatch(source, /强制组合/)
 })
 

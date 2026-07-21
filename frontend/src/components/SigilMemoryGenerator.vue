@@ -34,6 +34,18 @@ const allTraitOptions = computed(() => [...backendOptions.traits, ...runtimeOpti
 
 const sigilByHash = computed(() => new Map(allSigilOptions.value.map(o => [o.hash >>> 0, o])))
 const traitByHash = computed(() => new Map(allTraitOptions.value.map(o => [o.hash >>> 0, o])))
+const selectedSigilOption = computed(() => sigilByHash.value.get(form.sigilHash >>> 0) || null)
+const primaryTraitOptions = computed(() => {
+  const hash = Number(selectedSigilOption.value?.primaryTraitHash || 0) >>> 0
+  const option = traitByHash.value.get(hash)
+  return option ? [option] : []
+})
+const secondaryTraitOptions = computed(() => {
+  const hashes = Array.isArray(selectedSigilOption.value?.allowedSecondaryTraitHashes)
+    ? selectedSigilOption.value.allowedSecondaryTraitHashes
+    : []
+  return hashes.map(hash => traitByHash.value.get(Number(hash) >>> 0)).filter(Boolean)
+})
 
 function traitIconByHash(hash, name = '') {
   const value = Number(hash) >>> 0
@@ -272,6 +284,11 @@ function onPickSigil(opt) {
     const nextLevel = verifiedLevels.length ? Math.max(...verifiedLevels) : Number(opt.firstTraitMaxLevel || 0)
     if (nextLevel > 0) form.primaryTraitLevel = nextLevel
   }
+  const allowed = new Set((opt?.allowedSecondaryTraitHashes || []).map(hash => Number(hash) >>> 0))
+  if (!allowed.has(form.secondaryTraitHash >>> 0)) {
+    form.secondaryTraitHash = 0
+    form.secondaryTraitLevel = 0
+  }
 }
 function preferredOptionLevel(opt) {
   const levels = Array.isArray(opt?.allowedLevels) ? opt.allowedLevels.filter(Number.isInteger) : []
@@ -297,9 +314,9 @@ const primaryMax = computed(() => {
   return sigil?.firstTraitMaxLevel ?? traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? null
 })
 const secondaryMax = computed(() => form.secondaryTraitHash ? 15 : null)
-const sigilWritableMax = computed(() => form.sigilHash ? 50 : null)
-const primaryWritableMax = computed(() => form.primaryTraitHash ? (traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? 50) : null)
-const secondaryWritableMax = computed(() => form.secondaryTraitHash ? (traitByHash.value.get(form.secondaryTraitHash)?.maxLevel ?? 50) : null)
+const sigilWritableMax = computed(() => sigilMax.value)
+const primaryWritableMax = computed(() => primaryMax.value)
+const secondaryWritableMax = computed(() => secondaryMax.value)
 
 function clampLevel(value, max) {
   if (max == null) return 0
@@ -565,7 +582,7 @@ onMounted(async () => {
             <span class="current-value" :class="{ 'is-dim': primaryRead.dim }" :title="primaryRead.text">当前：{{ primaryRead.text }} <b v-if="status.primaryTraitHash">Lv {{ status.primaryTraitLevel }}</b></span>
           </div>
           <div class="editor-control-grid">
-            <SigilMemoryPicker v-model="form.primaryTraitHash" class="aligned-picker" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickPrimary" placeholder="选择主词条" />
+            <SigilMemoryPicker v-model="form.primaryTraitHash" class="aligned-picker" :options="primaryTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying || primaryTraitOptions.length <= 1" @pick="onPickPrimary" placeholder="固定主词条" />
             <label class="ui-field level-control">
               <span class="ui-field-label">等级</span>
               <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
@@ -586,7 +603,7 @@ onMounted(async () => {
             <span class="current-value" :class="{ 'is-dim': secondaryRead.dim }" :title="secondaryRead.text">当前：{{ secondaryRead.text }} <b v-if="status.secondaryTraitHash">Lv {{ status.secondaryTraitLevel }}</b></span>
           </div>
           <div class="editor-control-grid">
-            <SigilMemoryPicker v-model="form.secondaryTraitHash" class="aligned-picker" :options="allTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSecondary" optional placeholder="未选择（可选）" />
+            <SigilMemoryPicker v-model="form.secondaryTraitHash" class="aligned-picker" :options="secondaryTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying || secondaryTraitOptions.length === 0" @pick="onPickSecondary" optional placeholder="本地表无可选副词条" />
             <label class="ui-field level-control" :class="{ 'is-disabled': !form.secondaryTraitHash }">
               <span class="ui-field-label">等级</span>
               <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="secondaryWritableMax" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, secondaryWritableMax)" />

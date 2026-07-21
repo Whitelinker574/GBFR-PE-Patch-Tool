@@ -103,7 +103,7 @@ test('sigil memory has an explicit stop action and locks draft controls until a 
   assert.match(source, /async function disable\(\)[\s\S]*?releaseRuntimeLease\([^;]*SigilMemoryRelease\)/)
   assert.match(source, /class="ui-btn is-sm is-ghost"[^>]*@click="disable"[^>]*>\s*停止读取\s*</)
   assert.match(source, /class="ui-btn is-sm is-primary"[^>]*:disabled="loading \|\| applying \|\| status\.hooked"[^>]*@click="enable"/)
-  assert.equal((source.match(/<SigilMemoryPicker[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying"/g) || []).length, 3)
+  assert.equal((source.match(/<SigilMemoryPicker[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying[^\"]*"/g) || []).length, 3)
   assert.equal((source.match(/<input[^>]*class="ui-input"[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying"/g) || []).length, 3)
 })
 
