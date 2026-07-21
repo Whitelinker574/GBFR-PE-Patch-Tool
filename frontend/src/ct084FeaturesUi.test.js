@@ -74,17 +74,23 @@ test('a disconnect retry keeps CT writes locked until its exact owner and epoch 
   assert.match(ctPage, /function featureDisabled\([^)]*\) \{[\s\S]*?interactionLocked\.value/)
 })
 
-test('the three CT 0.8.4 routes share one categorized component and unique planned art', () => {
+test('the three live-patch routes share one persistent categorized session and unique art', () => {
   assert.match(patchTool, /import CT084Features from ['"]\.\/CT084Features\.vue['"]/)
   for (const [id, mode] of [
     ['ctCombat', 'combat'],
     ['ctCharacters', 'characters'],
     ['ctQuest', 'quest'],
   ]) {
-    assert.match(patchTool, new RegExp(`<CT084Features[^>]*?activeTab === '${id}'[^>]*?mode="${mode}"`))
+    assert.match(patchTool, new RegExp(`${id}: '${mode}'`))
     assert.match(patchTool, new RegExp(`functionArt[\\s\\S]*?${id}: ${id}Art`))
     assert.match(patchTool, new RegExp(`functionStickers[\\s\\S]*?${id}: ${id}Sticker`))
   }
+
+  assert.equal((patchTool.match(/<CT084Features\b/g) || []).length, 1, 'all three tabs must use one component instance')
+  assert.match(patchTool, /<CT084Features[\s\S]*?v-if="ctFeaturesMounted"[\s\S]*?v-show="isCTFeatureTab"[\s\S]*?:mode="ctFeatureMode"/)
+  assert.match(patchTool, /watch\(activeTab,[\s\S]*?ctFeaturesMounted\.value = true/)
+  assert.match(patchTool, /@session-change="updateCTFeatureSession"/)
+  assert.match(patchTool, /ctFeatureSession\.connected[\s\S]*?实时补丁常驻/)
 
   assert.match(patchTool, /id:\s*'memory'[\s\S]*?items:\s*\[[^\]]*'ctCombat'[^\]]*'ctCharacters'[^\]]*'ctQuest'[^\]]*\]/)
   assert.match(home, /id:\s*'ctCombat'/)
@@ -106,6 +112,22 @@ test('the three CT 0.8.4 routes share one categorized component and unique plann
   }
   assert.doesNotMatch(patchTool, /currentArt[^\n]*\|\|\s*progressionArt/)
   assert.doesNotMatch(patchTool, /currentSticker[^\n]*\|\|\s*progressionSticker/)
+})
+
+test('page navigation hides the persistent patch session without unmounting or restoring it', () => {
+  assert.match(patchTool, /<section v-show="activeTab !== 'home'" class="tool-stage"/)
+  assert.doesNotMatch(patchTool, /<section v-else :key="activeTab" class="tool-stage"/)
+  assert.match(ctPage, /const emit = defineEmits\(\['status', 'session-change'\]\)/)
+  assert.match(ctPage, /emit\('session-change',[\s\S]*?connected:/)
+  assert.match(ctPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseCT084PageOwner/)
+})
+
+test('unverified runtime extensions remain visibly labelled as candidates', () => {
+  assert.match(ctPage, /v-if="feature\.evidenceNote"/)
+  assert.match(ctPage, /startsWith\('candidate_'\)/)
+  assert.match(ctPage, /class="feature-evidence"/)
+  assert.match(ctPage, /\{\{ tr\(feature\.evidenceNote\) \}\}/)
+  assert.match(ctPage, /\.feature-evidence\.is-candidate\s*\{[^}]*color\s*:\s*var\(--warning-ink\)/is)
 })
 
 test('catalog presentation filters by mode and search while naming the active conflict', async () => {
@@ -282,7 +304,7 @@ test('all 58 production CT features, groups and dynamic page messages render wit
   } = await import(`./ct084Translations.js?complete=${Date.now()}`)
   const cjk = /[\u3400-\u9fff]/u
 
-  assert.equal(productionCatalog.features.length, 58, 'the production fixture must remain the audited CT 0.8.4 catalog')
+  assert.equal(productionCatalog.features.length, 58, 'the production fixture must remain the audited live-feature catalog')
   assert.equal(Object.keys(ct084EnglishFeatureNames).length, productionCatalog.features.length)
   for (const feature of productionCatalog.features) {
     const englishName = translateCT084FeatureName(feature, 'en')
@@ -294,17 +316,17 @@ test('all 58 production CT features, groups and dynamic page messages render wit
   }
 
   const dynamicSamples = [
-    '正在读取 CT 0.8.4 功能目录…',
+    '正在读取实时功能目录…',
     '功能目录已就绪；连接游戏后可读取实时状态。',
-    '已读取 58 项 CT 0.8.4 安全补丁',
-    '读取 CT 0.8.4 功能目录失败：未知错误',
-    '后端未返回 CT 0.8.4 连接所有权令牌',
+    '已读取 58 项已验证补丁',
+    '读取实时功能目录失败：未知错误',
+    '后端未返回连接所有权令牌',
     '已连接游戏进程 PID 1234',
-    '全部 CT 0.8.4 补丁已恢复，并已断开游戏进程',
+    '全部实时补丁已恢复，并已断开游戏进程',
     '安全断开暂未完成，正在后台重试恢复：未知错误',
-    'CT 0.8.4 补丁状态已回读',
+    '实时补丁状态已回读',
     '刷新状态失败：未知错误',
-    '当前页面不再持有 CT 0.8.4 连接所有权',
+    '当前页面不再持有连接所有权',
     '无限闪避写后回读状态不一致',
     '无限闪避已开启',
     '无限闪避已恢复默认',
@@ -314,7 +336,6 @@ test('all 58 production CT features, groups and dynamic page messages render wit
     '已开启 3 项', '等待恢复', '已验证连接', '刷新状态', '处理中…',
     '重试安全恢复', '恢复全部并断开', '连接游戏进程',
     '战斗规则目录', '58 项',
-    '目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。',
     '搜索名称、角色或分组', '输入关键词筛选', '正在读取功能目录…',
     '没有匹配的功能', '换一个角色名、功能名或分组关键词。', '当前分组',
     '战斗规则分组', '战斗规则', '3 项已验证补丁',
@@ -325,11 +346,11 @@ test('all 58 production CT features, groups and dynamic page messages render wit
     '首次启用确认', '仅离线/单机使用',
     '这些功能会直接修改游戏运行时规则。请确认当前不在联机房间，并只在离线或单机内容中使用。本次打开应用只确认一次。',
     '即将开启', '取消', '确认仅在单机使用并开启',
-    'CT 0.8.4 回读状态 ct084-1 的 enabled 必须是布尔值',
-    'CT 0.8.4 回读状态 ct084-1 的 RVA[0] 必须是非负安全整数',
-    'CT 0.8.4 回读状态 ct084-1 的当前字节[0] 必须是空值或空格分隔的十六进制字节',
-    'CT 0.8.4 功能目录 ct084-1 的补丁字节无效',
-    'CT 0.8.4 回读状态 ct084-1 已开启，但当前字节[0] 与目录补丁不一致',
+    '实时补丁回读状态 ct084-1 的 enabled 必须是布尔值',
+    '实时补丁回读状态 ct084-1 的 RVA[0] 必须是非负安全整数',
+    '实时补丁回读状态 ct084-1 的当前字节[0] 必须是空值或空格分隔的十六进制字节',
+    '实时功能目录 ct084-1 的补丁字节无效',
+    '实时补丁回读状态 ct084-1 已开启，但当前字节[0] 与目录补丁不一致',
   ]
   for (const sample of dynamicSamples) {
     const translated = translateCT084Text(sample, 'en')
@@ -347,7 +368,7 @@ test('the CT component localizes catalog search, announcements, feature names an
 
   const template = ctPage.match(/<template>([\s\S]*?)<\/template>/)?.[1] || ''
   for (const label of [
-    '游戏进程已连接', '恢复全部并断开', '目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。',
+    '游戏进程已连接', '恢复全部并断开',
     '搜索名称、角色或分组', '没有匹配的功能', '首次启用时定位并保存原字节',
     '技术详情', '目录 ID', '首次启用确认', '仅离线/单机使用', '取消',
   ]) {

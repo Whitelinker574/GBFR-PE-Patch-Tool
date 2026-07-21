@@ -2,12 +2,12 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
-[Release v1.91.1](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[Release v1.91.2](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
 [![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
 
 A Windows project for local save editing, controlled runtime tools, and read-only formula calibration for *Granblue Fantasy: Relink* DLC 2.0.2. It is not an official tool. Use it only with your own offline saves and local single-player environment, and keep recoverable backups.
 
-The current stable release is **v1.91.1**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker only contacts this repository's releases.
+The current stable release is **v1.91.2**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker only contacts this repository's releases.
 
 ## What is included
 

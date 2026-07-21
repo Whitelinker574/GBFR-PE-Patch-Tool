@@ -269,6 +269,27 @@
       "displayDelta": { "hp": 0, "attack": 0, "stunPower": 0, "critRate": 0 },
       "negativeObservation": "no change in the four town panel fields and no direct node hash in the scanned status window",
       "missingEvidence": "training hit samples with the concentration area inactive/active, including pre-hit HP, post-hit HP, damage and current buffs"
+    },
+    {
+      "nodeHash": "2BE0D486",
+      "role": "Io",
+      "category": "SB_ATK",
+      "sourceDescription": "defense +5%",
+      "classification": "verified_combat_damage_single_role",
+      "method": "same enemy, same attack, full HP before each hit; one baseline hit and two identical defense-enabled hits",
+      "repeated": true,
+      "displayDelta": { "hp": 0, "attack": 0, "stunPower": 0, "critRate": 0 },
+      "combatDamage": {
+        "maxHp": 126645,
+        "baselinePostHitHp": 89707,
+        "baselineDamage": 36938,
+        "defensePostHitHp": [91554, 91554],
+        "defenseDamage": 35091,
+        "observedDamageRatePercent": 94.9997292760842,
+        "observedReductionPercent": 5.00027072391575
+      },
+      "conclusion": "the unconditional defense percentage reduces received damage by the same percentage; displayed integer damage is consistent with applying a 0.95 multiplier",
+      "remainingEvidence": "repeat the baseline after restoring the paired save and confirm another role before generalizing every stacking and cap boundary"
     }
   ],
   "masteryBoundaryEvidence": {

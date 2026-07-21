@@ -57,6 +57,7 @@ type CT084PartyCapabilities struct {
 // capability from a real in-game zero.
 type CT084PartyEntity struct {
 	Role           string                 `json:"role"`
+	Present        bool                   `json:"present"`
 	DisplayName    string                 `json:"displayName"`
 	Address        uint64                 `json:"address"`
 	HP             uint64                 `json:"hp"`
@@ -181,8 +182,15 @@ func readCT084PartySnapshot(memory ct084PartyMemory, moduleBase uintptr) (ct084P
 	roles := [...]string{"player", "party1", "party2", "party3"}
 	for index, role := range roles {
 		entity, readErr := readCT084Pointer(memory, root+uintptr(index)*8)
-		if readErr != nil || entity == 0 {
+		if readErr != nil {
 			return ct084PartySnapshot{}, fmt.Errorf("%s: %w", ct084PartyRoleName(role), normalizeCT084PartyReadError(readErr))
+		}
+		if entity == 0 {
+			if index == 0 {
+				return ct084PartySnapshot{}, fmt.Errorf("%s: %w", ct084PartyRoleName(role), normalizeCT084PartyReadError(nil))
+			}
+			snapshot.Result.Entities = append(snapshot.Result.Entities, emptyCT084PartyEntity(role))
+			continue
 		}
 		result, nodes, readErr := readCT084PartyEntity(memory, entity, role, true, false)
 		if readErr != nil {
@@ -194,22 +202,39 @@ func readCT084PartySnapshot(memory ct084PartyMemory, moduleBase uintptr) (ct084P
 	}
 
 	container, err := readCT084Pointer(memory, root+ct084PartyCompanionSlotOffset)
-	if err != nil || container == 0 {
+	if err != nil {
 		return ct084PartySnapshot{}, fmt.Errorf("%s: %w", ct084PartyRoleName("companion"), normalizeCT084PartyReadError(err))
 	}
+	if container == 0 {
+		snapshot.Result.Entities = append(snapshot.Result.Entities, emptyCT084PartyEntity("companion"))
+		return snapshot, nil
+	}
+	snapshot.Topology.CompanionContainer = container
 	companion, err := readCT084Pointer(memory, container+ct084PartyCompanionEntityOffset)
-	if err != nil || companion == 0 {
+	if err != nil {
 		return ct084PartySnapshot{}, fmt.Errorf("%s: %w", ct084PartyRoleName("companion"), normalizeCT084PartyReadError(err))
+	}
+	if companion == 0 {
+		snapshot.Result.Entities = append(snapshot.Result.Entities, emptyCT084PartyEntity("companion"))
+		return snapshot, nil
 	}
 	companionResult, companionNodes, err := readCT084PartyEntity(memory, companion, "companion", false, true)
 	if err != nil {
 		return ct084PartySnapshot{}, err
 	}
-	snapshot.Topology.CompanionContainer = container
 	snapshot.Topology.Entities[4] = companion
 	snapshot.Topology.TransformNodes[4] = companionNodes
 	snapshot.Result.Entities = append(snapshot.Result.Entities, companionResult)
 	return snapshot, nil
+}
+
+func emptyCT084PartyEntity(role string) CT084PartyEntity {
+	return CT084PartyEntity{
+		Role:         role,
+		DisplayName:  ct084PartyRoleName(role),
+		Position:     CT084Vector3{},
+		Capabilities: CT084PartyCapabilities{},
+	}
 }
 
 func verifyCT084PartyPointerSignature(memory ct084PartyMemory, moduleBase uintptr) (uintptr, error) {
@@ -268,6 +293,7 @@ func readCT084PartyEntity(memory ct084PartyMemory, address uintptr, role string,
 	}
 	result := CT084PartyEntity{
 		Role:         role,
+		Present:      true,
 		DisplayName:  ct084PartyRoleName(role),
 		Address:      uint64(address),
 		HP:           hp,
@@ -306,6 +332,12 @@ func readCT084PartyEntity(memory ct084PartyMemory, address uintptr, role string,
 }
 
 func validateCT084PartyEntity(entity CT084PartyEntity) error {
+	if !entity.Present {
+		if entity.Address != 0 || entity.HP != 0 || entity.MaxHP != 0 || entity.DodgeCount != nil || entity.SBA != nil || entity.MaxSBA != nil || entity.DirectPosition != nil || entity.Capabilities != (CT084PartyCapabilities{}) || entity.Position != (CT084Vector3{}) {
+			return fmt.Errorf("absent party slot contains runtime entity data")
+		}
+		return nil
+	}
 	if entity.MaxHP == 0 || entity.MaxHP > ct084PartyMaximumPlausibleHP || entity.HP > entity.MaxHP {
 		return fmt.Errorf("HP is outside [0,max] or max HP is implausible: %d/%d", entity.HP, entity.MaxHP)
 	}

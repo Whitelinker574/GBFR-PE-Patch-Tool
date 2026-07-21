@@ -117,14 +117,14 @@ test('home journal mirrors the common-first entry order and exposes live blessin
   assert.deepEqual(homeEntryIds('monitor'), ['ctMonitor', 'formulaSampler'])
 })
 
-test('user-facing page titles omit the CT 0.8.4 suffix', () => {
+test('user-facing page titles omit historical source-version suffixes', () => {
   assert.match(patchTool, /ctMonitor:\s*\{[\s\S]*?title:\s*'运行监测'[\s\S]*?eyebrow:\s*'只读监测'/)
   assert.match(patchTool, /ctCombat:\s*\{[\s\S]*?eyebrow:\s*'战斗补丁'/)
   assert.match(patchTool, /ctCharacters:\s*\{[\s\S]*?eyebrow:\s*'角色机制'/)
   assert.match(patchTool, /ctQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（CT 0\.8\.4）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.1"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.2"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-ct\d+"/i)
 })
 

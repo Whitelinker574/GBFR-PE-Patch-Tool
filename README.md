@@ -4,14 +4,14 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
-[正式版本 v1.91.1](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[正式版本 v1.91.2](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
 [![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
 
 [下载最新版](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [English](README_EN.md) · [文档索引](docs/README.md)
 
 面向《碧蓝幻想：Relink》DLC 2.0.2 的 Windows 本地存档编辑、受控运行时工具与只读公式校准项目。它不是官方工具；请只对自己的离线存档和本地单人环境使用，并始终保留可恢复备份。
 
-当前稳定版为 **v1.91.1**。Release 提供 Windows amd64 压缩包和 SHA-256 校验文件；程序内更新检查只访问本仓库的正式 Release。
+当前稳定版为 **v1.91.2**。Release 提供 Windows amd64 压缩包和 SHA-256 校验文件；程序内更新检查只访问本仓库的正式 Release。
 
 ## 当前能力
 

@@ -57,7 +57,7 @@ test('defense totals and scope copy remain English-only in English mode', () => 
     '防御类',
     '防御力加成',
     '配装防御加成',
-    '仅汇总无条件防御力百分比；战斗状态、格挡、减伤和无敌仍保留在效果明细中，不换算成虚假的最终防御力。',
+    '无条件防御力按百分比降低受击伤害；伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。条件防御、格挡、独立减伤和无敌仍保留在效果明细中，不混入该倍率。',
   ]) {
     assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
   }

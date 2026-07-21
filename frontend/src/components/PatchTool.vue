@@ -1,7 +1,7 @@
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import {
-  AutoDetect, SetExePath, GetStatus, PatchFile, BackupFile, RestoreFile,
+  AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
 } from '../../wailsjs/go/main/App'
 import {
@@ -84,24 +84,44 @@ const state = reactive({
   fileSize: 0,
   backupExists: false,
   backupSize: 0,
-  patches: [],
 })
 
 const activeTab = ref('home')
+const CT_FEATURE_MODES = Object.freeze({
+  ctCombat: 'combat',
+  ctCharacters: 'characters',
+  ctQuest: 'quest',
+})
+const ctFeaturesMounted = ref(false)
+const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, pid: 0 })
+const lastCTFeatureTab = ref('ctCombat')
+const isCTFeatureTab = computed(() => Boolean(CT_FEATURE_MODES[activeTab.value]))
+const ctFeatureMode = computed(() => CT_FEATURE_MODES[activeTab.value] || CT_FEATURE_MODES[lastCTFeatureTab.value])
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const loadoutEditing = ref(false)
 const manualPath = ref('')
-const patchValues = reactive({})
 const isLoaded = ref(false)
 const isDetecting = ref(false)
-const patchingID = ref('')
 const forceBackup = ref(false)
 const saveStatus = ref('')
 const statusType = ref('')
 const updateLoading = ref(false)
 const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
 let hasAttemptedGameDetection = false
+
+watch(activeTab, (value) => {
+  if (!CT_FEATURE_MODES[value]) return
+  ctFeaturesMounted.value = true
+  lastCTFeatureTab.value = value
+}, { immediate: true })
+
+function updateCTFeatureSession(value) {
+  ctFeatureSession.connected = value?.connected === true
+  ctFeatureSession.releasePending = value?.releasePending === true
+  ctFeatureSession.activeCount = Number.isSafeInteger(value?.activeCount) && value.activeCount >= 0 ? value.activeCount : 0
+  ctFeatureSession.pid = Number.isSafeInteger(value?.pid) && value.pid > 0 ? value.pid : 0
+}
 
 const toolMeta = {
   home: {
@@ -203,9 +223,9 @@ const toolMeta = {
   ctCombat: {
     group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
     description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
-    usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '离开页面或断开时恢复全部补丁'],
+    usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '三个补丁页共用常驻连接；明确断开时恢复全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
-    speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。离开页面时，我会把规则全部恢复。',
+    speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。切换页面不会打断，明确断开时才会全部恢复。',
   },
   ctCharacters: {
     group: 'memory', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
@@ -504,17 +524,9 @@ function ensureGameDetection() {
     .catch(() => { isDetecting.value = false })
 }
 
-function syncPatchValues(info) {
-  ;(info.patches || []).forEach(patch => {
-    if (patch.state === 'patched') patchValues[patch.id] = String(patch.currentValue)
-    else if (!patchValues[patch.id]) patchValues[patch.id] = ''
-  })
-}
-
 function loadFile(path, notify = true) {
   return GetStatus(path).then((info) => {
     Object.assign(state, info)
-    syncPatchValues(info)
     isLoaded.value = true
     if (notify) showStatus('游戏文件识别成功', 'success')
   })
@@ -526,7 +538,6 @@ function applyManualPath() {
   SetExePath(path)
     .then((info) => {
       Object.assign(state, info)
-      syncPatchValues(info)
       isLoaded.value = true
       showStatus('游戏文件识别成功', 'success')
     })
@@ -537,19 +548,7 @@ function refreshStatus() {
   if (!state.exePath) return Promise.resolve()
   return GetStatus(state.exePath).then((info) => {
     Object.assign(state, info)
-    syncPatchValues(info)
   })
-}
-
-function applyPatch(patchID) {
-  const value = parseInt(patchValues[patchID])
-  if (Number.isNaN(value) || value < 0) { showStatus('请输入有效数值', 'error'); return }
-  patchingID.value = patchID
-  PatchFile(patchID, value)
-    .then(() => refreshStatus())
-    .then(() => showStatus('补丁写入成功', 'success'))
-    .catch((err) => showStatus('补丁失败: ' + (err || '未知错误'), 'error'))
-    .finally(() => { patchingID.value = '' })
 }
 
 function backup() {
@@ -599,6 +598,18 @@ function showStatus(message, type) {
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">DLC 2.0.2</span>
       </div>
+      <button
+        v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
+        type="button"
+        class="titlebar-ct-session"
+        style="--wails-draggable:no-drag"
+        :class="{ 'is-releasing': ctFeatureSession.releasePending }"
+        :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
+        @click="selectTool(lastCTFeatureTab)"
+      >
+        <span aria-hidden="true"></span>
+        {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项` }}
+      </button>
       <transition name="toast">
         <div v-if="saveStatus" class="titlebar-status" :class="statusType">
           <span class="status-light"></span>{{ saveStatus }}
@@ -682,7 +693,7 @@ function showStatus(message, type) {
           <div class="workspace-scene">
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
 
-          <section v-else :key="activeTab" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
+          <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
             <section class="tool-center-scroll">
               <header v-if="!isLoadoutWorkspace" class="tool-page-heading">
                 <div class="eyebrow">{{ currentMeta.eyebrow }}</div>
@@ -691,7 +702,14 @@ function showStatus(message, type) {
               </header>
 
               <main class="tool-panel" :data-tool="activeTab">
-            <ProgressionEditor v-if="activeTab === 'progression'" @status="showStatus" />
+            <CT084Features
+              v-if="ctFeaturesMounted"
+              v-show="isCTFeatureTab"
+              :mode="ctFeatureMode"
+              @status="showStatus"
+              @session-change="updateCTFeatureSession"
+            />
+            <ProgressionEditor v-if="!isCTFeatureTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
             <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
             <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
@@ -704,9 +722,6 @@ function showStatus(message, type) {
             <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
             <CT084RuntimeMonitor v-else-if="activeTab === 'ctMonitor'" @status="showStatus" />
             <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
-            <CT084Features v-else-if="activeTab === 'ctCombat'" mode="combat" @status="showStatus" />
-            <CT084Features v-else-if="activeTab === 'ctCharacters'" mode="characters" @status="showStatus" />
-            <CT084Features v-else-if="activeTab === 'ctQuest'" mode="quest" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
@@ -764,13 +779,6 @@ function showStatus(message, type) {
                 <label class="ui-field-label" for="game-exe-path">{{ isDetecting ? '正在扫描 Steam 安装路径…' : isLoaded ? '已定位游戏文件' : '游戏 EXE 路径' }}</label>
                 <div class="path-input-row ui-control-group is-responsive"><input id="game-exe-path" v-model="manualPath" class="ui-input" placeholder="粘贴 granblue_fantasy_relink.exe 完整路径" @keyup.enter="applyManualPath"><button class="action ui-btn is-primary" @click="applyManualPath" :disabled="!manualPath.trim()">识别文件</button></div>
                 <div v-if="state.exePath" class="detected-file"><span :title="state.exePath">{{ state.exePath }}</span><b>{{ (state.fileSize / 1024 / 1024).toFixed(1) }} MB</b></div>
-              </section>
-              <section v-if="isLoaded" class="patch-grid ui-card-grid">
-                <article v-for="patch in state.patches" :key="patch.id" class="patch-card ui-card ui-panel is-compact">
-                  <header><div><strong>{{ patch.name }}</strong><small>二进制补丁</small></div><span :class="['patch-state', patch.state]">{{ patch.state === 'original' ? '原始' : patch.state === 'patched' ? '已补丁' : '未知' }}</span></header>
-                  <p v-if="patch.state === 'patched'">当前值 {{ patch.currentValue }} · 0x{{ patch.currentValue.toString(16).toUpperCase() }}</p>
-                  <div class="patch-edit ui-control-group"><input v-model="patchValues[patch.id]" class="ui-input" type="number" min="0" :aria-label="`${patch.name}数值`" placeholder="输入数值"><button class="action ui-btn" @click="applyPatch(patch.id)" :disabled="patchingID === patch.id || patch.state === 'unknown'">{{ patchingID === patch.id ? '写入中…' : '应用' }}</button></div>
-                </article>
               </section>
               <section class="backup-card ui-card ui-panel is-compact"><div><strong>EXE 备份与恢复</strong><span>{{ state.backupExists ? `已有 ${(state.backupSize / 1024 / 1024).toFixed(1)} MB 备份` : '尚未创建备份' }}</span></div><div class="backup-policy ui-seg" role="group" aria-label="备份策略"><button type="button" class="ui-seg-btn" :class="{ 'is-on': !forceBackup }" :aria-pressed="!forceBackup" @click="forceBackup=false"><b>保留现有备份</b><small>推荐</small></button><button type="button" class="ui-seg-btn" :class="{ 'is-on': forceBackup }" :aria-pressed="forceBackup" @click="forceBackup=true"><b>重新创建原始备份</b><small>会替换旧备份</small></button></div><div class="patch-actions ui-actions"><button class="action ui-btn" @click="backup">创建备份</button><button class="action ui-btn is-danger" @click="restore" :disabled="!state.backupExists">恢复备份</button></div></section>
             </div>
@@ -864,6 +872,35 @@ button,input,select { font:inherit; }
   background:rgba(255,255,255,.08);
   font-size:var(--fs-xs);
 }
+.titlebar-ct-session {
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:var(--space-2);
+  margin-left:var(--space-4);
+  padding:3px var(--space-3);
+  border:1px solid rgba(150,224,204,.52);
+  border-radius:var(--radius-pill);
+  color:#dff9ef;
+  background:rgba(24,100,83,.58);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-semibold);
+  white-space:nowrap;
+  cursor:pointer;
+}
+.titlebar-ct-session span {
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#8ce0c8;
+  box-shadow:0 0 0 3px rgba(140,224,200,.13);
+}
+.titlebar-ct-session.is-releasing {
+  border-color:rgba(255,213,133,.52);
+  color:#fff0c7;
+  background:rgba(130,85,25,.62);
+}
+.titlebar-ct-session.is-releasing span { background:#ffd585; }
 .titlebar-status {
   position:absolute;
   z-index:1;
@@ -1549,29 +1586,6 @@ button,input,select { font:inherit; }
 }
 .detected-file span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .detected-file b { flex:0 0 auto; color:var(--text-primary); }
-.patch-grid { --ui-grid-min:280px; }
-.patch-card header {
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:var(--space-3);
-}
-.patch-card header strong,.patch-card header small { display:block; }
-.patch-card header strong { color:var(--text-primary); font-size:var(--fs-md); }
-.patch-card header small { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); }
-.patch-card p { margin:0; color:var(--text-secondary); font-size:var(--fs-sm); }
-.patch-state {
-  padding:2px var(--space-2);
-  border-radius:var(--radius-pill);
-  color:var(--text-secondary);
-  background:var(--surface-field);
-  font-size:var(--fs-xs);
-  white-space:nowrap;
-}
-.patch-state.original { color:var(--success-ink); background:var(--success-bg); }
-.patch-state.patched { color:var(--info-ink); background:var(--info-bg); }
-.patch-state.unknown { color:var(--danger-ink); background:var(--danger-bg); }
-.patch-edit .ui-btn { flex:0 0 auto; }
 .backup-card {
   display:grid;
   grid-template-columns:minmax(170px,.8fr) minmax(300px,1.5fr) auto;
@@ -1705,6 +1719,7 @@ button,input,select { font:inherit; }
 }
 @media (max-width:960px) {
   .build-chip { display:none; }
+  .titlebar-ct-session { max-width:180px; overflow:hidden; text-overflow:ellipsis; }
   .titlebar-status { max-width:36vw; }
   .workspace-state { display:none; }
   .tool-page-heading { padding:var(--space-5) var(--space-6); }

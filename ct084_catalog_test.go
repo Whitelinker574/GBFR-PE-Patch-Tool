@@ -121,11 +121,56 @@ func TestCT084ProductionCatalogLoadsAndValidates(t *testing.T) {
 			distinctAOBs[site.AOB] = struct{}{}
 		}
 	}
-	if siteCount != 81 {
-		t.Fatalf("sites=%d, want 81", siteCount)
+	if siteCount != 82 {
+		t.Fatalf("sites=%d, want 82", siteCount)
 	}
-	if len(distinctAOBs) != 79 {
-		t.Fatalf("distinct AOBs=%d, want 79", len(distinctAOBs))
+	if len(distinctAOBs) != 80 {
+		t.Fatalf("distinct AOBs=%d, want 80", len(distinctAOBs))
+	}
+}
+
+func TestCT084RuntimeOverrideAddsGuardComboCandidateWithoutChangingLockedCatalog(t *testing.T) {
+	rawCatalog := readCT084CatalogFile(t)
+	loaded, err := loadCT084Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	find := func(catalog CT084Catalog) *CT084Feature {
+		for index := range catalog.Features {
+			if catalog.Features[index].ID == "ct084-31053" {
+				return &catalog.Features[index]
+			}
+		}
+		return nil
+	}
+	rawFeature := find(rawCatalog)
+	loadedFeature := find(*loaded)
+	if rawFeature == nil || loadedFeature == nil {
+		t.Fatal("automatic perfect guard feature is missing")
+	}
+	if len(rawFeature.Sites) != 2 {
+		t.Fatalf("locked source sites=%d, want 2", len(rawFeature.Sites))
+	}
+	if len(loadedFeature.Sites) != 3 {
+		t.Fatalf("runtime sites=%d, want 3", len(loadedFeature.Sites))
+	}
+	if loadedFeature.EvidenceLevel != "verified_field_repeat_game_2.0.2" || loadedFeature.EvidenceNote == "" {
+		t.Fatalf("candidate evidence metadata=%q/%q", loadedFeature.EvidenceLevel, loadedFeature.EvidenceNote)
+	}
+	candidate := loadedFeature.Sites[2]
+	if candidate.AOB != "8B 81 98 4F 01 00 83 C0 D0 83 F8 19 0F 82 ?? ?? ?? ?? 80 B9 40 8F 00 00 00 74 ??" || candidate.Offset != 12 {
+		t.Fatalf("candidate locator=%q +%d", candidate.AOB, candidate.Offset)
+	}
+	if !bytes.Equal(candidate.ExpectedOriginalBytes, []byte{0x0F, 0x82, 0x8F, 0x00, 0x00, 0x00}) || !bytes.Equal(candidate.EnableBytes, bytes.Repeat([]byte{0x90}, 6)) || !candidate.RequiresRuntimeCapture {
+		t.Fatalf("candidate bytes original=% X enabled=% X capture=%t", candidate.ExpectedOriginalBytes, candidate.EnableBytes, candidate.RequiresRuntimeCapture)
+	}
+}
+
+func TestCT084RuntimeOverrideRejectsWrongExecutableIdentity(t *testing.T) {
+	bad := bytes.Replace(ct084RuntimeOverridesJSON, []byte(runtimeCharacterPanelGameEXESHA256), bytes.Repeat([]byte{'0'}, 64), 1)
+	if _, err := decodeCT084RuntimeOverrides(bad); err == nil {
+		t.Fatal("decodeCT084RuntimeOverrides() error=nil, want executable identity failure")
 	}
 }
 

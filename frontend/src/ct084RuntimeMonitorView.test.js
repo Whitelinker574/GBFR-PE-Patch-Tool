@@ -11,6 +11,7 @@ const processInfo = { pid: 2468 }
 function combatEntity(role, index) {
   return {
     role,
+    present: true,
     displayName: role,
     address: 0x140001000 + index * 0x1000,
     hp: 20000 + index,
@@ -36,6 +37,7 @@ function validPartySnapshot() {
       combatEntity('party3', 3),
       {
         role: 'companion',
+        present: true,
         displayName: 'Vyrn',
         address: 0x140009000,
         hp: 999,
@@ -90,6 +92,30 @@ test('party snapshots accept only the verified five-entity 2.0.2 contract', () =
   assert.equal(normalized.entities[4].dodgeCount, undefined)
   assert.equal(normalized.entities[4].sba, undefined)
   assert.equal(normalized.entities[4].maxSba, undefined)
+})
+
+test('solo training snapshots preserve empty slots without fabricating zero-valued entities', () => {
+  assert.ok(view, 'ct084RuntimeMonitorView.js must exist')
+  const snapshot = validPartySnapshot()
+  for (let index = 1; index < 4; index += 1) {
+    snapshot.entities[index] = {
+      role: `party${index}`,
+      present: false,
+      displayName: `party${index}`,
+      address: 0,
+      hp: 0,
+      maxHp: 0,
+      position: { x: 0, y: 0, z: 0 },
+      capabilities: { dodge: false, sba: false, directPosition: false },
+    }
+  }
+  const normalized = view.normalizeCT084PartySnapshot(snapshot, ownerToken, processInfo.pid)
+  assert.equal(normalized.entities[0].present, true)
+  assert.deepEqual(normalized.entities.slice(1, 4).map(entity => entity.present), [false, false, false])
+  assert.throws(
+    () => view.normalizeCT084PartySnapshot({ ...snapshot, entities: snapshot.entities.map((entity, index) => index === 1 ? { ...entity, hp: 1 } : entity) }, ownerToken, processInfo.pid),
+    /absent|empty|present/i,
+  )
 })
 
 test('party snapshots reject stale ownership, changed process identity, and incomplete verification', () => {

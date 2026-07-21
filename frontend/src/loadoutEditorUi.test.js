@@ -28,11 +28,23 @@ test('specialization effects remain directly visible in the three-direction summ
   assert.match(source, /class="direction-effect"/)
 })
 
-test('result sidebar follows the stable overview, skills, totals, mastery, share order', () => {
-  const titles = ['角色效果总计', '技能效果', '总计加成', '专精解锁内估算', '分享单套配装']
+test('result sidebar follows the stable overview, skills, totals and mastery order', () => {
+  const titles = ['角色效果总计', '技能效果', '总计加成', '专精解锁内估算']
   const positions = titles.map(title => source.indexOf(`<strong>${title}</strong>`))
   assert.ok(positions.every(position => position >= 0), `missing result heading: ${positions}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
+})
+
+test('single-loadout import and export stay in the sticky save bar at every editor size', () => {
+  const bar = source.match(/<div class="editor-save-bar">([\s\S]*?)<\/div>\s*<\/div>/)?.[0] || ''
+  assert.match(bar, /class="single-loadout-label">单套配装<\/small>/)
+  assert.match(bar, /@click="exportCurrentLoadout">导出单套<\/button>/)
+  assert.match(bar, /@click="importLoadout">导入单套<\/button>/)
+  assert.match(bar, /@click="apply"/)
+  assert.equal((source.match(/@click="exportCurrentLoadout"/g) || []).length, 1)
+  assert.equal((source.match(/@click="importLoadout"/g) || []).length, 1)
+  assert.match(source, /\.editor-save-bar\s*\{[^}]*position:sticky/is)
+  assert.match(source, /@container\s+loadout-editor\s*\(max-width\s*:\s*760px\)[\s\S]*?\.editor-persistent-actions\s*\{[^}]*grid-template-columns\s*:\s*repeat\(2,minmax\(0,1fr\)\)/is)
 })
 
 test('editor typography uses standard font weights only', () => {
@@ -77,8 +89,10 @@ test('character values have a visible hierarchy and use the full profile width',
 
 test('defense calculation is explicit, sourced and does not pretend to be an absolute panel stat', () => {
 	assert.match(source, /formatFinalStat\(finalStats\?\.defenseBonus, 'signedPct'\)/)
+	assert.match(source, /formatFinalStat\(finalStats\?\.damageTakenRate, 'pct'\)/)
+	assert.match(source, /预计受击倍率/)
 	assert.match(source, /配装防御加成/)
-	assert.match(source, /仅汇总无条件防御力百分比/)
+	assert.match(source, /无条件防御力按百分比降低受击伤害/)
 	assert.match(source, /\.defense-scope-note\s*\{[^}]*border-left\s*:\s*2px/is)
 	assert.doesNotMatch(source, />最终防御力</)
 })

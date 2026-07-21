@@ -59,7 +59,7 @@ const validation = computed(() => {
   if (!options.subParams.some(item => (item.hash >>> 0) === (form.subParamHash >>> 0))) return '副词条不在已审计目录。'
   if (!Number.isInteger(Number(form.mainTraitLevel)) || Number(form.mainTraitLevel) < 0 || Number(form.mainTraitLevel) > 0xFFFFFFFF) return '主加护等级无法编码为 uint32。'
   if (!Number.isInteger(Number(form.subParamLevel)) || Number(form.subParamLevel) < 0 || Number(form.subParamLevel) > 0xFFFFFFFF) return '副词条等级无法编码为 uint32。'
-  if (!Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 0xFFFFFFFF) return 'Rank 无法编码为 uint32。'
+  if (!Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 0xFFFFFFFF) return '原始状态值（字段 1460）无法编码为 uint32。'
   if (!outputPath.value.trim()) return '请选择输出存档。'
   return ''
 })
@@ -138,7 +138,7 @@ async function write() {
   const confirmed = await confirmDialog.value?.ask({
     title: operationLabel,
     message: `将${inPlace.value ? '覆盖当前存档（自动备份）' : '写入新存档'}。`,
-    detail: '种类、主加护、副词条、等级和 Rank 会作为一条完整记录写入；天然规则只作提醒，写后逐字段回读。',
+    detail: '种类、主加护、副词条、等级和原始状态字段会作为一条完整记录写入；天然规则只作提醒，写后逐字段回读。',
     confirmLabel: '确认写入', tone: 'warning',
   })
   if (!confirmed) return
@@ -197,7 +197,7 @@ onMounted(async () => {
         <div class="record-list ui-list ui-scroll-region">
           <button v-for="record in filteredRecords" :key="record.unitId" class="record-row ui-row" :class="{ 'is-on': selectedUnitID === record.unitId && mode === 'update' }" @click="selectRecord(record)">
             <img v-if="typeIcon(record.state.typeHash)" :src="typeIcon(record.state.typeHash)" alt="" />
-            <span class="slot">#{{ record.slotId }}</span><span class="ui-truncate">{{ typeName(record.state.typeHash) }}</span><span class="ui-tag">R{{ record.state.rank }}</span>
+            <span class="slot">#{{ record.slotId }}</span><span class="ui-truncate">{{ typeName(record.state.typeHash) }}</span><span class="ui-tag" title="独立存档字段 1460，不是召唤石稀有度">状态 {{ record.state.rank }}</span>
           </button>
         </div>
       </aside>
@@ -210,7 +210,7 @@ onMounted(async () => {
           <label class="ui-field"><span class="ui-field-label">主加护等级</span><input v-model.number="form.mainTraitLevel" class="ui-input" type="number" min="0" max="4294967295" /></label>
           <label class="ui-field wide"><span class="ui-field-label">副词条</span><select v-model.number="form.subParamHash" class="ui-select"><option v-for="item in subChoices" :key="item.hash" :value="item.hash">{{ optionLabel(item) }}</option></select><small>{{ subName(form.subParamHash) }}</small></label>
           <label class="ui-field"><span class="ui-field-label">副词条档位</span><input v-model.number="form.subParamLevel" class="ui-input" type="number" min="0" max="4294967295" /><small v-if="subOption?.values?.[Number(form.subParamLevel)] !== undefined">当前表值：+{{ subOption.values[Number(form.subParamLevel)] }}{{ subOption.isPercent ? '%' : '' }}</small></label>
-          <label class="ui-field"><span class="ui-field-label">Rank</span><input v-model.number="form.rank" class="ui-input" type="number" min="0" max="4294967295" /></label>
+          <label class="ui-field"><span class="ui-field-label">原始状态值（字段 1460）</span><input v-model.number="form.rank" class="ui-input" type="number" min="0" max="4294967295" /><small>不是稀有度；修改已有记录时默认继承原值，当前实存档常见值为 2。</small></label>
         </div>
         <div class="write-panel">
           <div class="ui-section-title"><span>写入方式</span><small>覆盖或另存为，两种方式任选</small></div>
@@ -240,6 +240,7 @@ onMounted(async () => {
 .record-row img,.select-with-icon img { width:36px; height:36px; object-fit:contain; border:1px solid var(--line-soft); border-radius:7px; background:var(--surface-field); }
 .slot,small { font-family:var(--font-data); color:var(--text-muted); }
 .editor { align-content:start; }
+.editor .ui-form-grid { align-items:start; }
 .editor .wide { grid-column:1 / -1; }
 .select-with-icon { display:flex; align-items:center; gap:var(--space-3); }
 .select-with-icon .ui-select { min-width:0; flex:1; }

@@ -189,10 +189,7 @@ func TestCT084CatalogMatchesLocalGame202(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := loadCT084Catalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := readCT084CatalogFile(t)
 	evidence := readCT084OriginalEvidence(t)
 	evidenceByKey := make(map[[2]int]ct084OriginalEvidenceSite, len(evidence.Sites))
 	for _, site := range evidence.Sites {

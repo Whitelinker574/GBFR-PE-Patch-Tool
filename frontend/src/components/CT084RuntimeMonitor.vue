@@ -514,19 +514,21 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="party-grid">
-          <article v-for="entity in partySnapshot.entities" :key="entity.role" class="party-card ui-card is-flat">
+          <article v-for="entity in partySnapshot.entities" :key="entity.role" class="party-card ui-card is-flat" :class="{ 'is-absent': !entity.present }">
             <header class="entity-heading">
               <span class="role-crest" :data-role="entity.role" aria-hidden="true"><i></i></span>
               <div><small>{{ t('verifiedSnapshot') }}</small><h4>{{ roleName(entity) }}</h4></div>
-              <span class="ui-tag is-ok">{{ t('validData') }}</span>
+              <span class="ui-tag" :class="entity.present ? 'is-ok' : 'is-info'">{{ entity.present ? t('validData') : t('notInParty') }}</span>
             </header>
 
-            <section class="hp-block" :aria-label="`${roleName(entity)} ${t('hp')} ${hpText(entity)}`">
+            <div v-if="!entity.present" class="empty-party-slot">{{ t('emptySlotCopy') }}</div>
+
+            <section v-if="entity.present" class="hp-block" :aria-label="`${roleName(entity)} ${t('hp')} ${hpText(entity)}`">
               <div><span>{{ t('hp') }}</span><strong>{{ hpText(entity) }}</strong></div>
               <span class="hp-track" aria-hidden="true"><i :style="{ width: hpProgress(entity) }"></i></span>
             </section>
 
-            <dl class="entity-metrics">
+            <dl v-if="entity.present" class="entity-metrics">
               <div :class="{ 'is-unavailable': !partyOptionalMetric(entity, 'sba', language).available }">
                 <dt>{{ t('sba') }}</dt><dd>{{ partyOptionalMetric(entity, 'sba', language).text }}</dd>
               </div>
@@ -540,7 +542,7 @@ onBeforeUnmount(() => {
               </div>
             </dl>
 
-            <details class="entity-technical ui-disclosure">
+            <details v-if="entity.present" class="entity-technical ui-disclosure">
               <summary>{{ t('entityAddress') }}</summary>
               <code>{{ formatRuntimeAddress(entity.address) }}</code>
             </details>
@@ -735,6 +737,8 @@ onBeforeUnmount(() => {
 
 .party-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:var(--space-4); align-items:stretch; }
 .party-card { padding:var(--space-4); border-color:var(--border-default); background:var(--surface-card-pop); }
+.party-card.is-absent { background:var(--surface-sunken); }
+.empty-party-slot { margin-top:var(--space-4); padding:var(--space-5); border:1px dashed var(--border-default); border-radius:var(--radius-sm); color:var(--text-muted); font-size:var(--fs-sm); text-align:center; }
 .entity-heading { justify-content:flex-start; }
 .entity-heading > div { min-width:0; flex:1 1 auto; }
 .entity-heading small { display:block; color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }

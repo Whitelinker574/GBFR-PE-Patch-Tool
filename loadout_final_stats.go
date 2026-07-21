@@ -38,6 +38,7 @@ type LoadoutFinalStats struct {
 	CritRate          float64  `json:"critRate"`
 	StunPower         float64  `json:"stunPower"`
 	DefenseBonus      float64  `json:"defenseBonus"`
+	DamageTakenRate   float64  `json:"damageTakenRate"`
 	DamageCap         float64  `json:"damageCap"`
 	NormalDamageCap   float64  `json:"normalDamageCap"`
 	AbilityDamageCap  float64  `json:"abilityDamageCap"`
@@ -463,6 +464,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		CritRate:          crit,
 		StunPower:         stun,
 		DefenseBonus:      defenseBonus,
+		DamageTakenRate:   math.Max(0, 100-defenseBonus),
 		DamageCap:         commonCap,
 		NormalDamageCap:   normalCap,
 		AbilityDamageCap:  abilityCap,

@@ -1083,6 +1083,7 @@ async function apply() {
             <div class="profile-stat">
               <dt class="profile-stat-label">防御力加成</dt>
               <dd class="profile-stat-value">{{ formatFinalStat(finalStats?.defenseBonus, 'signedPct') }}</dd>
+              <small class="profile-stat-evidence">预计受击倍率 ≈{{ formatFinalStat(finalStats?.damageTakenRate, 'pct') }}</small>
             </div>
             <div class="profile-stat profile-stat-cap">
               <dt class="profile-stat-label">伤害上限</dt>
@@ -1152,7 +1153,7 @@ async function apply() {
             <span><small>能力伤害上限</small><b>{{ formatFinalStat(finalStats?.abilityDamageCap, 'signedPct') }}</b></span>
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
           </div>
-          <p class="defense-scope-note"><b>配装防御加成</b>仅汇总无条件防御力百分比；战斗状态、格挡、减伤和无敌仍保留在效果明细中，不换算成虚假的最终防御力。</p>
+          <p class="defense-scope-note"><b>配装防御加成</b>无条件防御力按百分比降低受击伤害；伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。条件防御、格挡、独立减伤和无敌仍保留在效果明细中，不混入该倍率。</p>
           <div class="formula-audit-row" :class="{ verified: calculationFormulaVerified }">
             <b>{{ calculationFormulaVerified ? '草稿公式证据已闭环' : '草稿公式未完全验证' }}</b>
             <span>带“≈”的离线值只用于草稿比较；只有游戏运行时回读不带近似标记。</span>
@@ -1293,7 +1294,7 @@ async function apply() {
                 </label>
                 <label><span>副等级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].subParamLevel" class="ed-input ui-input" type="number" min="0"
                   max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
-                <label><span>阶级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].rank" class="ed-input ui-input" type="number" min="0" max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
+                <label title="独立存档字段 1460，不是召唤石稀有度；默认保留原值"><span>原始状态</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].rank" class="ed-input ui-input" type="number" min="0" max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
               </div>
             </article>
           </div>
@@ -1328,9 +1329,14 @@ async function apply() {
       <main class="editor-column build-column">
       <div class="editor-save-bar">
         <span><b>{{ op === 'write' ? '配装草稿' : op === 'clone' ? '克隆操作' : '清空操作' }}</b><small>目标槽 {{ String(selectedSlot?.slot ?? 0).padStart(2, '0') }}</small></span>
-        <button class="editor-save-button apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
-          {{ saveButtonLabel() }}
-        </button>
+        <div class="editor-persistent-actions" aria-label="配装保存与单套导入导出">
+          <small class="single-loadout-label">单套配装</small>
+          <button class="ui-btn is-ghost single-loadout-action" :disabled="sharing || !selectedLoadout || selectedLoadout.isParty" title="导出当前单套配装，不包含存档" @click="exportCurrentLoadout">导出单套</button>
+          <button class="ui-btn is-ghost single-loadout-action" :disabled="sharing" title="导入单套配装并载入为草稿" @click="importLoadout">导入单套</button>
+          <button class="editor-save-button apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
+            {{ saveButtonLabel() }}
+          </button>
+        </div>
       </div>
       <template v-if="op === 'write'">
 
@@ -1655,14 +1661,6 @@ async function apply() {
           </details>
         </section>
 
-        <section class="result-card share-card ui-card ui-panel is-compact">
-          <header><strong>分享单套配装</strong><span>不做批量 · 不包含存档</span></header>
-          <p>导出时使用物品与主副词条指纹；导入只匹配当前存档已拥有的同一物品，并先载入为草稿。</p>
-          <div class="share-actions">
-            <button class="ui-btn is-primary" :disabled="sharing || !selectedLoadout || selectedLoadout.isParty" @click="exportCurrentLoadout">导出当前槽</button>
-            <button class="ui-btn" :disabled="sharing" @click="importLoadout">导入单套配装</button>
-          </div>
-        </section>
       </aside>
       </div>
     </template>
@@ -1705,6 +1703,7 @@ async function apply() {
 .profile-stat-cap .profile-stat-value { color:#a23f65; }
 .profile-stat-label { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
 .profile-stat-value { margin:0; white-space:nowrap; color:var(--text-primary); font-size:calc(15px * var(--editor-scale)); font-weight:700; font-variant-numeric:tabular-nums; }
+.profile-stat-evidence { margin-top:1px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.3; }
 .runtime-comparison { display:flex; flex-direction:column; gap:3px; margin-top:7px; padding-top:7px; border-top:1px dashed var(--line-soft); }
 .runtime-comparison-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:3px 8px; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
 .runtime-comparison-head small { color:var(--text-muted); font-weight:400; }
@@ -1777,6 +1776,10 @@ async function apply() {
 .editor-save-bar > span { min-width:0; display:flex; flex-direction:column; }
 .editor-save-bar > span b { color:var(--text-primary); font-size:var(--fs-sm); }
 .editor-save-bar > span small { color:var(--text-muted); font-size:var(--fs-xs); }
+.editor-persistent-actions { flex:0 0 auto; display:flex; align-items:center; gap:6px; }
+.editor-persistent-actions .ui-btn { min-height:34px; }
+.single-loadout-label { padding:0 3px 0 1px; color:var(--text-muted); font-size:var(--fs-xs); font-weight:700; white-space:nowrap; }
+.single-loadout-action { border-color:var(--line-gold); background:rgba(255,255,255,.5); color:#765126; }
 .editor-save-button { flex:0 0 auto; min-width:142px; }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
@@ -1863,7 +1866,6 @@ async function apply() {
 .skill-summary-card { order:1; }
 .bonus-summary-card { order:2; }
 .mastery-summary-card { order:3; }
-.share-card { order:4; }
 .result-card { min-width:0; padding:14px; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .result-card + .result-card { border-top:1px solid var(--line-soft); }
 .result-card > header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -1942,11 +1944,6 @@ async function apply() {
 .mastery-effect > b { display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--gold); }
 .mastery-effect > p { margin:2px 0 0; font-size:var(--fs-xs); line-height:1.4; color:var(--text-secondary); }
 .mastery-effect > small { display:block; margin-top:3px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.4; }
-.share-card > p { margin:0 0 8px; font-size:calc(11px * var(--editor-scale)); line-height:1.5; color:var(--text-muted); }
-.share-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-.share-actions button { min-height:30px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel); color:var(--text-primary); font-size:var(--fs-xs); cursor:pointer; }
-.share-actions button:first-child { background:#8b6737; color:#fff9e9; }
-.share-actions button:disabled { opacity:.42; cursor:not-allowed; }
 .mastery-result { display:flex; flex-direction:column; gap:7px; }
 .mastery-result-rank { padding-top:6px; border-top:1px dashed var(--line-soft); }
 .mastery-result-rank:first-child { padding-top:0; border-top:0; }
@@ -2159,5 +2156,10 @@ async function apply() {
   .bag-virtual-viewport { height:clamp(260px,42dvh,440px); }
   .summon-inline-grid { grid-template-columns:1fr; }
   .summon-inline-wide { grid-column:auto; }
+  .editor-save-bar { align-items:stretch; flex-direction:column; }
+  .editor-persistent-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .editor-persistent-actions .single-loadout-label { grid-column:1/-1; padding:0; }
+  .editor-persistent-actions .single-loadout-action { width:100%; }
+  .editor-persistent-actions .editor-save-button { grid-column:1/-1; width:100%; }
 }
 </style>

@@ -85,11 +85,11 @@ func TestReadCT084PartySnapshotUsesVerified202LayoutAndOptionalCompanionFields(t
 		t.Fatalf("entity count=%d, want %d", got, want)
 	}
 	player := snapshot.Result.Entities[0]
-	if player.Role != "player" || player.HP != 1000 || player.MaxHP != 2000 || player.DodgeCount == nil || *player.DodgeCount != 3 || player.SBA == nil || *player.SBA != 20 {
+	if !player.Present || player.Role != "player" || player.HP != 1000 || player.MaxHP != 2000 || player.DodgeCount == nil || *player.DodgeCount != 3 || player.SBA == nil || *player.SBA != 20 {
 		t.Fatalf("player=%+v", player)
 	}
 	companion := snapshot.Result.Entities[4]
-	if companion.Role != "companion" || companion.HP != 500 || companion.MaxHP != 900 {
+	if !companion.Present || companion.Role != "companion" || companion.HP != 500 || companion.MaxHP != 900 {
 		t.Fatalf("companion=%+v", companion)
 	}
 	if companion.DodgeCount != nil || companion.SBA != nil || companion.MaxSBA != nil {
@@ -100,6 +100,58 @@ func TestReadCT084PartySnapshotUsesVerified202LayoutAndOptionalCompanionFields(t
 	}
 	if companion.DirectPosition.X != 51 || companion.DirectPosition.Y != 52 || companion.DirectPosition.Z != 53 {
 		t.Fatalf("companion direct position=%+v", companion.DirectPosition)
+	}
+}
+
+func TestReadCT084PartySnapshotAcceptsEmptyTrainingPartySlots(t *testing.T) {
+	memory, moduleBase := newCT084PartyFixture(t)
+	root := moduleBase + ct084PartySlotTableRVA
+	for index := 1; index < 4; index++ {
+		memory.putPtr(root+uintptr(index)*8, 0)
+	}
+
+	snapshot, err := readCT084PartySnapshot(memory, moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(snapshot.Result.Entities), 5; got != want {
+		t.Fatalf("entity count=%d, want %d", got, want)
+	}
+	if !snapshot.Result.Entities[0].Present {
+		t.Fatal("player must remain present")
+	}
+	for index := 1; index < 4; index++ {
+		entity := snapshot.Result.Entities[index]
+		if entity.Present || entity.Address != 0 || entity.HP != 0 || entity.MaxHP != 0 {
+			t.Fatalf("empty slot %d fabricated runtime data: %+v", index, entity)
+		}
+		if snapshot.Topology.Entities[index] != 0 || snapshot.Topology.TransformNodes[index] != [2]uintptr{} {
+			t.Fatalf("empty slot %d retained topology: %+v", index, snapshot.Topology)
+		}
+	}
+}
+
+func TestReadCT084PartySnapshotAcceptsMissingCompanion(t *testing.T) {
+	memory, moduleBase := newCT084PartyFixture(t)
+	root := moduleBase + ct084PartySlotTableRVA
+	memory.putPtr(root+ct084PartyCompanionSlotOffset, 0)
+
+	snapshot, err := readCT084PartySnapshot(memory, moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	companion := snapshot.Result.Entities[4]
+	if companion.Present || companion.Role != "companion" || companion.Address != 0 {
+		t.Fatalf("missing companion=%+v", companion)
+	}
+}
+
+func TestReadCT084PartySnapshotStillRejectsMissingPlayer(t *testing.T) {
+	memory, moduleBase := newCT084PartyFixture(t)
+	memory.putPtr(moduleBase+ct084PartySlotTableRVA, 0)
+	_, err := readCT084PartySnapshot(memory, moduleBase)
+	if err == nil || (!strings.Contains(err.Error(), "玩家") && !strings.Contains(strings.ToLower(err.Error()), "player")) {
+		t.Fatalf("missing player error=%v", err)
 	}
 }
 
@@ -145,7 +197,7 @@ func TestValidateCT084PartyEntityRejectsImpossibleValues(t *testing.T) {
 	sba := float32(50)
 	maxSBA := float32(100)
 	valid := CT084PartyEntity{
-		Role: "player", HP: 100, MaxHP: 200,
+		Role: "player", Present: true, HP: 100, MaxHP: 200,
 		DodgeCount: &dodge, SBA: &sba, MaxSBA: &maxSBA,
 		Position:     CT084Vector3{X: 1, Y: 2, Z: 3},
 		Capabilities: CT084PartyCapabilities{Dodge: true, SBA: true},

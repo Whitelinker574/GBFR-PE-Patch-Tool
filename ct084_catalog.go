@@ -42,6 +42,8 @@ type CT084Feature struct {
 	Character     string           `json:"character"`
 	Conflicts     []string         `json:"conflicts"`
 	ConflictGroup string           `json:"conflictGroup"`
+	EvidenceLevel string           `json:"evidenceLevel,omitempty"`
+	EvidenceNote  string           `json:"evidenceNote,omitempty"`
 	Sites         []CT084PatchSite `json:"sites"`
 }
 
@@ -97,6 +99,9 @@ func decodeCT084Catalog(raw []byte) (*CT084Catalog, error) {
 func loadCT084Catalog() (*CT084Catalog, error) {
 	ct084CatalogOnce.Do(func() {
 		ct084CatalogData, ct084CatalogErr = decodeCT084Catalog(ct084CatalogJSON)
+		if ct084CatalogErr == nil {
+			ct084CatalogErr = applyCT084RuntimeOverrides(ct084CatalogData, ct084RuntimeOverridesJSON)
+		}
 	})
 	if ct084CatalogErr != nil {
 		return nil, ct084CatalogErr
@@ -124,7 +129,7 @@ func validateCT084Catalog(catalog *CT084Catalog) error {
 		return fmt.Errorf("CT084 catalog sourceVersion=%q, want %q", catalog.SourceVersion, ct084CatalogSourceVersion)
 	}
 	if catalog.SourceSHA256 != ct084CatalogSourceSHA256 {
-		return fmt.Errorf("CT084 catalog sourceSha256 does not match the 0.8.4 source")
+		return fmt.Errorf("实时功能目录来源校验失败")
 	}
 	if len(catalog.Features) != ct084CatalogFeatureCount {
 		return fmt.Errorf("CT084 catalog has %d features, want %d", len(catalog.Features), ct084CatalogFeatureCount)
@@ -165,6 +170,9 @@ func validateCT084Catalog(catalog *CT084Catalog) error {
 		}
 		if strings.TrimSpace(feature.Group) == "" {
 			return fmt.Errorf("%s: group is empty", label)
+		}
+		if (strings.TrimSpace(feature.EvidenceLevel) == "") != (strings.TrimSpace(feature.EvidenceNote) == "") {
+			return fmt.Errorf("%s: evidenceLevel and evidenceNote must be provided together", label)
 		}
 		if len(feature.Sites) == 0 {
 			return fmt.Errorf("%s: patch sites are empty", label)

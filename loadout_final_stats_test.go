@@ -141,6 +141,9 @@ func TestCalculateLoadoutFinalStatsUsesSafeUnconditionalSources(t *testing.T) {
 	if got.DefenseBonus != 30 {
 		t.Fatalf("defense bonus=%g, want 30: %+v", got.DefenseBonus, got)
 	}
+	if got.DamageTakenRate != 70 {
+		t.Fatalf("damage taken rate=%g, want 70: %+v", got.DamageTakenRate, got)
+	}
 	if got.DamageCap != 310 || got.NormalDamageCap != 330 || got.AbilityDamageCap != 330 || got.SkyboundDamageCap != 310 {
 		t.Fatalf("damage caps wrong: %+v", got)
 	}
@@ -188,6 +191,10 @@ func TestLoadoutMasteryPanelBonusesIncludeRealUnconditionalDefenseNode(t *testin
 	}
 	if len(bonuses) != 1 || bonuses[0].Label != "防御力" || bonuses[0].Unit != "pct" || bonuses[0].Value != 5 {
 		t.Fatalf("伊欧真实 1 阶无条件防御节点未进入静态防御加成: %+v", bonuses)
+	}
+	stats := calculateLoadoutFinalStats(loadoutPanelInputs{Mastery: bonuses})
+	if stats.DefenseBonus != 5 || stats.DamageTakenRate != 95 {
+		t.Fatalf("伊欧 +5%% 防御实测应显示 95%% 预计受击倍率: %+v", stats)
 	}
 }
 

@@ -31,7 +31,7 @@ const props = defineProps({
     validator: value => ['combat', 'characters', 'quest'].includes(value),
   },
 })
-const emit = defineEmits(['status'])
+const emit = defineEmits(['status', 'session-change'])
 
 const RUNTIME_LEASE_SCOPE = 'ct084-features'
 const OFFLINE_CONFIRMATION_KEY = 'gbfr.ct084.offline-only-confirmed'
@@ -46,7 +46,7 @@ const activeOperation = ref(null)
 const releasePending = ref(false)
 const connected = ref(false)
 const processInfo = ref({ pid: 0, moduleBase: 0 })
-const liveMessage = ref(tr('正在读取 CT 0.8.4 功能目录…'))
+const liveMessage = ref(tr('正在读取实时功能目录…'))
 const liveTone = ref('info')
 const pendingConfirmationFeature = ref(null)
 const confirmationCancelButton = ref(null)
@@ -95,9 +95,19 @@ const connectionLoading = computed(() => ['connect', 'disconnect'].includes(acti
 const statusLoading = computed(() => activeOperation.value?.kind === 'refresh')
 const busyFeatureID = computed(() => activeOperation.value?.kind === 'feature' ? activeOperation.value.featureID : '')
 
+function publishSession() {
+  emit('session-change', Object.freeze({
+    connected: connected.value,
+    releasePending: releasePending.value,
+    activeCount: activeFeatureCount.value,
+    pid: connected.value ? processInfo.value.pid : 0,
+  }))
+}
+
 watch(groups, (nextGroups) => {
   if (!nextGroups.some(group => group.key === activeGroupKey.value)) activeGroupKey.value = nextGroups[0]?.key || ''
 }, { immediate: true })
+watch([connected, releasePending, activeFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
 watch(pendingConfirmationFeature, async (feature) => {
   if (!feature) return
   await nextTick()
@@ -105,7 +115,7 @@ watch(pendingConfirmationFeature, async (feature) => {
 })
 
 function normalizeCatalog(value) {
-  if (!Array.isArray(value)) throw new Error('CT 0.8.4 功能目录格式无效')
+  if (!Array.isArray(value)) throw new Error('实时功能目录格式无效')
   return value.map((feature) => ({
     ...feature,
     groupPath: Array.isArray(feature?.groupPath) ? feature.groupPath : [],
@@ -150,10 +160,10 @@ async function loadCatalog(notify = false) {
     const nextCatalog = normalizeCatalog(await CT084GetCatalog())
     if (disposed || epoch !== lifecycleEpoch) return
     catalog.value = nextCatalog
-    if (notify) announce(`已读取 ${catalog.value.length} 项 CT 0.8.4 安全补丁`, 'ok')
+    if (notify) announce(`已读取 ${catalog.value.length} 项已验证补丁`, 'ok')
     else liveMessage.value = tr('功能目录已就绪；连接游戏后可读取实时状态。')
   } catch (error) {
-    if (!disposed && epoch === lifecycleEpoch) announce(`读取 CT 0.8.4 功能目录失败：${errorMessage(error)}`, 'danger')
+    if (!disposed && epoch === lifecycleEpoch) announce(`读取实时功能目录失败：${errorMessage(error)}`, 'danger')
   } finally {
     if (!disposed) catalogLoading.value = false
   }
@@ -181,7 +191,7 @@ function completeRuntimeRelease(expectedOwnerToken, expectedEpoch, notification)
     || notification?.ownerToken !== expectedOwnerToken
   ) return
   clearConnectionState()
-  announce('全部 CT 0.8.4 补丁已恢复，并已断开游戏进程', 'ok')
+  announce('全部实时补丁已恢复，并已断开游戏进程', 'ok')
 }
 
 async function connect() {
@@ -195,7 +205,7 @@ async function connect() {
     if (!operationIsCurrent(operationToken, epoch)) return
     const info = await CharaAcquire(nextRuntimeAcquireRequestID())
     acquiredOwnerToken = String(info?.ownerToken || '')
-    if (!acquiredOwnerToken) throw new Error('后端未返回 CT 0.8.4 连接所有权令牌')
+    if (!acquiredOwnerToken) throw new Error('后端未返回连接所有权令牌')
     if (!operationIsCurrent(operationToken, epoch)) {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, releaseCT084PageOwner)
       return
@@ -267,7 +277,7 @@ async function refreshStatuses() {
     const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
     applyStatuses(verifiedStatuses)
-    announce('CT 0.8.4 补丁状态已回读', 'ok')
+    announce('实时补丁状态已回读', 'ok')
   } catch (error) {
     if (operationIsCurrent(operationToken, epoch)) announce(`刷新状态失败：${errorMessage(error)}`, 'danger')
   } finally {
@@ -282,7 +292,7 @@ async function setFeatureEnabled(feature, enabled) {
   const ownerToken = connectionOwnerToken
   const epoch = lifecycleEpoch
   try {
-    if (!ownerToken) throw new Error('当前页面不再持有 CT 0.8.4 连接所有权')
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
     await CT084SetEnabledOwned(ownerToken, feature.id, enabled)
     const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
@@ -441,6 +451,7 @@ onBeforeUnmount(() => {
           <strong>{{ tr(releasePending ? '正在安全恢复并断开' : connected ? '游戏进程已连接' : '连接游戏后读取实时状态') }}</strong>
           <span v-if="connected">PID {{ processInfo.pid }} · {{ tr('已开启') }} {{ activeFeatureCount }} {{ tr('项') }}</span>
           <span v-else>{{ modeCopy.summary }}</span>
+          <span>{{ tr('三个补丁页共用此连接；切换页面时保持常驻。') }}</span>
         </div>
         <span class="ui-tag" :class="releasePending ? 'is-warn' : connected ? 'is-ok' : 'is-info'">{{ tr(releasePending ? '等待恢复' : connected ? '已验证连接' : '未连接') }}</span>
       </div>
@@ -463,7 +474,6 @@ onBeforeUnmount(() => {
       <header class="ct-browser-head">
         <div>
           <h2 class="ui-section-title">{{ modeCopy.label }} {{ tr('目录') }} <small>{{ visibleFeatureCount }} {{ tr('项') }}</small></h2>
-          <p class="ui-section-copy">{{ tr('目录来自本地 CT 0.8.4 安全重写；技术签名默认收起。') }}</p>
         </div>
         <label class="ct-search ui-field">
           <span class="ui-field-label">{{ tr('搜索名称、角色或分组') }}</span>
@@ -528,6 +538,11 @@ onBeforeUnmount(() => {
                     <span>CT {{ feature.ctId }}</span>
                   </div>
                   <h4>{{ displayFeatureName(feature) }}</h4>
+                  <small
+                    v-if="feature.evidenceNote"
+                    class="feature-evidence"
+                    :class="{ 'is-candidate': String(feature.evidenceLevel || '').startsWith('candidate_') }"
+                  >{{ tr(feature.evidenceNote) }}</small>
                 </div>
                 <span class="ui-tag" :class="statusFor(feature).enabled ? 'is-ok' : ownsFeature(feature) ? 'is-warn' : activeConflictFor(feature) ? 'is-danger' : 'is-info'">
                   {{ featureStateLabel(feature) }}
@@ -738,6 +753,8 @@ onBeforeUnmount(() => {
 .feature-kicker { display:flex; flex-wrap:wrap; gap:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); }
 .feature-kicker span + span::before { content:"·"; margin-right:var(--space-2); }
 .feature-title-block h4 { margin:var(--space-1) 0 0; color:var(--text-primary); font-size:var(--fs-base); line-height:var(--lh-tight); overflow-wrap:anywhere; }
+.feature-evidence { display:block; margin-top:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.feature-evidence.is-candidate { color:var(--warning-ink); }
 .feature-conflict,.feature-error { margin:var(--space-3) 0 0; }
 .ct-feature-actions { justify-content:space-between; margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--border-soft); }
 .feature-proof { min-width:0; color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }

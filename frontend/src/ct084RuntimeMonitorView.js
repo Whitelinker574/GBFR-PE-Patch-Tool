@@ -74,7 +74,7 @@ const COPY = Object.freeze({
   statusConnected: ['已连接游戏进程 PID {pid}。', 'Connected to game process PID {pid}.'],
   statusDisconnected: ['尚未连接游戏进程。', 'No game process is connected.'],
   statusReleaseFailed: ['安全断开尚未完成，恢复任务会在后台重试：{error}', 'Safe disconnect is incomplete. Restoration will retry in the background: {error}'],
-  statusPartyRead: ['已读取并验证 5 个队伍实体。', 'Read and verified five party entities.'],
+  statusPartyRead: ['已读取并验证当前队伍快照。', 'Read and verified the current party snapshot.'],
   statusPartyFailed: ['队伍快照读取失败：{error}', 'Party snapshot failed: {error}'],
   statusCaptureEnabled: ['两个只读捕获器已启用。', 'Both read-only captures are enabled.'],
   statusCaptureDisabled: ['捕获器已停用，原字节已恢复。', 'Captures are disabled and original bytes restored.'],
@@ -87,6 +87,8 @@ const COPY = Object.freeze({
   captureAddress: ['Hook 地址', 'Hook Address'],
   hookRva: ['Hook RVA', 'Hook RVA'],
   validData: ['已验证数据', 'Verified Data'],
+  notInParty: ['未编入', 'Not in Party'],
+  emptySlotCopy: ['当前槽位没有运行时实体，未生成任何数值。', 'This slot has no runtime entity; no values were fabricated.'],
   readOnlyChip: ['不写入记录', 'Record Writes Disabled'],
   errorMissingOwner: ['后端未返回运行时连接所有权令牌', 'The backend did not return a runtime connection owner token'],
   errorInvalidPid: ['后端返回的游戏进程 ID 无效', 'The backend returned an invalid game process ID'],
@@ -145,6 +147,7 @@ function isPresent(value) {
 function normalizePartyEntity(value, expectedRole) {
   const entity = objectValue(value, `party entity ${expectedRole}`)
   if (entity.role !== expectedRole) throw new TypeError(`party entity role must be ${expectedRole}`)
+  const present = booleanValue(entity.present, `${expectedRole} present`)
   const capabilities = objectValue(entity.capabilities, `${expectedRole} capabilities`)
   const normalizedCapabilities = {
     dodge: booleanValue(capabilities.dodge, `${expectedRole} dodge capability`),
@@ -163,12 +166,40 @@ function normalizePartyEntity(value, expectedRole) {
     throw new TypeError(`${expectedRole} direct position availability does not match its capability`)
   }
 
+  if (!present) {
+    const position = normalizePosition(entity.position, `${expectedRole} position`)
+    const hasRuntimeData = entity.address !== 0
+      || entity.hp !== 0
+      || entity.maxHp !== 0
+      || position.x !== 0
+      || position.y !== 0
+      || position.z !== 0
+      || normalizedCapabilities.dodge
+      || normalizedCapabilities.sba
+      || normalizedCapabilities.directPosition
+      || hasDodge
+      || hasSBA
+      || hasDirectPosition
+    if (hasRuntimeData) throw new TypeError(`${expectedRole} absent slot must not contain runtime entity data`)
+    return {
+      role: expectedRole,
+      present: false,
+      displayName: stringValue(entity.displayName, `${expectedRole} display name`),
+      address: 0,
+      hp: 0,
+      maxHp: 0,
+      position,
+      capabilities: normalizedCapabilities,
+    }
+  }
+
   const hp = unsignedInteger(entity.hp, `${expectedRole} HP`, 1_000_000_000)
   const maxHp = unsignedInteger(entity.maxHp, `${expectedRole} max HP`, 1_000_000_000, false)
   if (hp > maxHp) throw new TypeError(`${expectedRole} HP exceeds max HP`)
 
   const normalized = {
     role: expectedRole,
+    present: true,
     displayName: stringValue(entity.displayName, `${expectedRole} display name`),
     address: unsignedInteger(entity.address, `${expectedRole} address`, Number.MAX_SAFE_INTEGER, false),
     hp,
@@ -232,7 +263,7 @@ function normalizeCapture(value, expectedKind) {
   const address = unsignedInteger(capture.address, `${expectedKind} hook address`, Number.MAX_SAFE_INTEGER, !found)
   const selectedAddr = unsignedInteger(capture.selectedAddr, `${expectedKind} selected address`)
   const rva = unsignedInteger(capture.rva, `${expectedKind} RVA`, 0xFFFFFFFF, false)
-  if (rva !== SELECTED_RVAS[expectedKind]) throw new TypeError(`selected ${expectedKind} RVA does not match CT 0.8.4`)
+  if (rva !== SELECTED_RVAS[expectedKind]) throw new TypeError(`selected ${expectedKind} RVA does not match the verified runtime layout`)
   if (hooked && !found) throw new TypeError(`selected ${expectedKind} hook cannot exist without a found signature`)
   if (captured && (!hooked || selectedAddr === 0)) throw new TypeError(`selected ${expectedKind} captured state requires a hooked non-zero address`)
   if (!captured && selectedAddr !== 0) throw new TypeError(`selected ${expectedKind} address must be empty when not captured`)

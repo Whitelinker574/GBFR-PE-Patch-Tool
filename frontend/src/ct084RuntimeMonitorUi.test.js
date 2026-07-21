@@ -56,6 +56,8 @@ test('party cards render capabilities honestly instead of coercing absent values
   assert.doesNotMatch(source, /(?:dodgeCount|sba|maxSba)\s*\|\|\s*0/)
   assert.match(source, /v-for="entity in partySnapshot\.entities"/)
   assert.match(source, /formatPosition\(entity\.position\)/)
+  assert.match(source, /entity\.present/)
+  assert.match(source, /t\('notInParty'\)/)
 })
 
 test('selected-item reading binds ExpectedSelectedAddr and becomes reselect-required after one read', () => {

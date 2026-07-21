@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -71,6 +72,25 @@ func TestFieldRuntimeCalibrationEvidenceIsVersionedRedactedAndReproducible(t *te
 	}
 	if got := byNode["E0E6FF0C"]; got.classification != "negative_town_panel_observation" || got.repeated {
 		t.Fatalf("conditional defense evidence was overclaimed: %+v", got)
+	}
+	var defenseExperiment map[string]any
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range decoded["experiments"].([]any) {
+		experiment := item.(map[string]any)
+		if experiment["nodeHash"] == "2BE0D486" {
+			defenseExperiment = experiment
+			break
+		}
+	}
+	if defenseExperiment == nil || defenseExperiment["classification"] != "verified_combat_damage_single_role" || defenseExperiment["repeated"] != true {
+		t.Fatalf("unconditional defense combat evidence missing: %+v", defenseExperiment)
+	}
+	combat := defenseExperiment["combatDamage"].(map[string]any)
+	if combat["baselineDamage"] != float64(36938) || combat["defenseDamage"] != float64(35091) || math.Abs(combat["observedReductionPercent"].(float64)-5.00027072391575) > 1e-9 {
+		t.Fatalf("defense damage evidence mismatch: %+v", combat)
 	}
 	lower := strings.ToLower(string(raw))
 	for _, forbidden := range []string{"\"pid\"", "modulebase", "\"absoluteaddress\"", "c:\\\\users", "d:\\\\gbf", "administrator"} {

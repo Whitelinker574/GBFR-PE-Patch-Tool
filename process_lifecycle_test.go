@@ -159,3 +159,13 @@ func TestPublicDetachJoinsGlobalLiveMemoryTransaction(t *testing.T) {
 		t.Fatal("CharaDetach must wait for in-flight live-memory writes before closing the shared process handle")
 	}
 }
+
+func TestGenericRuntimeAttachDoesNotScanLegacyCharacterList(t *testing.T) {
+	body := appMethodBodyInFile(t, "app.go", "charaAttachLocked")
+	if body == nil {
+		t.Fatal("charaAttachLocked not found")
+	}
+	if firstSelectorCallPosition(body, "a", "charaManager") != token.NoPos {
+		t.Fatal("generic runtime attach must not scan the legacy character list before returning")
+	}
+}
