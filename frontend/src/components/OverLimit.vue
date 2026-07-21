@@ -15,7 +15,7 @@ const RUNTIME_LEASE_SCOPE = 'overlimit'
 
 const loading = ref(false)
 const options = reactive({ attributes: [], levels: [] })
-const status = reactive({ found: false, hooked: false, address: 0, rva: 0, selectedAddr: 0, commitRva: 0, currentBytes: '', slots: [] })
+const status = reactive({ found: false, hooked: false, address: 0, rva: 0, selectedAddr: 0, currentBytes: '', slots: [] })
 const edits = reactive([
   { attribute: 0, level: 0, value: 0 },
   { attribute: 0, level: 0, value: 0 },
@@ -77,7 +77,7 @@ function applyAllMaxValues() {
 }
 
 function applyStatus(next) {
-  Object.assign(status, next || { found: false, hooked: false, address: 0, rva: 0, selectedAddr: 0, commitRva: 0, currentBytes: '', slots: [] })
+  Object.assign(status, next || { found: false, hooked: false, address: 0, rva: 0, selectedAddr: 0, currentBytes: '', slots: [] })
   ;(status.slots || []).forEach((slot, i) => {
     if (i < edits.length) {
       edits[i].attribute = Number(slot.attribute || 0)

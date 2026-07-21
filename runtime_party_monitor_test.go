@@ -195,8 +195,4 @@ func TestCT084PartyMonitorOwnedUsesCharaOwnerProcessLease(t *testing.T) {
 	if body == nil || !blockCallsSelector(body, "a", "acquireOwnedRuntimeWriteLease") {
 		t.Fatal("CT084PartyMonitorOwned must validate the Chara owner while pinning PID/Created and hProcess")
 	}
-	var api func(*App, string) (CT084PartyMonitor, error) = (*App).CT084PartyMonitorOwned
-	if api == nil {
-		t.Fatal("owned party monitor API is missing")
-	}
 }

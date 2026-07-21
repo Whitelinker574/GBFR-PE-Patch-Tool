@@ -2,7 +2,12 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
+[![Release](https://img.shields.io/github/v/release/Whitelinker574/GBFR-PE-Patch-Tool)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
+
 A Windows project for local save editing, controlled runtime tools, and read-only formula calibration for *Granblue Fantasy: Relink* DLC 2.0.2. It is not an official tool. Use it only with your own offline saves and local single-player environment, and keep recoverable backups.
+
+The current stable release is **v1.10.0**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker follows this repository's releases.
 
 ## What is included
 
@@ -35,11 +40,11 @@ C:\Users\YOUR_NAME\AppData\Local\GBFR\Saved\SaveGames\
 
 ## Build and test on Windows
 
-Requirements: Windows amd64, Go 1.23+, Node.js/npm, Wails CLI v2, and the WebView2 Runtime. Visual Studio/MSBuild is needed only when rebuilding `src_dll/patch_core`.
+Requirements: Windows amd64, Go 1.25+, Node.js/npm, Wails CLI v2.13, and the WebView2 Runtime. Visual Studio/MSBuild is needed only when rebuilding `src_dll/patch_core`.
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 

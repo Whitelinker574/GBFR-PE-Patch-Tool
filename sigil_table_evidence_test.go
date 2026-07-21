@@ -21,7 +21,7 @@ type sigilTableAuditEvidence struct {
 		Verified int `json:"verified"`
 		Mismatch int `json:"mismatch"`
 	} `json:"traitSummary"`
-	Rows           []struct {
+	Rows []struct {
 		InternalID               string   `json:"internalId"`
 		Status                   string   `json:"status"`
 		GamePrimaryTraitID       string   `json:"gamePrimaryTraitId"`

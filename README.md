@@ -4,9 +4,14 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
-[English](README_EN.md) · [文档索引](docs/README.md)
+[![Release](https://img.shields.io/github/v/release/Whitelinker574/GBFR-PE-Patch-Tool)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
+
+[下载最新版](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [English](README_EN.md) · [文档索引](docs/README.md)
 
 面向《碧蓝幻想：Relink》DLC 2.0.2 的 Windows 本地存档编辑、受控运行时工具与只读公式校准项目。它不是官方工具；请只对自己的离线存档和本地单人环境使用，并始终保留可恢复备份。
+
+当前稳定版为 **v1.10.0**。Release 提供 Windows amd64 压缩包和 SHA-256 校验文件；程序内更新检查指向本仓库的正式 Release。
 
 ## 当前能力
 
@@ -39,11 +44,11 @@ C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\
 
 ## 构建与验证
 
-需要 Windows amd64、Go 1.23+、Node.js/npm、Wails CLI v2 和 WebView2 Runtime。仅在重建 `src_dll/patch_core` 时需要 Visual Studio/MSBuild。
+需要 Windows amd64、Go 1.25+、Node.js/npm、Wails CLI v2.13 和 WebView2 Runtime。仅在重建 `src_dll/patch_core` 时需要 Visual Studio/MSBuild。
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 

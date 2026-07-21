@@ -74,7 +74,6 @@ type OverLimitStatus struct {
 	Address      uint64          `json:"address"`
 	RVA          uint64          `json:"rva"`
 	SelectedAddr uint64          `json:"selectedAddr"`
-	CommitRVA    uint64          `json:"commitRva"`
 	CurrentBytes string          `json:"currentBytes"`
 	Slots        []OverLimitSlot `json:"slots"`
 }
@@ -175,19 +174,7 @@ var (
 		true, true, true, true, true, true, true, true,
 		true, false, true, true, true,
 	}
-	overLimitSelectedOrig  = []byte{0x8B, 0x03, 0x89, 0x02, 0x8B, 0x43, 0x04}
-	overLimitCommitPattern = []byte{
-		0x48, 0xC7, 0x85, 0xE8, 0x0F, 0x00, 0x00, 0x2B, 0x00, 0x00, 0x00,
-		0x48, 0x8D, 0x4D, 0xB8, 0x48, 0x8D, 0x95, 0xE0, 0x0F, 0x00, 0x00,
-		0xC5, 0xF8, 0x77, 0xE8, 0, 0, 0, 0,
-		0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x48, 0x8B, 0x4D, 0xB8, 0x48, 0x89, 0x0D, 0, 0, 0, 0,
-	}
-	overLimitCommitMask = []bool{
-		true, true, true, true, true, true, true, true, true, true, true,
-		true, true, true, true, true, true, true, true, true, true, true,
-		true, true, true, true, false, false, false, false,
-		true, true, true, false, false, false, false, true, true, true, true, true, true, true, false, false, false, false,
-	}
+	overLimitSelectedOrig = []byte{0x8B, 0x03, 0x89, 0x02, 0x8B, 0x43, 0x04}
 )
 
 const (
@@ -482,7 +469,7 @@ func (a *App) overLimitEnableLocked() (OverLimitStatus, error) {
 	)
 }
 
-// OverLimitDisable explicitly removes this tool's selected-character capture
+// OverLimitRelease explicitly removes this tool's selected-character capture
 // hook while holding the same stable process and lifecycle leases as enable.
 // CharaDetach calls the same restore path as a final fallback.
 func (a *App) OverLimitRelease(token string) (OverLimitStatus, error) {
@@ -904,9 +891,6 @@ func (a *App) readOverLimitStatusLocked() (OverLimitStatus, error) {
 		}
 		status.Slots = slots
 	}
-	if a.overLimitCommitAddr != 0 {
-		status.CommitRVA = uint64(a.overLimitCommitAddr - a.moduleBase)
-	}
 	return status, nil
 }
 
@@ -1007,27 +991,6 @@ func readOverLimitSlots(h windows.Handle, base uintptr) ([]OverLimitSlot, error)
 	return slots, nil
 }
 
-func (a *App) findOverLimitCommitAddr() (uintptr, error) {
-	if a.overLimitCommitAddr != 0 {
-		return a.overLimitCommitAddr, nil
-	}
-	addr, err := a.scanPatternUnique(overLimitCommitPattern, overLimitCommitMask, "上限突破保存函数特征")
-	if err != nil {
-		return 0, err
-	}
-	callAddr := addr + 0x19
-	buf := make([]byte, 5)
-	if err := readProcessMemory(a.hProcess, callAddr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
-		return 0, fmt.Errorf("读取上限突破保存 call 失败: %w", err)
-	}
-	if buf[0] != 0xE8 {
-		return 0, fmt.Errorf("上限突破保存 call 字节异常: %s", bytesToHex(buf))
-	}
-	target := uintptr(int64(callAddr+5) + int64(int32(binary.LittleEndian.Uint32(buf[1:5]))))
-	a.overLimitCommitAddr = target
-	return target, nil
-}
-
 // validateRemoteFunctionStart uses an exact, locally verified signature. A
 // permissive "not 00/CC" check can land in the middle of an unrelated function
 // after a game update and is not safe enough for CreateRemoteThread.
@@ -1089,18 +1052,6 @@ func (a *App) callRemoteOneArg(fn uintptr, arg uintptr) error {
 	return nil
 }
 
-func writeUint32Remote(h windows.Handle, addr uintptr, value uint32) error {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, value)
-	return writeProcessMemory(h, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf)))
-}
-
-func writeFloat32Remote(h windows.Handle, addr uintptr, value float32) error {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, math.Float32bits(value))
-	return writeProcessMemory(h, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf)))
-}
-
 func validOverLimitAttribute(v uint32) bool {
 	_, ok := overLimitCatalog[v]
 	return ok
@@ -1112,20 +1063,6 @@ func overLimitValueSpec(v uint32) (float32, float32, bool) {
 		return 0, 1, false
 	}
 	return entry.maxValue, entry.scale, true
-}
-
-func overLimitEffectID(v uint32) uint32 {
-	if entry, ok := overLimitCatalog[v]; ok {
-		return entry.effectID
-	}
-	return 0
-}
-
-func overLimitAttributeName(v uint32) string {
-	if entry, ok := overLimitCatalog[v]; ok {
-		return entry.name
-	}
-	return fmt.Sprintf("0x%08X", v)
 }
 
 func validOverLimitLevel(v uint32) bool {

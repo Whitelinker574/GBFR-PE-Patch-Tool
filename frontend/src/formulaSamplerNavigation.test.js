@@ -6,7 +6,6 @@ const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url
 const home = readFileSync(new URL('./components/HomeJournal.vue', import.meta.url), 'utf8')
 
 test('formula sampler is routed after the general runtime monitor in the read-only group', () => {
-  assert.match(shell, /formulaSampler:\s*\(\)\s*=>\s*import\(['"]\.\/FormulaSampler\.vue['"]\)/)
   assert.match(shell, /import FormulaSampler from ['"]\.\/FormulaSampler\.vue['"]/)
   assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]ctMonitor['"],\s*['"]formulaSampler['"]\]/)
   assert.match(shell, /<FormulaSampler\s+v-else-if="activeTab === 'formulaSampler'"\s+@status="showStatus"\s*\/>/)

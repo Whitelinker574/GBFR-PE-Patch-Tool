@@ -26,8 +26,8 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.10.0-local-dlc202"
-	repoOwner   = "BitterG"
+	appVersion  = "v1.10.0"
+	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
 
@@ -145,7 +145,6 @@ type App struct {
 	faceAccessoryAddr              uintptr
 	overLimitHookAddr              uintptr
 	overLimitCaveAddr              uintptr
-	overLimitCommitAddr            uintptr
 	unlockAllTrophyAddr            uintptr
 	terminusDropAddr               uintptr
 	terminusDropOrig               []byte
@@ -1590,7 +1589,6 @@ func (a *App) charaDetachLocked() error {
 	a.faceAccessoryAddr = 0
 	a.overLimitHookAddr = 0
 	a.overLimitCaveAddr = 0
-	a.overLimitCommitAddr = 0
 	a.unlockAllTrophyAddr = 0
 	a.terminusDropAddr = 0
 	a.terminusDropOrig = nil

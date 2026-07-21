@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-const testUnlockedSave = `D:\gbf\SaveData1.dat`
 const testLoadoutSave = `D:\gbf\SaveData2(3).dat`
 
 func haveSave(p string) bool {

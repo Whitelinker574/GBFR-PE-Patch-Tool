@@ -1,36 +1,38 @@
-# Go
-/go.sum
+# Go build output
+/gbfrPlayerInfoEdit.exe
 
 # Wails build output
 /build/bin/*
 !/build/bin/patch_core.dll
-/gbfrPlayerInfoEdit.exe
 
-# Frontend dependencies & build artifacts
+# Frontend dependencies and build artifacts
 /frontend/node_modules/
 /frontend/dist/
-/frontend/package-lock.json
 /frontend/package.json.md5
 
-# Wails auto-generated bindings
+# Wails generated bindings
 /frontend/wailsjs/
 
-# IDE
+# IDE and editor state
 /.idea/
 /.vscode/
 *.swp
 *.swo
+*.vcxproj.user
 
-# Local agent/tooling state
+# Local agent and tooling state
 /.claude/
 /.codegraph/
 /鍥犲瓙鐢熸垚鍔熻兘鏌ユ紡琛ョ己杩涘害.md
 /tools/qnaigc-output/
+/tools/local/
 
-# Visual Studio / C++ build artifacts
+# Visual Studio and C++ build artifacts
 /src_dll/.vs/
 /src_dll/x64/
 /src_dll/patch_core/x64/
+/src_dll/build/
+/src_dll/patch_core/patch_core/
 *.obj
 *.pdb
 *.ipdb
@@ -41,25 +43,17 @@
 *.log
 *.tlog
 *.recipe
+*.pch
+FileListAbsolute.txt
+
+# Git Bash and MSYS crash dumps
+*.stackdump
 
 # Local notes
 /src_dll/todo.txt
 
-#Git Bash/MSYS
-*.stackdump
-
-# msbuild 中间产物(嵌套路径)
-/src_dll/build/
-/src_dll/patch_core/patch_core/
-*.pch
-*.ipdb
-*.iobj
-*.tlog
-FileListAbsolute.txt
-
-# Local handoffs and field captures are delivery artifacts, not source.
+# Local handoffs and field captures
 /RETURN-TO-MAIN-CODEX/
 /docs/local/
 /docs/handoffs/
 /field-*.zip
-/tools/local/

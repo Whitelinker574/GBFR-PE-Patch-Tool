@@ -47,9 +47,6 @@ import monsterSticker from '../assets/gbfr/stickers/monster.webp'
 import patchSticker from '../assets/gbfr/stickers/patch.webp'
 import languageSticker from '../assets/gbfr/stickers/language.webp'
 
-// These page-specific assets are produced by the approved portrait workflow.
-// URL construction keeps this frontend slice independently buildable while the
-// asset task lands, without silently substituting another page's character.
 const ctCombatArt = new URL('../assets/gbfr/cutouts/ct-combat-official-edge-safe.webp', import.meta.url).href
 const ctCharactersArt = new URL('../assets/gbfr/cutouts/ct-characters-official-edge-safe.webp', import.meta.url).href
 const ctQuestArt = new URL('../assets/gbfr/cutouts/ct-quest-official-edge-safe.webp', import.meta.url).href
@@ -61,31 +58,7 @@ const ctQuestSticker = new URL('../assets/gbfr/stickers/ct-quest.webp', import.m
 const ctMonitorSticker = new URL('../assets/gbfr/stickers/ct-monitor.webp', import.meta.url).href
 const formulaSamplerSticker = new URL('../assets/gbfr/stickers/formula-sampler.webp', import.meta.url).href
 
-const componentLoaders = {
-  progression: () => import('./ProgressionEditor.vue'),
-  sigil: () => import('./SigilGenerator.vue'),
-  sigilMemory: () => import('./SigilMemoryGenerator.vue'),
-  loadout: () => import('./SigilLoadoutRestore.vue'),
-  loadoutPresets: () => import('./LoadoutViewer.vue'),
-  wrightstone: () => import('./WrightstoneGenerator.vue'),
-  summonSave: () => import('./SummonSaveEditor.vue'),
-  wrightstoneMemory: () => import('./WrightstoneMemoryGenerator.vue'),
-  summon: () => import('./SummonEditor.vue'),
-  overlimit: () => import('./OverLimit.vue'),
-  runtime: () => import('./MiscTools.vue'),
-  chara: () => import('./CharaStats.vue'),
-  save: () => import('./SaveEditor.vue'),
-  monster: () => import('./MonsterEnhance.vue'),
-  ctCombat: () => import('./CT084Features.vue'),
-  ctCharacters: () => import('./CT084Features.vue'),
-  ctQuest: () => import('./CT084Features.vue'),
-  ctMonitor: () => import('./CT084RuntimeMonitor.vue'),
-  formulaSampler: () => import('./FormulaSampler.vue'),
-  language: () => import('./LanguageSettings.vue'),
-}
-// 桌面本地应用无网络加载成本，改用静态直引：全部组件打进主包，
-// 切页时立绘与内容同帧渲染，不再出现“先出图、内容后到”的等待感。
-// componentLoaders / warmTool 仍保留（预热已打包模块，无副作用），便于将来若需分包回退。
+// 桌面应用将页面组件静态打入主包，切页时同步渲染。
 import ProgressionEditor from './ProgressionEditor.vue'
 import SigilGenerator from './SigilGenerator.vue'
 import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
@@ -453,7 +426,6 @@ function warmImage(src) {
 function warmTool(id) {
   if (!id || warmedTools.has(id)) return
   warmedTools.add(id)
-  componentLoaders[id]?.().catch(() => warmedTools.delete(id))
   warmImage(functionArt[id])
   warmImage(functionStickers[id])
 }
@@ -512,9 +484,8 @@ onMounted(() => {
   const warmWorkshop = () => queueWarmTools((navigation.value[0]?.items || []).slice(1))
   if ('requestIdleCallback' in window) window.requestIdleCallback(warmWorkshop, { timeout: 800 })
   else window.setTimeout(warmWorkshop, 180)
-  // Keep first paint light, then fill the remaining illustration/component cache
-  // sequentially so the first visit to Settings or Compatibility does not flash.
-  window.setTimeout(() => queueWarmTools(Object.keys(componentLoaders)), 1100)
+  // 第一屏完成后顺序预载其余插画，避免首次切页闪烁。
+  window.setTimeout(() => queueWarmTools(Object.keys(functionArt)), 1100)
 })
 
 function ensureGameDetection() {

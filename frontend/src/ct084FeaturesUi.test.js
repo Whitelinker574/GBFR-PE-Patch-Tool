@@ -75,12 +75,12 @@ test('a disconnect retry keeps CT writes locked until its exact owner and epoch 
 })
 
 test('the three CT 0.8.4 routes share one categorized component and unique planned art', () => {
+  assert.match(patchTool, /import CT084Features from ['"]\.\/CT084Features\.vue['"]/)
   for (const [id, mode] of [
     ['ctCombat', 'combat'],
     ['ctCharacters', 'characters'],
     ['ctQuest', 'quest'],
   ]) {
-    assert.match(patchTool, new RegExp(`${id}: \\(\\) => import\\('\\.\\/CT084Features\\.vue'\\)`))
     assert.match(patchTool, new RegExp(`<CT084Features[^>]*?activeTab === '${id}'[^>]*?mode="${mode}"`))
     assert.match(patchTool, new RegExp(`functionArt[\\s\\S]*?${id}: ${id}Art`))
     assert.match(patchTool, new RegExp(`functionStickers[\\s\\S]*?${id}: ${id}Sticker`))

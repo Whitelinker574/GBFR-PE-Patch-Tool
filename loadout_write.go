@@ -679,42 +679,6 @@ func validateLoadoutSigilDestination(save *SaveData, prepared *preparedLoadoutSi
 	return nil
 }
 
-func loadoutCharacterMasterGrowth(save *SaveData, charaHash uint32) (masterGrowth, error) {
-	var charaUnitID uint32
-	found := false
-	for _, unit := range save.findAllUnitsByType(SaveID_CharacterID) {
-		if unit.ValueCnt == 1 && unit.Uint32() == charaHash {
-			if found && charaUnitID != unit.UnitID {
-				return masterGrowth{}, fmt.Errorf("角色 %08X 对应多个 1301 UnitID，拒绝推断专精容量", charaHash)
-			}
-			charaUnitID = unit.UnitID
-			found = true
-		}
-	}
-	if !found {
-		return masterGrowth{}, fmt.Errorf("存档缺少角色 %08X 的 1301 标量，拒绝推断专精容量", charaHash)
-	}
-	masterMSP, ok := save.findUnitExact(1323, charaUnitID)
-	if !ok || masterMSP.ValueCnt != 1 {
-		return masterGrowth{}, fmt.Errorf("存档缺少角色 %d 的 1323 Master 总 MSP 标量，拒绝写入专精", charaUnitID)
-	}
-	return deriveMasterGrowth(int(masterMSP.Int32())), nil
-}
-
-func validateCharacterMasteryRankCaps(save *SaveData, charaHash uint32, counts map[string]int) error {
-	growth, err := loadoutCharacterMasterGrowth(save, charaHash)
-	if err != nil {
-		return err
-	}
-	for _, rank := range masteryRanks {
-		cap := growth.MasteryRankCaps[rank.Rank]
-		if counts[rank.Rank] > cap {
-			return fmt.Errorf("角色 %08X Master Lv%d 的 %s 专精容量为 %d，收到 %d", charaHash, growth.MasterLevel, rank.Rank, cap, counts[rank.Rank])
-		}
-	}
-	return nil
-}
-
 func validateLoadoutMasteryForCharacter(save *SaveData, charaHash uint32, ownerCode string, hashes []uint32) error {
 	_, _ = save, charaHash
 	_, err := validateMasteryQuota(hashes, ownerCode, false)

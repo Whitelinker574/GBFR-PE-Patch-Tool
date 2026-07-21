@@ -336,16 +336,6 @@ func (c *Catalog) IsSigilConstructible(sigil *SigilDef) bool {
 	return false
 }
 
-func generatedPlusDisplayName(name string) string {
-	if strings.HasSuffix(name, "+") {
-		return name
-	}
-	if strings.HasSuffix(name, " V") {
-		return name + "+"
-	}
-	return name + " V+"
-}
-
 func displaySigilName(sigil *SigilDef) string {
 	if sigil == nil {
 		return ""

@@ -95,11 +95,28 @@ func TestValidateSummonTraitChangeRejectsUnsafeSubLevelAndRank(t *testing.T) {
 
 func TestValidateSummonTraitChangeRejectsCrossPoolCombination(t *testing.T) {
 	catalog, existing, draft := auditedSummonTraitStates(t)
+	rules, err := loadSummonNaturalRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rulesByHash, err := summonNaturalRuleByHash(rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule, ok := rulesByHash[draft.TypeHash]
+	if !ok {
+		t.Fatalf("missing natural rule for summon type 0x%08X", draft.TypeHash)
+	}
+	found := false
 	for hash := range catalog.main {
-		if hash != draft.MainTraitHash {
+		if !containsSummonRuleHash(rule.MainTraitHashes, hash) {
 			draft.MainTraitHash = hash
+			found = true
 			break
 		}
+	}
+	if !found {
+		t.Fatal("catalog did not contain an incompatible main trait")
 	}
 	if err := validateSummonTraitChange(catalog, draft, existing); err == nil || !strings.Contains(err.Error(), "天然词池") {
 		t.Fatalf("cross-pool main trait was not rejected: %v", err)

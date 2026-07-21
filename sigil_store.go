@@ -451,15 +451,6 @@ func (s *SaveData) patchUintExact(idType, unitID, value uint32) error {
 	return nil
 }
 
-func (s *SaveData) patchIntExact(idType, unitID uint32, value int) error {
-	entry, ok := s.findUnitExact(idType, unitID)
-	if !ok {
-		return fmt.Errorf("找不到精确 save unit: IDType=%d, UnitID=%d", idType, unitID)
-	}
-	entry.SetInt32(int32(value))
-	return nil
-}
-
 func (s *SaveData) patchInt(idType, unitID uint32, value int) error {
 	entry, ok := s.findUnit(idType, unitID)
 	if !ok {

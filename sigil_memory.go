@@ -20,16 +20,6 @@ const (
 )
 
 var (
-	// CT v0.4.5 used `01 ?? 83`; current game build inserts `31 C0` before cmp.
-	// First cmp is `81 /7 imm32` (six bytes total), second is `81 /7 disp8 imm32` (seven bytes).
-	sigilMemorySelectedPattern = []byte{
-		0x31, 0, 0x81, 0, 0, 0, 0, 0x0F, 0x95, 0,
-		0x31, 0, 0x81, 0, 0, 0, 0, 0, 0x0F, 0x95, 0, 0x01, 0, 0x31, 0, 0x83,
-	}
-	sigilMemorySelectedMask = []bool{
-		true, false, true, false, false, false, false, false, true, true, false,
-		true, false, true, false, false, false, false, false, true, true, false, true, false, true, false, true,
-	}
 	sigilMemoryOriginalBytes = []byte{0x31, 0xC9, 0x81, 0x38, 0xB0, 0xE0, 0x7A, 0x88}
 	sigilMemoryMarker        = []byte("GBFRSGM1")
 	sigilMemoryLifecycleMu   sync.Mutex
@@ -83,14 +73,6 @@ type SigilMemoryUpdate struct {
 	PrimaryTraitLevel    uint32 `json:"primaryTraitLevel"`
 	SecondaryTraitHash   uint32 `json:"secondaryTraitHash"`
 	SecondaryTraitLevel  uint32 `json:"secondaryTraitLevel"`
-}
-
-func sigilMemoryHookedMask() []bool {
-	mask := append([]bool{}, sigilMemorySelectedMask...)
-	for i := 0; i < sigilMemoryHookSize && i < len(mask); i++ {
-		mask[i] = false
-	}
-	return mask
 }
 
 func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
@@ -219,45 +201,6 @@ func (a *App) scanSigilMemoryLocked() (SigilMemoryStatus, error) {
 	}
 	a.sigilMemoryHookAddr = addr
 	return a.readSigilMemoryStatus()
-}
-
-func (a *App) scanSigilMemoryPattern() (uintptr, error) {
-	moduleSize, err := getRemoteModuleSize(a.hProcess, a.moduleBase)
-	if err != nil {
-		return 0, err
-	}
-	const chunkSize uintptr = 0x10000
-	var matches []uintptr
-	var carry []byte
-	var carryBase uintptr
-	for off := uintptr(0); off < moduleSize; off += chunkSize {
-		size := chunkSize
-		if off+size > moduleSize {
-			size = moduleSize - off
-		}
-		buf := make([]byte, size)
-		addr := a.moduleBase + off
-		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
-			carry = nil
-			continue
-		}
-		scanBuf, scanBase := buf, addr
-		if len(carry) > 0 {
-			scanBuf = append(append([]byte{}, carry...), buf...)
-			scanBase = carryBase
-		}
-		matches = append(matches, findPatternMatches(scanBuf, scanBase, sigilMemorySelectedPattern, sigilMemorySelectedMask)...)
-		if len(buf) >= len(sigilMemorySelectedPattern)-1 {
-			carry = append([]byte{}, buf[len(buf)-len(sigilMemorySelectedPattern)+1:]...)
-			carryBase = addr + uintptr(len(buf)-len(sigilMemorySelectedPattern)+1)
-		}
-	}
-	if len(matches) == 0 {
-		return 0, fmt.Errorf("未找到选中因子特征码；当前游戏版本与内置特征不匹配")
-	}
-	// Runtime breakpoint verification: later duplicate (+345157 in current build)
-	// receives RAX pointing to the selected sigil structure.
-	return matches[len(matches)-1], nil
 }
 
 func (a *App) SigilMemoryGetStatus() (SigilMemoryStatus, error) {
@@ -572,7 +515,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 	if a.sigilMemoryHookAddr == 0 {
 		return SigilMemoryStatus{}, fmt.Errorf("未定位选中因子特征")
 	}
-	buf := make([]byte, len(sigilMemorySelectedPattern))
+	buf := make([]byte, sigilMemoryHookSize)
 	if err := readProcessMemory(a.hProcess, a.sigilMemoryHookAddr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("读取选中因子 Hook 指令失败: %w", err)
 	}

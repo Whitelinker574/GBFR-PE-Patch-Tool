@@ -664,13 +664,3 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 	wg.retryAfterFailedCommit = nil
 	return &WrightstoneApplyResult{CreatedCount: created, VerifiedCount: verified, OutputPath: absPath}, nil
 }
-
-func defaultWrightstoneOutputPath(inputPath string) string {
-	dir := filepath.Dir(inputPath)
-	ext := filepath.Ext(inputPath)
-	base := strings.TrimSuffix(filepath.Base(inputPath), ext)
-	if ext == "" {
-		ext = ".dat"
-	}
-	return filepath.Join(dir, base+"_wrightstones"+ext)
-}

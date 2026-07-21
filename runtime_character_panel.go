@@ -302,11 +302,6 @@ func loadoutRuntimeWeaponObservation(charaHash, expectedWeaponSlotID uint32) (*L
 	return result, append([]runtimeWeaponTrait(nil), snapshot.Skills...), nil
 }
 
-func loadoutRuntimeWeaponWrightstone(charaHash, expectedWeaponSlotID uint32) (*LoadoutWeaponWrightstone, error) {
-	wrightstone, _, err := loadoutRuntimeWeaponObservation(charaHash, expectedWeaponSlotID)
-	return wrightstone, err
-}
-
 type runtimeCharacterPanelVersionGuard struct {
 	RVA   uintptr
 	Bytes []byte
@@ -445,32 +440,6 @@ func readRuntimePermanentPanelStats(memory runtimeCharacterPanelMemory, status u
 	return finalizePermanentPanelStats(LoadoutPermanentPanelStats{
 		Attack: float64(attack), HP: float64(hp), CritRate: float64(crit), StunRaw: float64(stun),
 	}), nil
-}
-
-func readStableRuntimePermanentPanelStats(readSnapshot func() (LoadoutPermanentPanelStats, error)) (LoadoutPermanentPanelStats, error) {
-	var first LoadoutPermanentPanelStats
-	for index := 0; index < 3; index++ {
-		current, err := readSnapshot()
-		if err != nil {
-			return LoadoutPermanentPanelStats{}, err
-		}
-		if index == 0 {
-			first = current
-			continue
-		}
-		if current != first {
-			return LoadoutPermanentPanelStats{}, fmt.Errorf("运行时角色强化聚合值在连续三次读取间变化")
-		}
-	}
-	return first, nil
-}
-
-func loadoutRuntimePermanentPanelStats(charaHash uint32) (LoadoutPermanentPanelStats, error) {
-	snapshot, err := loadoutRuntimeCharacterGrowth(charaHash)
-	if err != nil {
-		return LoadoutPermanentPanelStats{}, err
-	}
-	return snapshot.Permanent, nil
 }
 
 // These anchors were checked byte-for-byte against the shipped 2.0.2 image.
@@ -838,55 +807,6 @@ func verifyRuntimeCharacterPanelVersion(memory runtimeCharacterPanelMemory, modu
 		}
 	}
 	return nil
-}
-
-func lookupRuntimeCharacterPanelStatus(memory runtimeCharacterPanelMemory, table uintptr, mask uint32, sentinel uintptr, id uint32) (uintptr, bool, error) {
-	bucketOffset := uintptr(id&mask) * runtimeCharacterPanelBucketStride
-	bucket, ok := checkedRuntimePanelAddress(table, bucketOffset)
-	if !ok {
-		return 0, false, fmt.Errorf("角色状态 bucket 地址溢出")
-	}
-	last, err := readRuntimePanelPointerOffset(memory, bucket, runtimeCharacterPanelBucketLastOffset)
-	if err != nil {
-		return 0, false, fmt.Errorf("读取角色状态 bucket 尾节点失败: %w", err)
-	}
-	node, err := readRuntimePanelPointerOffset(memory, bucket, runtimeCharacterPanelBucketHeadOffset)
-	if err != nil {
-		return 0, false, fmt.Errorf("读取角色状态 bucket 头节点失败: %w", err)
-	}
-	if node == 0 || node == sentinel {
-		return 0, false, nil
-	}
-	visited := make(map[uintptr]struct{})
-	for step := 0; step < runtimeCharacterPanelMaxChainNodes; step++ {
-		if node == 0 || node == sentinel {
-			return 0, false, nil
-		}
-		if _, duplicate := visited[node]; duplicate {
-			return 0, false, fmt.Errorf("角色状态 bucket 链出现循环（id=0x%X）", id)
-		}
-		visited[node] = struct{}{}
-		key, readErr := readRuntimePanelU32Offset(memory, node, runtimeCharacterPanelNodeKeyOffset)
-		if readErr != nil {
-			return 0, false, fmt.Errorf("读取角色状态节点 key 失败: %w", readErr)
-		}
-		if key == id {
-			status, statusErr := readRuntimePanelPointerOffset(memory, node, runtimeCharacterPanelNodeStatusOffset)
-			if statusErr != nil {
-				return 0, false, fmt.Errorf("读取角色状态指针失败: %w", statusErr)
-			}
-			return status, status != 0, nil
-		}
-		if node == last {
-			return 0, false, nil
-		}
-		next, nextErr := readRuntimePanelPointerOffset(memory, node, runtimeCharacterPanelNodeNextOffset)
-		if nextErr != nil {
-			return 0, false, fmt.Errorf("读取角色状态 bucket 下一节点失败: %w", nextErr)
-		}
-		node = next
-	}
-	return 0, false, fmt.Errorf("角色状态 bucket 链超过安全上限（id=0x%X）", id)
 }
 
 func readRuntimeCharacterPanelValues(memory runtimeCharacterPanelMemory, status uintptr, characterHash uint32) (RuntimeCharacterPanelStats, error) {

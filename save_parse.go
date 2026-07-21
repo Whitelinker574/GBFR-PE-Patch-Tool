@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-
-	"github.com/cespare/xxhash/v2"
 )
 
 // ── Save File Constants ──
@@ -654,17 +652,4 @@ func (s *SaveDataBinary) GetBoolUnit(idType uint32) *BoolSaveDataUnit {
 		}
 	}
 	return nil
-}
-
-// ── XXHash64 utilities ──
-
-func xxHash64(data []byte, seed uint64) uint64 {
-	d := xxhash.NewWithSeed(seed)
-	d.Write(data)
-	return d.Sum64()
-}
-
-var hashSectionInfos = []struct{ StartOffset, SubSize int }{
-	{0x58, 0x80}, {0x30, 0xA0}, {0x28, 0x30}, {0x38, 0xC0}, {0x40, 0xB0},
-	{0x68, 0x50}, {0x48, 0x60}, {0x70, 0x90}, {0x50, 0x40}, {0x60, 0x70},
 }

@@ -19,7 +19,7 @@ echo [3/4] Building frontend...
 cd /d "%~dp0frontend" || exit /b %errorlevel%
 if not exist "node_modules\pinyin-pro\package.json" (
 	echo Installing frontend dependencies...
-	call npm install
+	call npm ci
 	if errorlevel 1 exit /b %errorlevel%
 )
 call npm run build

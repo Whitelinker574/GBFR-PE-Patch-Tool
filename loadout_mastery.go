@@ -8,7 +8,7 @@ import (
 
 // ── 专精配置器：自由配置一套合法专精盘 ────────────────────────────────
 //
-// 规则（经研究工作流对抗验证，数据源 skillboard_unlock/group/rank_adjust）：
+// 规则（来自 skillboard_unlock/group/rank_adjust，并由回归测试覆盖）：
 // 一套满级(50级)合法盘 = 精确 10/10/10/20 = 50 个节点，四档由 grp 区分：
 //   68DE92AC=Rank1(上限10) A96D9EBC=Rank2(10) 4A5DDC7B=Rank3(10) 3B99904D=RankEX(20)
 // 节点间无连通性要求，但 2 阶必须有一个方向达到 6 项，3 阶继续沿用该方向。

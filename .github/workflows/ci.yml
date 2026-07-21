@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate Wails bindings
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force frontend/dist | Out-Null
+          Set-Content frontend/dist/.embed-placeholder 'Wails embed placeholder'
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.13.0 generate module
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verify Go formatting
+        shell: pwsh
+        run: |
+          $files = git ls-files '*.go'
+          $unformatted = gofmt -l $files
+          if ($unformatted) {
+            $unformatted
+            exit 1
+          }
+
+      - name: Vet and test Go code
+        run: |
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 '-checks=all,-ST1003,-ST1005' ./...
+          go test ./...
+
+      - name: Test frontend
+        run: node --test frontend/src/*.test.js

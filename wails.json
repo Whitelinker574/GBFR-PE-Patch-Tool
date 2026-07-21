@@ -2,7 +2,7 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "GBFR PE Patch Tool",
   "outputfilename": "GBFR PE Patch Tool",
-  "frontend:install": "npm install",
+  "frontend:install": "npm ci",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
@@ -13,8 +13,8 @@
   "info": {
     "companyName": "BitterG Community",
     "productName": "GBFR PE Patch Tool",
-    "productVersion": "2.0.2.0",
+    "productVersion": "1.10.0.0",
     "copyright": "Community tool for personal save management",
-    "comments": "Granblue Fantasy: Relink DLC 2.0.2 local build"
+    "comments": "Granblue Fantasy: Relink DLC 2.0.2 community tool"
   }
 }
