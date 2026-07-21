@@ -5,9 +5,7 @@
     "title": "战斗规则补丁",
     "source_files": [
       "data/ct084_patches.json",
-      "tools/generate_ct084_patches.ps1",
-      "docs/superpowers/specs/2026-07-19-ct084-runtime-integration-design.md",
-      "docs/superpowers/specs/2026-07-19-functional-page-art-refresh-design.md"
+      "tools/generate_ct084_patches.ps1"
     ],
     "layout": "已用真实 Wails WebView2 的 Page.captureScreenshot 复核 1024×768、1440×900、1920×1080 三种原生应用尺寸；内容面板实测宽度分别为 554、719、1016 px，首张功能卡分别为 532、473、681 px 宽且无横向溢出、裁字或越界控件。共享工具舞台左侧依次承载连接回读、状态、搜索分组与条目详情，右侧是独立透明立绘轨；1440 首屏可见三张战斗卡，1920 可见四张，1024 保持单列并显示首卡。Q 版角色与 sidebar-mascot-say 气泡常驻全局左侧导航栏；立绘不得侵入连接、开关、参数、冲突或回读状态，紧凑宽度隐藏立绘轨。"
   },
@@ -36,7 +34,7 @@
     "prop": "一套固定训练摆锤装置：单一立柱、单一转轴、可见短臂和一个接触盾面的软垫摆锤头；另保留固定在左前臂的唯一盾牌与完整抵地的 Alabarda。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp0900.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp0900.png",
         "subject": "Alabarda / WEP_PL0900_01",
         "use": "仅约束单件连续长柄武器的准确几何，完整保留长杆、斧刃与尾端尖头"
       }

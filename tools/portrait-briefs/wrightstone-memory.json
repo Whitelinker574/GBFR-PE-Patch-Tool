@@ -33,12 +33,12 @@
     "prop": "一座具有恰好三个实体插槽的祝福石校准架：前两槽各有一枚晶体、第三槽留空，并带有一个正在闭合的机械锁扣。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp2500.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp2500.png",
         "subject": "Al Fine / WEP_PL2500_01",
         "use": "仅约束主刀刃的准确几何，不把它复制或变形成校准架与晶体"
       },
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/items/cmn_icitm_25_0000.png",
+        "file": "frontend/public/loadout-icons/items/cmn_icitm_25_0000.png",
         "subject": "Dread Wrightstone identity / ITEM_25_0131 / 0x09E6F629",
         "use": "仅使用红色碎裂晶体的身份徽记与色彩，不复制方形 UI 边框，也不推断成扁平卡片"
       }

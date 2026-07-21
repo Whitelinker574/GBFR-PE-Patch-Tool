@@ -7,11 +7,9 @@
       "data/ct084_patches.json",
       "frontend/src/components/CT084Features.vue",
       "frontend/src/components/PatchTool.vue",
-      "tools/generate_ct084_patches.ps1",
-      "docs/superpowers/specs/2026-07-19-ct084-runtime-integration-design.md",
-      "docs/superpowers/specs/2026-07-19-functional-page-art-refresh-design.md"
+      "tools/generate_ct084_patches.ps1"
     ],
-    "screenshot": "D:/gbf/.tmp/gbfr-final-native-qa-20260719/page-matrix/1440x900--ctCharacters.png",
+    "screenshot": "",
     "layout": "真实 Wails WebView2 页面采用左侧目录、约 62% 宽的功能面板与右侧固定大幅透明立绘背景。1440×900 时功能面板显示连接回读、角色分组搜索、冲突提示与条目详情，右侧立绘从头部到大腿可见；1024×768 和 960×620 时目录收窄，内容仍由自身滚动，立绘不得遮挡搜索框、角色列表、冲突标签、开关、参数或回读状态。Q 版角色与 HTML 气泡常驻左下目录；源图必须完整边缘安全，页面只在显示阶段裁到大腿。"
   },
   "functionality": {
@@ -39,7 +37,7 @@
     "prop": "一块腰高机械互斥台，恰好三个并排机制槽、唯一一根两止点实体拨杆和唯一一盏回读灯；只有巴萨拉卡槽处于活动态。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp1700.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp1700.png",
         "subject": "巨镰古洛诺斯 / Great Scythe Grynoth / WEP_PL1700_01",
         "use": "仅约束巨镰古洛诺斯的连续弯曲柄、单一镰刃、材料分区和朝向；武器沿右肩后方斜背并与机制台完全分离"
       }

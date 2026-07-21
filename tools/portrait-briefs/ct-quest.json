@@ -5,9 +5,7 @@
     "title": "任务与便利补丁",
     "source_files": [
       "data/ct084_patches.json",
-      "tools/generate_ct084_patches.ps1",
-      "docs/superpowers/specs/2026-07-19-ct084-runtime-integration-design.md",
-      "docs/superpowers/specs/2026-07-19-functional-page-art-refresh-design.md"
+      "tools/generate_ct084_patches.ps1"
     ],
     "layout": "已用真实 Wails WebView2 的 Page.captureScreenshot 复核 1024×768、1440×900、1920×1080 三种原生应用尺寸；内容面板实测宽度分别为 554、719、1016 px，首张功能卡分别为 532、473、681 px 宽且无横向溢出、裁字或越界控件。共享工具舞台左侧依次承载连接回读、状态、任务/便利搜索分组与详情，右侧是独立透明立绘轨；1440 首屏可见三张任务卡，1920 可见四张，1024 保持单列并显示首卡。Q 版角色与 sidebar-mascot-say 气泡常驻全局左侧导航栏；立绘不得侵入冻结、宝箱、结算、奖励开关或恢复回读状态，紧凑宽度隐藏立绘轨。"
   },
@@ -36,7 +34,7 @@
     "prop": "一块由单一细窄支架从下方承重的硬质地图板，板上固定唯一一张打开的实体任务地图；地图上恰好三个标记：宝箱、沙漏、支线目标旗。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp1300.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp1300.png",
         "subject": "Kiku-Ichimonji / WEP_PL1300_01",
         "use": "仅约束成对武士刀的准确几何与数量；两把刀都保持入鞘"
       }
