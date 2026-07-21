@@ -8,9 +8,8 @@
       "notes": "Contains currently hardcoded trait hashes and write-time target levels."
     },
     {
-      "name": "Nenkai Relink Trait/Skill IDs",
-      "url": "https://nenkai.github.io/relink-modding/resources/trait_skill_ids/",
-      "notes": "Public trait/skill ID mapping used during prior verification."
+      "name": "Archived trait/skill ID table",
+      "notes": "Local reference snapshot used during prior verification."
     },
     {
       "name": "Observed save data",

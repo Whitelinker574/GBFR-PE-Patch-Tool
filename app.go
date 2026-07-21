@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.10.0"
+	appVersion  = "v1.91"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -94,7 +94,6 @@ type UpdateInfo struct {
 	CurrentVersion string        `json:"currentVersion"`
 	LatestVersion  string        `json:"latestVersion"`
 	HasUpdate      bool          `json:"hasUpdate"`
-	ReleaseURL     string        `json:"releaseUrl"`
 	Body           string        `json:"body"`
 	Assets         []UpdateAsset `json:"assets"`
 }
@@ -383,7 +382,6 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 
 	var release struct {
 		TagName string `json:"tag_name"`
-		HTMLURL string `json:"html_url"`
 		Body    string `json:"body"`
 		Assets  []struct {
 			Name string `json:"name"`
@@ -398,7 +396,6 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		CurrentVersion: appVersion,
 		LatestVersion:  release.TagName,
 		HasUpdate:      compareVersionTags(release.TagName, appVersion) > 0,
-		ReleaseURL:     release.HTMLURL,
 		Body:           release.Body,
 	}
 	for _, asset := range release.Assets {
@@ -407,10 +404,8 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 	return info, nil
 }
 
-func (a *App) OpenReleasePage(url string) error {
-	if strings.TrimSpace(url) == "" {
-		url = fmt.Sprintf("https://github.com/%s/%s/releases", repoOwner, repoName)
-	}
+func (a *App) OpenReleasePage() error {
+	url := fmt.Sprintf("https://github.com/%s/%s/releases", repoOwner, repoName)
 	runtime.BrowserOpenURL(a.ctx, url)
 	return nil
 }

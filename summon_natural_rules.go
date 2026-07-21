@@ -31,7 +31,6 @@ type SummonNaturalRule struct {
 type summonNaturalRuleFile struct {
 	SchemaVersion int                 `json:"schemaVersion"`
 	GameVersion   string              `json:"gameVersion"`
-	SourceURL     string              `json:"sourceUrl"`
 	SourceRole    string              `json:"sourceRole"`
 	Rows          []SummonNaturalRule `json:"rows"`
 }

@@ -15,7 +15,7 @@ import (
 const (
 	badgeVectorLength  = 1700
 	badgeCatalogCount  = 1616
-	badgeCatalogSource = "BitterG/GBFR-PE-Patch-Tool#26@14ad0df"
+	badgeCatalogSource = "legacy-title-catalog#26@14ad0df"
 	badgeCatalogSHA256 = "2aab04739254bebb26d48db9ec5f9cd804cda6a37a09654de2344cd41f4d833f"
 )
 

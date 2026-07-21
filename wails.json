@@ -7,13 +7,13 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "苦瓜",
-    "email": "11513458+gourd_bitter@user.noreply.gitee.com"
+    "name": "Whitelinker574",
+    "email": "165281972+Whitelinker574@users.noreply.github.com"
   },
   "info": {
-    "companyName": "BitterG Community",
+    "companyName": "Whitelinker574",
     "productName": "GBFR PE Patch Tool",
-    "productVersion": "1.10.0.0",
+    "productVersion": "1.91.0",
     "copyright": "Community tool for personal save management",
     "comments": "Granblue Fantasy: Relink DLC 2.0.2 community tool"
   }

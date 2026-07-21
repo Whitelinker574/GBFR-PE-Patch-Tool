@@ -2,12 +2,12 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
-[![Release](https://img.shields.io/github/v/release/Whitelinker574/GBFR-PE-Patch-Tool)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[Release v1.91](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
 [![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
 
 A Windows project for local save editing, controlled runtime tools, and read-only formula calibration for *Granblue Fantasy: Relink* DLC 2.0.2. It is not an official tool. Use it only with your own offline saves and local single-player environment, and keep recoverable backups.
 
-The current stable release is **v1.10.0**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker follows this repository's releases.
+The current stable release is **v1.91**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker only contacts this repository's releases.
 
 ## What is included
 
@@ -65,6 +65,6 @@ Verified runtime reads are not presented as proof of every formula. Conditional 
 
 ## Attribution and disclaimer
 
-Save parsing references [GBFRDataTools.SaveFile](https://github.com/Nenkai/GBFRDataTools/tree/master/GBFRDataTools.SaveFile). Earlier sigil and wrightstone research references GBFR-Sigil-Generator and GBFR-Wrightstone-Generator. Original project logic comes from the BitterG community.
+Required historical provenance and third-party licenses remain in the repository; current maintenance, downloads, and in-app updates point only to this repository.
 
 This project is for learning and personal local use. You are responsible for the consequences of modifying saves, game files, or runtime memory.

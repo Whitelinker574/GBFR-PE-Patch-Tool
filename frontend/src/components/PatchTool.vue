@@ -100,7 +100,7 @@ const forceBackup = ref(false)
 const saveStatus = ref('')
 const statusType = ref('')
 const updateLoading = ref(false)
-const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, releaseUrl: '', body: '' })
+const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
 let hasAttemptedGameDetection = false
 
 const toolMeta = {
@@ -578,7 +578,7 @@ function checkUpdate() {
 }
 
 function openReleasePage() {
-  OpenReleasePage(updateInfo.releaseUrl || '').catch((err) => showStatus(String(err), 'error'))
+  OpenReleasePage().catch((err) => showStatus(String(err), 'error'))
 }
 
 let statusTimer = 0
@@ -646,7 +646,7 @@ function showStatus(message, type) {
         </div>
         <div class="sidebar-foot">
           <div class="target-row"><span class="target-dot"></span><div><strong>当前游戏版本</strong><small>Relink DLC 2.0.2</small></div></div>
-          <a href="https://github.com/BitterG/GBFR-PE-Patch-Tool" target="_blank">项目仓库 ↗</a>
+          <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool" target="_blank" rel="noreferrer">项目仓库 ↗</a>
         </div>
       </aside>
 

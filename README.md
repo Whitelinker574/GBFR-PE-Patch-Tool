@@ -4,14 +4,14 @@
 
 # GBFR PE Patch Tool · DLC 2.0.2
 
-[![Release](https://img.shields.io/github/v/release/Whitelinker574/GBFR-PE-Patch-Tool)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
+[正式版本 v1.91](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
 [![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
 
 [下载最新版](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [English](README_EN.md) · [文档索引](docs/README.md)
 
 面向《碧蓝幻想：Relink》DLC 2.0.2 的 Windows 本地存档编辑、受控运行时工具与只读公式校准项目。它不是官方工具；请只对自己的离线存档和本地单人环境使用，并始终保留可恢复备份。
 
-当前稳定版为 **v1.10.0**。Release 提供 Windows amd64 压缩包和 SHA-256 校验文件；程序内更新检查指向本仓库的正式 Release。
+当前稳定版为 **v1.91**。Release 提供 Windows amd64 压缩包和 SHA-256 校验文件；程序内更新检查只访问本仓库的正式 Release。
 
 ## 当前能力
 
@@ -81,6 +81,6 @@ docs/                              当前维护文档与机器可读证据
 
 ## 致谢与免责声明
 
-存档解析参考 [GBFRDataTools.SaveFile](https://github.com/Nenkai/GBFRDataTools/tree/master/GBFRDataTools.SaveFile)，因子和祝福相关历史研究参考 GBFR-Sigil-Generator 与 GBFR-Wrightstone-Generator。原项目逻辑由 BitterG 社区维护。
+项目保留必要的历史来源说明和第三方许可证；当前维护、下载与程序内更新均只指向本仓库。
 
 本项目仅供学习和个人本地使用。使用者自行承担修改存档、游戏文件或运行时内存的风险。

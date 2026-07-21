@@ -1,8 +1,7 @@
 {
   "schemaVersion": 1,
   "gameVersion": "2.0.2",
-  "sourceUrl": "https://relinksummon.fate-go.top/",
-  "sourceRole": "secondary-cross-check; normalized from the site data derived from summon_lot.tbl and summon_curve.tbl; checked against local hashes",
+  "sourceRole": "secondary cross-check normalized from summon_lot.tbl and summon_curve.tbl; checked against local hashes",
   "generatedAt": "2026-07-21",
   "rows": [
     {

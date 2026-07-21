@@ -287,12 +287,10 @@ pre-cap raw damage
 
 参考：
 
-- [2.0.2 官方更新说明（简中）](https://relink-ragnarok.granbluefantasy.com/chs/updates/381/)
-- [2.0.2 官方更新说明（英文）](https://relink-ragnarok.granbluefantasy.com/en/updates/381/)
-- [当前召唤石加护与副参数目录](https://nenkai.github.io/relink-modding/resources/summon_trait_chances/)
-- [Hercules 当前武器基础值与超越阶段](https://game8.jp/gbf-relink/797383)
-- [更新后的碧蓝配装模拟器（只作交叉比较；本项目仍以本地 2.0.2 表和真实存档为准）](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/)
-- [上游 PR #26 称号记录方案（仅安全提炼锁定字段与目录，不直接合并实现）](https://github.com/BitterG/GBFR-PE-Patch-Tool/pull/26)
+- 2.0.2 官方更新说明的本地留档
+- 本地解包的召唤石加护、副参数、武器基础值与超越阶段表
+- 当前存档、运行时读取和配装模拟结果的交叉样本
+- 历史称号记录方案的本地审计快照
 
 ## 回归命令
 
