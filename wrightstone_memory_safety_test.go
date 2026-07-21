@@ -93,6 +93,22 @@ func TestValidateWrightstoneMemoryUpdateEnforcesPerSlotCaps(t *testing.T) {
 	}
 }
 
+func TestWrightstoneMemoryWriteDefaultsToAdvisoryRulesButKeepsFirstSlot(t *testing.T) {
+	catalog, update := validWrightstoneMemoryUpdate(t)
+	update.FirstLevel = ^uint32(0)
+	update.SecondHash = update.FirstHash
+	update.SecondLevel = ^uint32(0)
+	update.ThirdHash = 0xDEADBEEF
+	update.ThirdLevel = ^uint32(0)
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
+		t.Fatalf("write request was blocked by advisory rules: %v", err)
+	}
+	update.FirstHash = EmptyHash
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("write must still require the first encoded slot")
+	}
+}
+
 func TestValidateWrightstoneMemorySelectionRejectsEveryStaleAddress(t *testing.T) {
 	const expected = uintptr(0x12345000)
 	if _, err := validateWrightstoneMemorySelection(expected, expected, expected); err != nil {

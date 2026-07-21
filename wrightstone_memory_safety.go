@@ -89,6 +89,14 @@ func validateWrightstoneMemoryUpdate(catalog *WrightstoneCatalog, update Wrights
 	return nil
 }
 
+func validateWrightstoneMemoryWriteRequest(catalog *WrightstoneCatalog, update WrightstoneMemoryUpdate) error {
+	if isEmptyWrightstoneMemoryTrait(update.FirstHash) {
+		return fmt.Errorf("祝福第一槽 Hash 必须是可编码的非空值")
+	}
+	_ = catalog // natural slot/level rules are advisory for writes.
+	return nil
+}
+
 func validateWrightstoneMemorySelection(expected, statusSelected, caveSelected uintptr) (uintptr, error) {
 	if expected == 0 {
 		return 0, fmt.Errorf("缺少写入前捕获的祝福记录地址")

@@ -220,6 +220,19 @@ func validateSummonMemoryUpdateAgainstExisting(catalog *summonStatCatalog, item 
 	})
 }
 
+func validateSummonMemoryWriteRequest(catalog *summonStatCatalog, item SummonUpdate) error {
+	if item.Index < 0 || item.Index >= summonMaxRecords {
+		return fmt.Errorf("无效召唤石索引: %d", item.Index)
+	}
+	_ = catalog // natural pools and observed caps are advisory for writes.
+	return nil
+}
+
+func validateSummonMemoryWriteAgainstExisting(catalog *summonStatCatalog, item SummonUpdate, existing SummonInfo) error {
+	_, _, _ = catalog, item, existing
+	return nil
+}
+
 func encodeSummonMemoryRecord(original []byte, item SummonUpdate) ([]byte, error) {
 	if len(original) != summonRecordSize {
 		return nil, fmt.Errorf("召唤石记录长度 %d，预期 %d", len(original), summonRecordSize)
@@ -410,7 +423,7 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err != nil {
 		return SummonInfo{}, fmt.Errorf("加载召唤石写入目录失败: %w", err)
 	}
-	if err := validateSummonMemoryUpdateNonMainFields(catalog, item); err != nil {
+	if err := validateSummonMemoryWriteRequest(catalog, item); err != nil {
 		return SummonInfo{}, fmt.Errorf("召唤石写入参数无效: %w", err)
 	}
 
@@ -443,10 +456,7 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if existing.TypeHash == 0 || existing.TypeHash == summonInvalidTypeHash {
 		return SummonInfo{}, fmt.Errorf("召唤石索引不存在于当前背包: %d", item.Index)
 	}
-	if item.TypeHash != existing.TypeHash {
-		return SummonInfo{}, fmt.Errorf("召唤石种类不支持修改：索引 %d 当前为 0x%08X", item.Index, existing.TypeHash)
-	}
-	if err := validateSummonMemoryUpdateAgainstExisting(catalog, item, existing); err != nil {
+	if err := validateSummonMemoryWriteAgainstExisting(catalog, item, existing); err != nil {
 		return SummonInfo{}, fmt.Errorf("召唤石写入参数无效: %w", err)
 	}
 	desired, err := encodeSummonMemoryRecord(original, item)
@@ -468,7 +478,7 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err != nil {
 		return SummonInfo{}, fmt.Errorf("自动备份后复核召唤石记录失败: %w", err)
 	}
-	if err := validateSummonMemorySnapshot(inventory, confirmedInventory, item.TypeHash, original, confirmed); err != nil {
+	if err := validateSummonMemorySnapshot(inventory, confirmedInventory, existing.TypeHash, original, confirmed); err != nil {
 		return SummonInfo{}, err
 	}
 

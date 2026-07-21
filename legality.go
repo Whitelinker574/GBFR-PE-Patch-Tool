@@ -9,9 +9,11 @@ const (
 	LegalityImpossible = "impossible"
 )
 
-// LegalityReport separates game-rule compatibility from binary writability.
-// A forced/unknown item is still writable: callers must warn, never silently
-// replace the user's requested values.
+// LegalityReport separates advisory game-rule compatibility from binary
+// writability. Natural pools, combinations and observed level caps are never
+// write gates: forced/unknown values stay writable and are written verbatim
+// after an explicit user confirmation. Only encoding, ownership, stale-target
+// and transactional safety failures are allowed to block a write.
 type LegalityReport struct {
 	Status   string   `json:"status"`
 	Writable bool     `json:"writable"`

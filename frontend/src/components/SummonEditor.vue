@@ -26,7 +26,7 @@ const typeByHash = computed(() => new Map(options.types.map((item) => [item.hash
 const traitByHash = computed(() => new Map(options.traits.map((item) => [item.hash, item])))
 const subParamByHash = computed(() => new Map(options.subParams.map((item) => [item.hash, item])))
 const rulesByType = computed(() => new Map((options.rules || []).map(rule => [Number.parseInt(rule.typeHash, 16) >>> 0, rule])))
-const currentRule = computed(() => selected.value ? rulesByType.value.get(selected.value.typeHash >>> 0) || null : null)
+const currentRule = computed(() => rulesByType.value.get(parsedHashOrNull(edit.typeHash) ?? 0) || null)
 const allowedMainHashes = computed(() => new Set((currentRule.value?.mainTraitHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
 const allowedSubHashes = computed(() => new Set((currentRule.value?.subParamHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
 const currentSubParam = computed(() => {
@@ -47,11 +47,10 @@ function subParamValueLabel(level) {
 const filteredTraits = computed(() => {
   const query = traitFilter.value.trim()
   const current = parsedHashOrNull(edit.mainTraitHash)
-  return options.traits.filter(item => (allowedMainHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === current) && (!query || matchText(optionLabel(item), query)))
+  return options.traits.filter(item => !query || matchText(optionLabel(item), query))
 })
 const filteredSubParams = computed(() => {
-  const current = parsedHashOrNull(edit.subParamHash)
-  return options.subParams.filter(item => allowedSubHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === current)
+  return options.subParams
 })
 const naturalMainLevels = computed(() => currentRule.value?.mainTraitLevels || [])
 const naturalSubLevels = computed(() => currentRule.value?.subParamLevels || [])
@@ -114,30 +113,33 @@ const legality = computed(() => {
   const subHash = parsedHashOrNull(edit.subParamHash)
   const mainLevel = Number.parseInt(edit.mainTraitLevel, 10)
   const subLevel = Number.parseInt(edit.subParamLevel, 10)
-  if (typeHash === null || mainHash === null || subHash === null || !Number.isInteger(mainLevel) || !Number.isInteger(subLevel)) {
+  const rank = Number.parseInt(edit.rank, 10)
+  if (typeHash === null || mainHash === null || subHash === null || !Number.isInteger(mainLevel) || !Number.isInteger(subLevel) || !Number.isInteger(rank)) {
     return { status: 'impossible', writable: false, message: '存在无法编码的 Hash 或等级' }
   }
-  if (!subHash) return { status: 'impossible', writable: false, message: '副参数不能为空，后端不会接受 Hash 0' }
-  if (typeHash !== (selected.value.typeHash >>> 0)) return { status: 'impossible', writable: false, message: '当前保存函数不支持更换召唤石种类' }
-  if (subLevel < 0 || subLevel > subParamMaxLevel.value) return { status: 'impossible', writable: false, message: `副参数档位必须为 0 到 ${subParamMaxLevel.value}，越界会读取错误数值表` }
-  if (mainLevel < 0 || mainLevel > 0x7FFFFFFF) return { status: 'impossible', writable: false, message: '主因子等级超出存档可写范围' }
+  if (subLevel < 0 || subLevel > 0xFFFFFFFF) return { status: 'impossible', writable: false, message: '副参数等级无法编码为 uint32' }
+  if (mainLevel < 0 || mainLevel > 0xFFFFFFFF) return { status: 'impossible', writable: false, message: '主因子等级无法编码为 uint32' }
+  if (rank < 0 || rank > 0xFFFFFFFF) return { status: 'impossible', writable: false, message: 'Rank 无法编码为 uint32' }
   const legacyMainUnchanged = !traitByHash.value.has(mainHash) &&
     mainHash === (selected.value.mainTraitHash >>> 0) &&
     mainLevel === selected.value.mainTraitLevel
   const mainUnchanged = mainHash === (selected.value.mainTraitHash >>> 0) && mainLevel === selected.value.mainTraitLevel
   const subUnchanged = subHash === (selected.value.subParamHash >>> 0) && subLevel === selected.value.subParamLevel
   const reasons = []
+  if (typeHash !== (selected.value.typeHash >>> 0)) reasons.push('召唤石种类已更换，游戏可能不会登记或接受')
   if (!typeByHash.value.has(typeHash)) reasons.push('种类不在本地资料库中')
   if (!mainHash) reasons.push('主因子为空，游戏内通常不会自然生成')
   else if (!mainUnchanged && !allowedMainHashes.value.has(mainHash)) reasons.push('主因子不在该种类的天然词池')
-  if (subHash && !subParamByHash.value.has(subHash)) reasons.push('副参数不在本地资料库中')
+  if (!subHash) reasons.push('副参数为空')
+  else if (!subParamByHash.value.has(subHash)) reasons.push('副参数不在本地资料库中')
   else if (!subUnchanged && !allowedSubHashes.value.has(subHash)) reasons.push('副参数不在该种类的天然词池')
   const max = traitByHash.value.get(mainHash)?.maxLevel
   if (Number.isInteger(max) && mainLevel > max) reasons.push(`主因子等级超过已知上限 ${max}`)
   if (currentRule.value?.mode === '固定' && (!mainUnchanged || !subUnchanged)) reasons.push('固定模板等级尚无表内证据，只能保留原值')
   if (!mainUnchanged && currentRule.value?.mode !== '固定' && !naturalMainLevels.value.includes(mainLevel)) reasons.push('主因子等级不在天然等级集合')
   if (!subUnchanged && currentRule.value?.mode !== '固定' && !naturalSubLevels.value.includes(subLevel)) reasons.push('副参数档位不在天然等级集合')
-  if (reasons.length) return { status: 'impossible', writable: false, message: `${reasons.join('；')}；后端会拒绝这次写入` }
+  if (subLevel > subParamMaxLevel.value) reasons.push(`副参数档位超过已知上限 ${subParamMaxLevel.value}`)
+  if (reasons.length) return { status: 'forced', writable: true, message: `${reasons.join('；')}；合规检测仅作提示，将按当前值写入` }
   if (legacyMainUnchanged) return { status: 'unknown', writable: true, message: '当前主因子为非天然或旧值；原值可保留，副词条修改仍受该种类天然池约束' }
   if (currentRule.value?.mode === '固定') return { status: 'unknown', writable: true, message: '固定词条已验证；固定等级尚无表内证据，因此只保留原值' }
   return { status: 'natural', writable: true, message: '2.0.2 天然词池与随机等级集合校验通过' }
@@ -235,8 +237,9 @@ async function save() {
       subParamLevel: Number.parseInt(edit.subParamLevel, 10),
       rank: Number.parseInt(edit.rank, 10),
     }
-    if (!Number.isInteger(update.mainTraitLevel) || update.mainTraitLevel < 0 || update.mainTraitLevel > 0x7FFFFFFF) throw new Error('主因子等级超出存档可写范围')
-    if (!Number.isInteger(update.subParamLevel) || update.subParamLevel < 0 || update.subParamLevel > subParamMaxLevel.value) throw new Error(`副参数等级必须为 0 到 ${subParamMaxLevel.value}`)
+    if (!Number.isInteger(update.mainTraitLevel) || update.mainTraitLevel < 0 || update.mainTraitLevel > 0xFFFFFFFF) throw new Error('主因子等级无法编码为 uint32')
+    if (!Number.isInteger(update.subParamLevel) || update.subParamLevel < 0 || update.subParamLevel > 0xFFFFFFFF) throw new Error('副参数等级无法编码为 uint32')
+    if (!Number.isInteger(update.rank) || update.rank < 0 || update.rank > 0xFFFFFFFF) throw new Error('Rank 无法编码为 uint32')
   } catch (err) {
     emit('status', String(err.message || err), 'error')
     return
@@ -332,7 +335,7 @@ onBeforeUnmount(() => {
             <div class="ui-form-grid">
               <label class="ui-field">
                 <span class="ui-field-label">种类</span>
-                <select v-model="edit.typeHash" class="ui-select" disabled>
+                <select v-model="edit.typeHash" class="ui-select" :disabled="loading || saving">
                   <option v-for="item in options.types" :key="item.hash" :value="hex(item.hash)">{{ optionLabel(item) }}</option>
                 </select>
               </label>
@@ -363,7 +366,7 @@ onBeforeUnmount(() => {
               <label class="ui-field wide-field">
                 <span class="ui-field-label">主因子等级</span>
                 <span class="number-combo ui-control-group">
-                  <select v-model="edit.mainTraitLevel" class="ui-select" :disabled="loading || saving || currentMainTraitIsLegacy || currentRule?.mode === '固定'"><option v-for="level in mainLevelChoices" :key="level" :value="String(level)">Lv{{ level }}</option></select>
+                  <input v-model="edit.mainTraitLevel" class="ui-input" type="number" min="0" max="4294967295" :disabled="loading || saving" />
                 </span>
               </label>
             </div>
@@ -381,15 +384,14 @@ onBeforeUnmount(() => {
               <label class="ui-field wide-field">
                 <span class="ui-field-label">副参数等级</span>
                 <span class="number-combo ui-control-group">
-                  <select v-model="edit.subParamLevel" class="ui-select" :disabled="loading || saving || currentRule?.mode === '固定'">
-                    <option v-for="level in subLevelChoices" :key="level" :value="String(level)">{{ subParamValueLabel(level) }}</option>
-                  </select>
+                  <input v-model="edit.subParamLevel" class="ui-input" type="number" min="0" max="4294967295" :disabled="loading || saving" />
                 </span>
               </label>
             </div>
           </section>
 
           <div class="save-row ui-toolbar">
+            <small class="ui-hint">天然词池、等级与种类对应关系只作提醒；所选可编码值会直接写入。</small>
             <LegalityIndicator :status="legality.status" :message="legality.message" />
             <button type="button" class="ui-btn is-primary" @click="save" :disabled="loading || saving || !legality.writable">
               {{ saving ? '写入中...' : '写入召唤石' }}

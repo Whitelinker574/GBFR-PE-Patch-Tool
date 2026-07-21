@@ -4,13 +4,12 @@ import test from 'node:test'
 
 const source = readFileSync(new URL('./components/LoadoutEditor.vue', import.meta.url), 'utf8')
 
-test('loadout editor exposes the backend write preflight as a per-factor compliance report', () => {
+test('loadout editor removes the large compliance report from the editing surface', () => {
   assert.match(source, /LoadoutCheckCompliance/)
-  assert.match(source, /const complianceReport = ref\(null\)/)
-  assert.match(source, /写入检查与提示/)
-  assert.match(source, /complianceReport\.items/)
-  assert.match(source, /item\.message/)
-  assert.match(source, /自然配置|可写警告|来源未验证|结构不可写/)
+  assert.doesNotMatch(source, /const complianceReport = ref\(null\)/)
+  assert.doesNotMatch(source, /complianceReport\.items|scheduleCompliance|compliance-panel/)
+  assert.doesNotMatch(source, /写入检查与提示/)
+  assert.match(source, /天然因子组合与等级只作提醒/)
 })
 
 test('the final write repeats the same compliance check before opening confirmation', () => {
@@ -26,4 +25,5 @@ test('writable legality warnings never disable the persistent save action', () =
   const invalidBody = source.match(/const writeInvalid = computed\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
   assert.doesNotMatch(invalidBody, /complianceReport/)
   assert.doesNotMatch(source, /固定组合/)
+  assert.match(source, /class="editor-save-button[^\"]*"[^>]*:disabled="applying \|\| writeInvalid"/)
 })

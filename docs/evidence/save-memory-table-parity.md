@@ -10,8 +10,22 @@
 | Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same 184 table-backed items, primary traits, secondary pools and natural level sets |
 
 The parity contract is executable in `catalog_channel_parity_test.go`. Historical
-runtime-only hash names remain available solely to label an old value already
-found in memory; they are not selectable or writable through any editor.
+runtime-only hash names remain labelled when found in memory. The editors may
+preserve or write a raw encodable value without presenting it as natural.
+
+## Advisory legality policy
+
+- Sigil, wrightstone and summon natural pools, combinations, duplicate rules,
+  observed levels and DLC availability are diagnostics, not authority over the
+  user's requested bytes.
+- The exact unpacked 2.0.2 tables provide defaults and compact warnings, but
+  non-natural combinations remain directly selectable and the chosen encodable
+  values are written through offline save, runtime memory and loadout-resource
+  transactions without a separate force-mode switch.
+- Advisory legality does not bypass target ownership, stale-record comparison,
+  container bounds, automatic backup, atomic rollback, checksum repair or
+  post-write readback. Those checks prevent a wrong-target or partial write and
+  are therefore structural/transactional safety, not game-rule legality.
 
 ## Sigil table evidence
 
@@ -41,8 +55,8 @@ found in memory; they are not selectable or writable through any editor.
 - All 22 sub-parameter names/hashes match directly.
 - 151 random templates have allowed main/sub pools and level sets.
 - 38 fixed templates prove their fixed main/sub hashes but the referenced page
-  omits their fixed level values. Existing levels can be preserved; creating a
-  fixed template or changing its levels remains fail-closed.
+  omits their fixed level values. The editor permits creation or changes while
+  labelling them non-natural/unverified.
 - The saved `Rank` field is not rarity. A 102-record real-save read produced the
   tier-index/rank matrix `0→2:11, 1→2:47, 2→0:3, 2→2:41`, so the tool does not
   derive Rank from tier.

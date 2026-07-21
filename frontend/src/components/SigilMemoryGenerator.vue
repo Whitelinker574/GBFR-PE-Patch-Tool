@@ -36,15 +36,10 @@ const sigilByHash = computed(() => new Map(allSigilOptions.value.map(o => [o.has
 const traitByHash = computed(() => new Map(allTraitOptions.value.map(o => [o.hash >>> 0, o])))
 const selectedSigilOption = computed(() => sigilByHash.value.get(form.sigilHash >>> 0) || null)
 const primaryTraitOptions = computed(() => {
-  const hash = Number(selectedSigilOption.value?.primaryTraitHash || 0) >>> 0
-  const option = traitByHash.value.get(hash)
-  return option ? [option] : []
+	return allTraitOptions.value
 })
 const secondaryTraitOptions = computed(() => {
-  const hashes = Array.isArray(selectedSigilOption.value?.allowedSecondaryTraitHashes)
-    ? selectedSigilOption.value.allowedSecondaryTraitHashes
-    : []
-  return hashes.map(hash => traitByHash.value.get(Number(hash) >>> 0)).filter(Boolean)
+	return allTraitOptions.value
 })
 
 function traitIconByHash(hash, name = '') {
@@ -284,11 +279,6 @@ function onPickSigil(opt) {
     const nextLevel = verifiedLevels.length ? Math.max(...verifiedLevels) : Number(opt.firstTraitMaxLevel || 0)
     if (nextLevel > 0) form.primaryTraitLevel = nextLevel
   }
-  const allowed = new Set((opt?.allowedSecondaryTraitHashes || []).map(hash => Number(hash) >>> 0))
-  if (!allowed.has(form.secondaryTraitHash >>> 0)) {
-    form.secondaryTraitHash = 0
-    form.secondaryTraitLevel = 0
-  }
 }
 function preferredOptionLevel(opt) {
   const levels = Array.isArray(opt?.allowedLevels) ? opt.allowedLevels.filter(Number.isInteger) : []
@@ -314,9 +304,9 @@ const primaryMax = computed(() => {
   return sigil?.firstTraitMaxLevel ?? traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? null
 })
 const secondaryMax = computed(() => form.secondaryTraitHash ? 15 : null)
-const sigilWritableMax = computed(() => sigilMax.value)
-const primaryWritableMax = computed(() => primaryMax.value)
-const secondaryWritableMax = computed(() => secondaryMax.value)
+const sigilWritableMax = computed(() => 0xFFFFFFFF)
+const primaryWritableMax = computed(() => 0xFFFFFFFF)
+const secondaryWritableMax = computed(() => 0xFFFFFFFF)
 
 function clampLevel(value, max) {
   if (max == null) return 0
@@ -385,7 +375,7 @@ const legality = computed(() => {
   if (!selectedSigilOption || selectedSigilOption.source === 'runtime') reasons.push('因子 Hash 不在本地资料库中')
   if (!selectedPrimaryOption || selectedPrimaryOption.source === 'runtime') reasons.push('主词条 Hash 不在本地资料库中')
   if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) reasons.push('副词条 Hash 不在本地资料库中')
-  if (reasons.length) return { status: 'impossible', message: `${reasons.join('；')}；后端会拒绝这次写入` }
+  if (reasons.length) return { status: 'forced', message: `${reasons.join('；')}；合规检测仅作提示，仍按当前值写入` }
   const sigil = sigilByHash.value.get(form.sigilHash >>> 0)
   if (form.secondaryTraitHash && (!sigil || !Array.isArray(sigil.allowedSecondaryTraitHashes) || !sigil.allowedSecondaryTraitHashes.length)) {
     return { status: 'unknown', message: '可提交；该因子的完整天然副词条池尚未完全验证，写入前仍由后端校验' }
@@ -405,7 +395,7 @@ const changedCount = computed(() => {
 })
 const changeSummary = computed(() => changedCount.value ? `待写入 ${changedCount.value} 个字段` : '尚未修改')
 const canWrite = computed(() => !!status.selectedAddr && changedCount.value > 0 &&
-  (legality.value.status === 'legal' || legality.value.status === 'unknown'))
+  (legality.value.status === 'legal' || legality.value.status === 'unknown' || legality.value.status === 'forced'))
 
 function revertToRead() { syncFormFromStatus() }
 
@@ -622,6 +612,7 @@ onMounted(async () => {
       <div class="ui-toolbar write-toolbar">
         <div class="write-summary">
           <LegalityIndicator v-if="status.selectedAddr" :status="legality.status" :message="legality.message" />
+          <small v-if="status.selectedAddr" class="ui-hint">天然规则只作提醒；目标复核、备份与回读保护仍保留。</small>
           <span v-else class="ui-hint">在游戏内选中一个因子后，这里会显示合法性与写入状态</span>
           <span class="ui-tag" :class="changedCount ? 'is-info' : ''">{{ changeSummary }}</span>
         </div>

@@ -34,8 +34,8 @@ const rulesByType = computed(() => new Map((options.rules || []).map(rule => [Nu
 const currentRule = computed(() => rulesByType.value.get(Number(form.typeHash) >>> 0) || null)
 const allowedMainHashes = computed(() => new Set((currentRule.value?.mainTraitHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
 const allowedSubHashes = computed(() => new Set((currentRule.value?.subParamHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
-const mainChoices = computed(() => options.traits.filter(item => allowedMainHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === (form.mainTraitHash >>> 0)))
-const subChoices = computed(() => options.subParams.filter(item => allowedSubHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === (form.subParamHash >>> 0)))
+const mainChoices = computed(() => options.traits)
+const subChoices = computed(() => options.subParams)
 const naturalMainLevels = computed(() => currentRule.value?.mainTraitLevels || [])
 const naturalSubLevels = computed(() => currentRule.value?.subParamLevels || [])
 const fixedRule = computed(() => currentRule.value?.mode === '固定')
@@ -53,19 +53,13 @@ const filteredRecords = computed(() => {
 })
 const subOption = computed(() => options.subParams.find(item => (item.hash >>> 0) === (form.subParamHash >>> 0)))
 const validation = computed(() => {
-  if (!info.inventory?.unlocked) return '该存档尚未由游戏开放召唤系统；工具不会强行解锁。'
   if (mode.value === 'update' && !selected.value) return '请选择一颗已有召唤石。'
   if (!options.types.some(item => (item.hash >>> 0) === (form.typeHash >>> 0))) return '召唤石种类不在已审计目录。'
   if (!options.traits.some(item => (item.hash >>> 0) === (form.mainTraitHash >>> 0))) return '主加护不在已审计目录。'
   if (!options.subParams.some(item => (item.hash >>> 0) === (form.subParamHash >>> 0))) return '副词条不在已审计目录。'
-  if (!currentRule.value) return '该种类缺少 2.0.2 天然规则。'
-  if (mode.value === 'update' && currentFieldsUnchanged.value) return !Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 3 ? 'Rank 必须为 0–3。' : (!outputPath.value.trim() ? '请选择输出存档。' : '')
-  if (!allowedMainHashes.value.has(form.mainTraitHash >>> 0)) return '主加护不在该召唤石的天然词池。'
-  if (!allowedSubHashes.value.has(form.subParamHash >>> 0)) return '副词条不在该召唤石的天然词池。'
-  if (fixedRule.value) return '固定模板的词条已验证，但固定等级尚无表内证据；只能保留已有等级，暂不新增。'
-  if (!naturalMainLevels.value.includes(Number(form.mainTraitLevel))) return `主加护等级只允许：${naturalMainLevels.value.join(' / ')}。`
-  if (!naturalSubLevels.value.includes(Number(form.subParamLevel))) return `副词条档位只允许：${naturalSubLevels.value.join(' / ')}。`
-  if (!Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 3) return 'Rank 必须为 0–3。'
+  if (!Number.isInteger(Number(form.mainTraitLevel)) || Number(form.mainTraitLevel) < 0 || Number(form.mainTraitLevel) > 0xFFFFFFFF) return '主加护等级无法编码为 uint32。'
+  if (!Number.isInteger(Number(form.subParamLevel)) || Number(form.subParamLevel) < 0 || Number(form.subParamLevel) > 0xFFFFFFFF) return '副词条等级无法编码为 uint32。'
+  if (!Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 0xFFFFFFFF) return 'Rank 无法编码为 uint32。'
   if (!outputPath.value.trim()) return '请选择输出存档。'
   return ''
 })
@@ -123,7 +117,7 @@ async function load(path = inputPath.value) {
     await SetLastSavePath(next.path)
     emit('status', next.inventory.unlocked
       ? `已加载召唤石存档：${next.inventory.occupied}/${next.inventory.capacity}`
-      : '已加载存档，但召唤系统尚未由游戏开放；只读显示，禁止写入。', next.inventory.unlocked ? 'success' : 'warning')
+      : '已加载存档，但召唤系统尚未由游戏开放；仍可写入预分配记录，但不保证游戏开放该系统。', next.inventory.unlocked ? 'success' : 'warning')
   } catch (error) {
     emit('status', String(error), 'error')
   } finally { loading.value = false }
@@ -144,7 +138,7 @@ async function write() {
   const confirmed = await confirmDialog.value?.ask({
     title: operationLabel,
     message: `将${inPlace.value ? '覆盖当前存档（自动备份）' : '写入新存档'}。`,
-    detail: `种类、主加护、副词条、等级和 Rank 会作为一条完整记录写入；${currentRule.value?.mode === '随机' ? '词池与等级已通过 2.0.2 规则校验。' : '固定模板只允许保留已有等级。'}`,
+    detail: '种类、主加护、副词条、等级和 Rank 会作为一条完整记录写入；天然规则只作提醒，写后逐字段回读。',
     confirmLabel: '确认写入', tone: 'warning',
   })
   if (!confirmed) return
@@ -189,15 +183,16 @@ onMounted(async () => {
 
     <section v-if="info.path" class="system-card ui-card ui-panel is-compact">
       <div class="ui-split">
-        <div><h2 class="ui-section-title">召唤石存档结构</h2><p class="ui-section-copy">复用存档预分配的 1000 条记录；未开放 DLC 的存档只读，不代替游戏解锁。</p></div>
+        <div><h2 class="ui-section-title">召唤石存档结构</h2><p class="ui-section-copy">复用存档预分配的 1000 条记录；写入记录不等于替游戏解锁 DLC 系统。</p></div>
         <span class="ui-tag" :class="info.inventory?.unlocked ? 'is-success' : 'is-warning'">{{ info.inventory?.unlocked ? '系统已开放' : '系统未开放' }}</span>
       </div>
-      <p v-if="info.path && !info.inventory.unlocked" class="locked-note">检测到 1455=0、1454=0。写入已锁定，避免在未进入 DLC 的存档上制造半开放系统。</p>
+      <p v-if="info.path && !info.inventory.unlocked" class="locked-note">检测到召唤系统尚未开放；仍可写入预分配记录，但不承诺替游戏解锁 DLC 系统。</p>
+      <small class="ui-hint">天然词池、等级与系统开放状态只作提醒；所选可编码值不会被拦截。</small>
     </section>
 
     <section v-if="info.path" class="workspace ui-card-grid">
       <aside class="ui-card ui-panel is-compact">
-        <div class="ui-split"><h3 class="ui-section-title">已有召唤石</h3><button class="ui-btn is-primary is-sm" :disabled="!info.inventory.unlocked" @click="beginCreate">＋ 新增</button></div>
+        <div class="ui-split"><h3 class="ui-section-title">已有召唤石</h3><button class="ui-btn is-primary is-sm" @click="beginCreate">＋ 新增</button></div>
         <input v-model="filter" class="ui-input" placeholder="名称、Hash 或 SlotID" />
         <div class="record-list ui-list ui-scroll-region">
           <button v-for="record in filteredRecords" :key="record.unitId" class="record-row ui-row" :class="{ 'is-on': selectedUnitID === record.unitId && mode === 'update' }" @click="selectRecord(record)">
@@ -212,10 +207,10 @@ onMounted(async () => {
         <div class="ui-form-grid">
           <label class="ui-field wide"><span class="ui-field-label">召唤石种类</span><select v-model.number="form.typeHash" class="ui-select" @change="onTypeChanged"><option v-for="item in options.types" :key="item.hash" :value="item.hash">{{ optionLabel(item) }} · {{ item.tier }} · 消耗{{ item.equipCost }} · {{ item.mode }}</option></select></label>
           <label class="ui-field wide"><span class="ui-field-label">主加护</span><span class="select-with-icon"><img v-if="mainIcon(form.mainTraitHash)" :src="mainIcon(form.mainTraitHash)" alt="" /><select v-model.number="form.mainTraitHash" class="ui-select"><option v-for="item in mainChoices" :key="item.hash" :value="item.hash">{{ optionLabel(item) }}</option></select></span></label>
-          <label class="ui-field"><span class="ui-field-label">主加护等级</span><select v-if="naturalMainLevels.length" v-model.number="form.mainTraitLevel" class="ui-select"><option v-for="level in naturalMainLevels" :key="level" :value="level">Lv{{ level }}</option></select><input v-else v-model.number="form.mainTraitLevel" class="ui-input" type="number" disabled /></label>
+          <label class="ui-field"><span class="ui-field-label">主加护等级</span><input v-model.number="form.mainTraitLevel" class="ui-input" type="number" min="0" max="4294967295" /></label>
           <label class="ui-field wide"><span class="ui-field-label">副词条</span><select v-model.number="form.subParamHash" class="ui-select"><option v-for="item in subChoices" :key="item.hash" :value="item.hash">{{ optionLabel(item) }}</option></select><small>{{ subName(form.subParamHash) }}</small></label>
-          <label class="ui-field"><span class="ui-field-label">副词条档位</span><select v-if="naturalSubLevels.length" v-model.number="form.subParamLevel" class="ui-select"><option v-for="level in naturalSubLevels" :key="level" :value="level">{{ level }}<template v-if="subOption?.values?.[level] !== undefined"> → +{{ subOption.values[level] }}{{ subOption.isPercent ? '%' : '' }}</template></option></select><input v-else v-model.number="form.subParamLevel" class="ui-input" type="number" disabled /></label>
-          <label class="ui-field"><span class="ui-field-label">Rank</span><select v-model.number="form.rank" class="ui-select"><option v-for="rank in 4" :key="rank-1" :value="rank-1">{{ rank-1 }}</option></select></label>
+          <label class="ui-field"><span class="ui-field-label">副词条档位</span><input v-model.number="form.subParamLevel" class="ui-input" type="number" min="0" max="4294967295" /><small v-if="subOption?.values?.[Number(form.subParamLevel)] !== undefined">当前表值：+{{ subOption.values[Number(form.subParamLevel)] }}{{ subOption.isPercent ? '%' : '' }}</small></label>
+          <label class="ui-field"><span class="ui-field-label">Rank</span><input v-model.number="form.rank" class="ui-input" type="number" min="0" max="4294967295" /></label>
         </div>
         <div class="write-panel">
           <div class="ui-section-title"><span>写入方式</span><small>覆盖或另存为，两种方式任选</small></div>
@@ -228,7 +223,7 @@ onMounted(async () => {
             <span v-else class="ui-control-group"><input v-model="outputPath" class="ui-input" placeholder="新存档输出路径…" /><button class="ui-btn" @click="browseOutput">选择位置</button></span>
           </div>
         </div>
-        <div class="write-row"><p :class="validation ? 'validation-error' : 'validation-ok'">{{ validation || '结构、目录与等级检查通过；写后会重新打开存档逐字段验证。' }}</p><button class="ui-btn is-primary" :disabled="!!validation || writing" @click="write">{{ writing ? '写入并验证中…' : mode === 'create' ? '新增到存档' : '保存修改' }}</button></div>
+        <div class="write-row"><p :class="validation ? 'validation-error' : 'validation-ok'">{{ validation || '可编码字段检查通过；写后会重新打开存档逐字段验证。' }}</p><button class="ui-btn is-primary" :disabled="!!validation || writing" @click="write">{{ writing ? '写入并验证中…' : mode === 'create' ? '新增到存档' : '保存修改' }}</button></div>
       </section>
     </section>
     <div v-else-if="!loading" class="ui-empty">先从上方选择一个游戏存档槽，或浏览其他存档文件。</div>

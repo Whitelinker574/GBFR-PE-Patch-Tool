@@ -117,6 +117,27 @@ func TestValidateSummonMemoryUpdateEnforcesNaturalAndSafetyCaps(t *testing.T) {
 	}
 }
 
+func TestSummonMemoryWriteDefaultsToAdvisoryPoolsAndCapsButKeepsIndexBounds(t *testing.T) {
+	catalog, update := validSummonMemoryUpdate(t)
+	update.TypeHash = 0xDEADBEEF
+	update.MainTraitHash = 0xCAFEBABE
+	update.SubParamHash = 0
+	update.MainTraitLevel = ^uint32(0)
+	update.SubParamLevel = ^uint32(0)
+	update.Rank = ^uint32(0)
+	if err := validateSummonMemoryWriteRequest(catalog, update); err != nil {
+		t.Fatalf("write request was blocked by advisory rules: %v", err)
+	}
+	existing := SummonInfo{Index: update.Index, TypeHash: 1}
+	if err := validateSummonMemoryWriteAgainstExisting(catalog, update, existing); err != nil {
+		t.Fatalf("write existing-state check was blocked: %v", err)
+	}
+	update.Index = summonMaxRecords
+	if err := validateSummonMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("write must still reject an out-of-bounds record index")
+	}
+}
+
 func TestValidateSummonMemoryUpdateRejectsMalformedCatalogRanges(t *testing.T) {
 	catalog, valid := validSummonMemoryUpdate(t)
 	broken := *catalog

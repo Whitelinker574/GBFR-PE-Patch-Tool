@@ -520,15 +520,13 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	}
 	primaryWritableMax := highestLevel(primaryLevels, 15)
 	if item.PrimaryLevel > primaryWritableMax {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的修改上限是 %d，不能写入 %d", item.PrimaryTraitName, primaryWritableMax, item.PrimaryLevel))
-		return item, report, nil
+		reasons = append(reasons, fmt.Sprintf("主特性 %s 的等级 %d 超过已验证修改上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax))
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
 		reasons = append(reasons, fmt.Sprintf("主特性「%s」不是因子「%s」的自然主特性", item.PrimaryTraitName, item.SigilName))
 	}
 	if item.Level > sigilWritableLevelMax {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子等级修改上限是 %d，不能写入 %d", sigilWritableLevelMax, item.Level))
-		return item, report, nil
+		reasons = append(reasons, fmt.Sprintf("因子等级 %d 超过已验证修改上限 %d", item.Level, sigilWritableLevelMax))
 	}
 
 	if item.PrimaryLevel < 1 || item.PrimaryLevel > 15 {
@@ -554,8 +552,7 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		}
 		secondaryWritableMax := highestLevel(secondaryLevels, 15)
 		if item.SecondaryLevel > secondaryWritableMax {
-			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的修改上限是 %d，不能写入 %d", item.SecondaryTraitName, secondaryWritableMax, item.SecondaryLevel))
-			return item, report, nil
+			reasons = append(reasons, fmt.Sprintf("副特性 %s 的等级 %d 超过已验证修改上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax))
 		}
 		if !supportsGeneratedPlusSigil(sigil) {
 			reasons = append(reasons, fmt.Sprintf("因子「%s」自然记录不含副特性", item.SigilName))
@@ -586,6 +583,7 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	status := LegalityLegal
 	if len(reasons) > 0 {
 		status = LegalityForced
+		reasons = append(reasons, "合规检测仅作提示；确认强制写入后会保留所选值")
 	}
 	report := newLegalityReport(status, true, reasons...)
 	item.LegalityStatus = report.Status

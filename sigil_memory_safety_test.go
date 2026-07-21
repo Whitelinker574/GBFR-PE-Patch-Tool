@@ -54,6 +54,23 @@ func TestValidateSigilMemoryUpdateRejectsMismatchedPrimaryTrait(t *testing.T) {
 	}
 }
 
+func TestSigilMemoryWriteDefaultsToAdvisoryRulesButKeepsRequiredEncoding(t *testing.T) {
+	catalog, update := validCatalogSigilMemoryUpdate(t)
+	update.SigilHash = 0xDEADBEEF
+	update.PrimaryTraitHash = 0xCAFEBABE
+	update.SecondaryTraitHash = update.PrimaryTraitHash
+	update.SigilLevel = ^uint32(0)
+	update.PrimaryTraitLevel = ^uint32(0)
+	update.SecondaryTraitLevel = ^uint32(0)
+	if err := validateSigilMemoryWriteRequest(catalog, update); err != nil {
+		t.Fatalf("write request was blocked by advisory rules: %v", err)
+	}
+	update.SigilHash = 0
+	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("write must still reject a missing required encoding hash")
+	}
+}
+
 func TestValidateSigilMemoryUpdateUsesVerifiedDiscreteLevels(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
 	update.SigilLevel = 14 // Attack Power V+ is verified at item level 15 only.

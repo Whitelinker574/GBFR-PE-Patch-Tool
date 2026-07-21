@@ -298,7 +298,7 @@ func (a *App) wrightstoneMemoryUpdate(token string, owned bool, update Wrightsto
 	if err != nil {
 		return WrightstoneMemoryStatus{}, err
 	}
-	if err := validateWrightstoneMemoryUpdate(catalog, update); err != nil {
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福写入参数无效: %w", err)
 	}
 	var selected uintptr

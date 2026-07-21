@@ -153,8 +153,8 @@ func TestSigilLevelFifteenIsLegalAndSixteenIsForced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("level above modification limit must be impossible, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("level above observed modification limit is advisory and must remain writable, got %+v", report)
 	}
 }
 
@@ -367,7 +367,7 @@ func TestWrightstoneSlotNaturalCapsRemainWritable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("level above trait modification limit must be impossible, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("level above observed trait limit is advisory and must remain writable, got %+v", report)
 	}
 }

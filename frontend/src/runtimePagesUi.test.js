@@ -91,11 +91,12 @@ test('manual and natural loadout stops release the sigil hook immediately', () =
   assert.doesNotMatch(source, /function stopPolling\([^)]*\)\s*\{[\s\S]{0,180}?mode\.value\s*=/)
 })
 
-test('live sigil legality copy matches the backend fail-closed validator', () => {
+test('live sigil legality is advisory by default', () => {
   const source = sources['SigilMemoryGenerator.vue']
-  assert.doesNotMatch(source, /仍会按所选数值写入/)
-  assert.match(source, /reasons\.length\) return \{ status: 'impossible'/)
-  assert.match(source, /legality\.value\.status === 'legal' \|\| legality\.value\.status === 'unknown'/)
+  assert.doesNotMatch(source, /forceWrite/)
+  assert.match(source, /status: 'forced'/)
+  assert.match(source, /合规检测仅作提示/)
+  assert.match(source, /legality\.value\.status === 'forced'/)
 })
 
 test('sigil memory has an explicit stop action and locks draft controls until a row is captured', () => {
@@ -147,16 +148,18 @@ test('summon search exposes an explicit no-match state and one searchable editor
   assert.doesNotMatch(source, /@container\s*\(max-width:680px\)[\s\S]*grid-template-columns:minmax\(180px/is)
 })
 
-test('summon editor preserves a legacy current main trait without reopening the natural pool', () => {
+test('summon editor exposes all encodable values and keeps natural rules advisory', () => {
   const source = sources['SummonEditor.vue']
   assert.match(source, /currentMainTraitIsLegacy/)
   assert.match(source, /当前值（非天然）/)
   assert.match(source, /mainHash\s*===\s*\(selected\.value\.mainTraitHash\s*>>>\s*0\)/)
   assert.match(source, /mainLevel\s*===\s*selected\.value\.mainTraitLevel/)
   assert.doesNotMatch(source, /function traitMax\([^)]*\)\s*\{[^}]*\|\|\s*999/)
-  assert.match(source, /:disabled="loading \|\| saving \|\| currentMainTraitIsLegacy \|\| currentRule\?\.mode === '固定'"/)
+  assert.match(source, /type="number" min="0" max="4294967295"/)
   assert.match(source, /allowedMainHashes/)
   assert.match(source, /naturalSubLevels/)
+  assert.match(source, /天然词池、等级与种类对应关系只作提醒/)
+  assert.doesNotMatch(source, /forceWrite/)
 })
 
 test('summon memory page exposes an explicit global-process disconnect boundary', () => {
@@ -188,7 +191,8 @@ test('runtime editors close asynchronous lifecycle races in the visible controls
   const summon = sources['SummonEditor.vue']
   assert.match(summon, /@click="disconnect\(\)"/)
   assert.match(summon, /if\s*\(loading\.value\s*\|\|\s*saving\.value\)\s*return/)
-  assert.match(summon, /if\s*\(!subHash\)\s*return \{ status: 'impossible', writable: false/)
+  assert.match(summon, /Rank 无法编码为 uint32/)
+  assert.doesNotMatch(summon, /forceWrite/)
 })
 
 test('async option loading and generated bindings honor the owner lease contract', () => {

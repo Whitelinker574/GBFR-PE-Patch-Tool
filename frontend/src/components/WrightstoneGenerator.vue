@@ -60,7 +60,7 @@ function naturalTraitMax(slot) {
 }
 
 function writableTraitMax(slot) {
-  return Math.max(naturalTraitMax(slot), ...selectedTraits[slot].levels)
+	return 0x7FFFFFFF
 }
 
 function clampLevel(value, max) {
@@ -340,6 +340,7 @@ async function applyQueueToSave() {
       </div>
 
       <div class="config-footer">
+        <small class="ui-hint">{{ text('天然组合与等级只作提醒；所选可编码值不会被合规检测拦截。', 'Natural combinations and levels are advisory; encodable values are not blocked.') }}</small>
         <LegalityIndicator v-if="currentSelectionValid" class="config-legality" :status="legality.status" :message="displayedLegalityMessage" />
         <span v-else class="selection-note">选完祝福与三项特性后显示合法性结果</span>
         <div class="qty-add">

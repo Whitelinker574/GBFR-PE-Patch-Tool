@@ -481,7 +481,7 @@ func (a *App) sigilMemoryUpdate(token string, owned bool, update SigilMemoryUpda
 	if err != nil {
 		return SigilMemoryStatus{}, err
 	}
-	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
+	if err := validateSigilMemoryWriteRequest(catalog, update); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("因子写入参数无效: %w", err)
 	}
 

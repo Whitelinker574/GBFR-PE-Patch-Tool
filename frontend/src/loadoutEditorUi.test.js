@@ -306,17 +306,18 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 	assert.match(source, /主词条等级从高到低/)
 })
 
-test('constructor uses the fixed primary and exact local secondary pool', () => {
+test('constructor exposes the complete trait catalog while natural table rules remain advisory', () => {
 	assert.match(source, /GetSigilList/)
 	assert.match(source, /GetTraitList/)
 	assert.match(source, /GetCompatibleSecondaryTraits/)
 	assert.match(source, /Promise\.all\(\[GetSigilList\(\), GetTraitList\(\)\]\)/)
 	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
-	assert.match(source, /未收录固定主词条/)
-	assert.doesNotMatch(source, /v-model="constructPrimaryId"/)
+	assert.match(source, /v-model="constructPrimaryId" :options="constructTraits"/)
 	assert.match(source, /v-model="constructSecondaryId"/)
 	assert.match(source, /search-placeholder="搜索副词条"/)
-	assert.match(source, /:options="constructCompatibleTraits"/)
+	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructTraits\.value\)/)
+	assert.match(source, /天然因子组合与等级只作提醒/)
+	assert.doesNotMatch(source, /forceWrite/)
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
 })
 

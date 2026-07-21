@@ -46,8 +46,9 @@ test('live wrightstone editor exposes current and target values for all three sl
   assert.match(component, /class="[^"]*trait-current[^"]*"/)
   assert.match(component, /class="[^"]*trait-target[^"]*"/)
   assert.match(component, /v-model\.number="slot\.level"/)
-  assert.match(component, /Array\.isArray\(option\?\.allowedLevels\)/)
-  assert.match(component, /v-for="level in allowedLevels\(slot\)"/)
+  assert.match(component, /type="number" min="0" max="4294967295"/)
+  assert.match(component, /天然组合与等级只作提醒/)
+  assert.doesNotMatch(component, /forceWrite/)
   assert.match(component, /labelZh:\s*'第一槽'[^}]*labelEn:\s*'Slot One'[^}]*maxLevel:\s*20/)
   assert.match(component, /labelZh:\s*'第二槽'[^}]*labelEn:\s*'Slot Two'[^}]*maxLevel:\s*15/)
   assert.match(component, /labelZh:\s*'第三槽'[^}]*labelEn:\s*'Slot Three'[^}]*maxLevel:\s*10/)
@@ -93,11 +94,11 @@ test('selection and lifecycle races are closed before a live write', () => {
   assert.match(component, /let lifecycleEpoch\s*=\s*0/)
   assert.match(component, /if \(disposed \|\| epoch !== lifecycleEpoch\)[\s\S]*queueRuntimeLeaseRelease\([^;]*acquiredOwnerToken[^;]*WrightstoneMemoryRelease/)
   assert.match(component, /onBeforeUnmount\(\(\) => \{[\s\S]*disposed\s*=\s*true[\s\S]*lifecycleEpoch\+\+/)
-  assert.match(component, /new Set\([^)]*normaliseHash/)
+  assert.match(component, /expectedSelectedAddr/)
 })
 
 test('live wrightstone editor uses shared atoms, one scroll container and responsive container rules', () => {
-  for (const atom of ['ui-page', 'ui-page-stack', 'ui-card', 'ui-panel', 'ui-btn', 'ui-field', 'ui-input', 'ui-select']) {
+  for (const atom of ['ui-page', 'ui-page-stack', 'ui-card', 'ui-panel', 'ui-btn', 'ui-field', 'ui-input']) {
     assert.match(component, new RegExp(`\\b${atom}\\b`), `missing shared ${atom} primitive`)
   }
   assert.doesNotMatch(component, /\.wrightstone-memory-actions\s*\{[^}]*position:\s*sticky/is)

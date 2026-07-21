@@ -374,8 +374,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 		return item, LegalityReport{}, err
 	}
 	if max := highestLevel(firstLevels, 20); item.FirstLevel > max {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性 %s 的修改上限是 %d，不能写入 %d", item.FirstTraitName, max, item.FirstLevel))
-		return item, report, nil
+		reasons = append(reasons, fmt.Sprintf("第一特性 %s 的等级 %d 超过已验证修改上限 %d", item.FirstTraitName, item.FirstLevel, max))
 	}
 	if firstTrait.InternalID != wrightstone.DefaultTraitID {
 		reasons = append(reasons, "第一特性与该祝福的固有特性不一致")
@@ -395,8 +394,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 		return item, LegalityReport{}, err
 	}
 	if max := highestLevel(secondLevels, 15); item.SecondLevel > max {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第二特性 %s 的修改上限是 %d，不能写入 %d", item.SecondTraitName, max, item.SecondLevel))
-		return item, report, nil
+		reasons = append(reasons, fmt.Sprintf("第二特性 %s 的等级 %d 超过已验证修改上限 %d", item.SecondTraitName, item.SecondLevel, max))
 	}
 
 	thirdTrait, err := wg.catalog.RequireTrait(item.ThirdTraitID)
@@ -413,8 +411,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 		return item, LegalityReport{}, err
 	}
 	if max := highestLevel(thirdLevels, 10); item.ThirdLevel > max {
-		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第三特性 %s 的修改上限是 %d，不能写入 %d", item.ThirdTraitName, max, item.ThirdLevel))
-		return item, report, nil
+		reasons = append(reasons, fmt.Sprintf("第三特性 %s 的等级 %d 超过已验证修改上限 %d", item.ThirdTraitName, item.ThirdLevel, max))
 	}
 
 	if item.FirstLevel < 0 || item.SecondLevel < 0 || item.ThirdLevel < 0 {
@@ -433,7 +430,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	status := LegalityUnknown
 	if len(reasons) > 0 {
 		status = LegalityForced
-		reasons = append(reasons, "仍会按所选数值写入")
+		reasons = append(reasons, "合规检测仅作提示；确认强制写入后会保留所选值")
 	} else {
 		reasons = append(reasons, "已验证固有特性和等级；第二、第三特性的完整天然词池仍缺少可靠数据")
 	}

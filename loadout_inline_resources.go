@@ -248,7 +248,7 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 	return prepared, nil
 }
 
-func prepareLoadoutSummonEdits(save *SaveData, catalog *summonStatCatalog, edits []LoadoutSummonInlineEdit, selected map[uint32]bool) ([]preparedLoadoutSummonEdit, error) {
+func prepareLoadoutSummonEdits(save *SaveData, edits []LoadoutSummonInlineEdit, selected map[uint32]bool) ([]preparedLoadoutSummonEdit, error) {
 	deduplicated := make(map[uint32]LoadoutSummonInlineEdit, len(edits))
 	order := make([]uint32, 0, len(edits))
 	for _, edit := range edits {
@@ -325,9 +325,6 @@ func prepareLoadoutSummonEdits(save *SaveData, catalog *summonStatCatalog, edits
 			TypeHash: existing.TypeHash, MainTraitHash: mainHash, SubParamHash: subHash,
 			MainTraitLevel: mainLevel, SubParamLevel: subLevel, Rank: rank,
 		}
-		if err := validateSummonTraitChange(catalog, draft, existing); err != nil {
-			return nil, fmt.Errorf("summon SlotID %d: %w", slotID, err)
-		}
 		prepared = append(prepared, preparedLoadoutSummonEdit{slotID: slotID, unitID: unitID, state: draft})
 	}
 	return prepared, nil
@@ -340,11 +337,7 @@ func prepareLoadoutInlineResources(save *SaveData, request LoadoutApplyRequest, 
 	}
 	var summons []preparedLoadoutSummonEdit
 	if len(request.SummonEdits) > 0 {
-		catalog, err := loadSummonStatCatalog()
-		if err != nil {
-			return nil, err
-		}
-		summons, err = prepareLoadoutSummonEdits(save, catalog, request.SummonEdits, selectedSummonSlotIDSet(summonSlotIDs))
+		summons, err = prepareLoadoutSummonEdits(save, request.SummonEdits, selectedSummonSlotIDSet(summonSlotIDs))
 		if err != nil {
 			return nil, err
 		}

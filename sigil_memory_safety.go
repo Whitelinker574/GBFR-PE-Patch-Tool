@@ -115,6 +115,14 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 	return validateSigilMemorySecondary(catalog, sigil, update)
 }
 
+func validateSigilMemoryWriteRequest(catalog *Catalog, update SigilMemoryUpdate) error {
+	if update.SigilHash == 0 || update.PrimaryTraitHash == 0 {
+		return fmt.Errorf("因子和主词条 Hash 必须是可编码的非零值")
+	}
+	_ = catalog // catalog validation is advisory; the encoded hashes are authoritative for the write.
+	return nil
+}
+
 func validateSigilMemorySecondary(catalog *Catalog, sigil *SigilDef, update SigilMemoryUpdate) error {
 	empty := update.SecondaryTraitHash == 0 || update.SecondaryTraitHash == EmptyHash
 	if empty {

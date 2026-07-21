@@ -62,7 +62,9 @@ const showExisting = ref(false)
 const isDeleting = ref(false)
 const loadingExisting = ref(false)
 
-const secondaryPickerOptions = computed(() => secondaryTraits.value)
+const secondaryPickerOptions = computed(() => allTraits.value)
+const effectiveSupportsSecondary = computed(() => true)
+const editableLevelMax = computed(() => 0x7FFFFFFF)
 
 function traitIconForOption(trait) {
   return traitAssetIcon({
@@ -291,9 +293,9 @@ function buildCurrentItem() {
     primaryTraitId: selectedPrimaryTraitID.value,
     primaryTraitName: '',
     primaryLevel: selectedPrimaryLevel.value,
-    secondaryTraitId: supportsSecondary.value ? selectedSecondaryTraitID.value : '',
+    secondaryTraitId: effectiveSupportsSecondary.value ? selectedSecondaryTraitID.value : '',
     secondaryTraitName: '',
-    secondaryLevel: supportsSecondary.value ? selectedSecondaryLevel.value : 0,
+    secondaryLevel: effectiveSupportsSecondary.value ? selectedSecondaryLevel.value : 0,
     quantity: quantity.value,
   }
 }
@@ -479,7 +481,7 @@ async function removeAll() {
       <!-- 因子等级 -->
       <div class="field level-field ui-field">
         <label class="ui-field-label">因子等级 <small>本地表自然上限 15</small></label>
-        <input v-model.number="selectedLevel" type="number" min="1" max="15" class="text-input compact-number ui-input" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, 15)" />
+        <input v-model.number="selectedLevel" type="number" min="0" :max="editableLevelMax" class="text-input compact-number ui-input" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, editableLevelMax)" />
       </div>
       </div>
 
@@ -487,31 +489,32 @@ async function removeAll() {
       <div class="field-row">
       <div class="field ui-field">
         <label class="ui-field-label">主特性 <small>由 gem.tbl 固定</small></label>
-        <div class="text-input ui-input">{{ selectedPrimaryTrait?.displayName || '尚未选择因子' }}</div>
+        <CatalogSelect v-model="selectedPrimaryTraitID" :options="allTraits" :icon-resolver="traitIconForOption" placeholder="选择主特性" search-placeholder="搜索全部特性" />
       </div>
 
       <div class="field level-field ui-field">
         <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `超过合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
-        <input v-model.number="selectedPrimaryLevel" type="number" min="1" :max="primaryNaturalMax" class="text-input compact-number ui-input" :disabled="!primaryTraitLevels.length" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryNaturalMax)" />
+        <input v-model.number="selectedPrimaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedPrimaryTraitID" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, 0x7FFFFFFF)" />
       </div>
       </div>
 
       <!-- 副特性 -->
-      <template v-if="supportsSecondary">
+      <template v-if="effectiveSupportsSecondary">
         <div class="field-row">
         <div class="field ui-field">
-          <label class="ui-field-label">副特性 <small>仅显示本地 2.0.2 gem/lot 表允许项</small></label>
-          <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryTraits.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
+          <label class="ui-field-label">副特性 <small>显示全部已知特性；天然词池仅用于提醒</small></label>
+          <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryPickerOptions.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
         </div>
         <div class="field level-field ui-field">
           <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `超过合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
-          <input v-model.number="selectedSecondaryLevel" type="number" min="1" :max="secondaryNaturalMax" class="text-input compact-number ui-input" :disabled="!secondaryTraitLevels.length" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryNaturalMax)" />
+          <input v-model.number="selectedSecondaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedSecondaryTraitID" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, 0x7FFFFFFF)" />
         </div>
         </div>
       </template>
 
       <!-- 数量 + 添加 -->
       <div class="config-footer">
+        <small class="ui-hint">天然词池与等级只作提醒；所选可编码值不会被合规检测拦截。</small>
         <LegalityIndicator v-if="selectedSigilID" class="config-legality" :status="legality.status" :message="legality.message" />
         <span v-else class="selection-note">选择因子后显示合法性结果</span>
         <div class="qty-add">

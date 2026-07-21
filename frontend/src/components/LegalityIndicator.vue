@@ -9,7 +9,7 @@ const props = defineProps({
 
 const meta = computed(() => ({
   legal: { icon: '✓', label: '合法', hint: '符合当前已验证的游戏规则' },
-  forced: { icon: '!', label: '可强制写入', hint: '组合不合法或不会正常生效，但结构仍可写入' },
+  forced: { icon: '!', label: '可写提醒', hint: '该组合偏离天然规则，但结构可编码，仍会按所选值写入' },
   unknown: { icon: '?', label: '合法性未完全验证', hint: '可以写入，但社区数据不足以断言天然可获得' },
   impossible: { icon: '×', label: '无法写入', hint: '缺少必要字段或当前记录结构无法表达该组合' },
 }[props.status] || { icon: '?', label: '未检验', hint: '尚无足够信息' }))

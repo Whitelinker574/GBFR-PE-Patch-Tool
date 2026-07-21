@@ -209,11 +209,18 @@ func (s *SaveData) writeSummonSaveState(unitID uint32, draft SummonTraitState) e
 }
 
 func (s *SaveData) CreateSummonRecord(draft SummonTraitState) (SummonSaveRecord, error) {
+	return s.CreateSummonRecordWithPolicy(draft, false)
+}
+
+// CreateSummonRecordWithPolicy optionally enforces catalog/natural rules for
+// diagnostics. Normal writes keep those rules advisory while container shape,
+// capacity, checksum and readback requirements remain mandatory.
+func (s *SaveData) CreateSummonRecordWithPolicy(draft SummonTraitState, enforceNaturalRules bool) (SummonSaveRecord, error) {
 	inventory, err := s.InspectSummonInventory()
 	if err != nil {
 		return SummonSaveRecord{}, err
 	}
-	if !inventory.Unlocked {
+	if !inventory.Unlocked && enforceNaturalRules {
 		return SummonSaveRecord{}, fmt.Errorf("召唤系统尚未由游戏开放；不会通过存档写入强行解锁 DLC 系统")
 	}
 	if inventory.MaxSlotID == ^uint32(0) {
@@ -223,8 +230,10 @@ func (s *SaveData) CreateSummonRecord(draft SummonTraitState) (SummonSaveRecord,
 		TypeHash: EmptyHash, MainTraitHash: EmptyHash, SubParamHash: EmptyHash,
 		MainTraitLevel: ^uint32(0), SubParamLevel: ^uint32(0), Rank: 0,
 	}
-	if err := validateSummonSaveDraft(draft, emptyState); err != nil {
-		return SummonSaveRecord{}, err
+	if enforceNaturalRules {
+		if err := validateSummonSaveDraft(draft, emptyState); err != nil {
+			return SummonSaveRecord{}, err
+		}
 	}
 	registration, err := s.summonRegistrationFlag(draft.TypeHash)
 	if err != nil {
@@ -262,11 +271,15 @@ func (s *SaveData) CreateSummonRecord(draft SummonTraitState) (SummonSaveRecord,
 }
 
 func (s *SaveData) UpdateSummonRecord(expected SummonSaveRecord, draft SummonTraitState) (SummonSaveRecord, error) {
+	return s.UpdateSummonRecordWithPolicy(expected, draft, false)
+}
+
+func (s *SaveData) UpdateSummonRecordWithPolicy(expected SummonSaveRecord, draft SummonTraitState, enforceNaturalRules bool) (SummonSaveRecord, error) {
 	unlocked, err := s.summonSystemUnlocked()
 	if err != nil {
 		return SummonSaveRecord{}, err
 	}
-	if !unlocked {
+	if !unlocked && enforceNaturalRules {
 		return SummonSaveRecord{}, fmt.Errorf("召唤系统尚未由游戏开放；不会修改未开放存档")
 	}
 	if expected.UnitID >= SummonSaveCapacity || expected.SlotID == 0 {
@@ -279,8 +292,10 @@ func (s *SaveData) UpdateSummonRecord(expected SummonSaveRecord, draft SummonTra
 	if current != expected {
 		return SummonSaveRecord{}, fmt.Errorf("召唤石记录已变化，请重新加载存档")
 	}
-	if err := validateSummonSaveDraft(draft, current.State); err != nil {
-		return SummonSaveRecord{}, err
+	if enforceNaturalRules {
+		if err := validateSummonSaveDraft(draft, current.State); err != nil {
+			return SummonSaveRecord{}, err
+		}
 	}
 	registration, err := s.summonRegistrationFlag(draft.TypeHash)
 	if err != nil {

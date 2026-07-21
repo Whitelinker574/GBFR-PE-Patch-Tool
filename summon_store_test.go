@@ -86,11 +86,35 @@ func TestCreateSummonRejectsLockedDLCWithoutMutatingSave(t *testing.T) {
 	}
 	unlocked.SetUint32(0)
 	before := append([]byte(nil), save.data...)
-	if _, err := save.CreateSummonRecord(draft); err == nil {
+	if _, err := save.CreateSummonRecordWithPolicy(draft, true); err == nil {
 		t.Fatal("locked summon system accepted a created record")
 	}
 	if !bytes.Equal(before, save.data) {
 		t.Fatal("failed create mutated a DLC-locked save")
+	}
+}
+
+func TestCreateSummonDefaultsToWritingPreallocatedLockedDLCRecord(t *testing.T) {
+	path := copyStatsSave(t)
+	save, err := LoadSave(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := firstAuditedSummonDraft(t, save)
+	unlocked, ok := save.strictSummonUnit(SummonUnlockedIDType, 0, 1)
+	if !ok {
+		t.Fatal("fixture lacks summon unlock flag")
+	}
+	unlocked.SetUint32(0)
+	record, err := save.CreateSummonRecord(draft)
+	if err != nil {
+		t.Fatalf("default write was blocked by advisory DLC availability: %v", err)
+	}
+	if record.SlotID == 0 || record.State != draft {
+		t.Fatalf("forced record mismatch: %+v", record)
+	}
+	if err := save.VerifySummonRecord(record); err != nil {
+		t.Fatal(err)
 	}
 }
 

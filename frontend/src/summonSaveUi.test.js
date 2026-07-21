@@ -14,15 +14,16 @@ test('offline summon editor is separate from the upstream runtime memory page', 
   assert.doesNotMatch(source, /CharaAcquire|SummonUpdateOwned|process|PID/)
 })
 
-test('offline summon writes fail closed for DLC-locked saves and expose evidence-scoped natural rules', () => {
-  assert.match(source, /!info\.inventory\?\.unlocked/)
-  assert.match(source, /工具不会强行解锁/)
-  assert.match(source, /1455=0、1454=0/)
+test('offline summon writes encodable values by default and keeps natural rules as small hints', () => {
+  assert.match(source, /!info\.inventory\.unlocked/)
+  assert.match(source, /仍可写入预分配记录/)
   assert.match(source, /天然词池与等级已校验/)
   assert.match(source, /固定词条已证 · 等级待证/)
-  assert.match(source, /allowedMainHashes/)
-  assert.match(source, /naturalSubLevels/)
+  assert.match(source, /const mainChoices = computed\(\(\) => options\.traits\)/)
+  assert.match(source, /const subChoices = computed\(\(\) => options\.subParams\)/)
   assert.match(source, /种类、主加护、副词条、等级和 Rank 会作为一条完整记录写入/)
+  assert.match(source, /天然词池、等级与系统开放状态只作提醒/)
+  assert.doesNotMatch(source, /forceWrite/)
 })
 
 test('generated binding exposes load, create-or-update, and output selection', () => {

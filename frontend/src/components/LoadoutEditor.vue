@@ -25,10 +25,6 @@ const ctx = ref(null)
 const loading = ref(false)
 const applying = ref(false)
 const sharing = ref(false)
-const complianceReport = ref(null)
-const complianceLoading = ref(false)
-let complianceTimer = null
-let complianceRequestId = 0
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -302,9 +298,9 @@ function summonSubLevelLimit(draft) {
 }
 function clampSummonDraft(draft) {
   if (!draft) return
-  draft.mainTraitLevel = Math.min(Math.max(0, Number(draft.mainTraitLevel) || 0), summonMainLevelLimit(draft))
-  draft.subParamLevel = Math.min(Math.max(0, Number(draft.subParamLevel) || 0), summonSubLevelLimit(draft))
-  draft.rank = Math.min(Math.max(0, Number(draft.rank) || 0), 3)
+  draft.mainTraitLevel = Math.min(Math.max(0, Math.trunc(Number(draft.mainTraitLevel) || 0)), 0xFFFFFFFF)
+  draft.subParamLevel = Math.min(Math.max(0, Math.trunc(Number(draft.subParamLevel) || 0)), 0xFFFFFFFF)
+  draft.rank = Math.min(Math.max(0, Math.trunc(Number(draft.rank) || 0)), 0xFFFFFFFF)
 }
 function summonDraftChanged(summon, draft) {
   return Boolean(summon && draft) && (
@@ -426,11 +422,13 @@ const filteredConstructCatalog = computed(() => {
 })
 const selectedConstructSigil = computed(() => fullConstructCatalog.value.find(item => item.internalId === constructSigilId.value) || null)
 const selectedConstructPrimary = computed(() => constructTraits.value.find(item => item.internalId === constructPrimaryId.value) || null)
-const selectedConstructSecondary = computed(() => constructCompatibleTraits.value.find(item => item.internalId === constructSecondaryId.value) || null)
+const constructSecondaryOptions = computed(() => constructTraits.value)
+const selectedConstructSecondary = computed(() => constructSecondaryOptions.value.find(item => item.internalId === constructSecondaryId.value) || null)
 function highestAllowed(levels, fallback = 0) {
   return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
 }
 function constructTraitWritableMax(trait) { return Math.min(50, Math.max(15, Number(trait?.maxLevel || 0))) }
+function constructLevelLimit() { return 0x7FFFFFFF }
 function clampConstructLevel(value, max = 50) {
   const number = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0
   return Math.min(max, Math.max(0, number))
@@ -484,7 +482,7 @@ watch(constructSigilId, async value => {
   const restore = pendingConstructRestore?.sigilId === value ? pendingConstructRestore : null
   constructSigilLevel.value = restore?.level || constructSigilLevel.value
   constructPrimaryLevel.value = restore?.primaryLevel || constructPrimaryLevel.value
-  if (restore && constructCompatibleTraits.value.some(item => item.internalId === restore.secondaryTraitId)) {
+  if (restore && constructSecondaryOptions.value.some(item => item.internalId === restore.secondaryTraitId)) {
     constructSecondaryId.value = restore.secondaryTraitId
     constructSecondaryLevel.value = restore.secondaryLevel || 0
   }
@@ -919,33 +917,6 @@ function buildWriteRequest() {
   return w
 }
 
-function complianceLabel(status) {
-  return ({ legal: '自然配置', forced: '可写警告', unknown: '来源未验证', impossible: '结构不可写' })[status] || '待检测'
-}
-
-function scheduleCompliance() {
-  clearTimeout(complianceTimer)
-  const requestId = ++complianceRequestId
-  complianceReport.value = null
-  if (!props.savePath || !targetSlot.value || writeInvalid.value) {
-    complianceLoading.value = false
-    return
-  }
-  complianceLoading.value = true
-  complianceTimer = setTimeout(async () => {
-    try {
-      const report = await LoadoutCheckCompliance(props.savePath, buildWriteRequest())
-      if (requestId === complianceRequestId) complianceReport.value = report
-    } catch (err) {
-      if (requestId === complianceRequestId) {
-        complianceReport.value = { status: 'impossible', writable: false, message: String(err), items: [] }
-      }
-    } finally {
-      if (requestId === complianceRequestId) complianceLoading.value = false
-    }
-  }, 220)
-}
-
 const writeInvalid = computed(() => {
   if (op.value === 'clear') return false
   if (op.value === 'clone') return !cloneFrom.value || cloneFrom.value === targetSlot.value
@@ -954,9 +925,7 @@ const writeInvalid = computed(() => {
     || (writeGlobalSummons.value && !summonSelectionValid.value)
 })
 
-watch([targetSlot, op, form, factorSlots, cloneFrom, writeGlobalSummons, summonSlotIds, () => selectedMasteryHashes.value.slice()], scheduleCompliance, { deep: true })
-
-onBeforeUnmount(() => { simRequestId++; complianceRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer); clearTimeout(complianceTimer) })
+onBeforeUnmount(() => { simRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer) })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -1015,16 +984,12 @@ async function importLoadout() {
 async function apply() {
   if (!props.savePath || !targetSlot.value) return
   const w = buildWriteRequest()
-  complianceLoading.value = true
   let preflight
   try {
     preflight = await LoadoutCheckCompliance(props.savePath, w)
-    complianceReport.value = preflight
   } catch (err) {
-    emit('status', `合规预检失败：${String(err)}`, 'error')
+    emit('status', `写入预检失败：${String(err)}`, 'error')
     return
-  } finally {
-    complianceLoading.value = false
   }
   if (!preflight?.writable) {
     emit('status', `当前配装不可写：${preflight?.message || '合规预检未通过'}`, 'error')
@@ -1294,6 +1259,7 @@ async function apply() {
               <small>启用后会一并选定并写入这四个全局槽；实例属性与配装在同一事务回读验证</small>
             </span>
           </label>
+          <small v-if="summonInlineEnabled" class="ui-hint">召唤石天然词池与等级只作提醒；所选可编码值不会被拦截。</small>
           <div class="summon-slot-list">
             <article v-for="index in 4" :key="index" class="summon-slot-card">
               <span class="summon-slot-index">{{ String(index).padStart(2, '0') }}</span>
@@ -1313,21 +1279,21 @@ async function apply() {
               <div v-if="summonInlineEnabled && selectedSummons[index - 1] && summonDrafts[selectedSummons[index - 1].slotId]" class="summon-inline-grid">
                 <label class="summon-inline-wide"><span>主加护</span>
                   <select v-model="summonDrafts[selectedSummons[index - 1].slotId].mainTraitHash" class="ed-select ui-select"
-                    :disabled="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])">
+                    @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])">
                     <option v-if="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" :value="hashHex(selectedSummons[index - 1].mainTraitHash)">未收录主加护（仅原样保留）</option>
                     <option v-for="option in summonCatalog.traits" :key="option.hash" :value="hashHex(option.hash)">{{ option.name }}</option>
                   </select>
                 </label>
                 <label><span>主等级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].mainTraitLevel" class="ed-input ui-input" type="number" min="0"
-                  :max="summonMainLevelLimit(summonDrafts[selectedSummons[index - 1].slotId])" :disabled="!summonMainOption(selectedSummons[index - 1].mainTraitHash)" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
+                  max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
                 <label class="summon-inline-wide"><span>副参数</span>
                   <select v-model="summonDrafts[selectedSummons[index - 1].slotId].subParamHash" class="ed-select ui-select" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])">
                     <option v-for="option in summonCatalog.subParams" :key="option.hash" :value="hashHex(option.hash)">{{ option.name }}</option>
                   </select>
                 </label>
                 <label><span>副等级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].subParamLevel" class="ed-input ui-input" type="number" min="0"
-                  :max="summonSubLevelLimit(summonDrafts[selectedSummons[index - 1].slotId])" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
-                <label><span>阶级</span><select v-model.number="summonDrafts[selectedSummons[index - 1].slotId].rank" class="ed-select ui-select"><option v-for="rank in [0,1,2,3]" :key="rank" :value="rank">{{ rank }} / 3</option></select></label>
+                  max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
+                <label><span>阶级</span><input v-model.number="summonDrafts[selectedSummons[index - 1].slotId].rank" class="ed-input ui-input" type="number" min="0" max="4294967295" @change="clampSummonDraft(summonDrafts[selectedSummons[index - 1].slotId])" /></label>
               </div>
             </article>
           </div>
@@ -1362,7 +1328,7 @@ async function apply() {
       <main class="editor-column build-column">
       <div class="editor-save-bar">
         <span><b>{{ op === 'write' ? '配装草稿' : op === 'clone' ? '克隆操作' : '清空操作' }}</b><small>目标槽 {{ String(selectedSlot?.slot ?? 0).padStart(2, '0') }}</small></span>
-        <button class="editor-save-button apply-btn ui-btn is-primary" :disabled="applying || complianceLoading || writeInvalid" @click="apply">
+        <button class="editor-save-button apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
           {{ saveButtonLabel() }}
         </button>
       </div>
@@ -1459,6 +1425,7 @@ async function apply() {
           </div>
 
           <div v-else class="constructor-shell">
+            <small class="ui-hint">天然因子组合与等级只作提醒；所选可编码值不会被拦截。</small>
             <div class="constructor-note">
               <span class="constructor-mark">{{ String(activeFactorIndex + 1).padStart(2, '0') }}</span>
               <div><b>因子构造器</b><small>配置会先留在当前槽；点击整套写入时再生成真实因子并绑定。</small></div>
@@ -1472,18 +1439,18 @@ async function apply() {
                 <small v-if="constructSearch && !filteredConstructCatalog.length" class="catalog-empty">构造目录无匹配结果。</small>
               </label>
               <label><span>因子等级</span>
-                <input v-model.number="constructSigilLevel" type="number" min="1" :max="highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15)" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15))" />
+                <input v-model.number="constructSigilLevel" type="number" min="0" :max="constructLevelLimit(highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15))" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, constructLevelLimit(highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15)))" />
               </label>
               <label class="constructor-wide"><span>主词条</span>
-                <div class="ui-input">{{ selectedConstructPrimary?.displayName || '未收录固定主词条' }}</div>
+                <CatalogSelect v-model="constructPrimaryId" :options="constructTraits" :icon-resolver="traitIconForOption" placeholder="选择主词条" search-placeholder="搜索全部词条" />
               </label>
               <label><span>主词条等级</span>
-                <input v-model.number="constructPrimaryLevel" type="number" min="1" :max="selectedConstructSigil?.firstTraitMaxLevel || 15" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, selectedConstructSigil?.firstTraitMaxLevel || 15)" />
+                <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructLevelLimit(selectedConstructSigil?.firstTraitMaxLevel || 15)" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructLevelLimit(selectedConstructSigil?.firstTraitMaxLevel || 15))" />
               </label>
-              <label v-if="selectedConstructSigil?.supportsSecondaryTrait" class="constructor-wide"><span>副词条 · 本地表允许项</span>
-                <CatalogSelect v-model="constructSecondaryId" :options="constructCompatibleTraits" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
+              <label class="constructor-wide"><span>副词条 · 全部已知词条</span>
+                <CatalogSelect v-model="constructSecondaryId" :options="constructSecondaryOptions" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
               </label>
-              <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructTraitWritableMax(selectedConstructSecondary)" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructTraitWritableMax(selectedConstructSecondary))" /></label>
+              <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary))" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary)))" /></label>
             </div>
             <div v-if="selectedConstructSigil" class="constructor-preview">
               <span class="sigil-icon-frame large"><img v-if="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" :src="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" alt="" /><i v-else>◆</i></span>
@@ -1574,20 +1541,6 @@ async function apply() {
         </div>
       </template>
 
-      <section class="compliance-panel ui-card" :class="complianceReport?.status || 'pending'" aria-live="polite">
-        <header><strong>写入检查与提示</strong><span>{{ complianceLoading ? '检测中…' : complianceLabel(complianceReport?.status) }}</span></header>
-        <p>{{ complianceReport?.message || (writeInvalid ? '完成必填配置后自动检测。' : '正在使用与最终写入相同的后端规则预检。') }}</p>
-        <details v-if="complianceReport?.items?.length">
-          <summary>查看 {{ complianceReport.items.length }} 个因子槽的检测结果</summary>
-          <div class="compliance-items">
-            <article v-for="item in complianceReport.items" :key="`${item.index}-${item.source}`" :class="item.status">
-              <b>槽 {{ String(item.index + 1).padStart(2, '0') }} · {{ item.sigilName || '未收录因子' }}</b>
-              <span>{{ complianceLabel(item.status) }}</span>
-              <small>{{ item.message }}</small>
-            </article>
-          </div>
-        </details>
-      </section>
       </main>
 
       <aside class="editor-column result-sidebar">
@@ -1825,23 +1778,6 @@ async function apply() {
 .editor-save-bar > span b { color:var(--text-primary); font-size:var(--fs-sm); }
 .editor-save-bar > span small { color:var(--text-muted); font-size:var(--fs-xs); }
 .editor-save-button { flex:0 0 auto; min-width:142px; }
-.compliance-panel { margin:0 10px; overflow:hidden; border-left:3px solid var(--border-default); box-shadow:none; }
-.compliance-panel.legal { border-left-color:var(--success); }
-.compliance-panel.forced,.compliance-panel.unknown { border-left-color:var(--warning); }
-.compliance-panel.impossible { border-left-color:var(--danger); }
-.compliance-panel > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px 4px; }
-.compliance-panel > header strong { color:var(--text-primary); }
-.compliance-panel > header span { color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); font-weight:700; }
-.compliance-panel > p { margin:0; padding:0 10px 8px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.45; }
-.compliance-panel details { border-top:1px solid var(--line-soft); }
-.compliance-panel summary { padding:7px 10px; color:var(--text-secondary); cursor:pointer; font-size:calc(11px * var(--editor-scale)); }
-.compliance-items { display:grid; gap:1px; padding:0 8px 8px; }
-.compliance-items article { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:6px 7px; border-radius:5px; background:var(--surface-sunken); }
-.compliance-items article b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
-.compliance-items article span { color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); font-weight:700; }
-.compliance-items article small { grid-column:1/-1; color:var(--text-muted); line-height:1.4; }
-.compliance-items article.legal span { color:var(--success-ink); }
-.compliance-items article.impossible span { color:var(--danger-ink); }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }
 .op-btn:disabled { opacity:.4; cursor:not-allowed; }

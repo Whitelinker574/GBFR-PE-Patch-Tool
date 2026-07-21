@@ -92,14 +92,6 @@ function selectTrait(slot, value) {
   slot.hash = normaliseHash(value)
   normaliseLevel(slot)
 }
-function levelMax(slot) { return Math.min(slot.maxLevel, Number(traitOption(slot.hash)?.maxLevel || 0)) }
-function allowedLevels(slot) {
-  const option = traitOption(slot.hash)
-  const explicit = Array.isArray(option?.allowedLevels) ? option.allowedLevels : []
-  const levels = explicit.length ? explicit : Array.from({ length: levelMax(slot) }, (_, index) => index + 1)
-  return [...new Set(levels.map(Number))].filter(level => Number.isInteger(level) && level >= 1 && level <= levelMax(slot)).sort((a, b) => a - b)
-}
-
 function syncDraftFromStatus() {
   for (const slot of traitSlots) {
     slot.hash = currentHash(slot)
@@ -166,16 +158,10 @@ const validationMessage = computed(() => {
   if (!status.selectedAddr) return text('请在游戏内祝福石列表重新选中目标记录。', 'Select the target again in the in-game wrightstone list.')
   if (!traitSlots[0].hash) return text('第一槽词条不能为空。', 'Slot One cannot be empty.')
   for (const slot of traitSlots) {
-    if (!slot.hash && Number(slot.level) !== 0) return language.value === 'en' ? `${slotLabel(slot)} must have level 0 when empty.` : `${slotLabel(slot)}为空时等级必须为 0。`
-    const option = traitOption(slot.hash)
-    if (slot.hash && !option) return language.value === 'en' ? `${slotLabel(slot)} is not in the verified catalog.` : `${slotLabel(slot)}词条不在已验证目录中。`
-    if (slot.hash && !allowedLevels(slot).includes(Number(slot.level))) {
-      return language.value === 'en' ? `${slotLabel(slot)} level is outside this slot's allowed range.` : `${slotLabel(slot)}等级不在该槽位的允许范围内。`
+    if (!Number.isInteger(Number(slot.level)) || Number(slot.level) < 0 || Number(slot.level) > 0xFFFFFFFF) {
+      return language.value === 'en' ? `${slotLabel(slot)} is not an encodable uint32 level.` : `${slotLabel(slot)}等级无法编码为 uint32。`
     }
   }
-  const selectedHashes = traitSlots.map(slot => normaliseHash(slot.hash)).filter(Boolean)
-  const uniqueHashes = new Set(traitSlots.map(slot => normaliseHash(slot.hash)).filter(Boolean))
-  if (uniqueHashes.size !== selectedHashes.length) return text('三个槽位不能选择重复词条。', 'The three slots cannot use duplicate traits.')
   if (!changes.value.length) return text('目标值与当前记录相同。', 'Target values are identical to the current record.')
   return ''
 })
@@ -183,9 +169,8 @@ const canWrite = computed(() => !loading.value && !writing.value && !validationM
 
 function normaliseLevel(slot) {
   if (!slot.hash) { slot.level = 0; return }
-  const levels = allowedLevels(slot)
   const numeric = Number(slot.level)
-  slot.level = levels.includes(numeric) ? numeric : (levels.at(-1) || 0)
+  slot.level = Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, 0xFFFFFFFF) : 0
 }
 
 function stopPolling() {
@@ -299,7 +284,7 @@ async function write() {
   const confirmed = await confirmDialog.value?.ask({
     title: text('写入当前祝福石', 'Write Current Wrightstone'),
     message: language.value === 'en' ? `Write ${changes.value.length} changes?` : `确认写入 ${changes.value.length} 项变更？`,
-    detail: changeDetail,
+    detail: `${changeDetail}\n\n天然组合与等级只作提示；将按当前三槽值写入。`,
     tone: 'warning',
     confirmLabel: text('确认写入', 'Confirm Write'),
   })
@@ -431,9 +416,7 @@ onBeforeUnmount(() => {
               </label>
               <label class="ui-field trait-level-field">
                 <span class="ui-field-label">{{ text('目标等级', 'Target Level') }}</span>
-                <select v-model.number="slot.level" class="ui-select ui-input" :disabled="!slot.hash || !status.selectedAddr || stale">
-                  <option v-for="level in allowedLevels(slot)" :key="level" :value="level">Lv {{ level }}</option>
-                </select>
+                <input v-model.number="slot.level" class="ui-input" type="number" min="0" max="4294967295" :disabled="!slot.hash || !status.selectedAddr || stale" />
               </label>
             </div>
           </article>
@@ -448,6 +431,7 @@ onBeforeUnmount(() => {
 
           <aside class="wrightstone-memory-actions ui-card ui-panel is-compact">
             <span><b>{{ statusLabel }}</b><small>{{ validationMessage || (language === 'en' ? `${changes.length} changes pending` : `${changes.length} 项待写入`) }}</small></span>
+            <small class="ui-hint">{{ text('天然组合与等级只作提醒；所选可编码值不会被拦截。', 'Natural combinations and levels are advisory; encodable values are not blocked.') }}</small>
             <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">{{ text('还原当前值', 'Restore Current Values') }}</button>
             <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? text('写入中…', 'Writing…') : text('写入三槽', 'Write Three Slots') }}</button>
           </aside>
