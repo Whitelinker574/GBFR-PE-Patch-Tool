@@ -33,7 +33,7 @@
     "prop": "一本具有恰好十二个圆形槽位的红金实体配装册，以及恰好一个正在插入的因子记录标记。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp2800.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp2800.png",
         "subject": "Mephisto's Waltz / WEP_PL2800_01",
         "use": "仅约束成对武器鞋的准确几何与材质分区，不复制预览背景"
       }

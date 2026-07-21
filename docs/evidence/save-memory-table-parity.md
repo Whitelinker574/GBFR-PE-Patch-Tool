@@ -65,9 +65,10 @@ The checked-in normalized evidence is `data/summon_natural_rules_202.json`.
 Its source role is secondary cross-check; local game-table hashes remain the
 primary identity evidence.
 
-## Spreadsheet drop boundary
+## Evidence boundary
 
-`D:\gbf\11` is audited by content, not filename. The review workbook is
-`docs/evidence/ct085-table-audit.xlsx`; its `Channel Parity` sheet contains the
-same result in tabular form. Misnamed, degraded, or partial spreadsheets remain
-reference-only and do not overwrite production catalogs.
+Production catalogs are derived from the audited local 2.0.2 game tables and
+are checked by executable regression tests. External spreadsheets, Cheat
+Engine tables, generated workbooks and local field-capture reports are review
+inputs only; they are intentionally not kept in this repository and never
+replace checked-in catalog data by filename alone.

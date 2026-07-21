@@ -6,8 +6,7 @@
     "source_files": [
       "runtime_party_monitor.go",
       "runtime_inventory_item.go",
-      "frontend/src/components/CT084RuntimeMonitor.vue",
-      "docs/superpowers/specs/2026-07-19-functional-page-art-refresh-design.md"
+      "frontend/src/components/CT084RuntimeMonitor.vue"
     ],
     "layout": "已用真实 Wails WebView2 的 Page.captureScreenshot 复核队伍快照与选中物品两个页签，覆盖 375×812、768×900、1024×768、1440×900、2560×1392 共十个应用内状态；内容面板实测宽度依次为 275、668、554、719、1412 px，document/workspace 横向溢出均为 0，裁字与越界控件均为 0。外层页面标题之后直接进入紧凑连接卡、状态条和双页签，不再重复一张标题大卡；375 宽状态胶囊保持单行。1024 及以上保留右侧独立透明立绘轨，紧凑宽度隐藏立绘轨并保持监测卡片单列可读；Q 版角色与提示气泡常驻全局左侧导航栏。立绘不得侵入连接、刷新、队伍数值、选中地址或版本守卫状态。"
   },
@@ -36,7 +35,7 @@
     "prop": "一块带恰好四枚圆形水晶表盘和一个密闭样本观察窗的机械巡检板；观察窗内只有一枚素材晶体，另有一枚短柄光学目镜。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp2700.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp2700.png",
         "subject": "Flamek Thunder / WEP_PL2700_01",
         "use": "仅约束单件背负枪械的准确几何与材质分区；武器不接触或变形成巡检板、表盘、观察窗与样本"
       }

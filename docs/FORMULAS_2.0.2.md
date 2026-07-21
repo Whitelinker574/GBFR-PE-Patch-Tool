@@ -297,7 +297,7 @@ pre-cap raw damage
 ## 回归命令
 
 ```powershell
-$env:GOCACHE='D:\gbf\.tmp\gocache'
+$env:GOCACHE=Join-Path $env:TEMP 'gbfr-gocache'
 go test -mod=mod -count=1 -timeout=20m ./...
 
 cd frontend

@@ -56,3 +56,9 @@
 *.iobj
 *.tlog
 FileListAbsolute.txt
+
+# Local handoffs and field captures are delivery artifacts, not source.
+/RETURN-TO-MAIN-CODEX/
+/docs/local/
+/docs/handoffs/
+/field-*.zip

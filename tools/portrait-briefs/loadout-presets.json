@@ -35,7 +35,7 @@
     "prop": "一本半合拢的深蓝金备份配装册，带有四枚宽大无文字分类页签、一条封缄带和一个实体封印。",
     "gameplay_references": [
       {
-        "file": "D:/gbf/.worktrees/loadout-fullscreen/frontend/public/loadout-icons/weapons/cmn_imgequ_wp0000.png",
+        "file": "frontend/public/loadout-icons/weapons/cmn_imgequ_wp0000.png",
         "subject": "Traveller's Sword (Gran) / WEP_PL0000_01_01",
         "use": "仅约束武器的准确几何；武器保持入鞘并与配装册完全分离"
       }

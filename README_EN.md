@@ -1,118 +1,65 @@
-[简体中文](README.md)
+[简体中文](README.md) · [Documentation index](docs/README.md)
 
-# GBFR Data Tools — Granblue Fantasy: Relink 2.0.2
+# GBFR PE Patch Tool · DLC 2.0.2
 
-A bilingual English/Chinese version of BitterG's **GBFR PE Patch Tool** for **Granblue Fantasy: Relink** and **Endless Ragnarok**.
+A Windows project for local save editing, controlled runtime tools, and read-only formula calibration for *Granblue Fantasy: Relink* DLC 2.0.2. It is not an official tool. Use it only with your own offline saves and local single-player environment, and keep recoverable backups.
 
-> Open the **Language** tab to switch between English and Simplified Chinese. The preference is stored locally and restored on the next launch. Some newly added specialist loadout terminology still remains in Chinese and the app states that limitation explicitly.
+## What is included
 
-## Language support
+| Area | Current scope |
+| --- | --- |
+| Offline saves | Sigils, wrightstones, summons, loadouts, weapon skills, progression, quest counts, and title records. Writes use backup, checksum repair, atomic replacement, and readback. |
+| Loadout workspace | Character, weapon, twelve sigils, mastery, and summons, with draft-versus-live HP/attack/critical/stun comparison. Unverified formulas remain estimates. |
+| Runtime editors | Selected sigil, wrightstone, and summon records plus verified character/quest functions. Every write is bound to the process, owner token, selected target, and readback. |
+| Read-only calibration | Final-panel reads, stability checks, strict A/B/A/B experiments, and redacted evidence bundles. This path does not inject, write memory, or edit saves. |
+| EXE/compatibility | Audited local patches, backup/restore, and version diagnostics. Experimental items are labelled in the UI. |
 
-- Switch between **English** and **Simplified Chinese** from the Language tab.
-- Core navigation and the mature generators are bilingual; some new loadout/mastery terminology is not translated yet.
-- The selected language is saved locally and restored automatically.
+## Catalog and write policy
 
-## Features
+The sigil, wrightstone, and summon catalogs are shared by offline-save, runtime-memory, and loadout routes and are sourced from audited 2.0.2 tables. Natural pools, combinations, and observed levels provide defaults and compact warnings only: every encodable selection is writable by default, with no separate force-mode switch.
 
-### Save data tools
+That does not bypass safety checks. Target ownership, stale snapshots, storage bounds, integer encoding, checksums, transaction rollback, and field-by-field readback remain mandatory. An unopened-DLC save may receive values in existing preallocated summon records, but this does not unlock the system or guarantee that the game will consume the record.
 
-- **Sigil Generator** — Search for sigils, configure sigil and trait levels, and write them to an output save.
-- **New Sigil Memory Editor** — Read the sigil currently selected in-game and edit its sigil, primary trait, secondary trait, and levels.
-- **Wrightstone Generator** — Configure a wrightstone and its three traits, with queue support for batch generation.
-- **Selected Wrightstone Memory Editor** — Read and transactionally update the selected three-trait record; successful writes automatically restore the hook.
-- **Single-character Loadouts** — Edit one character build with a real weapon and its unlocked skills, 12 sigil slots, four active skills, three mastery paths, and single-build JSON import/export. The four selected summons can optionally be written to the save's global equipped-summon slots; they are not stored independently per preset.
-- **Loadout Compliance and Stat Audit** — Reuse the real backend write validation before confirmation, show per-slot legality, and calculate clearly marked offline estimates from character level/base values, Fate episodes, permanent Master growth, weapon, sigils, mastery, Over Mastery, and summons. Unresolved formula stages remain marked as approximate.
-- **Quest and Title Records** — Scan save slots, display quest clear counts, and search/edit the 1,616-entry bilingual title catalog. Title writes can update unlock/viewed bits while preserving reward-claimed records.
-- **In-place Save Editing** — Optionally overwrite the selected input save directly. Back up the save first.
+## Before using it
 
-### EXE patches
+1. Copy your save. Confirm the displayed backup path before an in-place write.
+2. Back up the EXE before patching it; Steam file verification can restore it.
+3. For runtime writes, confirm that the selected in-game character or item is the intended target. Re-read after changing character, reloading, or leaving the page.
+4. Do not use runtime changes in multiplayer sessions or in ways that affect other players.
 
-- **Quest Clear Count** — Change the quest-clear count limit without editing the save.
-- **Commendation Count** — Change the value awarded when receiving a commendation; this can affect save data.
-- **Automatic Detection** — Locate the game executable from Steam registry and library paths.
-- **Backup and Restore** — Create and restore a `.bak` copy of the game executable.
-
-### Runtime tools
-
-- **Character Usage Counts** — View and edit per-character quest usage counts.
-- **Currency and Potion Editors** — Read and write supported currencies and potion counts through stable pointer paths.
-- **No Material Consumption** — Temporarily prevent upgrade, enhancement, and transmutation material quantities from decreasing.
-- **Guaranteed Terminus Weapon Drop** — Removes the 80% exclusion check for Terminus Weapon lots while preserving ownership and character-unlock checks.
-- **Over Mastery Editor** — Scan, refresh, edit, and save Over Mastery values.
-- **Monster Enhancements** — Controls for monster HP, damage, stun gauge, Overdrive state, SBA chain timing, Link Time, and related gauges. Some items are currently marked as not fixed.
-- **Update Check** — Check GitHub Releases for newer versions.
-
-### Compatibility lab
-
-Quest-result countdown, infinite challenges, face/alternate-skin runes, runtime unlock-all-titles, team damage metering, score multipliers, and mission multipliers are retained only as legacy/experimental material. They have not completed production acceptance against game 2.0.2 and are labelled accordingly in the UI. Offline title-record editing is a separate guarded save feature, and forced sub-objective rewards are already part of the validated CT quest catalog.
-
-## Safety notes
-
-1. Back up your save files before writing changes.
-2. Back up `granblue_fantasy_relink.exe` before applying EXE patches.
-3. The in-place save option directly overwrites the selected save.
-4. Runtime-memory features require the game to be running and may require administrator privileges.
-5. Host-side runtime changes can affect other players. Tell teammates before using them in multiplayer.
-
-Default save location:
+Default save path:
 
 ```text
 C:\Users\YOUR_NAME\AppData\Local\GBFR\Saved\SaveGames\
 ```
 
-## Building on Windows
+## Build and test on Windows
 
-Requirements:
-
-- Go 1.23 or newer, amd64
-- Node.js and npm
-- Wails CLI v2.12.0
-- Microsoft Edge WebView2 Runtime
-- Visual Studio / MSBuild only when rebuilding `src_dll/patch_core`
-
-Install Wails:
+Requirements: Windows amd64, Go 1.23+, Node.js/npm, Wails CLI v2, and the WebView2 Runtime. Visual Studio/MSBuild is needed only when rebuilding `src_dll/patch_core`.
 
 ```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+cd frontend
+npm install
+npm run build
+cd ..
+
+go test ./...
+node --test frontend/src/*.test.js
+wails build -platform windows/amd64 -clean
 ```
 
-Build the application:
+The executable is written to `build\bin\GBFR PE Patch Tool.exe`.
 
-```powershell
-.\build-windows.bat
-```
+## Documentation and evidence
 
-The executable is generated at:
+- [Formula sources and evidence levels](docs/FORMULAS_2.0.2.md)
+- [Read-only runtime formula sampling](docs/角色公式采样操作说明.md)
+- [Save/memory catalog parity](docs/evidence/save-memory-table-parity.md)
 
-```text
-build\bin\GBFR PE Patch Tool.exe
-```
+Verified runtime reads are not presented as proof of every formula. Conditional buffs, damage reduction, damage caps, and combat settlement still require the appropriate training-area or target-dummy samples.
 
-When `src_dll/patch_core` is modified, build the DLL as **Release x64** first. Its post-build step publishes the result to the Git-tracked stable embed source `resources\patch_core.dll`; `build\bin` contains disposable Wails output only.
+## Attribution and disclaimer
 
-## Translation scope
+Save parsing references [GBFRDataTools.SaveFile](https://github.com/Nenkai/GBFRDataTools/tree/master/GBFRDataTools.SaveFile). Earlier sigil and wrightstone research references GBFR-Sigil-Generator and GBFR-Wrightstone-Generator. Original project logic comes from the BitterG community.
 
-The English localization currently covers:
-
-- Main navigation and tabs
-- Sigil and Wrightstone generators
-- New selected-sigil memory editor
-- Save and quest statistics
-- Offline title-record search and editing
-- Single-character loadout compliance, permanent-growth baselines, weapon stages, and approximate final-stat audit
-- Character usage statistics
-- Miscellaneous runtime tools
-- Monster enhancement controls
-- Over Mastery interface
-- Most established user-facing status and error messages
-- Character, Sigil, Trait, and Wrightstone display names
-- New Endless Ragnarok sigils and character-specific traits used by the memory editor
-
-The expanded loadout, mastery, summon, and final-stat editor still contains Chinese specialist terms. Until those strings are fully catalogued, English mode is intentionally described as partial rather than complete.
-
-The Chinese lookup tables remain in the source as reference data, but the English build returns the original English catalog names.
-
-## Attribution
-
-- Original project and program logic: **BitterG**
-- English translation: **FionaAleksic**
+This project is for learning and personal local use. You are responsible for the consequences of modifying saves, game files, or runtime memory.
