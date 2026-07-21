@@ -4,10 +4,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
-const ctCharactersBrief = JSON.parse(
-  readFileSync(new URL('../../tools/portrait-briefs/ct-characters.json', import.meta.url), 'utf8'),
-)
-
 const assets = [
   ['loadoutLiveArt', './assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'],
   ['loadoutPresetsArt', './assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'],
@@ -63,9 +59,9 @@ test('CT pages ship their approved function-specific assets without repeated bin
   }
 })
 
-test('character mechanics owns a Vaseraga portrait and sticker instead of repeating Djeeta', () => {
-  assert.equal(ctCharactersBrief.portrait.character, 'vaseraga')
-  assert.equal(ctCharactersBrief.sticker.character, 'vaseraga')
+test('character mechanics keeps its dedicated Vaseraga production assets and guidance', () => {
+  assert.match(shell, /ctCharactersArt.*ct-characters-official-edge-safe\.webp/)
+  assert.match(shell, /ctCharactersSticker.*ct-characters\.webp/)
   assert.match(shell, /ctCharacters:\s*\{[\s\S]*?speaker:\s*'巴萨拉卡'/)
   assert.match(shell, /note:\s*'冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。'/)
 })
