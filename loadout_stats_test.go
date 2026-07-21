@@ -354,6 +354,32 @@ func TestLoadoutSimulateBuildMergesRealSummonsAndOverLimit(t *testing.T) {
 	}
 }
 
+func TestNormalizeLoadoutSimulationSummonSlotsAllowsPreDLCEmptyConfiguration(t *testing.T) {
+	got, sparse, err := normalizeLoadoutSimulationSummonSlots([]uint32{0, 0, 0, 0})
+	if err != nil || !sparse || len(got) != 0 {
+		t.Fatalf("pre-DLC empty summon slots must preview as no summons: got=%v sparse=%v err=%v", got, sparse, err)
+	}
+	got, sparse, err = normalizeLoadoutSimulationSummonSlots([]uint32{35, 0, EmptyHash, 43})
+	if err != nil || !sparse || !reflect.DeepEqual(got, []uint32{35, 43}) {
+		t.Fatalf("partially initialised summon slots must retain only real instances: got=%v sparse=%v err=%v", got, sparse, err)
+	}
+	if _, _, err := normalizeLoadoutSimulationSummonSlots([]uint32{35, 35}); err == nil {
+		t.Fatal("duplicate real summon instances must still fail closed")
+	}
+}
+
+func TestClassifyLoadoutSummonSystemDistinguishesPreDLCFromAvailable(t *testing.T) {
+	if available, state := classifyLoadoutSummonSystem(nil, []uint32{0, 0, 0, 0}, true); available || state != "not_unlocked_or_uninitialized" {
+		t.Fatalf("zeroed pre-DLC summon field = %v/%s", available, state)
+	}
+	if available, state := classifyLoadoutSummonSystem(nil, nil, false); available || state != "field_absent_pre_dlc" {
+		t.Fatalf("absent pre-DLC summon field = %v/%s", available, state)
+	}
+	if available, state := classifyLoadoutSummonSystem([]LoadoutSummon{{SlotID: 35}}, nil, true); !available || state != "available" {
+		t.Fatalf("real summon inventory = %v/%s", available, state)
+	}
+}
+
 func realIoTerminusLoadout(t *testing.T) LoadoutEntry {
 	t.Helper()
 	groups, err := (&App{}).LoadoutList(testStatsSave)

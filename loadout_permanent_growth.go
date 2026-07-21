@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/bits"
 	"sort"
 )
@@ -10,22 +9,25 @@ import (
 // It is part of the panel baseline and must not be presented as a swappable
 // equipment/factor/mastery bonus.
 type LoadoutPermanentGrowth struct {
-	RuntimeObserved     bool                       `json:"runtimeObserved"`
-	StableReads         int                        `json:"stableReads"`
-	Evidence            string                     `json:"evidence"`
-	FateEpisodeMask     uint32                     `json:"fateEpisodeMask"`
-	FateEpisodeCount    int                        `json:"fateEpisodeCount"`
-	FateHP              int                        `json:"fateHp"`
-	FateATK             int                        `json:"fateAtk"`
-	MasterTotalMSP      int                        `json:"masterTotalMsp"`
-	MasterProgressIndex int                        `json:"masterProgressIndex"`
-	MasterLevel         int                        `json:"masterLevel"`
-	MasterHP            int                        `json:"masterHp"`
-	MasterATK           int                        `json:"masterAtk"`
-	MasterDamageCap     float64                    `json:"masterDamageCap"`
-	MasteryRankCaps     map[string]int             `json:"masteryRankCaps"`
-	LegacyProgress      int                        `json:"legacyProgress"`
-	LegacyMastery       LoadoutLegacyMasteryGrowth `json:"legacyMastery"`
+	RuntimeObserved       bool                       `json:"runtimeObserved"`
+	StableReads           int                        `json:"stableReads"`
+	Evidence              string                     `json:"evidence"`
+	FateDataAvailable     bool                       `json:"fateDataAvailable"`
+	MasterSystemAvailable bool                       `json:"masterSystemAvailable"`
+	LegacySystemAvailable bool                       `json:"legacySystemAvailable"`
+	FateEpisodeMask       uint32                     `json:"fateEpisodeMask"`
+	FateEpisodeCount      int                        `json:"fateEpisodeCount"`
+	FateHP                int                        `json:"fateHp"`
+	FateATK               int                        `json:"fateAtk"`
+	MasterTotalMSP        int                        `json:"masterTotalMsp"`
+	MasterProgressIndex   int                        `json:"masterProgressIndex"`
+	MasterLevel           int                        `json:"masterLevel"`
+	MasterHP              int                        `json:"masterHp"`
+	MasterATK             int                        `json:"masterAtk"`
+	MasterDamageCap       float64                    `json:"masterDamageCap"`
+	MasteryRankCaps       map[string]int             `json:"masteryRankCaps"`
+	LegacyProgress        int                        `json:"legacyProgress"`
+	LegacyMastery         LoadoutLegacyMasteryGrowth `json:"legacyMastery"`
 }
 
 type fateGrowthRow struct {
@@ -165,20 +167,31 @@ func deriveMasterGrowth(totalMSP int) masterGrowth {
 }
 
 func readLoadoutPermanentGrowth(data *SaveDataBinary, charaHash, charaUnitID uint32, warnings *[]string) (LoadoutPermanentGrowth, error) {
-	fateUnit, ok := uintUnitExact(data, 1318, charaUnitID)
-	if !ok || len(fateUnit.ValueData) != 1 {
-		return LoadoutPermanentGrowth{}, fmt.Errorf("存档缺少角色 %d 的 1318 Fate 篇章标量", charaUnitID)
+	fateUnit, fateOK := uintUnitExact(data, 1318, charaUnitID)
+	fateAvailable := fateOK && len(fateUnit.ValueData) == 1
+	episodeMask := uint32(0)
+	if fateAvailable {
+		episodeMask = fateUnit.ValueData[0]
+	} else {
+		appendWarning(warnings, "角色 %d 尚未建立 Fate 篇章字段；按未开启/零成长处理", charaUnitID)
 	}
-	masterUnit, ok := intUnitExact(data, 1323, charaUnitID)
-	if !ok || len(masterUnit.ValueData) != 1 {
-		return LoadoutPermanentGrowth{}, fmt.Errorf("存档缺少角色 %d 的 1323 Master 总 MSP 标量", charaUnitID)
+	masterUnit, masterOK := intUnitExact(data, 1323, charaUnitID)
+	masterAvailable := masterOK && len(masterUnit.ValueData) == 1
+	masterTotalMSP := 0
+	if masterAvailable {
+		masterTotalMSP = int(masterUnit.ValueData[0])
+	} else {
+		appendWarning(warnings, "角色 %d 尚未建立 Master/MSP 字段；专精按未开启处理", charaUnitID)
 	}
 	legacyUnit, legacyOK := uintUnitExact(data, 1321, charaUnitID)
-	if !legacyOK || len(legacyUnit.ValueData) != 1 {
-		return LoadoutPermanentGrowth{}, fmt.Errorf("存档缺少角色 %d 的 1321 角色强化进度标量", charaUnitID)
+	legacyAvailable := legacyOK && len(legacyUnit.ValueData) == 1
+	legacyProgress := 0
+	if legacyAvailable {
+		legacyProgress = int(legacyUnit.ValueData[0])
+	} else {
+		appendWarning(warnings, "角色 %d 尚未建立角色强化进度字段；离线时不假算固定强化", charaUnitID)
 	}
 
-	episodeMask := fateUnit.ValueData[0]
 	if episodeMask&^uint32(0x7FF) != 0 {
 		appendWarning(warnings, "角色 %08X 的 1318 含 11 个 Fate 篇章以外的位 0x%X，固定基准只读取低 11 位", charaHash, episodeMask&^uint32(0x7FF))
 	}
@@ -186,14 +199,14 @@ func readLoadoutPermanentGrowth(data *SaveDataBinary, charaHash, charaUnitID uin
 	if !known {
 		appendWarning(warnings, "角色 %08X 未收录于 2.0.2 chara_status_fate 固定成长表", charaHash)
 	}
-	masterTotalMSP := int(masterUnit.ValueData[0])
 	master := deriveMasterGrowth(masterTotalMSP)
 	return LoadoutPermanentGrowth{
+		FateDataAvailable: fateAvailable, MasterSystemAvailable: masterAvailable, LegacySystemAvailable: legacyAvailable,
 		FateEpisodeMask: episodeMask, FateEpisodeCount: fate.EpisodeCount,
 		FateHP: fate.HP, FateATK: fate.ATK,
 		MasterTotalMSP: masterTotalMSP, MasterProgressIndex: master.ProgressIndex,
 		MasterLevel: master.MasterLevel, MasterHP: master.HP, MasterATK: master.ATK,
 		MasterDamageCap: master.DamageCap, MasteryRankCaps: master.MasteryRankCaps,
-		LegacyProgress: int(legacyUnit.ValueData[0]),
+		LegacyProgress: legacyProgress,
 	}, nil
 }

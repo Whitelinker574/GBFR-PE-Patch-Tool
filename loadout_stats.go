@@ -28,6 +28,8 @@ type LoadoutStatContext struct {
 	BaselineStunRaw       float64                 `json:"baselineStunRaw"`
 	BaselineCritRate      float64                 `json:"baselineCritRate"`
 	BaselineDamageCap     float64                 `json:"baselineDamageCap"`
+	SummonSystemAvailable bool                    `json:"summonSystemAvailable"`
+	SummonSystemState     string                  `json:"summonSystemState"`
 	Summons               []LoadoutSummon         `json:"summons"`
 	EquippedSummonSlotIDs []uint32                `json:"equippedSummonSlotIds"`
 	EquippedSummons       []LoadoutSummon         `json:"equippedSummons"`
@@ -296,6 +298,42 @@ func readSummonInventory(data *SaveDataBinary, catalog *summonStatCatalog, warni
 	return result
 }
 
+func classifyLoadoutSummonSystem(inventory []LoadoutSummon, equipped []uint32, equippedFieldPresent bool) (bool, string) {
+	if len(inventory) > 0 {
+		return true, "available"
+	}
+	for _, slotID := range equipped {
+		if slotID != 0 && slotID != EmptyHash {
+			return true, "available_incomplete_inventory"
+		}
+	}
+	if equippedFieldPresent {
+		return false, "not_unlocked_or_uninitialized"
+	}
+	return false, "field_absent_pre_dlc"
+}
+
+func normalizeLoadoutSimulationSummonSlots(slotIDs []uint32) ([]uint32, bool, error) {
+	if len(slotIDs) > 4 {
+		return nil, false, fmt.Errorf("召唤石最多选择 4 个")
+	}
+	result := make([]uint32, 0, len(slotIDs))
+	seen := make(map[uint32]bool, len(slotIDs))
+	sparse := false
+	for _, slotID := range slotIDs {
+		if slotID == 0 || slotID == EmptyHash {
+			sparse = true
+			continue
+		}
+		if seen[slotID] {
+			return nil, sparse, fmt.Errorf("召唤石 SlotID %d 重复", slotID)
+		}
+		seen[slotID] = true
+		result = append(result, slotID)
+	}
+	return result, sparse, nil
+}
+
 type overLimitDefinition struct {
 	name   string
 	unit   string
@@ -448,7 +486,9 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	context.BaselineDamageCap = context.PermanentGrowth.MasterDamageCap
 	context.Summons = readSummonInventory(data, catalog, &context.Warnings)
 
+	equippedFieldPresent := false
 	if equipped, ok := uintUnitExact(data, 1451, 0); ok {
+		equippedFieldPresent = true
 		count := len(equipped.ValueData)
 		if count > 4 {
 			appendWarning(&context.Warnings, "1451 有 %d 个值，只读取前 4 个", count)
@@ -456,7 +496,11 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 		}
 		context.EquippedSummonSlotIDs = append([]uint32(nil), equipped.ValueData[:count]...)
 	} else {
-		appendWarning(&context.Warnings, "存档缺少 1451 UnitID 0 的召唤石配置")
+		appendWarning(&context.Warnings, "存档尚未建立召唤石配置字段；按未开启系统处理，不参与配装预览")
+	}
+	context.SummonSystemAvailable, context.SummonSystemState = classifyLoadoutSummonSystem(context.Summons, context.EquippedSummonSlotIDs, equippedFieldPresent)
+	if !context.SummonSystemAvailable && equippedFieldPresent {
+		appendWarning(&context.Warnings, "召唤石系统未开启或尚未初始化；空槽不会再作为非法 SlotID 报错")
 	}
 	bySlot := make(map[uint32]LoadoutSummon, len(context.Summons))
 	for _, summon := range context.Summons {
@@ -748,8 +792,9 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	if err != nil {
 		return nil, err
 	}
-	if len(summonSlotIDs) > 4 {
-		return nil, fmt.Errorf("召唤石最多选择 4 个")
+	normalizedSummonSlotIDs, sparseSummonSelection, err := normalizeLoadoutSimulationSummonSlots(summonSlotIDs)
+	if err != nil {
+		return nil, err
 	}
 	bySlot := make(map[uint32]LoadoutSummon, len(context.Summons))
 	for _, summon := range context.Summons {
@@ -757,10 +802,7 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	}
 	selected := make([]LoadoutSummon, 0, len(summonSlotIDs))
 	seen := map[uint32]bool{}
-	for _, slotID := range summonSlotIDs {
-		if slotID == 0 || slotID == EmptyHash {
-			return nil, fmt.Errorf("召唤石 SlotID 必须为非零有效值")
-		}
+	for _, slotID := range normalizedSummonSlotIDs {
 		if seen[slotID] {
 			return nil, fmt.Errorf("召唤石 SlotID %d 重复", slotID)
 		}
@@ -899,6 +941,13 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		CharacterDamageCap: context.BaselineDamageCap,
 		Bonuses:            bonuses, Mastery: panelBonuses, OverLimit: context.OverLimit,
 		Warnings: append([]string(nil), context.Warnings...),
+	}
+	if sparseSummonSelection {
+		if context.SummonSystemAvailable {
+			panelInput.Warnings = append(panelInput.Warnings, "召唤石预览槽不完整；只计算实际存在的非空槽")
+		} else {
+			panelInput.Warnings = append(panelInput.Warnings, "召唤石系统未开启或未初始化；本次预览按无召唤石效果计算")
+		}
 	}
 	if ignoredMasteryCount > 0 {
 		panelInput.Warnings = append(panelInput.Warnings, fmt.Sprintf(

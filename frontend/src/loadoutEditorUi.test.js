@@ -199,13 +199,28 @@ test('weapon skill rows keep missing fields honest instead of rendering undefine
 
 test('runtime calibration exposes per-stat deltas and the effective wrightstone snapshot', () => {
 	assert.match(source, /const runtimeStatComparisons = computed/)
-	assert.match(source, /草稿 \/ 当前游戏逐项对照/)
+	assert.match(source, /当前是两套不同配装，不是校准失败/)
+	assert.match(source, /const factorComparison = computed/)
+	assert.match(source, /当前游戏与草稿的因子不同，不是同一套配装/)
+	assert.match(source, /第 \$\{index \+ 1\} 槽：草稿 \$\{draftName\}，游戏 \$\{runtimeName\}/)
+	assert.match(source, /runtimePanelStats\.currentFactorStableReads/)
+	assert.match(source, /草稿来源/)
+	assert.match(source, /游戏当前/)
+	assert.match(source, /runtimePanelStats\.currentWeaponSlotId/)
 	assert.match(source, /formatComparisonDelta\(row\.delta, row\.unit\)/)
 	assert.match(source, /class="wrightstone-audit"/)
 	assert.match(source, /wrightstone\.runtimeObserved/)
 	assert.match(source, /游戏运行时 · \{\{ selectedWeaponContext\.wrightstone\.stableReads \}\} 次稳定读取/)
 	assert.match(source, /全来源合并 Lv\{\{ mergedTraitBonus\(trait\)\.rawLevel \}\}/)
 	assert.match(source, /不会凭武器类型补假数据/)
+})
+
+test('pre-DLC saves keep loadout preview open when summon and mastery systems are unavailable', () => {
+	assert.match(source, /!statContext\.summonSystemAvailable/)
+	assert.match(source, /尚未进入或初始化召唤石系统/)
+	assert.match(source, /预览按无召唤石效果继续，空槽不会报错/)
+	assert.match(source, /!statContext\.permanentGrowth\?\.masterSystemAvailable/)
+	assert.match(source, /缺失层按未开启处理/)
 })
 
 test('mastery details distinguish verified panel scale from unpacked raw text', () => {

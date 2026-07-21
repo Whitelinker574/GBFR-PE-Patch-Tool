@@ -58,7 +58,7 @@ const constructSigilLevel = ref(0)
 const constructPrimaryLevel = ref(0)
 const constructSecondaryLevel = ref(0)
 const constructLoading = ref(false)
-const statContext = ref({ summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] })
+const statContext = ref({ summons: [], equippedSummonSlotIds: [], equippedSummons: [], summonSystemAvailable: false, summonSystemState: 'unknown', overLimit: [], warnings: [] })
 const summonSlotIds = ref([0, 0, 0, 0])
 const writeGlobalSummons = ref(false)
 const summonCatalog = ref({ traits: [], subParams: [] })
@@ -123,6 +123,7 @@ const factorSlotCards = computed(() => factorSlots.value.map((entry, index) => {
     index,
     kind: 'bag',
     slotId: entry.slotId,
+    hash: sigil?.hash || '',
     name: sigil?.name || '未收录因子',
     level: sigil?.level || 0,
     primaryTraitHash: sigil?.primaryTraitHash || '',
@@ -186,6 +187,77 @@ const selectedWeaponIcon = computed(() => weaponAssetIcon(selectedWeaponContext.
 const selectedSummons = computed(() => summonSlotIds.value.map(slotId =>
   statContext.value.summons.find(item => item.slotId === slotId) || null
 ))
+const runtimeWeaponPick = computed(() => ctx.value?.weapons?.find(item => Number(item.slotId) === Number(runtimePanelStats.value?.currentWeaponSlotId)) || null)
+function factorIdentity(factor) {
+  const identityHash = value => {
+    const hash = normalizedHash(value)
+    return !hash || /^0+$/.test(hash) || hash === 'FFFFFFFF' ? '' : hash
+  }
+  return [
+    identityHash(factor?.hash || factor?.itemHash),
+    identityHash(factor?.primaryTraitHash), Number(factor?.primaryTraitLevel || 0),
+    identityHash(factor?.secondaryTraitHash), Number(factor?.secondaryTraitLevel || 0),
+  ].join(':')
+}
+function runtimeFactorPick(factor) {
+  const inventory = ctx.value?.sigils || []
+  return inventory.find(item => Number(item.slotId) === Number(factor?.runtimeSlotId))
+    || inventory.find(item => factorIdentity(item) === factorIdentity(factor))
+    || null
+}
+const runtimeFactorCards = computed(() => (runtimePanelStats.value?.currentFactors || []).map(factor => ({
+  ...factor,
+  name: runtimeFactorPick(factor)?.name || factor.itemHash || '未识别因子',
+})))
+const factorComparison = computed(() => {
+  const runtime = runtimeFactorCards.value
+  if (!runtime.length || !runtimePanelStats.value?.currentFactorStableReads) {
+    return { available: false, match: false, detail: '运行时因子指纹尚未读取' }
+  }
+  const draft = factorSlotCards.value.filter(item => !item.empty)
+  const count = Math.max(runtime.length, draft.length)
+  for (let index = 0; index < count; index += 1) {
+    if (!runtime[index] || !draft[index] || factorIdentity(runtime[index]) !== factorIdentity(draft[index])) {
+      const draftName = draft[index]?.name || '空槽'
+      const runtimeName = runtime[index]?.name || '空槽'
+      return { available: true, match: false, index, detail: `第 ${index + 1} 槽：草稿 ${draftName}，游戏 ${runtimeName}` }
+    }
+  }
+  return { available: true, match: true, detail: `${runtime.length} 枚因子逐槽一致` }
+})
+const runtimeComparisonRelation = computed(() => {
+  if (!runtimePanelStats.value || !finalStats.value) return { kind: 'unavailable', comparable: false, exact: false }
+  const exact = runtimeStatComparisons.value.every(row => Math.abs(row.delta) < 0.0001)
+  const runtimeWeaponSlot = Number(runtimePanelStats.value.currentWeaponSlotId || 0)
+  const draftWeaponSlot = Number(form.value.weaponSlotId || 0)
+  if (runtimeWeaponSlot && draftWeaponSlot && runtimeWeaponSlot !== draftWeaponSlot) {
+    return {
+      kind: 'different-weapon', comparable: false, exact: false,
+      title: '当前是两套不同配装，不是校准失败',
+      detail: `草稿武器槽 ${draftWeaponSlot}，游戏当前武器槽 ${runtimeWeaponSlot}`,
+    }
+  }
+  if (factorComparison.value.available && !factorComparison.value.match) {
+    return {
+      kind: 'different-factors', comparable: false, exact: false,
+      title: '当前游戏与草稿的因子不同，不是同一套配装',
+      detail: factorComparison.value.detail,
+    }
+  }
+  if (exact) return { kind: 'exact', comparable: true, exact: true, title: '草稿与当前游戏四项一致', detail: '四项最终值逐项相同' }
+  return {
+    kind: 'same-weapon-different-loadout', comparable: false, exact: false,
+    title: factorComparison.value.match ? '武器和因子相同，但专精或其他来源不同' : '武器相同，但因子、专精或其他来源尚未证明相同',
+    detail: factorComparison.value.match ? '因子已逐槽核对；差值继续定位到专精、强化或全局效果' : '差值用于定位来源，不标记为公式错误',
+  }
+})
+const draftSourceSummary = computed(() => ({
+  weapon: selectedWeaponContext.value?.name || selectedWeaponPick.value?.name || '未选择武器',
+  weaponSlot: Number(form.value.weaponSlotId || 0),
+  factors: factorSlots.value.filter(Boolean).length,
+  mastery: selectedMasteryHashes.value.length,
+  summons: selectedSummons.value.filter(Boolean).length,
+}))
 const editableWeaponSkillSlots = computed(() => (selectedWeaponContext.value?.skillSlots || []).filter(slot => slot.editable))
 const weaponInlineAvailable = computed(() => editableWeaponSkillSlots.value.length > 0)
 const summonSelectionValid = computed(() => {
@@ -679,7 +751,7 @@ async function loadCtx() {
       SummonGetOptions(),
     ])
     ctx.value = editContext
-    statContext.value = loadedStatContext || { summons: [], equippedSummonSlotIds: [], equippedSummons: [], overLimit: [], warnings: [] }
+    statContext.value = loadedStatContext || { summons: [], equippedSummonSlotIds: [], equippedSummons: [], summonSystemAvailable: false, summonSystemState: 'unknown', overLimit: [], warnings: [] }
     summonCatalog.value = loadedSummonCatalog || { traits: [], subParams: [] }
     summonSlotIds.value = [...(statContext.value.equippedSummonSlotIds || [])].slice(0, 4)
     while (summonSlotIds.value.length < 4) summonSlotIds.value.push(0)
@@ -1042,13 +1114,17 @@ async function apply() {
               <dd class="profile-stat-value">{{ formatPanelStat('damageCap', 'signedPct') }}</dd>
             </div>
           </dl>
-          <div v-if="runtimeStatComparisons.length" class="runtime-comparison" aria-label="配装草稿与游戏实读逐项对照">
-            <div class="runtime-comparison-head"><b>草稿 / 当前游戏逐项对照</b><small>当前游戏实读不等于未写入的草稿；差值保留用于校准</small></div>
-            <div v-for="row in runtimeStatComparisons" :key="row.field" class="runtime-comparison-row" :class="{ exact: Math.abs(row.delta) < 0.0001 }">
+          <div v-if="runtimeStatComparisons.length" class="runtime-comparison" :class="`relation-${runtimeComparisonRelation.kind}`" aria-label="配装草稿与游戏实读逐项对照">
+            <div class="runtime-comparison-head"><b>{{ runtimeComparisonRelation.title }}</b><small>{{ runtimeComparisonRelation.detail }}</small></div>
+            <div class="runtime-source-ledger">
+              <span><small>草稿来源</small><b>{{ draftSourceSummary.weapon }} · 槽 {{ draftSourceSummary.weaponSlot }}</b><em>{{ draftSourceSummary.factors }} 因子 · {{ draftSourceSummary.mastery }} 专精 · {{ draftSourceSummary.summons }} 召唤石</em></span>
+              <span><small>游戏当前</small><b>{{ runtimeWeaponPick?.name || runtimePanelStats.currentWeaponHash || '武器未识别' }} · 槽 {{ runtimePanelStats.currentWeaponSlotId || '未知' }}</b><em>{{ runtimeFactorCards.length }} 因子（{{ runtimePanelStats.currentFactorStableReads || 0 }} 次稳定） · 武炼结晶 {{ runtimePanelStats.currentWrightstoneHash || '未读取' }}</em></span>
+            </div>
+            <div v-for="row in runtimeStatComparisons" :key="row.field" class="runtime-comparison-row" :class="{ exact: runtimeComparisonRelation.comparable && Math.abs(row.delta) < 0.0001, unrelated: !runtimeComparisonRelation.comparable }">
               <b>{{ row.label }}</b>
               <span><small>草稿</small>{{ formatComparisonStat(row.estimate, row.unit) }}</span>
               <span><small>实读</small>{{ formatComparisonStat(row.runtime, row.unit) }}</span>
-              <em>{{ formatComparisonDelta(row.delta, row.unit) }}</em>
+              <em>{{ runtimeComparisonRelation.comparable ? formatComparisonDelta(row.delta, row.unit) : `来源差 ${formatComparisonDelta(row.delta, row.unit)}` }}</em>
             </div>
           </div>
         </div>
@@ -1057,6 +1133,7 @@ async function apply() {
         <details class="final-stat-detail-disclosure ui-disclosure">
           <summary>查看属性计算明细</summary>
           <p v-if="statContext.permanentGrowth?.runtimeObserved" class="runtime-growth-evidence">角色基础、命运篇章、角色强化固定成长：2.0.2 运行时状态对象，连续 {{ statContext.permanentGrowth?.stableReads }} 次稳定读取（角色独立）</p>
+          <p v-else-if="!statContext.permanentGrowth?.masterSystemAvailable || !statContext.permanentGrowth?.legacySystemAvailable" class="runtime-growth-evidence is-candidate">该存档尚未建立完整 DLC 角色强化/专精字段；缺失层按未开启处理，不把结构容量或零值伪装成已解锁效果。</p>
           <div class="panel-base-grid">
             <span><small>角色基础 HP</small><b>{{ formatStatNumber(statContext.baseHp) }}</b></span>
             <span><small>角色基础攻击</small><b>{{ formatStatNumber(statContext.baseAtk) }}</b></span>
@@ -1191,6 +1268,8 @@ async function apply() {
 
         <div class="ed-field summon-field">
           <label>全局已装备召唤石（独立于单套配装）</label>
+          <p v-if="!statContext.summonSystemAvailable" class="summon-system-unavailable ui-notice is-info">该存档尚未进入或初始化召唤石系统。预览按无召唤石效果继续，空槽不会报错；进入对应 DLC 并由游戏建立数据后再开放编辑。</p>
+          <template v-else>
           <label class="summon-write-toggle ui-check">
             <input v-model="writeGlobalSummons" type="checkbox" />
             <span>
@@ -1244,6 +1323,7 @@ async function apply() {
           </div>
           <small v-if="writeGlobalSummons && !summonSelectionValid" class="summon-invalid">要同步全局四槽，请选择四个不重复、确实存在于当前存档背包中的召唤石。</small>
           <small v-else class="hint">四个召唤石始终参与右侧来源汇总；只有开启上方选项时才会改动存档的全局装备槽。</small>
+          </template>
         </div>
 
         <div class="ed-field skill-field">
@@ -1665,12 +1745,18 @@ async function apply() {
 .runtime-comparison { display:flex; flex-direction:column; gap:3px; margin-top:7px; padding-top:7px; border-top:1px dashed var(--line-soft); }
 .runtime-comparison-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:3px 8px; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
 .runtime-comparison-head small { color:var(--text-muted); font-weight:400; }
+.runtime-source-ledger { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
+.runtime-source-ledger > span { min-width:0; display:flex; flex-direction:column; gap:1px; padding:5px 6px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.38); }
+.runtime-source-ledger small,.runtime-source-ledger em { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:400; overflow-wrap:anywhere; }
+.runtime-source-ledger b { color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); overflow-wrap:anywhere; }
 .runtime-comparison-row { display:grid; grid-template-columns:minmax(48px,.8fr) repeat(2,minmax(62px,1fr)) minmax(64px,auto); gap:5px; align-items:center; padding:4px 6px; border-left:2px solid #b36a55; background:rgba(179,106,85,.06); font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
 .runtime-comparison-row.exact { border-left-color:#4f8061; background:rgba(79,128,97,.07); }
+.runtime-comparison-row.unrelated { border-left-color:#9a7a46; background:rgba(154,122,70,.07); }
 .runtime-comparison-row > span { display:flex; flex-direction:column; color:var(--text-primary); font-weight:600; }
 .runtime-comparison-row small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-weight:400; }
 .runtime-comparison-row em { justify-self:end; color:#9b4f42; font-style:normal; font-weight:700; white-space:nowrap; }
 .runtime-comparison-row.exact em { color:#3f7653; }
+.runtime-comparison-row.unrelated em { color:#765f35; }
 .legacy-mastery-audit { margin-top:8px; padding-top:8px; border-top:1px solid var(--line-soft); }
 .legacy-mastery-audit-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 10px; margin-bottom:6px; }
 .legacy-mastery-audit-head small { color:var(--text-muted); }

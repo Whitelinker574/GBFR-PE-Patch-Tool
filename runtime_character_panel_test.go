@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -200,6 +201,71 @@ func TestRuntimeWeaponSnapshotOffsetsMatchObserved202RuntimeLayout(t *testing.T)
 	}
 }
 
+func TestReadRuntimeCharacterFactorsUsesTwelveEntryAssociatedArray(t *testing.T) {
+	memory := newFakeRuntimePanelMemory()
+	status := uintptr(0x250000000)
+	array := uintptr(0x260000000)
+	memory.putPtr(status+runtimeCharacterFactorArrayPointerOffset, array)
+	memory.put(array, make([]byte, runtimeCharacterFactorRecordStride*runtimeCharacterFactorRecordCount))
+	putFactor := func(index int, itemHash, primaryHash uint32, primaryLevel int, secondaryHash uint32, secondaryLevel, level int, runtimeSlotID uint32) {
+		base := array + uintptr(index)*runtimeCharacterFactorRecordStride
+		memory.putU32(base+runtimeCharacterFactorPrimaryHashOffset, primaryHash)
+		memory.putU32(base+runtimeCharacterFactorPrimaryLevelOffset, uint32(primaryLevel))
+		memory.putU32(base+runtimeCharacterFactorSecondaryHashOffset, secondaryHash)
+		memory.putU32(base+runtimeCharacterFactorSecondaryLevelOffset, uint32(secondaryLevel))
+		memory.putU32(base+runtimeCharacterFactorItemHashOffset, itemHash)
+		memory.putU32(base+runtimeCharacterFactorCharacterHashOffset, 0x4D0A60C3)
+		memory.putU32(base+runtimeCharacterFactorLevelOffset, uint32(level))
+		memory.putU32(base+runtimeCharacterFactorRuntimeSlotOffset, runtimeSlotID)
+	}
+	putFactor(0, 0x5BF84FD1, 0xD029FE08, 15, 0x73220725, 15, 15, 3302)
+	putFactor(1, 0x035A4DDD, 0x57AB5B10, 15, 0x84078CB0, 15, 15, 2604)
+
+	got, err := readRuntimeCharacterFactors(memory, status, 0x4D0A60C3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Index != 0 || got[0].ItemHash != "5BF84FD1" || got[0].PrimaryTraitHash != "D029FE08" ||
+		got[0].SecondaryTraitHash != "73220725" || got[0].PrimaryTraitLevel != 15 || got[0].RuntimeSlotID != 3302 {
+		t.Fatalf("runtime factor snapshot = %+v", got)
+	}
+}
+
+func TestReadRuntimeCharacterFactorsRejectsWrongCharacterOwnership(t *testing.T) {
+	memory := newFakeRuntimePanelMemory()
+	status := uintptr(0x250000000)
+	array := uintptr(0x260000000)
+	memory.putPtr(status+runtimeCharacterFactorArrayPointerOffset, array)
+	memory.put(array, make([]byte, runtimeCharacterFactorRecordStride*runtimeCharacterFactorRecordCount))
+	memory.putU32(array+runtimeCharacterFactorPrimaryHashOffset, 0xD029FE08)
+	memory.putU32(array+runtimeCharacterFactorPrimaryLevelOffset, 15)
+	memory.putU32(array+runtimeCharacterFactorItemHashOffset, 0x5BF84FD1)
+	memory.putU32(array+runtimeCharacterFactorCharacterHashOffset, 0xDEADBEEF)
+	memory.putU32(array+runtimeCharacterFactorLevelOffset, 15)
+	if _, err := readRuntimeCharacterFactors(memory, status, 0x4D0A60C3); err == nil || !strings.Contains(err.Error(), "角色归属") {
+		t.Fatalf("wrong factor owner must fail closed: %v", err)
+	}
+}
+
+func TestStableRuntimeCharacterFactorsRejectsChangingLoadout(t *testing.T) {
+	calls := 0
+	_, err := readStableRuntimeCharacterFactors(func() ([]RuntimeCharacterFactorReading, error) {
+		calls++
+		return []RuntimeCharacterFactorReading{{Index: 0, ItemHash: fmt.Sprintf("%08X", calls), PrimaryTraitHash: "D029FE08", PrimaryTraitLevel: 15}}, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "连续三次") {
+		t.Fatalf("changing runtime factors must fail stability gate: %v", err)
+	}
+}
+
+func TestRuntimeFactorOffsetsMatchObserved202Layout(t *testing.T) {
+	if runtimeCharacterFactorArrayPointerOffset != 0x5E60 || runtimeCharacterFactorRecordStride != 0x24 ||
+		runtimeCharacterFactorRecordCount != 12 || runtimeCharacterFactorItemHashOffset != 0x10 ||
+		runtimeCharacterFactorCharacterHashOffset != 0x14 || runtimeCharacterFactorRuntimeSlotOffset != 0x1C {
+		t.Fatal("runtime factor offsets no longer match the verified 2.0.2 layout")
+	}
+}
+
 func TestReadRuntimeCharacterGrowthSnapshotUsesCharacterSpecificRuntimeValues(t *testing.T) {
 	memory := newFakeRuntimePanelMemory()
 	status := uintptr(0x250000000)
@@ -392,7 +458,7 @@ func TestStableRuntimeCharacterPanelRequiresThreeIdenticalSnapshots(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 3 || got != want {
+	if calls != 3 || !reflect.DeepEqual(got, want) {
 		t.Fatalf("stable runtime read used %d snapshots and returned %+v, want three and %+v", calls, got, want)
 	}
 }

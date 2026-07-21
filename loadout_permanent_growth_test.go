@@ -56,6 +56,20 @@ func TestDeriveFateGrowthUsesCompletedEpisodeMaskAndTableThresholds(t *testing.T
 	}
 }
 
+func TestReadLoadoutPermanentGrowthTreatsMissingPreDLCFieldsAsUnavailable(t *testing.T) {
+	warnings := []string{}
+	growth, err := readLoadoutPermanentGrowth(&SaveDataBinary{}, 0x4D0A60C3, 10004, &warnings)
+	if err != nil {
+		t.Fatalf("pre-DLC missing progression fields must not abort the loadout page: %v", err)
+	}
+	if growth.FateDataAvailable || growth.MasterSystemAvailable || growth.LegacySystemAvailable || growth.MasterTotalMSP != 0 || growth.LegacyProgress != 0 {
+		t.Fatalf("missing pre-DLC fields were presented as available: %+v", growth)
+	}
+	if len(warnings) != 3 {
+		t.Fatalf("pre-DLC fallback must explain each omitted progression layer: %v", warnings)
+	}
+}
+
 func TestLoadoutStatContextReadsRealIoPermanentBaseline(t *testing.T) {
 	requireStatsSave(t)
 	ctx, err := (&App{}).LoadoutStatContext(testStatsSave, testIoHash)

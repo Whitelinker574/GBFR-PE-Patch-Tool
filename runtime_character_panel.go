@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -57,6 +58,17 @@ const (
 	runtimeCharacterWrightstoneHashOffset      = uintptr(0x88)
 	runtimeCharacterEffectiveWeaponSkillOffset = uintptr(0xF4)
 	runtimeCharacterEffectiveWeaponSkillCount  = 4
+	runtimeCharacterFactorArrayPointerOffset   = uintptr(0x5E60)
+	runtimeCharacterFactorRecordStride         = uintptr(0x24)
+	runtimeCharacterFactorRecordCount          = 12
+	runtimeCharacterFactorPrimaryHashOffset    = uintptr(0x00)
+	runtimeCharacterFactorPrimaryLevelOffset   = uintptr(0x04)
+	runtimeCharacterFactorSecondaryHashOffset  = uintptr(0x08)
+	runtimeCharacterFactorSecondaryLevelOffset = uintptr(0x0C)
+	runtimeCharacterFactorItemHashOffset       = uintptr(0x10)
+	runtimeCharacterFactorCharacterHashOffset  = uintptr(0x14)
+	runtimeCharacterFactorLevelOffset          = uintptr(0x18)
+	runtimeCharacterFactorRuntimeSlotOffset    = uintptr(0x1C)
 
 	runtimeCharacterPanelMaxIDs        = 256
 	runtimeCharacterPanelMaxChainNodes = 256
@@ -84,6 +96,95 @@ type runtimeWeaponWrightstoneSnapshot struct {
 	WrightstoneHash uint32
 	Traits          []runtimeWeaponTrait
 	Skills          []runtimeWeaponTrait
+}
+
+// RuntimeCharacterFactorReading is one occupied factor record copied from the
+// character status object's 12-entry runtime loadout array. RuntimeSlotID is
+// the game's live inventory identity; it is evidence only and is never used as
+// a writable save slot without a separate save-backed resolution.
+type RuntimeCharacterFactorReading struct {
+	Index               int    `json:"index"`
+	ItemHash            string `json:"itemHash"`
+	PrimaryTraitHash    string `json:"primaryTraitHash"`
+	PrimaryTraitLevel   int    `json:"primaryTraitLevel"`
+	SecondaryTraitHash  string `json:"secondaryTraitHash,omitempty"`
+	SecondaryTraitLevel int    `json:"secondaryTraitLevel,omitempty"`
+	Level               int    `json:"level"`
+	RuntimeSlotID       uint32 `json:"runtimeSlotId"`
+}
+
+func readRuntimeCharacterFactors(memory runtimeCharacterPanelMemory, status uintptr, characterHash uint32) ([]RuntimeCharacterFactorReading, error) {
+	array, err := readRuntimePanelPointerOffset(memory, status, runtimeCharacterFactorArrayPointerOffset)
+	if err != nil {
+		return nil, fmt.Errorf("读取运行时因子数组指针失败: %w", err)
+	}
+	if array == 0 {
+		return nil, fmt.Errorf("运行时因子数组为空")
+	}
+	buffer := make([]byte, int(runtimeCharacterFactorRecordStride*runtimeCharacterFactorRecordCount))
+	if err := memory.ReadAt(array, buffer); err != nil {
+		return nil, fmt.Errorf("读取运行时因子数组失败: %w", err)
+	}
+	readU32 := func(base uintptr, offset uintptr) uint32 {
+		return binary.LittleEndian.Uint32(buffer[int(base+offset):])
+	}
+	result := make([]RuntimeCharacterFactorReading, 0, runtimeCharacterFactorRecordCount)
+	for index := 0; index < runtimeCharacterFactorRecordCount; index++ {
+		base := uintptr(index) * runtimeCharacterFactorRecordStride
+		primaryHash := readU32(base, runtimeCharacterFactorPrimaryHashOffset)
+		secondaryHash := readU32(base, runtimeCharacterFactorSecondaryHashOffset)
+		itemHash := readU32(base, runtimeCharacterFactorItemHashOffset)
+		if (itemHash == 0 || itemHash == EmptyHash) && (primaryHash == 0 || primaryHash == EmptyHash) {
+			continue
+		}
+		if itemHash == 0 || itemHash == EmptyHash || primaryHash == 0 || primaryHash == EmptyHash {
+			return nil, fmt.Errorf("运行时因子槽 %d 的物品/主词条不完整", index+1)
+		}
+		ownerHash := readU32(base, runtimeCharacterFactorCharacterHashOffset)
+		if characterHash != 0 && ownerHash != characterHash {
+			return nil, fmt.Errorf("运行时因子槽 %d 的角色归属 %08X 与目标 %08X 不一致", index+1, ownerHash, characterHash)
+		}
+		primaryLevel := int(readU32(base, runtimeCharacterFactorPrimaryLevelOffset))
+		secondaryLevel := int(readU32(base, runtimeCharacterFactorSecondaryLevelOffset))
+		level := int(readU32(base, runtimeCharacterFactorLevelOffset))
+		if primaryLevel <= 0 || primaryLevel > 100 || level <= 0 || level > 100 {
+			return nil, fmt.Errorf("运行时因子槽 %d 的等级异常", index+1)
+		}
+		if secondaryHash == 0 || secondaryHash == EmptyHash {
+			secondaryHash, secondaryLevel = 0, 0
+		} else if secondaryLevel <= 0 || secondaryLevel > 100 {
+			return nil, fmt.Errorf("运行时因子槽 %d 的副词条等级异常", index+1)
+		}
+		result = append(result, RuntimeCharacterFactorReading{
+			Index: index, ItemHash: hashText(itemHash), PrimaryTraitHash: hashText(primaryHash), PrimaryTraitLevel: primaryLevel,
+			SecondaryTraitHash: hashText(secondaryHash), SecondaryTraitLevel: secondaryLevel, Level: level,
+			RuntimeSlotID: readU32(base, runtimeCharacterFactorRuntimeSlotOffset),
+		})
+	}
+	return result, nil
+}
+
+func readStableRuntimeCharacterFactors(readSnapshot func() ([]RuntimeCharacterFactorReading, error)) ([]RuntimeCharacterFactorReading, error) {
+	var first []RuntimeCharacterFactorReading
+	for index := 0; index < 3; index++ {
+		current, err := readSnapshot()
+		if err != nil {
+			return nil, err
+		}
+		if index == 0 {
+			first = append([]RuntimeCharacterFactorReading(nil), current...)
+			continue
+		}
+		if len(current) != len(first) {
+			return nil, fmt.Errorf("运行时因子在连续三次读取间变化")
+		}
+		for factorIndex := range current {
+			if current[factorIndex] != first[factorIndex] {
+				return nil, fmt.Errorf("运行时因子在连续三次读取间变化")
+			}
+		}
+	}
+	return first, nil
 }
 
 func readRuntimeWeaponWrightstoneSnapshot(memory runtimeCharacterPanelMemory, status uintptr) (runtimeWeaponWrightstoneSnapshot, error) {
@@ -387,23 +488,29 @@ var runtimeCharacterPanelVersionGuards = []runtimeCharacterPanelVersionGuard{
 // panel aggregator. Unlike the offline loadout estimate, these fields are not
 // recalculated by this application.
 type RuntimeCharacterPanelStats struct {
-	CharacterHash       string                            `json:"characterHash"`
-	RuntimeID           string                            `json:"runtimeId"`
-	CandidateObjectHash string                            `json:"candidateObjectHash"`
-	IdentitySource      string                            `json:"identitySource"`
-	HP                  int32                             `json:"hp"`
-	Attack              int32                             `json:"attack"`
-	StunPower           float32                           `json:"stunPower"`
-	RawStunPower        float32                           `json:"rawStunPower"`
-	CritRate            float32                           `json:"critRate"`
-	HPField             RuntimeCharacterPanelFieldReading `json:"hpField"`
-	AttackField         RuntimeCharacterPanelFieldReading `json:"attackField"`
-	StunField           RuntimeCharacterPanelFieldReading `json:"stunField"`
-	CritField           RuntimeCharacterPanelFieldReading `json:"critField"`
-	Source              string                            `json:"source"`
-	Verification        string                            `json:"verification"`
-	GameVersion         string                            `json:"gameVersion"`
-	RuntimeVerified     bool                              `json:"runtimeVerified"`
+	CharacterHash            string                            `json:"characterHash"`
+	RuntimeID                string                            `json:"runtimeId"`
+	CandidateObjectHash      string                            `json:"candidateObjectHash"`
+	IdentitySource           string                            `json:"identitySource"`
+	HP                       int32                             `json:"hp"`
+	Attack                   int32                             `json:"attack"`
+	StunPower                float32                           `json:"stunPower"`
+	RawStunPower             float32                           `json:"rawStunPower"`
+	CritRate                 float32                           `json:"critRate"`
+	CurrentWeaponSlotID      uint32                            `json:"currentWeaponSlotId,omitempty"`
+	CurrentWeaponHash        string                            `json:"currentWeaponHash,omitempty"`
+	CurrentWrightstoneHash   string                            `json:"currentWrightstoneHash,omitempty"`
+	CurrentWeaponStableReads int                               `json:"currentWeaponStableReads,omitempty"`
+	CurrentFactors           []RuntimeCharacterFactorReading   `json:"currentFactors,omitempty"`
+	CurrentFactorStableReads int                               `json:"currentFactorStableReads,omitempty"`
+	HPField                  RuntimeCharacterPanelFieldReading `json:"hpField"`
+	AttackField              RuntimeCharacterPanelFieldReading `json:"attackField"`
+	StunField                RuntimeCharacterPanelFieldReading `json:"stunField"`
+	CritField                RuntimeCharacterPanelFieldReading `json:"critField"`
+	Source                   string                            `json:"source"`
+	Verification             string                            `json:"verification"`
+	GameVersion              string                            `json:"gameVersion"`
+	RuntimeVerified          bool                              `json:"runtimeVerified"`
 }
 
 type RuntimeCharacterPanelFieldReading struct {
@@ -474,6 +581,25 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 	if err != nil {
 		return nil, err
 	}
+	// Equipment identity is optional evidence. A character panel can remain
+	// readable while no valid weapon object is loaded, so failure here must not
+	// turn an otherwise valid final-panel read into an error.
+	if object, locateErr := locateRuntimeCharacterPanelObject(memory, moduleBase, targetHash); locateErr == nil {
+		if snapshot, snapshotErr := readStableRuntimeWeaponWrightstoneSnapshot(func() (runtimeWeaponWrightstoneSnapshot, error) {
+			return readRuntimeWeaponWrightstoneSnapshot(memory, object.Status)
+		}); snapshotErr == nil {
+			stats.CurrentWeaponSlotID = snapshot.WeaponSlotID
+			stats.CurrentWeaponHash = hashText(snapshot.WeaponHash)
+			stats.CurrentWrightstoneHash = hashText(snapshot.WrightstoneHash)
+			stats.CurrentWeaponStableReads = 3
+		}
+		if factors, factorErr := readStableRuntimeCharacterFactors(func() ([]RuntimeCharacterFactorReading, error) {
+			return readRuntimeCharacterFactors(memory, object.Status, targetHash)
+		}); factorErr == nil {
+			stats.CurrentFactors = factors
+			stats.CurrentFactorStableReads = 3
+		}
+	}
 	return &stats, nil
 }
 
@@ -489,7 +615,7 @@ func readStableRuntimeCharacterPanelSnapshots(readSnapshot func() (RuntimeCharac
 		}
 		snapshots[index] = current
 	}
-	if snapshots[0] != snapshots[1] || snapshots[0] != snapshots[2] {
+	if !reflect.DeepEqual(snapshots[0], snapshots[1]) || !reflect.DeepEqual(snapshots[0], snapshots[2]) {
 		return RuntimeCharacterPanelStats{}, fmt.Errorf("游戏面板在连续 3 次快照间发生变化，请等待数值稳定后重试")
 	}
 	snapshots[0] = markRuntimeCharacterPanelStable(snapshots[0], len(snapshots))
