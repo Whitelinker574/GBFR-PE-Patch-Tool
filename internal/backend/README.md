@@ -10,12 +10,15 @@
 | Sigils | `sigil_*.go` | Shared catalog, offline creation, live capture/write, names and safety checks |
 | Wrightstones | `wrightstone_*.go` | Blessing catalog, offline creation, live editing and write verification |
 | Summons | `summon_*.go` | Summon catalogs, advisory natural rules, save editing and live editing |
+| Advisory legality | `legality.go` | Shared warning-level legality results; encodable user choices remain writable subject to structural safety checks |
 | Runtime foundation | `readonly_game_process.go`, `code_hook_safety.go` | Process identity, bounded reads/writes, target ownership, address validation and rollback evidence; regression coverage lives in the colocated `process_*_test.go` files |
 | Runtime patches | `runtime_patch_*.go`, `monster_enhance_safety.go`, `overlimit.go`, `runtime_currency.go`, `runtime_inventory_item.go` | Version-guarded patch catalog, conflict handling, persistent sessions and exact restoration |
 | Runtime monitoring | `runtime_party_monitor.go`, `runtime_character_panel*.go`, `damage_overlay_windows.go` | Party snapshots, selected-object reads, final character panel location and damage overlay lifecycle |
 | Formula evidence | `formula_*.go` | Stable observation, A/B/A/B state machine, candidate scans and redacted evidence export; field calibration is covered by the colocated `field_runtime_calibration_test.go` |
 | Embedded data | `data/` | Versioned 2.0.2 catalogs, layouts, formulas and machine-readable evidence |
 | Native resource | `resources/patch_core.dll` | Audited embedded helper built from `src_dll/patch_core` |
+
+Package documentation lives in `doc.go`. Cross-family catalog consistency is covered by `catalog_*_test.go` files in addition to the feature-prefixed tests below.
 
 ## Test naming
 

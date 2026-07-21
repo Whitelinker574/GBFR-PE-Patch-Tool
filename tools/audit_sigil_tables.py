@@ -4,7 +4,7 @@
 The audit treats gem.tbl as the authority for a sigil's fixed primary trait and
 for whether its secondary trait is fixed, random-lot-backed, or absent.  Random
 pools are resolved through skill_type_lot.tbl and skill_lot.tbl.  The tool is
-read-only unless --output is supplied.
+read-only unless --output or --fix-catalog is supplied.
 """
 
 from __future__ import annotations
@@ -29,9 +29,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("database", type=Path)
     parser.add_argument("catalog", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--raw-table-dir", type=Path)
-    parser.add_argument("--fix-catalog", action="store_true")
+    parser.add_argument("--output", type=Path, help="write the audit JSON instead of printing it")
+    parser.add_argument(
+        "--raw-table-dir",
+        type=Path,
+        help="include SHA-256 values for the four decoded source tables",
+    )
+    parser.add_argument(
+        "--fix-catalog",
+        action="store_true",
+        help="rebuild sigils.json and the adjacent traits.json from the decoded tables",
+    )
     args = parser.parse_args()
 
     connection = sqlite3.connect(f"file:{args.database.resolve()}?mode=ro", uri=True)

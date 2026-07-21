@@ -3,7 +3,6 @@
 
 # Wails build output
 /build/bin/*
-!/build/bin/patch_core.dll
 
 # Frontend dependencies and build artifacts
 /frontend/node_modules/
@@ -20,11 +19,7 @@
 *.swo
 *.vcxproj.user
 
-# Local agent and tooling state
-/.claude/
-/.codegraph/
-/因子生成功能查漏补缺进度.md
-/tools/qnaigc-output/
+# Local maintainer work
 /tools/local/
 
 # Visual Studio and C++ build artifacts
@@ -49,11 +44,6 @@ FileListAbsolute.txt
 # Git Bash and MSYS crash dumps
 *.stackdump
 
-# Local notes
-/src_dll/todo.txt
-
-# Local handoffs and field captures
-/RETURN-TO-MAIN-CODEX/
+# Local documentation and field captures
 /docs/local/
-/docs/handoffs/
 /field-*.zip

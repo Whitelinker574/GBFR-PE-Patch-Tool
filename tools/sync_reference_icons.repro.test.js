@@ -8,22 +8,33 @@ import test from 'node:test'
 
 const toolsRoot = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(toolsRoot, '..')
-const referenceZip = process.env.GBFR_REFERENCE_ZIP || 'D:\\gbf\\GBFR-UI-Reference-Library-2.0.2.zip'
-const gameTableZip = process.env.GBFR_GAME_TABLE_ZIP || 'D:\\gbf\\GBFR-DLC-shuju-20260716-184413.zip'
+const referenceZip = process.env.GBFR_REFERENCE_ZIP
+const gameTableZip = process.env.GBFR_GAME_TABLE_ZIP
 const dataFiles = ['skill_names.json', 'traits.json', 'weapons.json', 'summons.json', 'items.json']
 
 function readJSON(filename) {
   return JSON.parse(readFileSync(filename, 'utf8'))
 }
 
-test('default full sync and skills-only sync rebuild the same exact ability map without stale generated keys', { timeout: 300_000 }, () => {
+test('icon sync harness follows the current repository data layout', () => {
+  assert.ok(existsSync(path.join(toolsRoot, 'sync_reference_icons.ps1')))
+  for (const filename of dataFiles) {
+    assert.ok(existsSync(path.join(repoRoot, 'internal', 'backend', 'data', filename)), `missing catalog: ${filename}`)
+  }
+})
+
+test('default full sync and skills-only sync rebuild the same exact ability map without stale generated keys', { timeout: 300_000 }, (t) => {
+  if (!referenceZip || !gameTableZip) {
+    t.skip('set GBFR_REFERENCE_ZIP and GBFR_GAME_TABLE_ZIP to run the local archive-backed check')
+    return
+  }
   assert.ok(existsSync(referenceZip), `reference archive is required: ${referenceZip}`)
   assert.ok(existsSync(gameTableZip), `game-table archive is required: ${gameTableZip}`)
 
   const sandboxRoot = mkdtempSync(path.join(tmpdir(), 'gbfr-icon-sync-'))
   try {
     const sandboxTools = path.join(sandboxRoot, 'tools')
-    const sandboxData = path.join(sandboxRoot, 'data')
+    const sandboxData = path.join(sandboxRoot, 'internal', 'backend', 'data')
     const sandboxSource = path.join(sandboxRoot, 'frontend', 'src')
     mkdirSync(sandboxTools, { recursive: true })
     mkdirSync(sandboxData, { recursive: true })
@@ -31,7 +42,7 @@ test('default full sync and skills-only sync rebuild the same exact ability map 
 
     copyFileSync(path.join(toolsRoot, 'sync_reference_icons.ps1'), path.join(sandboxTools, 'sync_reference_icons.ps1'))
     for (const filename of dataFiles) {
-      copyFileSync(path.join(repoRoot, 'data', filename), path.join(sandboxData, filename))
+      copyFileSync(path.join(repoRoot, 'internal', 'backend', 'data', filename), path.join(sandboxData, filename))
     }
 
     const checkedInSkills = readJSON(path.join(repoRoot, 'frontend', 'src', 'loadoutSkillIcons.json'))

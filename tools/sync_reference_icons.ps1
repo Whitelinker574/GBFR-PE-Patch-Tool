@@ -90,8 +90,17 @@ try {
         } | Select-Object -First 1
         if ($null -ne $caseVariant) {
             $caseTemp = Join-Path $targetDir (".case-normalize-" + [guid]::NewGuid().ToString('N'))
-            Move-Item -LiteralPath $caseVariant.FullName -Destination $caseTemp
-            Move-Item -LiteralPath $caseTemp -Destination $target
+            $caseRenameCompleted = $false
+            try {
+                Move-Item -LiteralPath $caseVariant.FullName -Destination $caseTemp
+                Move-Item -LiteralPath $caseTemp -Destination $target
+                $caseRenameCompleted = $true
+            }
+            finally {
+                if (-not $caseRenameCompleted -and (Test-Path -LiteralPath $caseTemp) -and -not (Test-Path -LiteralPath $caseVariant.FullName)) {
+                    Move-Item -LiteralPath $caseTemp -Destination $caseVariant.FullName -Force
+                }
+            }
         }
         [IO.Compression.ZipFileExtensions]::ExtractToFile($assetEntries[$fileName], $target, $true)
         return $fileName
@@ -127,7 +136,9 @@ try {
 
     function Ordered-Map([hashtable]$map) {
         $ordered = [ordered]@{}
-        foreach ($key in ($map.Keys | Sort-Object)) { $ordered[$key] = $map[$key] }
+        $keys = [string[]]@($map.Keys)
+        [Array]::Sort($keys, [StringComparer]::Ordinal)
+        foreach ($key in $keys) { $ordered[$key] = $map[$key] }
         return $ordered
     }
 

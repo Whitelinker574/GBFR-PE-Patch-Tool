@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">下载 v1.91.4</a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">下载最新版</a> ·
   <a href="README_EN.md">English</a> ·
   <a href="docs/README.md">文档与证据</a>
 </p>
@@ -27,7 +27,7 @@
 ## 快速开始
 
 1. 从 [Releases](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) 下载 Windows amd64 压缩包，并核对随包提供的 SHA-256。
-2. 修改存档前完全退出游戏；修改 EXE 或使用实时功能前先备份目标文件。
+2. 修改存档前完全退出游戏并备份存档；修改 EXE 前备份目标文件；实时功能仅在本地单人环境使用。
 3. 打开程序后按用途选择左侧入口：`存档修改（离线）`、`内存注入（实时）` 或 `内存监测（只读）`。
 4. 每次写入前确认存档位、角色、物品和槽位；写入后使用页面回读结果确认目标值。
 
@@ -111,15 +111,16 @@ C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\
 ├─ frontend/
 │  ├─ src/components/                Vue 页面与共享组件
 │  ├─ src/*.test.js                  前端目录、交互和安全回归测试
-│  └─ wailsjs/                       Wails 自动生成绑定
+│  └─ wailsjs/                       Wails 构建时生成的绑定（不入库）
 ├─ src_dll/                           可复现的 patch_core 原生组件源码
 ├─ tools/                             数据审计、目录生成与图标同步脚本
 ├─ docs/                              维护文档、公开截图与脱敏证据
+├─ THIRD_PARTY_NOTICES.md              第三方组件、原生依赖与来源边界
 ├─ build/                             Wails 元数据、图标与本地构建输出
 └─ .github/workflows/ci.yml           Go、前端和静态检查
 ```
 
-线上 `tools/` 只保留重建当前数据或发布所需的可复现维护脚本；一次性现场 QA、截图脚本、API 凭据、交接包和机器专用文件不进入仓库。`*_test.go` 和 `*.test.js` 是随功能代码维护、但不会编入成品的自动化验证，不属于用户运行脚本。完整说明见 [架构文档](docs/ARCHITECTURE.md) 和 [后端文件索引](internal/backend/README.md)。
+`tools/` 只包含可复现的数据与发布维护脚本；临时文件应保存在 Git 忽略的本地目录。`*_test.go` 和 `*.test.js` 是随功能代码维护、但不会编入成品的自动化验证，不属于用户运行脚本。完整说明见 [架构文档](docs/ARCHITECTURE.md) 和 [后端文件索引](internal/backend/README.md)。
 
 ## 本地构建与验证
 
@@ -147,6 +148,10 @@ wails build -platform windows/amd64 -clean
 
 本项目仅供学习和个人本地使用，与 Cygames、SEGA、游戏发行方以及下列社区作者均无隶属、合作、授权或商业关系。修改存档、游戏文件或运行时内存存在损坏数据、失去进度或触发游戏自身校验的风险；请只处理自己有权使用的文件，保留可恢复备份，并自行承担使用结果。禁止将本项目包装为付费代改服务，也不要在联机环境中影响其他玩家。
 
+本仓库没有声明一份能够覆盖全部继承代码的项目级开源许可证；除各自明确标注许可的第三方组件外，不能仅因仓库公开就推定获得复制、再分发或商业使用授权。随程序使用的开源组件及原生依赖见 [第三方组件说明](THIRD_PARTY_NOTICES.md)。
+
 仓库不包含、镜像、破解或转售任何第三方付费表、会员内容或受限下载。运行时补丁目录只以 DLC 2.0.2 游戏 EXE 的哈希、特征码、原字节、唯一命中、写后回读和现场样本作为发布证据；社区公开演示仅用于功能对照与测试思路参考，不是本仓库的运行依赖或下载来源。
 
-为便于复核，下面只列出曾用于交叉检查的公开资料，不代表合作、授权、代码移植或责任背书：存档和因子记录的早期资料可见 [BitterG 的公开项目](https://github.com/BitterG) 与 [公开页面](https://b23.tv/uRLYpW8)；配装交互可参考 [意地悪い骷髅](https://b23.tv/xhiZ7fm) 的 [配装模拟器](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/)；中文术语对照可见 [LKong621](https://b23.tv/mnwxgDf) 的公开内容；数据提取使用过 [Nenkai](https://github.com/Nenkai) 的公开工具；召唤石提示还与 [SinnohDawn](https://b23.tv/lKSX4zy) 的公开说明及 [Relink Summon](https://relinksummon.fate-go.top) 做过对照。其他公开演示只用于核对功能名称和测试场景，仓库不提供相关付费内容、下载入口或复刻资料。
+本项目最初 fork 自 [BitterG/GBFR-PE-Patch-Tool](https://github.com/BitterG/GBFR-PE-Patch-Tool)，存档解析、因子与祝福生成的早期实现沿用其公开工程；该项目的 README 另记录了 Xzire91x 与 Nenkai 相关工具的上游方法来源。当前仓库已在此基础上重写并扩展，以上说明只用于保持来源链完整，不代表原作者认可、授权或参与当前版本。
+
+其他公开资料仅用于交叉检查：配装交互参考过 [意地悪い骷髅](https://b23.tv/xhiZ7fm) 的 [配装模拟器](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/)；中文术语对照参考过 [LKong621](https://b23.tv/mnwxgDf) 的公开内容；数据提取使用过 [Nenkai](https://github.com/Nenkai) 的公开工具；召唤石提示与 [SinnohDawn](https://b23.tv/lKSX4zy) 的公开说明及 [Relink Summon](https://relinksummon.fate-go.top) 做过对照。这些链接不表示合作、授权、代码移植或责任背书；仓库不提供相关付费内容、受限下载或复刻资料。

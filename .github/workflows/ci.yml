@@ -61,3 +61,6 @@ jobs:
 
       - name: Test frontend
         run: node --test frontend/src/*.test.js
+
+      - name: Test maintainer tooling
+        run: node --test tools/*.test.js

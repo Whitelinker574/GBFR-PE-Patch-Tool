@@ -7,7 +7,7 @@
 <p align="center">Windows save editing, live changes, and read-only monitoring for <em>Granblue Fantasy: Relink</em> DLC 2.0.2</p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Download v1.91.4</a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Download latest release</a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation and evidence</a>
 </p>
@@ -21,7 +21,7 @@ The tool works with records already present in local saves or the current game p
 ## Quick start
 
 1. Download the Windows amd64 archive from [Releases](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) and verify the supplied SHA-256.
-2. Close the game before editing a save. Back up the target before changing a save or executable.
+2. Close the game and back up the save before offline editing. Back up the executable before patching it, and use live features only in a local single-player session.
 3. Choose `Save Editing (Offline)`, `Live Injection`, or `Memory Monitoring (Read Only)` from the sidebar.
 4. Confirm the save slot, character, item, and destination before every write, then inspect the readback result.
 
@@ -103,10 +103,11 @@ frontend/                             Vue application, generated bindings, and U
 src_dll/                              Reproducible patch_core native source
 tools/                                Reproducible maintainer scripts only
 docs/                                 User, architecture, status, and evidence documentation
+THIRD_PARTY_NOTICES.md                Third-party component and provenance boundaries
 .github/workflows/ci.yml              Go, frontend, and static checks
 ```
 
-Only reproducible release/data maintenance tools are kept online. One-off field QA scripts, machine-specific files, credentials, handoff bundles, and local screenshots stay outside the repository. `*_test.go` and `*.test.js` files are automated verification maintained beside the features they protect; they are not user-facing scripts and are not compiled into the release. See the [architecture guide](docs/ARCHITECTURE.md) and [backend file map](internal/backend/README.md).
+`tools/` contains only reproducible data and release-maintenance scripts; temporary work belongs in Git-ignored local directories. `*_test.go` and `*.test.js` files are automated verification maintained beside the features they protect; they are not user-facing scripts and are not compiled into the release. See the [architecture guide](docs/ARCHITECTURE.md) and [backend file map](internal/backend/README.md).
 
 ## Build and verify on Windows
 
@@ -126,10 +127,18 @@ wails build -platform windows/amd64 -clean
 
 The executable is written to `build\bin\GBFR PE Patch Tool.exe`. Before publishing, launch the packaged executable and verify its version, main pages, release link, and SHA-256.
 
+## Reporting issues
+
+When reporting a problem, include the tool version, game version, affected page, selected save slot, and reproducible steps. For runtime issues, attach only a redacted page state or exported evidence bundle. Do not upload a real save, PID, absolute address, user name, or screenshot containing a personal path.
+
 ## Use boundary and references
 
 This project is for learning and personal local use. It is not affiliated with, sponsored by, or authorized by Cygames, SEGA, the game's publishers, or the community authors mentioned below. Save, executable, and runtime changes can damage data, lose progress, or trigger the game's own validation. Work only with files you are entitled to use, keep recoverable backups, and accept responsibility for the result. Do not package this project as a paid modification service or use it to affect other players online.
 
+This repository does not declare a project-wide open-source license that covers all inherited code. Except for third-party components carrying their own explicit licenses, public visibility alone does not grant permission to copy, redistribute, or use the project commercially. See [Third-party notices](THIRD_PARTY_NOTICES.md) for bundled open-source and native components.
+
 The repository does not contain, mirror, bypass, or resell third-party paid tables, membership content, or restricted downloads. Runtime patches are released only with DLC 2.0.2 executable identity, signatures, original bytes, unique-match checks, writeback, and field evidence. Public community demonstrations are used only to compare feature concepts and testing approaches; they are neither runtime dependencies nor download sources.
 
-For reproducibility, the following links identify public material that was used only for cross-checking; they do not imply collaboration, authorization, copied implementation, or endorsement. Early save and sigil record notes can be found in [BitterG's public project](https://github.com/BitterG) and [public page](https://b23.tv/uRLYpW8). Loadout interaction was compared with public work by [意地悪い骷髅](https://b23.tv/xhiZ7fm) and the [loadout simulator](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/). Chinese terminology was checked against public material by [LKong621](https://b23.tv/mnwxgDf); data extraction used public tools by [Nenkai](https://github.com/Nenkai); and summon warnings were compared with public notes from [SinnohDawn](https://b23.tv/lKSX4zy) and [Relink Summon](https://relinksummon.fate-go.top). Other public demonstrations were used only to compare feature names and test scenarios. This repository provides no related paid content, download route, or reconstructed material.
+This project was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://github.com/BitterG/GBFR-PE-Patch-Tool). Its early save parsing, sigil generation, and wrightstone generation followed that public codebase; the upstream README records additional method provenance involving tools by Xzire91x and Nenkai. The current repository has since been substantially rewritten and extended. This provenance statement does not imply endorsement, authorization, or participation in the current release by the original authors.
+
+Other public material was used only for cross-checking: loadout interaction was compared with work by [意地悪い骷髅](https://b23.tv/xhiZ7fm) and the [loadout simulator](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/); Chinese terminology was checked against public material by [LKong621](https://b23.tv/mnwxgDf); data extraction used public tools by [Nenkai](https://github.com/Nenkai); and summon warnings were compared with notes from [SinnohDawn](https://b23.tv/lKSX4zy) and [Relink Summon](https://relinksummon.fate-go.top). These links do not imply collaboration, authorization, copied implementation, or endorsement. The repository provides no related paid content, restricted download, or reconstructed material.

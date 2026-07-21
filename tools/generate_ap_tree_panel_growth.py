@@ -45,9 +45,10 @@ def main() -> None:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--tbl-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--dataset-version", required=True)
     args = parser.parse_args()
 
-    connection = sqlite3.connect(args.db)
+    connection = sqlite3.connect(f"file:{args.db.resolve()}?mode=ro", uri=True)
     owners = [row[0] for row in connection.execute("SELECT DISTINCT CharaId FROM ap_tree_atk ORDER BY CharaId")]
     characters: dict[str, object] = {}
     for owner in owners:
@@ -56,6 +57,10 @@ def main() -> None:
             totals: dict[str, float] = defaultdict(float)
             for row in effect_rows(connection, table, owner):
                 param_index = int(row[6])
+                if not 0 <= param_index <= 9:
+                    raise ValueError(f"invalid LimitBonusParamIndex {param_index} for {owner}/{table}")
+                # In the unpacked 2.0.2 limit_bonus_param table this field is
+                # the 0..3 panel-stat kind consumed by PANEL_TYPES.
                 param_type = int(row[19])
                 if param_type not in PANEL_TYPES:
                     continue
@@ -69,6 +74,8 @@ def main() -> None:
         for table, source in (("ap_tree_wep", "collection"), ("ap_tree_rebuild", "transcendence")):
             for row in effect_rows(connection, table, owner):
                 param_index = int(row[6])
+                if not 0 <= param_index <= 9:
+                    raise ValueError(f"invalid LimitBonusParamIndex {param_index} for {owner}/{table}")
                 param_type = int(row[19])
                 if param_type not in PANEL_TYPES:
                     continue
@@ -104,7 +111,7 @@ def main() -> None:
         "ap_tree_rebuild.tbl", "limit_bonus.tbl", "limit_bonus_param.tbl",
     ]
     payload = {
-        "version": "2.0.2-field-20260721",
+        "version": args.dataset_version,
         "gameVersion": "2.0.2",
         "units": {
             "stunRawToPanel": 10,

@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v1.91.4 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.91\.4"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.4')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.4')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.4')
+test('release metadata uses v1.91.5 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.91\.5"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.5')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.5')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.5')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -33,8 +33,7 @@ test('README reference notes contain only the approved public links', () => {
   const allowed = new Set([
     'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest',
     'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml',
-    'https://github.com/BitterG',
-    'https://b23.tv/uRLYpW8',
+    'https://github.com/BitterG/GBFR-PE-Patch-Tool',
     'https://b23.tv/xhiZ7fm',
     'https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/',
     'https://b23.tv/mnwxgDf',
@@ -49,6 +48,21 @@ test('README reference notes contain only the approved public links', () => {
       assert.ok(isProjectLink || allowed.has(url), `${path} contains an unexpected link: ${url}`)
     }
   }
+})
+
+test('public sampling guide is self-contained and neutral', () => {
+  const guide = readRoot('docs/角色公式采样操作说明.md')
+  assert.match(guide, /## 提交样本用于复核/)
+  assert.match(guide, /本仓库新建 Issue/)
+  assert.doesNotMatch(guide, /交给我|发给我|把导出的.*给我|本轮最关键/)
+})
+
+test('repository states provenance and third-party boundaries', () => {
+  const notices = readRoot('THIRD_PARTY_NOTICES.md')
+  assert.match(notices, /originally forked from/)
+  assert.match(notices, /does not grant a license/)
+  assert.match(notices, /github\.com\/wailsapp\/wails\/v2/)
+  assert.match(notices, /opencc-js/)
 })
 
 test('packaged metadata no longer identifies another maintainer', () => {
