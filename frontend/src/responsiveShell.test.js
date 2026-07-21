@@ -124,7 +124,7 @@ test('user-facing page titles omit the CT 0.8.4 suffix', () => {
   assert.match(patchTool, /ctQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（CT 0\.8\.4）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.1"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-ct\d+"/i)
 })
 

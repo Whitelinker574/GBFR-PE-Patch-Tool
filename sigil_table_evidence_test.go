@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -70,8 +71,19 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Sigils) != len(evidence.Rows) {
-		t.Fatalf("catalog rows=%d, fresh table-backed rows=%d", len(catalog.Sigils), len(evidence.Rows))
+	tableBacked := 0
+	supplemental := 0
+	for index := range catalog.Sigils {
+		sigil := &catalog.Sigils[index]
+		if strings.Contains(sigil.Source, "fresh local 2.0.2 gem.tbl") {
+			tableBacked++
+		}
+		if strings.EqualFold(derefStr(sigil.Category), "ct085_supplement") {
+			supplemental++
+		}
+	}
+	if tableBacked != len(evidence.Rows) || supplemental != 35 || len(catalog.Sigils) != tableBacked+supplemental {
+		t.Fatalf("catalog rows=%d, table-backed=%d, CT 0.8.5 supplemental=%d; want 219/184/35", len(catalog.Sigils), tableBacked, supplemental)
 	}
 	for _, row := range evidence.Rows {
 		if row.Status != "verified" {

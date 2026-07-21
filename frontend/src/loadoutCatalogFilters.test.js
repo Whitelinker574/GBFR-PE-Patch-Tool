@@ -13,6 +13,7 @@ const constructCatalog = [
   { internalId: 'A', displayName: '攻击力 V+', primaryTraitName: '攻击力' },
   { internalId: 'B', displayName: '浪迹天涯 V+', primaryTraitName: '浪迹天涯' },
   { internalId: 'C', displayName: '体力 V+', primaryTraitName: '体力' },
+  { internalId: 'D', displayName: '天星之止息 V+', primaryTraitName: '天星之止息' },
 ]
 
 test('constructor search selects the first real match instead of leaving the native select blank', () => {
@@ -21,6 +22,11 @@ test('constructor search selects the first real match instead of leaving the nat
   assert.equal(resolveConstructSelection(matches, 'A', '浪'), 'B')
   assert.equal(resolveConstructSelection(matches, 'B', '浪'), 'B')
   assert.equal(resolveConstructSelection([], 'A', '不存在'), '')
+})
+
+test('constructor search keeps CT 0.8.5 DLC factors discoverable by Chinese family name', () => {
+  assert.deepEqual(filterConstructCatalog(constructCatalog, '天星').map(item => item.internalId), ['D'])
+  assert.deepEqual(filterConstructCatalog(constructCatalog, '止息').map(item => item.internalId), ['D'])
 })
 
 test('constructor catalog stays independent from real-save bag instances', () => {

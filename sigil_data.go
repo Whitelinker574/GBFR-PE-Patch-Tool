@@ -96,6 +96,7 @@ func LoadCatalog() (*Catalog, error) {
 		return nil, fmt.Errorf("加载特性数据失败: %w", err)
 	}
 	c.Traits = traits.Traits
+	appendCT085Catalog(c)
 
 	rules, err := loadJSON[RuleFile]("data/secondary-trait-rules.json")
 	if err != nil {
@@ -339,6 +340,9 @@ func (c *Catalog) IsSigilConstructible(sigil *SigilDef) bool {
 func displaySigilName(sigil *SigilDef) string {
 	if sigil == nil {
 		return ""
+	}
+	if name := supplementalSigilDisplayName(sigil); name != "" {
+		return name
 	}
 	if supportsGeneratedPlusSigil(sigil) {
 		return cnName(sigil.DisplayName)
