@@ -15,16 +15,24 @@ const testIoHash = "4D0A60C3"
 
 func requireStatsSave(t *testing.T) {
 	t.Helper()
-	if !haveSave(testStatsSave) {
-		t.Skipf("真实 SaveData2 样本不存在: %s", testStatsSave)
+	path := statsSaveFixturePath()
+	if !haveSave(path) {
+		t.Skipf("真实 SaveData2 样本不存在: %s", path)
 	}
+}
+
+func statsSaveFixturePath() string {
+	if path := strings.TrimSpace(os.Getenv("GBFR_TEST_STATS_SAVE")); path != "" {
+		return path
+	}
+	return testStatsSave
 }
 
 func copyStatsSave(t *testing.T) string {
 	t.Helper()
 	requireStatsSave(t)
 	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata"))
-	data, err := os.ReadFile(testStatsSave)
+	data, err := os.ReadFile(statsSaveFixturePath())
 	if err != nil {
 		t.Fatal(err)
 	}

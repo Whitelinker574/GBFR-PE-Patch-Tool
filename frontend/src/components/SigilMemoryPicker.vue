@@ -124,7 +124,6 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
           <span class="opt-name">
             <img v-if="optionIcon(opt)" class="picker-icon" :src="optionIcon(opt)" alt="" />
             {{ opt.displayName }}
-            <span v-if="opt.source === 'memory-only'" class="ui-tag">补</span>
           </span>
           <span v-if="opt.maxLevel != null" class="opt-max">Lv {{ opt.maxLevel }}</span>
         </button>

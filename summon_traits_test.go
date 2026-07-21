@@ -13,29 +13,28 @@ func auditedSummonTraitStates(t *testing.T) (*summonStatCatalog, SummonTraitStat
 	}
 	var typeHash, mainHash, subHash uint32
 	var mainLevel, subLevel uint32
-	for hash := range catalog.types {
-		typeHash = hash
+	rules, err := loadSummonNaturalRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range rules {
+		if rule.Mode != "随机" || len(rule.MainTraitHashes) == 0 || len(rule.SubParamHashes) == 0 || len(rule.MainTraitLevels) == 0 || len(rule.SubParamLevels) == 0 {
+			continue
+		}
+		typeHash, err = ParseHashHex(rule.TypeHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mainHash, err = ParseHashHex(rule.MainTraitHashes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		subHash, err = ParseHashHex(rule.SubParamHashes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		mainLevel, subLevel = uint32(rule.MainTraitLevels[0]), uint32(rule.SubParamLevels[0])
 		break
-	}
-	for hash, option := range catalog.main {
-		if option.MaxLevel > 0 {
-			mainHash = hash
-			mainLevel = uint32(option.MaxLevel)
-			if mainLevel > summonMainTraitSafetyMaxLevel {
-				mainLevel = summonMainTraitSafetyMaxLevel
-			}
-			break
-		}
-	}
-	for hash, option := range catalog.sub {
-		if option.MaxLevel >= 0 && option.MaxLevel < len(option.Values) {
-			subHash = hash
-			subLevel = uint32(option.MaxLevel)
-			if subLevel > summonSubParamSafetyMaxLevel {
-				subLevel = summonSubParamSafetyMaxLevel
-			}
-			break
-		}
 	}
 	if typeHash == 0 || mainHash == 0 || subHash == 0 {
 		t.Fatal("audited summon catalog did not contain one complete natural state")
@@ -91,5 +90,18 @@ func TestValidateSummonTraitChangeRejectsUnsafeSubLevelAndRank(t *testing.T) {
 	draft.Rank = 4
 	if err := validateSummonTraitChange(catalog, draft, existing); err == nil {
 		t.Fatal("unsafe summon rank was accepted")
+	}
+}
+
+func TestValidateSummonTraitChangeRejectsCrossPoolCombination(t *testing.T) {
+	catalog, existing, draft := auditedSummonTraitStates(t)
+	for hash := range catalog.main {
+		if hash != draft.MainTraitHash {
+			draft.MainTraitHash = hash
+			break
+		}
+	}
+	if err := validateSummonTraitChange(catalog, draft, existing); err == nil || !strings.Contains(err.Error(), "天然词池") {
+		t.Fatalf("cross-pool main trait was not rejected: %v", err)
 	}
 }

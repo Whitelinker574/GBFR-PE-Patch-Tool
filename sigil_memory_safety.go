@@ -44,15 +44,6 @@ func validateSigilMemorySnapshot(expected, statusSelected, caveSelected uintptr,
 	return nil
 }
 
-func sigilMemoryHashKnown(entries []sigilMemoryName, hash uint32) bool {
-	for _, entry := range entries {
-		if entry.Hash == hash {
-			return true
-		}
-	}
-	return false
-}
-
 func sigilMemoryLevelAllowed(level uint32, allowed []int) bool {
 	if level == 0 {
 		return false
@@ -63,19 +54,6 @@ func sigilMemoryLevelAllowed(level uint32, allowed []int) bool {
 		}
 	}
 	return false
-}
-
-func sigilMemoryTraitMaxLevel(hash uint32) uint32 {
-	// These two observed memory-only traits are the only entries whose runtime
-	// storage range differs from the ordinary level-15 factor range.
-	switch hash {
-	case 0xBF78FBFC: // Dread Black Pincer Crab Sigil
-		return 20
-	case 0x89C66ACB: // Sumo Power
-		return 5
-	default:
-		return 15
-	}
 }
 
 func validateSigilMemoryTraitLevel(catalog *Catalog, hash, level uint32, label string) error {
@@ -92,13 +70,7 @@ func validateSigilMemoryTraitLevel(catalog *Catalog, hash, level uint32, label s
 		}
 		return nil
 	}
-	if !sigilMemoryHashKnown(sigilMemoryTraits, hash) {
-		return fmt.Errorf("未知%s哈希 0x%08X", label, hash)
-	}
-	if level == 0 || level > sigilMemoryTraitMaxLevel(hash) {
-		return fmt.Errorf("%s等级 %d 超出已观测范围", label, level)
-	}
-	return nil
+	return fmt.Errorf("未知%s哈希 0x%08X；四个编辑入口只接受统一目录", label, hash)
 }
 
 func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error {
@@ -111,16 +83,7 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 
 	sigil := catalog.LookupSigilByHash(update.SigilHash)
 	if sigil == nil {
-		if !sigilMemoryHashKnown(sigilMemorySigils, update.SigilHash) {
-			return fmt.Errorf("未知因子哈希 0x%08X", update.SigilHash)
-		}
-		if update.SigilLevel == 0 || update.SigilLevel > 15 {
-			return fmt.Errorf("因子等级 %d 超出已观测范围", update.SigilLevel)
-		}
-		if err := validateSigilMemoryTraitLevel(catalog, update.PrimaryTraitHash, update.PrimaryTraitLevel, "主词条"); err != nil {
-			return err
-		}
-		return validateSigilMemorySecondary(catalog, nil, update)
+		return fmt.Errorf("未知因子哈希 0x%08X；四个编辑入口只接受统一目录", update.SigilHash)
 	}
 
 	levels, err := catalog.RequireSigilLevels(sigil)

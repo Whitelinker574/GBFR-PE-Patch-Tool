@@ -154,7 +154,9 @@ test('summon editor preserves a legacy current main trait without reopening the 
   assert.match(source, /mainHash\s*===\s*\(selected\.value\.mainTraitHash\s*>>>\s*0\)/)
   assert.match(source, /mainLevel\s*===\s*selected\.value\.mainTraitLevel/)
   assert.doesNotMatch(source, /function traitMax\([^)]*\)\s*\{[^}]*\|\|\s*999/)
-  assert.match(source, /:disabled="loading \|\| saving \|\| currentMainTraitIsLegacy"/)
+  assert.match(source, /:disabled="loading \|\| saving \|\| currentMainTraitIsLegacy \|\| currentRule\?\.mode === '固定'"/)
+  assert.match(source, /allowedMainHashes/)
+  assert.match(source, /naturalSubLevels/)
 })
 
 test('summon memory page exposes an explicit global-process disconnect boundary', () => {

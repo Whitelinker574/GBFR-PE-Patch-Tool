@@ -288,9 +288,7 @@ function onPickSecondary(opt) {
 }
 
 const sigilMax = computed(() => sigilByHash.value.get(form.sigilHash)?.maxLevel ?? null)
-// Primary/secondary max come from the picked trait itself, not the sigil's default trait cap.
-// Prior bug: primaryMax fell back to sigil.firstTraitMaxLevel even when the picked trait had its own maxLevel,
-// so switching to a memory-only trait still showed the sigil's default primary max.
+// Primary/secondary max come from the same unified catalog used by save construction.
 const primaryMax = computed(() => {
   if (!form.primaryTraitHash) return null
   const sigil = sigilByHash.value.get(form.sigilHash)

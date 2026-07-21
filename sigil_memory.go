@@ -39,7 +39,7 @@ type SigilMemoryOption struct {
 	Hash        uint32 `json:"hash"`
 	DisplayName string `json:"displayName"`
 
-	// Level metadata — populated for catalog entries, nil for memory-only.
+	// Level metadata comes from the same catalog used by save construction.
 	MaxLevel                    *int     `json:"maxLevel,omitempty"`
 	AllowedLevels               []int    `json:"allowedLevels,omitempty"`
 	FirstTraitMaxLevel          *int     `json:"firstTraitMaxLevel,omitempty"`          // sigils only
@@ -47,7 +47,7 @@ type SigilMemoryOption struct {
 	AllowedPrimaryTraitLevels   []int    `json:"allowedPrimaryTraitLevels,omitempty"`   // catalog sigils only
 	AllowedSecondaryTraitHashes []uint32 `json:"allowedSecondaryTraitHashes,omitempty"` // sigils only
 	SupportsSecondaryTrait      *bool    `json:"supportsSecondaryTrait,omitempty"`      // sigils only
-	Source                      string   `json:"source"`                                // "catalog" | "memory-only"
+	Source                      string   `json:"source"`                                // "catalog"
 }
 
 type SigilMemoryOptions struct {
@@ -109,8 +109,8 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 	}
 
 	result := SigilMemoryOptions{
-		Sigils: make([]SigilMemoryOption, 0, len(catalog.Sigils)+len(sigilMemorySigils)),
-		Traits: make([]SigilMemoryOption, 0, len(catalog.Traits)+len(sigilMemoryTraits)),
+		Sigils: make([]SigilMemoryOption, 0, len(catalog.Sigils)),
+		Traits: make([]SigilMemoryOption, 0, len(catalog.Traits)),
 	}
 
 	for _, sigil := range catalog.GetSigilSortedList() {
@@ -130,6 +130,14 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		if err != nil {
 			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的固定主词条等级无效: %w", sigil.DisplayName, err)
 		}
+		allowedSigilLevels, err := catalog.RequireSigilLevels(sigil)
+		if err != nil {
+			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的等级范围无效: %w", sigil.DisplayName, err)
+		}
+		naturalSigilLevelSet := naturalSigilLevels(allowedSigilLevels)
+		naturalPrimaryLevels := naturalSigilLevels(allowedPrimaryLevels)
+		sigilMaxLevel := maxNaturalSigilLevel(naturalSigilLevelSet)
+		primaryMaxLevel := maxNaturalSigilLevel(naturalPrimaryLevels)
 		// Keep the memory editor's legality hints in sync with the save
 		// generator. GetAllowedSecondaryTraits applies the catalog-wide
 		// eligibility flags and the DLC compatibility additions (for example
@@ -147,11 +155,11 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		result.Sigils = append(result.Sigils, SigilMemoryOption{
 			Hash:                        hash,
 			DisplayName:                 displaySigilName(sigil),
-			MaxLevel:                    sigil.MaxSigilLevel,
-			AllowedLevels:               sigil.AllowedSigilLevels,
-			FirstTraitMaxLevel:          sigil.FirstTraitMaxLevel,
+			MaxLevel:                    &sigilMaxLevel,
+			AllowedLevels:               naturalSigilLevelSet,
+			FirstTraitMaxLevel:          &primaryMaxLevel,
 			PrimaryTraitHash:            primaryTraitHash,
-			AllowedPrimaryTraitLevels:   allowedPrimaryLevels,
+			AllowedPrimaryTraitLevels:   naturalPrimaryLevels,
 			AllowedSecondaryTraitHashes: allowedSecHashes,
 			SupportsSecondaryTrait:      sigil.SupportsSecondaryTrait,
 			Source:                      "catalog",
@@ -173,24 +181,6 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 			MaxLevel:      trait.MaxLevel,
 			AllowedLevels: trait.AllowedLevels,
 			Source:        "catalog",
-		})
-	}
-
-	for _, entry := range sigilMemorySigils {
-		result.Sigils = append(result.Sigils, SigilMemoryOption{Hash: entry.Hash, DisplayName: entry.Name, Source: "memory-only"})
-	}
-	for _, entry := range sigilMemoryTraits {
-		maxLevel := int(sigilMemoryTraitMaxLevel(entry.Hash))
-		allowedLevels := make([]int, maxLevel)
-		for index := range allowedLevels {
-			allowedLevels[index] = index + 1
-		}
-		result.Traits = append(result.Traits, SigilMemoryOption{
-			Hash:          entry.Hash,
-			DisplayName:   entry.Name,
-			MaxLevel:      &maxLevel,
-			AllowedLevels: allowedLevels,
-			Source:        "memory-only",
 		})
 	}
 	return result, nil

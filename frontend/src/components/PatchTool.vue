@@ -20,6 +20,7 @@ import loadoutPresetsArt from '../assets/gbfr/cutouts/loadout-presets-official-e
 import wrightstoneArt from '../assets/gbfr/cutouts/wrightstone-official-edge-safe.webp'
 import wrightstoneMemoryArt from '../assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'
 import summonArt from '../assets/gbfr/cutouts/summon-official-edge-safe.webp'
+import summonSaveArt from '../assets/gbfr/cutouts/summon-save-official-edge-safe.webp'
 import overlimitArt from '../assets/gbfr/cutouts/overlimit-official-edge-safe.webp'
 import runtimeArt from '../assets/gbfr/cutouts/runtime-official-edge-safe.webp'
 import charaArt from '../assets/gbfr/cutouts/chara-official-edge-safe.webp'
@@ -36,6 +37,7 @@ import loadoutPresetsSticker from '../assets/gbfr/stickers/loadout-presets.webp'
 import wrightstoneSticker from '../assets/gbfr/stickers/wrightstone.webp'
 import wrightstoneMemorySticker from '../assets/gbfr/stickers/wrightstone-memory.webp'
 import summonSticker from '../assets/gbfr/stickers/summon.webp'
+import summonSaveSticker from '../assets/gbfr/stickers/summon-save.webp'
 import overlimitSticker from '../assets/gbfr/stickers/overlimit.webp'
 import runtimeSticker from '../assets/gbfr/stickers/runtime.webp'
 import charaSticker from '../assets/gbfr/stickers/chara.webp'
@@ -66,6 +68,7 @@ const componentLoaders = {
   loadout: () => import('./SigilLoadoutRestore.vue'),
   loadoutPresets: () => import('./LoadoutViewer.vue'),
   wrightstone: () => import('./WrightstoneGenerator.vue'),
+  summonSave: () => import('./SummonSaveEditor.vue'),
   wrightstoneMemory: () => import('./WrightstoneMemoryGenerator.vue'),
   summon: () => import('./SummonEditor.vue'),
   overlimit: () => import('./OverLimit.vue'),
@@ -89,6 +92,7 @@ import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
 import SigilLoadoutRestore from './SigilLoadoutRestore.vue'
 import LoadoutViewer from './LoadoutViewer.vue'
 import WrightstoneGenerator from './WrightstoneGenerator.vue'
+import SummonSaveEditor from './SummonSaveEditor.vue'
 import WrightstoneMemoryGenerator from './WrightstoneMemoryGenerator.vue'
 import SummonEditor from './SummonEditor.vue'
 import OverLimit from './OverLimit.vue'
@@ -173,6 +177,13 @@ const toolMeta = {
     usage: ['退出游戏并加载存档', '选择祝福和三条词条', '校验队列并应用'],
     caution: '等级上限与组合合法性会在写入前提示。',
     speaker: '菲莉', note: '三条词条都确认好再应用，幽灵朋友们也会替你看着。',
+  },
+  summonSave: {
+    group: 'save', title: '召唤石添加 / 修改（存档）', eyebrow: '离线存档', status: '新增', tone: 'stable',
+    description: '在已由游戏开放召唤系统的存档中新增或完整修改召唤石，并在写后重新打开存档验证。',
+    usage: ['完全退出游戏并加载存档', '选择修改已有或新增', '核对目录、等级与输出路径后写入'],
+    caution: '不会替未进入 DLC 的存档强开召唤系统；改变天然种类/主加护搭配仍属未闭环组合。',
+    speaker: '圣德芬', note: '系统没开放就先停手；种类、加护和副词条核对一致，再写入。',
   },
   wrightstoneMemory: {
     group: 'memory', title: '祝福石即时编辑', eyebrow: '游戏内祝福石', status: '实时', tone: 'live',
@@ -284,7 +295,7 @@ const toolMeta = {
 // 顶层把只读内存监测从内存注入中单独分出，避免把观察数据与修改功能混为一谈。
 // 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
-  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'chara', 'save'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'] },
   { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'] },
   { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor', 'formulaSampler'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
@@ -294,7 +305,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '21 个实际工具页 + 1 个主页已接入。',
+  baselineSummary: '22 个实际工具页 + 1 个主页已接入。',
   baselineBoundary: '真实游戏进程 E2E 仍待实机验证',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
@@ -314,7 +325,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '21 tool pages plus the home page are integrated.',
+  baselineSummary: '22 tool pages plus the home page are integrated.',
   baselineBoundary: 'Real-process E2E validation is still pending',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
@@ -333,21 +344,23 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
-  { scope: '存档修改页面', status: '6 / 6', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、角色次数、任务与称号记录' },
+  { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
   { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT 战斗、CT 角色、CT 任务、怪物实验' },
   { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '运行监测与角色公式采样；公式采样不安装 Hook、不写进程或存档' },
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
   { scope: 'CT 安全直接覆盖', status: '60 / 64', tone: 'ok', detail: '58 个新增功能 + 2 个已有安全实现；4 个拒绝项未作为可用开关暴露' },
   { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
+  { scope: 'CT 0.8.5 增量审计', status: '58 稳定项零变化 + 1', tone: 'ok', detail: '原 58 个直补丁逐字节未变；新增当前查看祝福石捕获点已按本机 EXE 唯一 RVA 与 23 字节守卫接入' },
   { scope: '上游 v1.8.5 增量', status: '2 / 2 已提炼', tone: 'ok', detail: '称号搜索支持拼音；连续挑战改用新版唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '待实机验证', tone: 'pending', detail: '本轮未连接正在运行的目标游戏；运行时功能不得视为全场景实机通过' },
 ] : [
-  { scope: 'Save editing pages', status: '6 / 6', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, character counts, quest and title records' },
+  { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
   { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, CT combat, CT characters, CT quests, monster experiments' },
   { scope: 'Read-only monitor pages', status: '2 / 2', tone: 'ok', detail: 'Runtime monitoring and formula sampling; formula sampling installs no hooks and writes neither process nor save data' },
   { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
   { scope: 'CT safe direct coverage', status: '60 / 64', tone: 'ok', detail: '58 new features plus 2 existing safe implementations; 4 rejected candidates are not exposed' },
   { scope: 'CT production catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to DLC 2.0.2 original-byte and unique-hit evidence' },
+  { scope: 'CT 0.8.5 delta audit', status: '58 stable sites unchanged + 1', tone: 'ok', detail: 'All 58 direct patches are byte-identical; the current-view wrightstone capture uses the unique local EXE RVA and a 23-byte guard' },
   { scope: 'Upstream v1.8.5 delta', status: '2 / 2 integrated', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use the new unique signature, three-byte patch, and write-back verification' },
   { scope: 'Real game-process E2E', status: 'Pending', tone: 'pending', detail: 'No running target game was connected in this pass; live features are not claimed as fully field-tested' },
 ])
@@ -377,6 +390,7 @@ const functionArt = {
   loadout: loadoutLiveArt,
   loadoutPresets: loadoutPresetsArt,
   wrightstone: wrightstoneArt,
+  summonSave: summonSaveArt,
   wrightstoneMemory: wrightstoneMemoryArt,
   summon: summonArt,
   overlimit: overlimitArt,
@@ -401,6 +415,7 @@ const functionStickers = {
   loadout: loadoutSticker,
   loadoutPresets: loadoutPresetsSticker,
   wrightstone: wrightstoneSticker,
+  summonSave: summonSaveSticker,
   wrightstoneMemory: wrightstoneMemorySticker,
   summon: summonSticker,
   overlimit: overlimitSticker,
@@ -711,6 +726,7 @@ function showStatus(message, type) {
             <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
             <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" @status="showStatus" @editing-change="loadoutEditing = $event" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
+            <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
             <WrightstoneMemoryGenerator v-else-if="activeTab === 'wrightstoneMemory'" @status="showStatus" />
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
@@ -1415,6 +1431,7 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="loadout"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="loadoutPresets"] { --art-scale:160%; --art-x:calc(-8.33dvh + 11px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="summonSave"] { --art-scale:160%; --art-x:calc(-20dvh + 27px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-x:calc(-6.77dvh + 9px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }

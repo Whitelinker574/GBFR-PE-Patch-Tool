@@ -71,9 +71,9 @@ func TestDecodeWrightstoneMemoryCaveRejectsForeignOrRegisterClobberingCode(t *te
 }
 
 func TestWrightstoneMemoryOriginalSignatureIsExact(t *testing.T) {
-	wantV202 := []byte{0x8B, 0x02, 0x39, 0x06, 0x74, 0x0A, 0x89, 0x06}
+	wantV202 := []byte{0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE}
 	if !bytes.Equal(wrightstoneMemoryOriginalBytes, wantV202) {
-		t.Fatalf("wrightstone hook signature = % X, want local game v2.0.2 bytes % X", wrightstoneMemoryOriginalBytes, wantV202)
+		t.Fatalf("wrightstone hook signature = % X, want CT 0.8.5 current-view bytes % X", wrightstoneMemoryOriginalBytes, wantV202)
 	}
 	if !isWrightstoneMemoryOriginal(wrightstoneMemoryOriginalBytes) {
 		t.Fatal("verified original bytes should match")
@@ -84,6 +84,46 @@ func TestWrightstoneMemoryOriginalSignatureIsExact(t *testing.T) {
 		if isWrightstoneMemoryOriginal(mutated) {
 			t.Fatalf("signature accepted a mismatch at byte %d", i)
 		}
+	}
+}
+
+func TestWrightstoneMemoryCT085GuardIsExactAndRejectsPartialMatches(t *testing.T) {
+	want := []byte{
+		0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE, 0xE8, 0xF1, 0x05, 0xFC, 0xFF,
+		0x48, 0x39, 0xFE, 0x74, 0x4C, 0x48, 0x8D, 0x4E, 0x18, 0x8B, 0x47, 0x18,
+	}
+	if wrightstoneMemoryHookRVA != 0x361CB4 {
+		t.Fatalf("wrightstone current-view RVA = 0x%X, want 0x361CB4", wrightstoneMemoryHookRVA)
+	}
+	if !bytes.Equal(wrightstoneMemoryGuardBytes, want) {
+		t.Fatalf("wrightstone CT 0.8.5 guard = % X, want % X", wrightstoneMemoryGuardBytes, want)
+	}
+	if !isWrightstoneMemoryGuard(want, false) {
+		t.Fatal("verified CT 0.8.5 guard should match")
+	}
+	for i := range want {
+		mutated := append([]byte(nil), want...)
+		mutated[i] ^= 0x01
+		if isWrightstoneMemoryGuard(mutated, false) {
+			t.Fatalf("guard accepted mismatch at byte %d", i)
+		}
+	}
+
+	hooked := append([]byte(nil), want...)
+	copy(hooked[:wrightstoneMemoryHookSize], []byte{0xE9, 0, 0, 0, 0, 0x90})
+	if !isWrightstoneMemoryGuard(hooked, true) {
+		t.Fatal("owned-hook entry with intact guarded tail should match")
+	}
+	hooked[len(hooked)-1] ^= 0x01
+	if isWrightstoneMemoryGuard(hooked, true) {
+		t.Fatal("owned-hook entry with damaged guarded tail must be rejected")
+	}
+}
+
+func TestWrightstoneMemoryStatusIdentifiesCT085CaptureSource(t *testing.T) {
+	status := newWrightstoneMemoryStatus(true, false, 0x140361CB4, 0x140000000, wrightstoneMemoryOriginalBytes)
+	if status.CaptureSource != "ct085-current-view" || status.SourceVersion != "0.8.5" {
+		t.Fatalf("capture provenance = %q/%q", status.CaptureSource, status.SourceVersion)
 	}
 }
 

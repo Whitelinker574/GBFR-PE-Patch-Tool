@@ -12,8 +12,10 @@ const assets = [
   ['loadoutLiveArt', './assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'],
   ['loadoutPresetsArt', './assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'],
   ['wrightstoneMemoryArt', './assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'],
+  ['summonSaveArt', './assets/gbfr/cutouts/summon-save-official-edge-safe.webp'],
   ['loadoutPresetsSticker', './assets/gbfr/stickers/loadout-presets.webp'],
   ['wrightstoneMemorySticker', './assets/gbfr/stickers/wrightstone-memory.webp'],
+  ['summonSaveSticker', './assets/gbfr/stickers/summon-save.webp'],
 ]
 
 const ctAssets = [
@@ -39,8 +41,10 @@ test('pages that previously repeated portraits now own function-specific approve
   assert.match(shell, /loadout:\s*loadoutLiveArt/)
   assert.match(shell, /loadoutPresets:\s*loadoutPresetsArt/)
   assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemoryArt/)
+  assert.match(shell, /summonSave:\s*summonSaveArt/)
   assert.match(shell, /loadoutPresets:\s*loadoutPresetsSticker/)
   assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemorySticker/)
+  assert.match(shell, /summonSave:\s*summonSaveSticker/)
 })
 
 test('CT pages ship their approved function-specific assets without repeated binaries', () => {
@@ -69,6 +73,18 @@ test('character mechanics owns a Vaseraga portrait and sticker instead of repeat
 test('function portrait speakers stay aligned with their generated character identity', () => {
   assert.match(shell, /loadoutPresets:\s*\{[\s\S]*?speaker:\s*'古兰'[\s\S]*?note:\s*'先备份，再确认角色和目标槽；已有配装会被覆盖。'/)
   assert.match(shell, /wrightstoneMemory:\s*\{[\s\S]*?speaker:\s*'玛琪拉菲菈'[\s\S]*?note:\s*'写入后旧记录会失效。回到游戏里重新选中目标，再继续。'/)
+  assert.match(shell, /summonSave:\s*\{[\s\S]*?speaker:\s*'圣德芬'[\s\S]*?note:\s*'系统没开放就先停手；种类、加护和副词条核对一致，再写入。'/)
+})
+
+test('offline summon save owns Sandalphon art instead of repeating the runtime summon guide', () => {
+  const portrait = readFileSync(new URL('./assets/gbfr/cutouts/summon-save-official-edge-safe.webp', import.meta.url))
+  const runtimePortrait = readFileSync(new URL('./assets/gbfr/cutouts/summon-official-edge-safe.webp', import.meta.url))
+  const sticker = readFileSync(new URL('./assets/gbfr/stickers/summon-save.webp', import.meta.url))
+  const runtimeSticker = readFileSync(new URL('./assets/gbfr/stickers/summon.webp', import.meta.url))
+  assert.notEqual(createHash('sha256').update(portrait).digest('hex'), createHash('sha256').update(runtimePortrait).digest('hex'))
+  assert.notEqual(createHash('sha256').update(sticker).digest('hex'), createHash('sha256').update(runtimeSticker).digest('hex'))
+  assert.match(shell, /summonSave:\s*summonSaveArt/)
+  assert.match(shell, /summonSave:\s*summonSaveSticker/)
 })
 
 test('formula sampler portrait caption matches Katalina', () => {
@@ -84,7 +100,7 @@ test('every function portrait stays top-anchored so tall windows keep faces and 
 
   const portraitPages = [
     'progression', 'sigil', 'sigilMemory', 'loadout', 'loadoutPresets', 'wrightstone',
-    'wrightstoneMemory', 'summon', 'overlimit', 'runtime', 'ctMonitor', 'formulaSampler', 'ctCombat',
+    'wrightstoneMemory', 'summonSave', 'summon', 'overlimit', 'runtime', 'ctMonitor', 'formulaSampler', 'ctCombat',
     'ctCharacters', 'ctQuest', 'chara', 'save', 'compatibility',
     'monster', 'patch', 'language',
   ]

@@ -25,6 +25,10 @@ let connectionOwnerToken = ''
 const typeByHash = computed(() => new Map(options.types.map((item) => [item.hash, item])))
 const traitByHash = computed(() => new Map(options.traits.map((item) => [item.hash, item])))
 const subParamByHash = computed(() => new Map(options.subParams.map((item) => [item.hash, item])))
+const rulesByType = computed(() => new Map((options.rules || []).map(rule => [Number.parseInt(rule.typeHash, 16) >>> 0, rule])))
+const currentRule = computed(() => selected.value ? rulesByType.value.get(selected.value.typeHash >>> 0) || null : null)
+const allowedMainHashes = computed(() => new Set((currentRule.value?.mainTraitHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
+const allowedSubHashes = computed(() => new Set((currentRule.value?.subParamHashes || []).map(value => Number.parseInt(value, 16) >>> 0)))
 const currentSubParam = computed(() => {
   const h = Number.parseInt(String(edit.subParamHash).trim(), 16)
   return Number.isNaN(h) ? null : subParamByHash.value.get(h) || null
@@ -42,9 +46,17 @@ function subParamValueLabel(level) {
 }
 const filteredTraits = computed(() => {
   const query = traitFilter.value.trim()
-  if (!query) return options.traits
-  return options.traits.filter((item) => matchText(optionLabel(item), query))
+  const current = parsedHashOrNull(edit.mainTraitHash)
+  return options.traits.filter(item => (allowedMainHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === current) && (!query || matchText(optionLabel(item), query)))
 })
+const filteredSubParams = computed(() => {
+  const current = parsedHashOrNull(edit.subParamHash)
+  return options.subParams.filter(item => allowedSubHashes.value.has(item.hash >>> 0) || (item.hash >>> 0) === current)
+})
+const naturalMainLevels = computed(() => currentRule.value?.mainTraitLevels || [])
+const naturalSubLevels = computed(() => currentRule.value?.subParamLevels || [])
+const mainLevelChoices = computed(() => [...new Set([...naturalMainLevels.value, Number(edit.mainTraitLevel)])].filter(Number.isFinite).sort((a,b) => a-b))
+const subLevelChoices = computed(() => [...new Set([...naturalSubLevels.value, Number(edit.subParamLevel)])].filter(Number.isFinite).sort((a,b) => a-b))
 const filteredSummons = computed(() => {
   const query = filter.value.trim()
   if (!query) return summons.value
@@ -112,16 +124,23 @@ const legality = computed(() => {
   const legacyMainUnchanged = !traitByHash.value.has(mainHash) &&
     mainHash === (selected.value.mainTraitHash >>> 0) &&
     mainLevel === selected.value.mainTraitLevel
+  const mainUnchanged = mainHash === (selected.value.mainTraitHash >>> 0) && mainLevel === selected.value.mainTraitLevel
+  const subUnchanged = subHash === (selected.value.subParamHash >>> 0) && subLevel === selected.value.subParamLevel
   const reasons = []
   if (!typeByHash.value.has(typeHash)) reasons.push('种类不在本地资料库中')
   if (!mainHash) reasons.push('主因子为空，游戏内通常不会自然生成')
-  else if (!traitByHash.value.has(mainHash) && !legacyMainUnchanged) reasons.push('非天然主因子只能原样保留')
+  else if (!mainUnchanged && !allowedMainHashes.value.has(mainHash)) reasons.push('主因子不在该种类的天然词池')
   if (subHash && !subParamByHash.value.has(subHash)) reasons.push('副参数不在本地资料库中')
+  else if (!subUnchanged && !allowedSubHashes.value.has(subHash)) reasons.push('副参数不在该种类的天然词池')
   const max = traitByHash.value.get(mainHash)?.maxLevel
   if (Number.isInteger(max) && mainLevel > max) reasons.push(`主因子等级超过已知上限 ${max}`)
+  if (currentRule.value?.mode === '固定' && (!mainUnchanged || !subUnchanged)) reasons.push('固定模板等级尚无表内证据，只能保留原值')
+  if (!mainUnchanged && currentRule.value?.mode !== '固定' && !naturalMainLevels.value.includes(mainLevel)) reasons.push('主因子等级不在天然等级集合')
+  if (!subUnchanged && currentRule.value?.mode !== '固定' && !naturalSubLevels.value.includes(subLevel)) reasons.push('副参数档位不在天然等级集合')
   if (reasons.length) return { status: 'impossible', writable: false, message: `${reasons.join('；')}；后端会拒绝这次写入` }
-  if (legacyMainUnchanged) return { status: 'unknown', writable: true, message: '当前主因子为非天然或旧值；主因子已锁定，仍可修改副词条和 Rank' }
-  return { status: 'unknown', writable: true, message: 'Hash 与等级可写；召唤石的完整天然主因子/副参数词池尚未完全验证' }
+  if (legacyMainUnchanged) return { status: 'unknown', writable: true, message: '当前主因子为非天然或旧值；原值可保留，副词条修改仍受该种类天然池约束' }
+  if (currentRule.value?.mode === '固定') return { status: 'unknown', writable: true, message: '固定词条已验证；固定等级尚无表内证据，因此只保留原值' }
+  return { status: 'natural', writable: true, message: '2.0.2 天然词池与随机等级集合校验通过' }
 })
 
 async function load() {
@@ -344,8 +363,7 @@ onBeforeUnmount(() => {
               <label class="ui-field wide-field">
                 <span class="ui-field-label">主因子等级</span>
                 <span class="number-combo ui-control-group">
-                  <input v-model="edit.mainTraitLevel" class="ui-input" type="number" min="0" :max="traitMax(edit.mainTraitHash)" :disabled="loading || saving || currentMainTraitIsLegacy" />
-                  <button type="button" class="ui-btn is-sm" :disabled="loading || saving || currentMainTraitIsLegacy" @click="edit.mainTraitLevel=String(traitMax(edit.mainTraitHash))">最大</button>
+                  <select v-model="edit.mainTraitLevel" class="ui-select" :disabled="loading || saving || currentMainTraitIsLegacy || currentRule?.mode === '固定'"><option v-for="level in mainLevelChoices" :key="level" :value="String(level)">Lv{{ level }}</option></select>
                 </span>
               </label>
             </div>
@@ -357,16 +375,15 @@ onBeforeUnmount(() => {
               <label class="ui-field wide-field">
                 <span class="ui-field-label">副词条</span>
                 <select v-model="edit.subParamHash" class="ui-select" :disabled="loading || saving">
-                  <option v-for="item in options.subParams" :key="item.hash" :value="hex(item.hash)">{{ optionLabel(item) }}</option>
+                  <option v-for="item in filteredSubParams" :key="item.hash" :value="hex(item.hash)">{{ optionLabel(item) }}</option>
                 </select>
               </label>
               <label class="ui-field wide-field">
                 <span class="ui-field-label">副参数等级</span>
                 <span class="number-combo ui-control-group">
-                  <select v-model="edit.subParamLevel" class="ui-select" :disabled="loading || saving">
-                    <option v-for="level in (subParamMaxLevel + 1)" :key="level - 1" :value="String(level - 1)">{{ subParamValueLabel(level - 1) }}</option>
+                  <select v-model="edit.subParamLevel" class="ui-select" :disabled="loading || saving || currentRule?.mode === '固定'">
+                    <option v-for="level in subLevelChoices" :key="level" :value="String(level)">{{ subParamValueLabel(level) }}</option>
                   </select>
-                  <button type="button" class="ui-btn is-sm" :disabled="loading || saving" @click="edit.subParamLevel=String(subParamMaxLevel)">最大</button>
                 </span>
               </label>
             </div>

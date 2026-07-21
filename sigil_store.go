@@ -136,6 +136,7 @@ type SaveData struct {
 	slotLen        int64
 	path           string
 	lastBackupPath string
+	unitsByType    map[uint32][]*unitEntry
 }
 
 func LoadSave(path string) (*SaveData, error) {
@@ -181,6 +182,9 @@ func (s *SaveData) findUnit(idType, unitID uint32) (*unitEntry, bool) {
 
 // findAllUnitsByType finds all FlatBuffer unit entries matching a specific IDType.
 func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
+	if cached, ok := s.unitsByType[idType]; ok {
+		return cached
+	}
 	slot := s.slotSpan()
 	slotBase := int(s.slotOff)
 	seen := make(map[int]bool)
@@ -228,6 +232,10 @@ func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
 		entry.data = s.data
 		results = append(results, entry)
 	}
+	if s.unitsByType == nil {
+		s.unitsByType = make(map[uint32][]*unitEntry)
+	}
+	s.unitsByType[idType] = results
 	return results
 }
 

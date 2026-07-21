@@ -64,15 +64,19 @@ type SummonOption struct {
 	Name      string    `json:"name"`
 	MaxLevel  int       `json:"maxLevel"`
 	Cost      int       `json:"cost"`
+	EquipCost int       `json:"equipCost"`
+	Tier      string    `json:"tier"`
+	Mode      string    `json:"mode"`
 	TypeName  string    `json:"typeName"`
 	IsPercent bool      `json:"isPercent"`
 	Values    []float64 `json:"values"`
 }
 
 type SummonOptions struct {
-	Types     []SummonOption `json:"types"`
-	Traits    []SummonOption `json:"traits"`
-	SubParams []SummonOption `json:"subParams"`
+	Types     []SummonOption      `json:"types"`
+	Traits    []SummonOption      `json:"traits"`
+	SubParams []SummonOption      `json:"subParams"`
+	Rules     []SummonNaturalRule `json:"rules"`
 }
 
 type summonTypeFile struct {
@@ -115,15 +119,31 @@ func (a *App) SummonGetOptions() (SummonOptions, error) {
 	if err := json.Unmarshal(summonSubParamsJSON, &subParams); err != nil {
 		return SummonOptions{}, fmt.Errorf("解析召唤石副参数映射失败: %w", err)
 	}
+	rules, err := loadSummonNaturalRules()
+	if err != nil {
+		return SummonOptions{}, err
+	}
+	rulesByHash, err := summonNaturalRuleByHash(rules)
+	if err != nil {
+		return SummonOptions{}, err
+	}
 	options := SummonOptions{
 		Types:     make([]SummonOption, 0, len(types.Summons)),
 		Traits:    make([]SummonOption, 0, len(skills.Skills)),
 		SubParams: make([]SummonOption, 0, len(subParams.SubParams)),
+		Rules:     rules,
 	}
 	for _, item := range types.Summons {
 		hash, err := ParseHashHex(item.Hash)
 		if err == nil {
-			options.Types = append(options.Types, SummonOption{Hash: hash, Name: item.DisplayName, Cost: item.Cost, TypeName: item.TypeName})
+			rule, ok := rulesByHash[hash]
+			if !ok {
+				return SummonOptions{}, fmt.Errorf("召唤石 0x%08X 缺少天然规则", hash)
+			}
+			options.Types = append(options.Types, SummonOption{
+				Hash: hash, Name: item.DisplayName, Cost: item.Cost, EquipCost: rule.EquipCost,
+				Tier: rule.Tier, Mode: rule.Mode, TypeName: item.TypeName,
+			})
 		}
 	}
 	for _, item := range skills.Skills {
@@ -148,6 +168,16 @@ func (a *App) SummonGetOptions() (SummonOptions, error) {
 }
 
 func validateSummonMemoryUpdate(catalog *summonStatCatalog, item SummonUpdate) error {
+	if err := validateSummonMemoryUpdateNonMainFields(catalog, item); err != nil {
+		return err
+	}
+	return validateSummonTraitChange(catalog, SummonTraitState{
+		TypeHash: item.TypeHash, MainTraitHash: item.MainTraitHash, SubParamHash: item.SubParamHash,
+		MainTraitLevel: item.MainTraitLevel, SubParamLevel: item.SubParamLevel, Rank: item.Rank,
+	}, SummonTraitState{TypeHash: EmptyHash, MainTraitHash: EmptyHash, SubParamHash: EmptyHash, MainTraitLevel: ^uint32(0), SubParamLevel: ^uint32(0)})
+}
+
+func validateSummonMemoryUpdateNonMainFields(catalog *summonStatCatalog, item SummonUpdate) error {
 	if catalog == nil {
 		return fmt.Errorf("召唤石目录为空")
 	}
@@ -157,34 +187,19 @@ func validateSummonMemoryUpdate(catalog *summonStatCatalog, item SummonUpdate) e
 	if _, ok := catalog.types[item.TypeHash]; !ok {
 		return fmt.Errorf("未知召唤石种类哈希 0x%08X", item.TypeHash)
 	}
-	mainTrait, ok := catalog.main[item.MainTraitHash]
-	if !ok {
-		return fmt.Errorf("未知召唤石主因子哈希 0x%08X", item.MainTraitHash)
-	}
-	if mainTrait.MaxLevel <= 0 {
-		return fmt.Errorf("召唤石主因子 0x%08X 的目录等级上限无效", item.MainTraitHash)
-	}
-	mainLimit := uint32(mainTrait.MaxLevel)
-	if mainLimit > summonMainTraitSafetyMaxLevel {
-		mainLimit = summonMainTraitSafetyMaxLevel
-	}
-	if item.MainTraitLevel > mainLimit {
-		return fmt.Errorf("召唤石主因子等级 %d 超出自然/安全上限 %d", item.MainTraitLevel, mainLimit)
-	}
-
-	subParam, ok := catalog.sub[item.SubParamHash]
+	sub, ok := catalog.sub[item.SubParamHash]
 	if !ok {
 		return fmt.Errorf("未知召唤石副参数哈希 0x%08X", item.SubParamHash)
 	}
-	if subParam.MaxLevel < 0 || len(subParam.Values) == 0 || subParam.MaxLevel >= len(subParam.Values) {
+	if sub.MaxLevel < 0 || len(sub.Values) == 0 || sub.MaxLevel >= len(sub.Values) {
 		return fmt.Errorf("召唤石副参数 0x%08X 的目录等级表无效", item.SubParamHash)
 	}
-	subLimit := uint32(subParam.MaxLevel)
-	if subLimit > summonSubParamSafetyMaxLevel {
-		subLimit = summonSubParamSafetyMaxLevel
+	limit := uint32(sub.MaxLevel)
+	if limit > summonSubParamSafetyMaxLevel {
+		limit = summonSubParamSafetyMaxLevel
 	}
-	if item.SubParamLevel > subLimit {
-		return fmt.Errorf("召唤石副参数等级 %d 超出自然/安全上限 %d", item.SubParamLevel, subLimit)
+	if item.SubParamLevel > limit {
+		return fmt.Errorf("召唤石副参数等级 %d 超出自然/安全上限 %d", item.SubParamLevel, limit)
 	}
 	if item.Rank > 3 {
 		return fmt.Errorf("召唤石阶级必须为 0 到 3")
@@ -192,35 +207,17 @@ func validateSummonMemoryUpdate(catalog *summonStatCatalog, item SummonUpdate) e
 	return nil
 }
 
-func validateSummonMemoryUpdateNonMainFields(catalog *summonStatCatalog, item SummonUpdate) error {
-	if catalog == nil || len(catalog.main) == 0 {
-		return fmt.Errorf("召唤石主因子目录为空")
-	}
-	probe := item
-	for hash, option := range catalog.main {
-		if option.MaxLevel > 0 {
-			probe.MainTraitHash = hash
-			probe.MainTraitLevel = 1
-			return validateSummonMemoryUpdate(catalog, probe)
-		}
-	}
-	return fmt.Errorf("召唤石主因子目录没有有效等级范围")
-}
-
 func validateSummonMemoryUpdateAgainstExisting(catalog *summonStatCatalog, item SummonUpdate, existing SummonInfo) error {
 	if err := validateSummonMemoryUpdateNonMainFields(catalog, item); err != nil {
 		return err
 	}
-	if err := validateSummonMemoryUpdate(catalog, item); err == nil {
-		return nil
-	} else if item.MainTraitHash != existing.MainTraitHash || item.MainTraitLevel != existing.MainTraitLevel {
-		return err
-	}
-	// A legacy or externally modified main trait may be preserved byte-for-byte
-	// so the user can still change the audited sub-parameter or rank. It never
-	// becomes a selectable natural trait, and changing either main field remains
-	// fail-closed.
-	return nil
+	return validateSummonTraitChange(catalog, SummonTraitState{
+		TypeHash: item.TypeHash, MainTraitHash: item.MainTraitHash, SubParamHash: item.SubParamHash,
+		MainTraitLevel: item.MainTraitLevel, SubParamLevel: item.SubParamLevel, Rank: item.Rank,
+	}, SummonTraitState{
+		TypeHash: existing.TypeHash, MainTraitHash: existing.MainTraitHash, SubParamHash: existing.SubParamHash,
+		MainTraitLevel: existing.MainTraitLevel, SubParamLevel: existing.SubParamLevel, Rank: existing.Rank,
+	})
 }
 
 func encodeSummonMemoryRecord(original []byte, item SummonUpdate) ([]byte, error) {

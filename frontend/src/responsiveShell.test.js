@@ -104,7 +104,7 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 })
 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
-  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'chara', 'save'])
+  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'])
   assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'])
   assert.deepEqual(navigationIds(patchTool, 'monitor'), ['ctMonitor', 'formulaSampler'])
   assert.deepEqual(navigationIds(patchTool, 'tools'), ['compatibility', 'language', 'patch'])
@@ -112,7 +112,7 @@ test('sidebar and top-tab groups put common functions first in an exact stable o
 })
 
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
-  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone'])
+  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave'])
   assert.deepEqual(homeEntryIds('memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest'])
   assert.deepEqual(homeEntryIds('monitor'), ['ctMonitor', 'formulaSampler'])
 })
@@ -124,7 +124,7 @@ test('user-facing page titles omit the CT 0.8.4 suffix', () => {
   assert.match(patchTool, /ctQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（CT 0\.8\.4）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.9\.1-local-dlc202"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.10\.0-local-dlc202"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-ct\d+"/i)
 })
 

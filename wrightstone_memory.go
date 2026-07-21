@@ -10,19 +10,28 @@ import (
 )
 
 const (
-	wrightstoneMemoryHookRVA        = uintptr(0x3222CF)
+	// CT 0.8.5 node 40000 captures RDX while the game opens/refreshes the
+	// currently viewed wrightstone record. The RVA and full instruction window
+	// below were independently matched once in the local 2.0.2 executable.
+	wrightstoneMemoryHookRVA        = uintptr(0x361CB4)
 	wrightstoneMemorySaveRVA        = uintptr(0x79D820)
-	wrightstoneMemoryHookSize       = uintptr(8)
+	wrightstoneMemoryHookSize       = uintptr(6)
 	wrightstoneMemoryCaveDataOffset = uintptr(0x40)
 	wrightstoneMemoryOriginalOffset = uintptr(17)
 	wrightstoneMemoryMarkerOffset   = uintptr(0x30)
 )
 
 var (
-	// Exact bytes at RVA 0x3222CF in the locally supplied game v2.0.2.
-	wrightstoneMemoryOriginalBytes = []byte{0x8B, 0x02, 0x39, 0x06, 0x74, 0x0A, 0x89, 0x06}
-	wrightstoneMemoryMarker        = []byte("GBFRWTM1")
-	wrightstoneMemoryLifecycleMu   sync.Mutex
+	// The six displaced instructions are insufficient as a version guard on
+	// their own. Keep the complete CT 0.8.5 window, including its local CALL and
+	// the following record-ID read, so a coincidental MOV pair cannot pass.
+	wrightstoneMemoryOriginalBytes = []byte{0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE}
+	wrightstoneMemoryGuardBytes    = []byte{
+		0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE, 0xE8, 0xF1, 0x05, 0xFC, 0xFF,
+		0x48, 0x39, 0xFE, 0x74, 0x4C, 0x48, 0x8D, 0x4E, 0x18, 0x8B, 0x47, 0x18,
+	}
+	wrightstoneMemoryMarker      = []byte("GBFRWTM2")
+	wrightstoneMemoryLifecycleMu sync.Mutex
 )
 
 type WrightstoneMemoryOption struct {
@@ -37,23 +46,25 @@ type WrightstoneMemoryOptions struct {
 }
 
 type WrightstoneMemoryStatus struct {
-	OwnerToken   string `json:"ownerToken,omitempty"`
-	Found        bool   `json:"found"`
-	Hooked       bool   `json:"hooked"`
-	Address      uint64 `json:"address"`
-	RVA          uint64 `json:"rva"`
-	SelectedAddr uint64 `json:"selectedAddr"`
-	SaveRVA      uint64 `json:"saveRva"`
-	CurrentBytes string `json:"currentBytes"`
-	FirstHash    uint32 `json:"firstHash"`
-	FirstName    string `json:"firstName"`
-	FirstLevel   uint32 `json:"firstLevel"`
-	SecondHash   uint32 `json:"secondHash"`
-	SecondName   string `json:"secondName"`
-	SecondLevel  uint32 `json:"secondLevel"`
-	ThirdHash    uint32 `json:"thirdHash"`
-	ThirdName    string `json:"thirdName"`
-	ThirdLevel   uint32 `json:"thirdLevel"`
+	OwnerToken    string `json:"ownerToken,omitempty"`
+	Found         bool   `json:"found"`
+	Hooked        bool   `json:"hooked"`
+	Address       uint64 `json:"address"`
+	RVA           uint64 `json:"rva"`
+	SelectedAddr  uint64 `json:"selectedAddr"`
+	SaveRVA       uint64 `json:"saveRva"`
+	CurrentBytes  string `json:"currentBytes"`
+	CaptureSource string `json:"captureSource"`
+	SourceVersion string `json:"sourceVersion"`
+	FirstHash     uint32 `json:"firstHash"`
+	FirstName     string `json:"firstName"`
+	FirstLevel    uint32 `json:"firstLevel"`
+	SecondHash    uint32 `json:"secondHash"`
+	SecondName    string `json:"secondName"`
+	SecondLevel   uint32 `json:"secondLevel"`
+	ThirdHash     uint32 `json:"thirdHash"`
+	ThirdName     string `json:"thirdName"`
+	ThirdLevel    uint32 `json:"thirdLevel"`
 }
 
 func (a *App) WrightstoneMemoryGetOptions() (WrightstoneMemoryOptions, error) {
@@ -98,19 +109,22 @@ func (a *App) scanWrightstoneMemoryLocked() (WrightstoneMemoryStatus, error) {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("未连接游戏进程")
 	}
 	addr := a.moduleBase + wrightstoneMemoryHookRVA
-	first := make([]byte, wrightstoneMemoryHookSize)
-	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&first[0]), uintptr(len(first))); err != nil {
+	guard := make([]byte, len(wrightstoneMemoryGuardBytes))
+	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&guard[0]), uintptr(len(guard))); err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("读取祝福焦点指令失败: %w", err)
 	}
-	if !isWrightstoneMemoryOriginal(first) && !isWrightstoneMemoryJump(first) {
+	first := guard[:wrightstoneMemoryHookSize]
+	original := isWrightstoneMemoryGuard(guard, false)
+	hooked := isWrightstoneMemoryGuard(guard, true)
+	if !original && !hooked {
 		// The save function uses a version-specific fixed RVA too. Relocating only
 		// this hook from an eight-byte match would create a false sense of version
 		// compatibility and could later start a thread at the wrong function.
-		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常 (%s)：当前游戏版本未通过 v2.0.2 精确校验", bytesToHex(first))
+		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常 (%s)：当前游戏版本未通过 2.0.2 / CT 0.8.5 完整守卫", bytesToHex(guard))
 	}
 
 	a.wrightstoneMemoryHookAddr = addr
-	if isWrightstoneMemoryOriginal(first) {
+	if original {
 		a.wrightstoneMemoryOriginal = append(a.wrightstoneMemoryOriginal[:0], first...)
 		a.wrightstoneMemoryCaveAddr = 0
 	} else {
@@ -437,14 +451,7 @@ func (a *App) readWrightstoneMemoryStatusLocked() (WrightstoneMemoryStatus, erro
 	if !hooked && !isWrightstoneMemoryOriginal(current) {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常: %s", bytesToHex(current))
 	}
-	status := WrightstoneMemoryStatus{
-		Found:        true,
-		Hooked:       hooked,
-		Address:      uint64(a.wrightstoneMemoryHookAddr),
-		RVA:          uint64(a.wrightstoneMemoryHookAddr - a.moduleBase),
-		SaveRVA:      uint64(wrightstoneMemorySaveRVA),
-		CurrentBytes: bytesToHex(current),
-	}
+	status := newWrightstoneMemoryStatus(true, hooked, a.wrightstoneMemoryHookAddr, a.moduleBase, current)
 	if !hooked {
 		return status, nil
 	}
@@ -519,8 +526,40 @@ func isWrightstoneMemoryOriginal(buf []byte) bool {
 	return len(buf) >= int(wrightstoneMemoryHookSize) && bytes.Equal(buf[:wrightstoneMemoryHookSize], wrightstoneMemoryOriginalBytes)
 }
 
+func isWrightstoneMemoryGuard(buf []byte, hooked bool) bool {
+	if len(buf) < len(wrightstoneMemoryGuardBytes) {
+		return false
+	}
+	if !hooked {
+		return bytes.Equal(buf[:len(wrightstoneMemoryGuardBytes)], wrightstoneMemoryGuardBytes)
+	}
+	return isWrightstoneMemoryJump(buf[:wrightstoneMemoryHookSize]) &&
+		bytes.Equal(buf[wrightstoneMemoryHookSize:len(wrightstoneMemoryGuardBytes)], wrightstoneMemoryGuardBytes[wrightstoneMemoryHookSize:])
+}
+
 func isWrightstoneMemoryJump(buf []byte) bool {
-	return len(buf) >= int(wrightstoneMemoryHookSize) && buf[0] == 0xE9 && buf[5] == 0x90 && buf[6] == 0x90 && buf[7] == 0x90
+	if len(buf) < int(wrightstoneMemoryHookSize) || buf[0] != 0xE9 {
+		return false
+	}
+	for index := 5; index < int(wrightstoneMemoryHookSize); index++ {
+		if buf[index] != 0x90 {
+			return false
+		}
+	}
+	return true
+}
+
+func newWrightstoneMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr, current []byte) WrightstoneMemoryStatus {
+	return WrightstoneMemoryStatus{
+		Found:         found,
+		Hooked:        hooked,
+		Address:       uint64(hookAddr),
+		RVA:           uint64(hookAddr - moduleBase),
+		SaveRVA:       uint64(wrightstoneMemorySaveRVA),
+		CurrentBytes:  bytesToHex(current),
+		CaptureSource: "ct085-current-view",
+		SourceVersion: "0.8.5",
+	}
 }
 
 func buildWrightstoneMemoryCave(cave, returnAddr uintptr, original []byte) ([]byte, error) {

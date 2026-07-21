@@ -31,6 +31,7 @@ func main() {
 	app := NewApp()
 	sigilGen := NewSigilGen()
 	wrightstoneGen := NewWrightstoneGen()
+	summonSaveGen := NewSummonSaveGen()
 
 	err := wails.Run(&options.App{
 		Title:     "GBFR PE Patch Tool",
@@ -50,6 +51,7 @@ func main() {
 			app.startup(ctx)
 			sigilGen.startup(ctx)
 			wrightstoneGen.startup(ctx)
+			summonSaveGen.startup(ctx)
 		},
 		OnBeforeClose: app.beforeClose,
 		OnShutdown:    app.shutdown,
@@ -57,6 +59,7 @@ func main() {
 			app,
 			sigilGen,
 			wrightstoneGen,
+			summonSaveGen,
 		},
 	})
 

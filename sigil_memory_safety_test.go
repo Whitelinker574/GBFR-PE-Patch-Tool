@@ -63,7 +63,7 @@ func TestValidateSigilMemoryUpdateUsesVerifiedDiscreteLevels(t *testing.T) {
 	}
 }
 
-func TestValidateSigilMemoryUpdateAllowsKnownMemoryOnlyRecords(t *testing.T) {
+func TestValidateSigilMemoryUpdateRejectsHistoricalRowsOutsideUnifiedCatalog(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -74,8 +74,8 @@ func TestValidateSigilMemoryUpdateAllowsKnownMemoryOnlyRecords(t *testing.T) {
 		PrimaryTraitHash:  0x73220725,
 		PrimaryTraitLevel: 15,
 	}
-	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
-		t.Fatalf("known live-memory record should remain restorable: %v", err)
+	if err := validateSigilMemoryUpdate(catalog, update); err == nil || !strings.Contains(err.Error(), "统一目录") {
+		t.Fatalf("historical runtime-only row must not bypass the unified catalog: %v", err)
 	}
 }
 

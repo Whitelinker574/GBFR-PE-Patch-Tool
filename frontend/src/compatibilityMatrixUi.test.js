@@ -5,9 +5,9 @@ import test from 'node:test'
 const source = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 
 test('version compatibility reports the current product and audited feature coverage', () => {
-  assert.match(source, /21\s*个实际工具页\s*\+\s*1\s*个主页/)
-  assert.match(source, /存档修改页面[\s\S]*?6\s*\/\s*6[\s\S]*?配装预设、因子、物品与武器、祝福、角色次数、任务与称号记录/)
-  assert.match(source, /Save editing pages[\s\S]*?6\s*\/\s*6[\s\S]*?quest and title records/)
+  assert.match(source, /22\s*个实际工具页\s*\+\s*1\s*个主页/)
+  assert.match(source, /存档修改页面[\s\S]*?7\s*\/\s*7[\s\S]*?配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录/)
+  assert.match(source, /Save editing pages[\s\S]*?7\s*\/\s*7[\s\S]*?summon saves[\s\S]*?quest and title records/)
   assert.match(source, /内存注入页面[\s\S]*?10\s*页接入[\s\S]*?综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT\s*战斗、CT\s*角色、CT\s*任务、怪物实验/)
   assert.match(source, /只读监测页面[\s\S]*?2\s*\/\s*2[\s\S]*?运行监测与角色公式采样[\s\S]*?不安装\s*Hook、不写进程或存档/)
   assert.match(source, /工具设置页面[\s\S]*?3\s*\/\s*3[\s\S]*?版本适配、语言与显示、游戏文件维护/)
@@ -16,6 +16,8 @@ test('version compatibility reports the current product and audited feature cove
   assert.match(source, /58\s*功能\s*\/\s*81\s*站点\s*\/\s*79\s*AOB/)
 	assert.match(source, /上游\s*v1\.8\.5\s*增量[\s\S]*?2\s*\/\s*2\s*已提炼[\s\S]*?称号搜索支持拼音[\s\S]*?三字节补丁/)
 	assert.match(source, /Upstream\s*v1\.8\.5\s*delta[\s\S]*?2\s*\/\s*2\s*integrated/)
+	assert.match(source, /CT\s*0\.8\.5\s*增量审计[\s\S]*?58\s*稳定项零变化\s*\+\s*1[\s\S]*?23\s*字节守卫/)
+	assert.match(source, /CT\s*0\.8\.5\s*delta audit[\s\S]*?58\s*stable sites unchanged\s*\+\s*1[\s\S]*?23-byte guard/)
 })
 
 test('version compatibility exposes exact icon coverage instead of claiming completeness', () => {

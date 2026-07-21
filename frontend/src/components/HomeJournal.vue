@@ -13,6 +13,7 @@ const groups = [
       { id: 'sigil', icon: '◇', title: '因子修改', copy: '批量生成因子与合法性校验' },
       { id: 'progression', icon: '⚔', title: '物品与武器', copy: '素材、武器等级与养成资源' },
       { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '生成祝福石与三条词条' },
+      { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增或完整修改召唤石' },
     ],
   },
   {

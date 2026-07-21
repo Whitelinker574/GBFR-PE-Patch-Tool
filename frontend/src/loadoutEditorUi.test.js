@@ -307,7 +307,9 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 })
 
 test('constructor searches the factor catalog while primary and secondary traits are freely editable', () => {
+	assert.match(source, /GetSigilList/)
 	assert.match(source, /GetTraitList/)
+	assert.match(source, /Promise\.all\(\[GetSigilList\(\), GetTraitList\(\)\]\)/)
 	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
 	assert.match(source, /v-model="constructPrimaryId"/)
 	assert.match(source, /search-placeholder="搜索主词条"/)
