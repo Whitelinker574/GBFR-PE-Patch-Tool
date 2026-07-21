@@ -118,7 +118,7 @@ func TestFormulaSampleBundleContainsOnlyRedactedEvidenceAndCandidates(t *testing
 	if err := json.Unmarshal(contents["runtime-layout.json"], &layout); err != nil {
 		t.Fatal(err)
 	}
-	if layout.GameExecutableSHA256 != runtimeCharacterPanelGameEXESHA256 || len(layout.Fields) != 4 || layout.Fields[2].DisplayScale != 10 {
+	if layout.GameExecutableSHA256 != runtimeCharacterPanelGameEXESHA256 || len(layout.Fields) != 17 || layout.Fields[2].DisplayScale != 10 {
 		t.Fatalf("incomplete runtime layout evidence: %+v", layout)
 	}
 	var candidates []FormulaScalarCandidate

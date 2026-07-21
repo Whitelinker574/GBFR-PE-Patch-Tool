@@ -4,7 +4,7 @@ import "fmt"
 
 const (
 	runtimeCharacterPanelLayoutSchemaVersion = 1
-	runtimeCharacterPanelLayoutID            = "relink-2.0.2-runtime-character-panel-v2"
+	runtimeCharacterPanelLayoutID            = "relink-2.0.2-runtime-character-panel-v3"
 	runtimeCharacterPanelGameEXESHA256       = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
 )
 
@@ -81,6 +81,19 @@ func runtimeCharacterPanelLayoutDescriptor() RuntimeCharacterPanelLayoutDescript
 			{Name: "attack", RawType: "i32", RelativeOffset: "0x08", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
 			{Name: "stunPower", RawType: "f32", RelativeOffset: "0x10", DisplayScale: runtimeCharacterPanelStunDisplayScale, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads_and_screen"},
 			{Name: "critRate", RawType: "f32", RelativeOffset: "0x14", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "permanentAttack", RawType: "f32", RelativeOffset: "0x58F8", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "permanentHP", RawType: "f32", RelativeOffset: "0x58FC", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "permanentCritRate", RawType: "f32", RelativeOffset: "0x5900", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "permanentStun", RawType: "f32", RelativeOffset: "0x5904", DisplayScale: runtimeCharacterPanelStunDisplayScale, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads_and_panel_scale"},
+			{Name: "level", RawType: "i32", RelativeOffset: "0x5B44", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "baseHP", RawType: "i32", RelativeOffset: "0x5B48", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "baseAttack", RawType: "i32", RelativeOffset: "0x5B4C", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "baseStun", RawType: "f32", RelativeOffset: "0x5B54", DisplayScale: runtimeCharacterPanelStunDisplayScale, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads_and_panel_scale"},
+			{Name: "baseCritRate", RawType: "i32", RelativeOffset: "0x5B58", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "masterHP", RawType: "i32", RelativeOffset: "0x5B64", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "masterAttack", RawType: "i32", RelativeOffset: "0x5B68", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads"},
+			{Name: "fateHP", RawType: "i32", RelativeOffset: "0x5B70", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads_and_final_panel_match"},
+			{Name: "fateAttack", RawType: "i32", RelativeOffset: "0x5B74", DisplayScale: 1, SampleRoleCount: 2, EvidenceLevel: "verified_two_roles_three_reads_and_final_panel_match"},
 		},
 		EvidenceLevel: "verified_two_roles_three_reads",
 	}

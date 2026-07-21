@@ -112,8 +112,8 @@ func TestLoadoutStatContextReadsAuditedIoOverLimitCurves(t *testing.T) {
 		values[bonus.Name] += bonus.Value
 		counts[bonus.Name]++
 	}
-	if counts["昏厥值"] != 2 || values["昏厥值"] != 4 {
-		t.Fatalf("昏厥值极限加成=%g/%d槽，期望+4/2槽", values["昏厥值"], counts["昏厥值"])
+	if counts["昏厥值"] != 2 || values["昏厥值"] != 40 {
+		t.Fatalf("昏厥值极限加成=%g/%d槽，期望原始 2+2 经 ×10 面板尺度后为 +40", values["昏厥值"], counts["昏厥值"])
 	}
 	if values["普通攻击伤害上限"] != 20 || values["能力伤害上限"] != 20 {
 		t.Fatalf("伤害上限极限加成错误: %v", values)
@@ -301,6 +301,15 @@ func TestFactorBoostPreservesAuditedFixedLevelTraits(t *testing.T) {
 	}
 	if !foundFixed {
 		t.Fatalf("固定等级特殊因子被因子强化抹成零值: %+v", bonuses)
+	}
+}
+
+func TestFactorBoosterUsesOneNumericLevelPerSkillRank(t *testing.T) {
+	if got := factorBoosterNumericLevelDelta(1); got != 1 {
+		t.Fatalf("因子强化 Lv1 的运行时数值等级增量=%d，want 1", got)
+	}
+	if got := factorBoosterNumericLevelDelta(2); got != 2 {
+		t.Fatalf("因子强化 Lv2 的运行时数值等级增量=%d，want 2", got)
 	}
 }
 

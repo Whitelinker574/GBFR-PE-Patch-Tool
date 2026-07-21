@@ -30,14 +30,33 @@ const (
 	runtimeCharacterPanelNodeKeyOffset    = uintptr(0x10)
 	runtimeCharacterPanelNodeStatusOffset = uintptr(0x30)
 
-	runtimeCharacterPanelHPOffset            = uintptr(0x04)
-	runtimeCharacterPanelAttackOffset        = uintptr(0x08)
-	runtimeCharacterPanelStunOffset          = uintptr(0x10)
-	runtimeCharacterPanelCritOffset          = uintptr(0x14)
-	runtimeCharacterPanelReadyOffset         = uintptr(0x5EBC)
-	runtimeCharacterPanelEligibilityOffset   = uintptr(0x5EBE)
-	runtimeCharacterPanelCharacterHashOffset = uintptr(0x59F0)
-	runtimeCharacterPanelStunDisplayScale    = float32(10)
+	runtimeCharacterPanelHPOffset              = uintptr(0x04)
+	runtimeCharacterPanelAttackOffset          = uintptr(0x08)
+	runtimeCharacterPanelStunOffset            = uintptr(0x10)
+	runtimeCharacterPanelCritOffset            = uintptr(0x14)
+	runtimeCharacterPanelReadyOffset           = uintptr(0x5EBC)
+	runtimeCharacterPanelEligibilityOffset     = uintptr(0x5EBE)
+	runtimeCharacterPanelCharacterHashOffset   = uintptr(0x59F0)
+	runtimeCharacterPanelStunDisplayScale      = float32(10)
+	runtimeCharacterPermanentAttackOffset      = uintptr(0x58F8)
+	runtimeCharacterPermanentHPOffset          = uintptr(0x58FC)
+	runtimeCharacterPermanentCritOffset        = uintptr(0x5900)
+	runtimeCharacterPermanentStunOffset        = uintptr(0x5904)
+	runtimeCharacterBaseLevelOffset            = uintptr(0x5B44)
+	runtimeCharacterBaseHPOffset               = uintptr(0x5B48)
+	runtimeCharacterBaseAttackOffset           = uintptr(0x5B4C)
+	runtimeCharacterBaseStunOffset             = uintptr(0x5B54)
+	runtimeCharacterBaseCritOffset             = uintptr(0x5B58)
+	runtimeCharacterMasterHPOffset             = uintptr(0x5B64)
+	runtimeCharacterMasterAttackOffset         = uintptr(0x5B68)
+	runtimeCharacterFateHPOffset               = uintptr(0x5B70)
+	runtimeCharacterFateAttackOffset           = uintptr(0x5B74)
+	runtimeCharacterWeaponSlotOffset           = uintptr(0x50)
+	runtimeCharacterWeaponHashOffset           = uintptr(0x54)
+	runtimeCharacterWrightstoneTraitOffset     = uintptr(0x70)
+	runtimeCharacterWrightstoneHashOffset      = uintptr(0x88)
+	runtimeCharacterEffectiveWeaponSkillOffset = uintptr(0xF4)
+	runtimeCharacterEffectiveWeaponSkillCount  = 4
 
 	runtimeCharacterPanelMaxIDs        = 256
 	runtimeCharacterPanelMaxChainNodes = 256
@@ -54,9 +73,303 @@ const (
 	runtimeCharacterPanelProcessAccess = windows.PROCESS_QUERY_INFORMATION | windows.PROCESS_VM_READ
 )
 
+type runtimeWeaponTrait struct {
+	Hash  uint32
+	Level int
+}
+
+type runtimeWeaponWrightstoneSnapshot struct {
+	WeaponSlotID    uint32
+	WeaponHash      uint32
+	WrightstoneHash uint32
+	Traits          []runtimeWeaponTrait
+	Skills          []runtimeWeaponTrait
+}
+
+func readRuntimeWeaponWrightstoneSnapshot(memory runtimeCharacterPanelMemory, status uintptr) (runtimeWeaponWrightstoneSnapshot, error) {
+	buffer := make([]byte, int(runtimeCharacterEffectiveWeaponSkillOffset+runtimeCharacterEffectiveWeaponSkillCount*8))
+	if err := memory.ReadAt(status, buffer); err != nil {
+		return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("读取运行时武器快照失败: %w", err)
+	}
+	readU32 := func(offset uintptr) uint32 {
+		return binary.LittleEndian.Uint32(buffer[int(offset):])
+	}
+	snapshot := runtimeWeaponWrightstoneSnapshot{
+		WeaponSlotID:    readU32(runtimeCharacterWeaponSlotOffset),
+		WeaponHash:      readU32(runtimeCharacterWeaponHashOffset),
+		WrightstoneHash: readU32(runtimeCharacterWrightstoneHashOffset),
+	}
+	if snapshot.WeaponSlotID == 0 || snapshot.WeaponSlotID == EmptyHash || snapshot.WeaponHash == 0 || snapshot.WeaponHash == EmptyHash {
+		return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武器快照没有有效武器")
+	}
+	for index := 0; index < 3; index++ {
+		offset := runtimeCharacterWrightstoneTraitOffset + uintptr(index*8)
+		hash, level := readU32(offset), int(readU32(offset+4))
+		if hash == 0 || hash == EmptyHash || level <= 0 {
+			continue
+		}
+		if level > 100 {
+			return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武炼结晶词条等级异常: %d", level)
+		}
+		snapshot.Traits = append(snapshot.Traits, runtimeWeaponTrait{Hash: hash, Level: level})
+	}
+	for index := 0; index < runtimeCharacterEffectiveWeaponSkillCount; index++ {
+		offset := runtimeCharacterEffectiveWeaponSkillOffset + uintptr(index*8)
+		hash, level := readU32(offset), int(readU32(offset+4))
+		if hash == 0 || hash == EmptyHash || level <= 0 {
+			continue
+		}
+		if level > 100 {
+			return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武器技能等级异常: %d", level)
+		}
+		snapshot.Skills = append(snapshot.Skills, runtimeWeaponTrait{Hash: hash, Level: level})
+	}
+	return snapshot, nil
+}
+
+func readStableRuntimeWeaponWrightstoneSnapshot(readSnapshot func() (runtimeWeaponWrightstoneSnapshot, error)) (runtimeWeaponWrightstoneSnapshot, error) {
+	var first runtimeWeaponWrightstoneSnapshot
+	for index := 0; index < 3; index++ {
+		current, err := readSnapshot()
+		if err != nil {
+			return runtimeWeaponWrightstoneSnapshot{}, err
+		}
+		if index == 0 {
+			first = current
+			continue
+		}
+		if current.WeaponSlotID != first.WeaponSlotID || current.WeaponHash != first.WeaponHash || current.WrightstoneHash != first.WrightstoneHash || len(current.Traits) != len(first.Traits) {
+			return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武器快照在连续三次读取间变化")
+		}
+		for traitIndex := range current.Traits {
+			if current.Traits[traitIndex] != first.Traits[traitIndex] {
+				return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武炼结晶词条在连续三次读取间变化")
+			}
+		}
+		if len(current.Skills) != len(first.Skills) {
+			return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武器技能在连续三次读取间变化")
+		}
+		for skillIndex := range current.Skills {
+			if current.Skills[skillIndex] != first.Skills[skillIndex] {
+				return runtimeWeaponWrightstoneSnapshot{}, fmt.Errorf("运行时武器技能在连续三次读取间变化")
+			}
+		}
+	}
+	return first, nil
+}
+
+func loadoutRuntimeWeaponObservation(charaHash, expectedWeaponSlotID uint32) (*LoadoutWeaponWrightstone, []runtimeWeaponTrait, error) {
+	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer process.Close()
+	object, err := locateRuntimeCharacterPanelObject(process, process.moduleBase, charaHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	snapshot, err := readStableRuntimeWeaponWrightstoneSnapshot(func() (runtimeWeaponWrightstoneSnapshot, error) {
+		return readRuntimeWeaponWrightstoneSnapshot(process, object.Status)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if snapshot.WeaponSlotID != expectedWeaponSlotID {
+		return nil, nil, fmt.Errorf("运行时武器槽 %d 与草稿武器槽 %d 不同", snapshot.WeaponSlotID, expectedWeaponSlotID)
+	}
+	catalog, err := LoadWrightstoneCatalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	result := &LoadoutWeaponWrightstone{
+		Hash: hashText(snapshot.WrightstoneHash), Evidence: "runtime-2.0.2-three-stable-reads",
+		RuntimeObserved: true, StableReads: 3,
+	}
+	if definition := catalog.LookupWrightstoneByHash(snapshot.WrightstoneHash); definition != nil {
+		result.InternalID = definition.InternalID
+		result.Name = cnWrightstone(definition.DisplayName)
+	}
+	for index, observed := range snapshot.Traits {
+		trait := catalog.LookupTraitByHash(observed.Hash)
+		entry := LoadoutWeaponWrightstoneTrait{Index: index, Hash: hashText(observed.Hash), Level: observed.Level}
+		if trait != nil {
+			entry.TraitID = trait.InternalID
+			entry.Name = cnWrightstoneTrait(trait.DisplayName)
+		}
+		result.Traits = append(result.Traits, entry)
+	}
+	return result, append([]runtimeWeaponTrait(nil), snapshot.Skills...), nil
+}
+
+func loadoutRuntimeWeaponWrightstone(charaHash, expectedWeaponSlotID uint32) (*LoadoutWeaponWrightstone, error) {
+	wrightstone, _, err := loadoutRuntimeWeaponObservation(charaHash, expectedWeaponSlotID)
+	return wrightstone, err
+}
+
 type runtimeCharacterPanelVersionGuard struct {
 	RVA   uintptr
 	Bytes []byte
+}
+
+// runtimeCharacterGrowthSnapshot is the character-specific producer input
+// immediately next to the final status object. Unlike the on-disk save, it
+// reflects the character data currently loaded by the game (including Fate
+// episode growth after a save was reloaded or replaced).
+type runtimeCharacterGrowthSnapshot struct {
+	Level        int
+	BaseHP       int
+	BaseATK      int
+	BaseStun     float64
+	BaseCritRate float64
+	MasterHP     int
+	MasterATK    int
+	FateHP       int
+	FateATK      int
+	Permanent    LoadoutPermanentPanelStats
+}
+
+func readRuntimeCharacterGrowthSnapshot(memory runtimeCharacterPanelMemory, status uintptr) (runtimeCharacterGrowthSnapshot, error) {
+	readI32 := func(offset uintptr) (int, error) {
+		value, err := readRuntimePanelI32Offset(memory, status, offset)
+		return int(value), err
+	}
+	level, err := readI32(runtimeCharacterBaseLevelOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	baseHP, err := readI32(runtimeCharacterBaseHPOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	baseATK, err := readI32(runtimeCharacterBaseAttackOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	baseStun, err := readRuntimePanelF32Offset(memory, status, runtimeCharacterBaseStunOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	baseCrit, err := readI32(runtimeCharacterBaseCritOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	masterHP, err := readI32(runtimeCharacterMasterHPOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	masterATK, err := readI32(runtimeCharacterMasterAttackOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	fateHP, err := readI32(runtimeCharacterFateHPOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	fateATK, err := readI32(runtimeCharacterFateAttackOffset)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	permanent, err := readRuntimePermanentPanelStats(memory, status)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	result := runtimeCharacterGrowthSnapshot{
+		Level: level, BaseHP: baseHP, BaseATK: baseATK, BaseStun: float64(baseStun), BaseCritRate: float64(baseCrit),
+		MasterHP: masterHP, MasterATK: masterATK, FateHP: fateHP, FateATK: fateATK, Permanent: permanent,
+	}
+	if result.Level < 1 || result.Level > 200 || result.BaseHP < 0 || result.BaseHP > 999999 || result.BaseATK < 0 || result.BaseATK > 999999 ||
+		math.IsNaN(result.BaseStun) || math.IsInf(result.BaseStun, 0) || result.BaseStun < 0 || result.BaseStun > 1000 ||
+		result.BaseCritRate < 0 || result.BaseCritRate > 1000 || result.MasterHP < 0 || result.MasterHP > 999999 || result.MasterATK < 0 || result.MasterATK > 999999 ||
+		result.FateHP < 0 || result.FateHP > 999999 || result.FateATK < 0 || result.FateATK > 999999 {
+		return runtimeCharacterGrowthSnapshot{}, fmt.Errorf("运行时角色成长快照数值异常: %+v", result)
+	}
+	return result, nil
+}
+
+func readStableRuntimeCharacterGrowthSnapshots(readSnapshot func() (runtimeCharacterGrowthSnapshot, error)) (runtimeCharacterGrowthSnapshot, error) {
+	var first runtimeCharacterGrowthSnapshot
+	for index := 0; index < 3; index++ {
+		current, err := readSnapshot()
+		if err != nil {
+			return runtimeCharacterGrowthSnapshot{}, err
+		}
+		if index == 0 {
+			first = current
+			continue
+		}
+		if current != first {
+			return runtimeCharacterGrowthSnapshot{}, fmt.Errorf("运行时角色成长快照在连续三次读取间变化")
+		}
+	}
+	return first, nil
+}
+
+func loadoutRuntimeCharacterGrowth(charaHash uint32) (runtimeCharacterGrowthSnapshot, error) {
+	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	defer process.Close()
+	object, err := locateRuntimeCharacterPanelObject(process, process.moduleBase, charaHash)
+	if err != nil {
+		return runtimeCharacterGrowthSnapshot{}, err
+	}
+	return readStableRuntimeCharacterGrowthSnapshots(func() (runtimeCharacterGrowthSnapshot, error) {
+		return readRuntimeCharacterGrowthSnapshot(process, object.Status)
+	})
+}
+
+func readRuntimePermanentPanelStats(memory runtimeCharacterPanelMemory, status uintptr) (LoadoutPermanentPanelStats, error) {
+	attack, err := readRuntimePanelF32Offset(memory, status, runtimeCharacterPermanentAttackOffset)
+	if err != nil {
+		return LoadoutPermanentPanelStats{}, err
+	}
+	hp, err := readRuntimePanelF32Offset(memory, status, runtimeCharacterPermanentHPOffset)
+	if err != nil {
+		return LoadoutPermanentPanelStats{}, err
+	}
+	crit, err := readRuntimePanelF32Offset(memory, status, runtimeCharacterPermanentCritOffset)
+	if err != nil {
+		return LoadoutPermanentPanelStats{}, err
+	}
+	stun, err := readRuntimePanelF32Offset(memory, status, runtimeCharacterPermanentStunOffset)
+	if err != nil {
+		return LoadoutPermanentPanelStats{}, err
+	}
+	for _, value := range []float32{attack, hp, crit, stun} {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) || value < 0 || value > 9999999 {
+			return LoadoutPermanentPanelStats{}, fmt.Errorf("运行时角色强化聚合值异常: %v/%v/%v/%v", attack, hp, crit, stun)
+		}
+	}
+	return finalizePermanentPanelStats(LoadoutPermanentPanelStats{
+		Attack: float64(attack), HP: float64(hp), CritRate: float64(crit), StunRaw: float64(stun),
+	}), nil
+}
+
+func readStableRuntimePermanentPanelStats(readSnapshot func() (LoadoutPermanentPanelStats, error)) (LoadoutPermanentPanelStats, error) {
+	var first LoadoutPermanentPanelStats
+	for index := 0; index < 3; index++ {
+		current, err := readSnapshot()
+		if err != nil {
+			return LoadoutPermanentPanelStats{}, err
+		}
+		if index == 0 {
+			first = current
+			continue
+		}
+		if current != first {
+			return LoadoutPermanentPanelStats{}, fmt.Errorf("运行时角色强化聚合值在连续三次读取间变化")
+		}
+	}
+	return first, nil
+}
+
+func loadoutRuntimePermanentPanelStats(charaHash uint32) (LoadoutPermanentPanelStats, error) {
+	snapshot, err := loadoutRuntimeCharacterGrowth(charaHash)
+	if err != nil {
+		return LoadoutPermanentPanelStats{}, err
+	}
+	return snapshot.Permanent, nil
 }
 
 // These anchors were checked byte-for-byte against the shipped 2.0.2 image.

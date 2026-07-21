@@ -13,16 +13,19 @@ import (
 // they are not a claim that the final in-combat panel has been reconstructed.
 type LoadoutStatContext struct {
 	CharaHash             string                  `json:"charaHash"`
+	OwnerCode             string                  `json:"ownerCode"`
 	CharaUnitID           uint32                  `json:"charaUnitId"`
 	Level                 int                     `json:"level"`
 	BaseHP                int                     `json:"baseHp"`
 	BaseATK               int                     `json:"baseAtk"`
 	BaseStun              float64                 `json:"baseStun"`
+	BaseStunPanel         float64                 `json:"baseStunPanel"`
 	BaseCritRate          float64                 `json:"baseCritRate"`
 	PermanentGrowth       LoadoutPermanentGrowth  `json:"permanentGrowth"`
 	BaselineHP            int                     `json:"baselineHp"`
 	BaselineATK           int                     `json:"baselineAtk"`
 	BaselineStun          float64                 `json:"baselineStun"`
+	BaselineStunRaw       float64                 `json:"baselineStunRaw"`
 	BaselineCritRate      float64                 `json:"baselineCritRate"`
 	BaselineDamageCap     float64                 `json:"baselineDamageCap"`
 	Summons               []LoadoutSummon         `json:"summons"`
@@ -55,6 +58,8 @@ type LoadoutOverLimitBonus struct {
 	Name          string  `json:"name"`
 	Level         int     `json:"level"`
 	Value         float64 `json:"value"`
+	RawValue      float64 `json:"rawValue"`
+	DisplayScale  float64 `json:"displayScale"`
 	Unit          string  `json:"unit"`
 }
 
@@ -336,9 +341,16 @@ func readOverLimit(data *SaveDataBinary, charaUnitID uint32, warnings *[]string)
 			appendWarning(warnings, "极限加成槽 %d 的属性 %s 不在已审计目录中，已忽略", index+1, hashText(hash))
 			continue
 		}
+		rawValue := definition.values[levelNumber-1]
+		displayScale := 1.0
+		value := rawValue
+		if definition.name == "昏厥值" {
+			displayScale = legacyMasteryStunPanelScale
+			value = rawValue * displayScale
+		}
 		result = append(result, LoadoutOverLimitBonus{
 			Index: index, UnitID: unitID, AttributeHash: hashText(hash), Name: definition.name,
-			Level: levelNumber, Value: definition.values[levelNumber-1], Unit: definition.unit,
+			Level: levelNumber, Value: value, RawValue: rawValue, DisplayScale: displayScale, Unit: definition.unit,
 		})
 	}
 	return result, nil
@@ -399,16 +411,40 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	context := &LoadoutStatContext{
 		CharaHash: hashText(charaHash), CharaUnitID: charaUnitID,
 		Level: level, BaseHP: baseHP, BaseATK: baseATK,
-		BaseStun: baseStun, BaseCritRate: float64(baseCritRate),
+		BaseStun: baseStun, BaseStunPanel: baseStun * legacyMasteryStunPanelScale, BaseCritRate: float64(baseCritRate),
 	}
 	context.PermanentGrowth, err = readLoadoutPermanentGrowth(data, charaHash, charaUnitID, &context.Warnings)
 	if err != nil {
 		return nil, err
 	}
-	context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP
-	context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK
-	context.BaselineStun = context.BaseStun
-	context.BaselineCritRate = context.BaseCritRate
+	editableSave, err := LoadSave(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := loadProgressionCatalog(); err != nil {
+		return nil, err
+	}
+	index := buildLoadoutIndex(editableSave)
+	context.OwnerCode = index.deriveOwnerCode(editableSave, charaHash)
+	if context.OwnerCode == "" {
+		appendWarning(&context.Warnings, "角色 %08X 的目录代码无法由配装专精/武器双源确定，常驻角色强化暂不估算", charaHash)
+	} else {
+		inventory := progressionInventory(editableSave, path)
+		context.PermanentGrowth.LegacyMastery, err = deriveLegacyMasteryGrowth(
+			context.OwnerCode,
+			context.PermanentGrowth.LegacyProgress,
+			legacyMasteryWeaponStates(inventory, context.OwnerCode),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	legacy := context.PermanentGrowth.LegacyMastery.Total
+	context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP + int(legacy.HP)
+	context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK + int(legacy.Attack)
+	context.BaselineStunRaw = context.BaseStun + legacy.StunRaw
+	context.BaselineStun = context.BaselineStunRaw * legacyMasteryStunPanelScale
+	context.BaselineCritRate = context.BaseCritRate + legacy.CritRate
 	context.BaselineDamageCap = context.PermanentGrowth.MasterDamageCap
 	context.Summons = readSummonInventory(data, catalog, &context.Warnings)
 
@@ -439,6 +475,39 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	context.OverLimit, err = readOverLimit(data, charaUnitID, &context.Warnings)
 	if err != nil {
 		return nil, err
+	}
+	if observed, runtimeErr := loadoutRuntimeCharacterGrowth(charaHash); runtimeErr == nil {
+		context.Level = observed.Level
+		context.BaseHP = observed.BaseHP
+		context.BaseATK = observed.BaseATK
+		context.BaseStun = observed.BaseStun
+		context.BaseStunPanel = observed.BaseStun * legacyMasteryStunPanelScale
+		context.BaseCritRate = observed.BaseCritRate
+		context.PermanentGrowth.MasterHP = observed.MasterHP
+		context.PermanentGrowth.MasterATK = observed.MasterATK
+		context.PermanentGrowth.FateHP = observed.FateHP
+		context.PermanentGrowth.FateATK = observed.FateATK
+		context.PermanentGrowth.RuntimeObserved = true
+		context.PermanentGrowth.StableReads = 3
+		context.PermanentGrowth.Evidence = "runtime-2.0.2-character-growth-three-stable-reads"
+		legacy := &context.PermanentGrowth.LegacyMastery
+		legacy.Total = legacyMasteryFromRuntimeAggregate(observed.Permanent, context.OverLimit)
+		legacy.Complete = true
+		legacy.RuntimeObserved = true
+		legacy.StableReads = 3
+		legacy.Evidence = "runtime-2.0.2-three-stable-reads-minus-overlimit"
+		context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP + int(legacy.Total.HP)
+		context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK + int(legacy.Total.Attack)
+		context.BaselineStunRaw = context.BaseStun + legacy.Total.StunRaw
+		context.BaselineStun = context.BaselineStunRaw * legacyMasteryStunPanelScale
+		context.BaselineCritRate = context.BaseCritRate + legacy.Total.CritRate
+	}
+	if context.OwnerCode != "" && !context.PermanentGrowth.LegacyMastery.Complete {
+		appendWarning(&context.Warnings,
+			"角色强化四页进度 %d/%d 尚不能由存档标量还原逐节点选择；未把候选值伪装成最终值",
+			context.PermanentGrowth.LegacyMastery.SaveProgress,
+			context.PermanentGrowth.LegacyMastery.RequiredProgress,
+		)
 	}
 	return context, nil
 }
@@ -557,6 +626,13 @@ func applyFactorLevelBoost(pairs []struct {
 	}
 }
 
+// 因子强化's skill_status row is a direct +1/+2 on the numeric trait level.
+// Wrightstone effective levels are read separately from the runtime weapon
+// snapshot and must never be mistaken for this factor-only boost.
+func factorBoosterNumericLevelDelta(skillLevel int) int {
+	return max(0, skillLevel)
+}
+
 // LoadoutSimulateBuild simulates the complete editor draft without writing it:
 // weapon stats and weapon skills, stored/constructed sigils, selected mastery,
 // four summons and the selected character's audited over-limit bonuses.
@@ -588,6 +664,14 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		}
 		if _, validateErr := validateLoadoutWeaponDefinition(storedHash, ownerCode); validateErr != nil {
 			return nil, validateErr
+		}
+		// The running game owns an effective weapon snapshot whose Wrightstone
+		// traits can differ from the on-disk save (for example after an external
+		// save edit without a reload). Prefer three stable read-only observations
+		// only when the runtime weapon slot is the weapon being simulated.
+		if runtimeWrightstone, runtimeSkills, runtimeErr := loadoutRuntimeWeaponObservation(charaHash, weaponSlotID); runtimeErr == nil {
+			weapon.Wrightstone = runtimeWrightstone
+			applyRuntimeWeaponSkillLevels(weapon.Skills, runtimeSkills)
 		}
 	}
 
@@ -625,8 +709,8 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	factorBoost := 0
 	if weapon != nil {
 		for _, skill := range weapon.Skills {
-			if skill.TraitID == "SKILL_113_00" && skill.Level > factorBoost {
-				factorBoost = skill.Level
+			if skill.TraitID == "SKILL_113_00" {
+				factorBoost = max(factorBoost, factorBoosterNumericLevelDelta(skill.Level))
 			}
 		}
 	}
@@ -638,6 +722,17 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		level int
 	}(nil), factorPairs...)
 	if weapon != nil {
+		if weapon.Wrightstone != nil {
+			for _, trait := range weapon.Wrightstone.Traits {
+				hash, parseErr := ParseHashHex(trait.Hash)
+				if parseErr == nil && hash != 0 && hash != EmptyHash && trait.Level > 0 {
+					pairs = append(pairs, struct {
+						hash  uint32
+						level int
+					}{hash, trait.Level})
+				}
+			}
+		}
 		for _, skill := range weapon.Skills {
 			hash, parseErr := ParseHashHex(skill.TraitHash)
 			if parseErr == nil && hash != 0 && hash != EmptyHash && skill.Level > 0 {
@@ -689,6 +784,14 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	// sigil catalog. Their official ID was resolved from weapon/skill tables,
 	// so prefer that ID over the raw-hash fallback used for unknown traits.
 	if weapon != nil {
+		if weapon.Wrightstone != nil {
+			for _, trait := range weapon.Wrightstone.Traits {
+				hash, parseErr := ParseHashHex(trait.Hash)
+				if parseErr == nil && trait.TraitID != "" {
+					hashToID[hash] = trait.TraitID
+				}
+			}
+		}
 		for _, skill := range weapon.Skills {
 			hash, parseErr := ParseHashHex(skill.TraitHash)
 			if parseErr == nil && skill.TraitID != "" {
@@ -702,6 +805,15 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	// Preserve real summon instance names in main-trait source attribution.
 	sourcesByTraitID := map[string][]string{}
 	if weapon != nil {
+		if weapon.Wrightstone != nil {
+			for _, trait := range weapon.Wrightstone.Traits {
+				if trait.TraitID == "" {
+					continue
+				}
+				source := fmt.Sprintf("武炼结晶 · %s · %s Lv%d", weapon.Wrightstone.Name, trait.Name, trait.Level)
+				sourcesByTraitID[trait.TraitID] = append(sourcesByTraitID[trait.TraitID], source)
+			}
+		}
 		for _, skill := range weapon.Skills {
 			if skill.TraitID == "" {
 				continue
@@ -803,7 +915,7 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 			continue
 		}
 		if node, ok := skillboardNodeForHash(hash); ok && strings.TrimSpace(node.Desc) == "昏厥值+0.4" {
-			panelInput.Warnings = append(panelInput.Warnings, "专精“昏厥值+0.4”来自 2.0.2 原始节点 Value1=0.4；内部显示尺度仍待游戏运行时 A/B 样本闭环。")
+			panelInput.Warnings = append(panelInput.Warnings, "专精“昏厥值+0.4”按游戏 f32 原始单位读取，并按已验证 ×10 面板尺度显示为 +4。")
 			break
 		}
 	}

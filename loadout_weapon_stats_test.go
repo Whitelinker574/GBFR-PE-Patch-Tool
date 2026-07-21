@@ -60,6 +60,20 @@ func TestReadLoadoutWeaponContextReadsRealIoTerminusWeapon(t *testing.T) {
 	if context.Skills[0].Name != "浩劫" || !strings.Contains(context.Skills[0].Effect, "150000") || !strings.Contains(context.Skills[0].Effect, "60.0%") || strings.Count(context.Skills[0].Effect, "430.0%") != 3 {
 		t.Fatalf("SKILL_143_10 must use its independent DLC 2.0 Lv30 values, got %+v", context.Skills[0])
 	}
+	if context.Wrightstone == nil || context.Wrightstone.Hash != "09E6F629" || len(context.Wrightstone.Traits) != 3 {
+		t.Fatalf("equipped weapon wrightstone was not resolved: %+v", context.Wrightstone)
+	}
+	wantWrightstoneTraits := []struct {
+		Hash  string
+		ID    string
+		Level int
+	}{{"CEB700EE", "SKILL_004_00", 8}, {"7CCFF74F", "SKILL_067_00", 7}, {"6018372B", "SKILL_078_00", 4}}
+	for index, want := range wantWrightstoneTraits {
+		got := context.Wrightstone.Traits[index]
+		if got.Hash != want.Hash || got.TraitID != want.ID || got.Level != want.Level || got.Name == "" {
+			t.Fatalf("wrightstone trait %d = %+v, want %+v", index, got, want)
+		}
+	}
 	if !context.FormulaVerified {
 		t.Fatalf("the 2.0.2 runtime aggregation path now verifies the complete weapon ledger: %+v", context.Warnings)
 	}
@@ -269,5 +283,16 @@ func TestReadLoadoutWeaponContextFallsBackToBaseAndAwakeningSkillsWithoutTransce
 		if got.TraitHash != wantHashes[index] || got.Level != wantLevels[index] || got.Source != wantSources[index] || got.Name == "" || got.SourceWeapon != context.Name {
 			t.Fatalf("non-transcended skill %d = %+v", index, got)
 		}
+	}
+}
+
+func TestApplyRuntimeWeaponSkillLevelsUsesCharacterSpecificEffectiveLevel(t *testing.T) {
+	skills := []LoadoutWeaponSkill{{TraitHash: "1E1CECCE", TraitID: "SKILL_143_10", Level: 30}}
+	applyRuntimeWeaponSkillLevels(skills, []runtimeWeaponTrait{{Hash: 0x1E1CECCE, Level: 32}})
+	if skills[0].Level != 32 || skills[0].StaticLevel != 30 || !skills[0].RuntimeObserved || skills[0].StableReads != 3 {
+		t.Fatalf("runtime effective weapon skill was not preserved with its static source: %+v", skills[0])
+	}
+	if !strings.Contains(skills[0].Effect, "攻击力+64.0%") {
+		t.Fatalf("runtime Lv32 effect was not re-rendered: %q", skills[0].Effect)
 	}
 }

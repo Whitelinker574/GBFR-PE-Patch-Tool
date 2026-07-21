@@ -3,7 +3,7 @@
   "calibrationId": "gbfr-2.0.2-field-runtime-2026-07-21",
   "gameVersion": "2.0.2",
   "gameExecutableSha256": "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F",
-  "layoutId": "relink-2.0.2-runtime-character-panel-v2",
+  "layoutId": "relink-2.0.2-runtime-character-panel-v3",
   "access": "PROCESS_QUERY_INFORMATION | PROCESS_VM_READ",
   "runtimeLayout": {
     "managerRva": "0x7C24980",
@@ -56,8 +56,135 @@
         "displayScale": 1,
         "sampleRoleCount": 2,
         "evidenceLevel": "verified_two_roles_three_reads_and_screen"
+      },
+      {
+        "name": "permanentAttack",
+        "rawType": "f32",
+        "relativeOffset": "0x58F8",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "permanentHP",
+        "rawType": "f32",
+        "relativeOffset": "0x58FC",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "permanentCritRate",
+        "rawType": "f32",
+        "relativeOffset": "0x5900",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "permanentStun",
+        "rawType": "f32",
+        "relativeOffset": "0x5904",
+        "displayScale": 10,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads_and_panel_scale"
+      },
+      {
+        "name": "level",
+        "rawType": "i32",
+        "relativeOffset": "0x5B44",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "baseHP",
+        "rawType": "i32",
+        "relativeOffset": "0x5B48",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "baseAttack",
+        "rawType": "i32",
+        "relativeOffset": "0x5B4C",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "baseStun",
+        "rawType": "f32",
+        "relativeOffset": "0x5B54",
+        "displayScale": 10,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads_and_panel_scale"
+      },
+      {
+        "name": "baseCritRate",
+        "rawType": "i32",
+        "relativeOffset": "0x5B58",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "masterHP",
+        "rawType": "i32",
+        "relativeOffset": "0x5B64",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "masterAttack",
+        "rawType": "i32",
+        "relativeOffset": "0x5B68",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads"
+      },
+      {
+        "name": "fateHP",
+        "rawType": "i32",
+        "relativeOffset": "0x5B70",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads_and_final_panel_match"
+      },
+      {
+        "name": "fateAttack",
+        "rawType": "i32",
+        "relativeOffset": "0x5B74",
+        "displayScale": 1,
+        "sampleRoleCount": 2,
+        "evidenceLevel": "verified_two_roles_three_reads_and_final_panel_match"
       }
     ]
+  },
+  "runtimeWeaponSnapshot": {
+    "access": "same read-only character status object; three identical reads required",
+    "fields": [
+      { "name": "weaponSlotId", "rawType": "u32", "relativeOffset": "0x50" },
+      { "name": "weaponHash", "rawType": "u32", "relativeOffset": "0x54" },
+      { "name": "wrightstoneTraits", "rawType": "3 x (u32 hash, i32 level)", "relativeOffset": "0x70" },
+      { "name": "wrightstoneHash", "rawType": "u32", "relativeOffset": "0x88" },
+      { "name": "effectiveWeaponSkills", "rawType": "4 x (u32 hash, i32 level)", "relativeOffset": "0xF4" }
+    ],
+    "roleObservations": [
+      {
+        "role": "Io",
+        "weaponSkillObservation": "rebuilt Catastrophe effective Lv32 while the static weapon table level is Lv30",
+        "wrightstoneObservation": "Stun Power Lv20, Supplementary Damage Lv15 and the character's third live trait"
+      },
+      {
+        "role": "Djeeta",
+        "weaponSkillObservation": "Catastrophe effective Lv25 equals the static weapon level",
+        "wrightstoneObservation": "Stun Power Lv20, Supplementary Damage Lv15, Critical Hit Rate Lv10"
+      }
+    ],
+    "evidenceLevel": "verified_two_roles_three_reads_and_final_panel_match"
   },
   "roleSamples": [
     {

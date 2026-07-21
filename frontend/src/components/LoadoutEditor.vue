@@ -90,6 +90,19 @@ const calculationWarnings = computed(() => {
   }
   return [...new Set(warnings.filter(Boolean))]
 })
+const runtimeStatComparisons = computed(() => {
+  if (!runtimePanelStats.value || !finalStats.value) return []
+  return [
+    ['HP', 'hp', ''],
+    ['攻击力', 'attack', ''],
+    ['暴击率', 'critRate', 'pct'],
+    ['昏厥值', 'stunPower', ''],
+  ].map(([label, field, unit]) => {
+    const estimate = Number(finalStats.value?.[field] || 0)
+    const runtime = Number(runtimePanelStats.value?.[field] || 0)
+    return { label, field, unit, estimate, runtime, delta: estimate - runtime }
+  })
+})
 
 // 名称字节数（后端上限 63）
 function utf8Bytes(s) { return new TextEncoder().encode(s || '').length }
@@ -301,6 +314,17 @@ function formatPanelStat(field, unit = '') {
   const isRuntimeExact = statPanelMode.value === 'runtime' && Boolean(runtimePanelStats.value) && field !== 'damageCap'
   if (isRuntimeExact) return formatted
   return `≈${formatted}`
+}
+function formatComparisonStat(value, unit = '') { return formatFinalStat(value, unit) }
+function formatComparisonDelta(value, unit = '') {
+  const numeric = Number(value || 0)
+  if (Math.abs(numeric) < 0.0001) return '一致'
+  return `草稿${numeric > 0 ? '+' : '−'}${formatFinalStat(Math.abs(numeric), unit)}`
+}
+function mergedTraitBonus(trait) {
+  const id = String(trait?.traitId || '').toUpperCase()
+  const hash = normalizedHash(trait?.hash)
+  return bonuses.value.find(item => String(item?.traitId || '').toUpperCase() === id || normalizedHash(item?.traitId) === hash) || null
 }
 
 async function readRuntimePanel(silent = false) {
@@ -1018,11 +1042,21 @@ async function apply() {
               <dd class="profile-stat-value">{{ formatPanelStat('damageCap', 'signedPct') }}</dd>
             </div>
           </dl>
+          <div v-if="runtimeStatComparisons.length" class="runtime-comparison" aria-label="配装草稿与游戏实读逐项对照">
+            <div class="runtime-comparison-head"><b>草稿 / 当前游戏逐项对照</b><small>当前游戏实读不等于未写入的草稿；差值保留用于校准</small></div>
+            <div v-for="row in runtimeStatComparisons" :key="row.field" class="runtime-comparison-row" :class="{ exact: Math.abs(row.delta) < 0.0001 }">
+              <b>{{ row.label }}</b>
+              <span><small>草稿</small>{{ formatComparisonStat(row.estimate, row.unit) }}</span>
+              <span><small>实读</small>{{ formatComparisonStat(row.runtime, row.unit) }}</span>
+              <em>{{ formatComparisonDelta(row.delta, row.unit) }}</em>
+            </div>
+          </div>
         </div>
         <p v-if="simulationError" class="simulation-error ui-notice is-danger" role="alert">{{ simulationError }}</p>
         <span class="source-badge">真实存档 · {{ selectedLoadout ? '槽' + String(selectedLoadout.slot).padStart(2, '0') : '新配装' }}</span>
         <details class="final-stat-detail-disclosure ui-disclosure">
           <summary>查看属性计算明细</summary>
+          <p v-if="statContext.permanentGrowth?.runtimeObserved" class="runtime-growth-evidence">角色基础、命运篇章、角色强化固定成长：2.0.2 运行时状态对象，连续 {{ statContext.permanentGrowth?.stableReads }} 次稳定读取（角色独立）</p>
           <div class="panel-base-grid">
             <span><small>角色基础 HP</small><b>{{ formatStatNumber(statContext.baseHp) }}</b></span>
             <span><small>角色基础攻击</small><b>{{ formatStatNumber(statContext.baseAtk) }}</b></span>
@@ -1037,6 +1071,29 @@ async function apply() {
             <span><small>角色强化伤害上限</small><b>{{ formatFinalStat(statContext.baselineDamageCap, 'signedPct') }}</b></span>
             <span v-if="selectedWeaponContext"><small>武器 HP</small><b>{{ formatFinalStat(selectedWeaponContext.total?.hp) }}</b></span>
             <span v-if="selectedWeaponContext"><small>武器攻击</small><b>{{ formatFinalStat(selectedWeaponContext.total?.attack) }}</b></span>
+          </div>
+          <div class="legacy-mastery-audit" aria-label="角色强化四页固定属性">
+            <div class="legacy-mastery-audit-head">
+              <b>角色强化四页</b>
+              <small v-if="statContext.permanentGrowth?.legacyMastery?.runtimeObserved">2.0.2 运行时聚合 · 连续 {{ statContext.permanentGrowth?.legacyMastery?.stableReads }} 次稳定读取</small>
+              <small v-else-if="statContext.permanentGrowth?.legacyMastery?.complete">2.0.2 解包表 + 存档完成进度</small>
+              <small v-else>进度无法逐节点还原 · 不假算</small>
+            </div>
+            <div class="legacy-mastery-tabs">
+              <article v-for="tab in [
+                ['攻击强化', statContext.permanentGrowth?.legacyMastery?.attackTab],
+                ['HP・抗性', statContext.permanentGrowth?.legacyMastery?.defenseTab],
+                ['武器收集加成', statContext.permanentGrowth?.legacyMastery?.collectionTab],
+                ['上限突破', statContext.permanentGrowth?.legacyMastery?.transcendenceTab],
+              ]" :key="tab[0]">
+                <strong>{{ tab[0] }}</strong>
+                <span>HP <b>{{ formatSignedValue(tab[1]?.hp) }}</b></span>
+                <span>攻击 <b>{{ formatSignedValue(tab[1]?.attack) }}</b></span>
+                <span>暴击 <b>{{ formatSignedValue(tab[1]?.critRate, 'pct') }}</b></span>
+                <span>昏厥 <b>{{ formatSignedValue(tab[1]?.stunPanel) }}</b></span>
+                <small>昏厥原始 f32 {{ tab[1]?.stunRaw || 0 }} ×10 面板</small>
+              </article>
+            </div>
           </div>
           <div class="cap-detail-grid" aria-label="三类伤害上限明细">
             <span><small>普通伤害上限</small><b>{{ formatFinalStat(finalStats?.normalDamageCap, 'signedPct') }}</b></span>
@@ -1462,10 +1519,27 @@ async function apply() {
           </div>
           <div class="weapon-skill-block">
             <div class="weapon-skill-title"><b>武器技能</b><span>{{ selectedWeaponContext?.name || '未选择武器' }}</span></div>
+            <div v-if="selectedWeaponContext?.wrightstone" class="wrightstone-audit" aria-label="武炼结晶有效词条">
+              <div class="wrightstone-audit-head">
+                <span><b>武炼结晶 · {{ selectedWeaponContext.wrightstone.name || '未收录名称' }}</b><small>{{ selectedWeaponContext.wrightstone.hash }}</small></span>
+                <em v-if="selectedWeaponContext.wrightstone.runtimeObserved">游戏运行时 · {{ selectedWeaponContext.wrightstone.stableReads }} 次稳定读取</em>
+                <em v-else>存档候选 · 写入或重载后需游戏复核</em>
+              </div>
+              <article v-for="trait in selectedWeaponContext.wrightstone.traits" :key="`${trait.index}-${trait.hash}`">
+                <span><b>{{ trait.name || '未收录词条' }}</b><small>{{ trait.hash }}</small></span>
+                <strong>结晶 Lv{{ trait.level }}</strong>
+                <template v-if="mergedTraitBonus(trait)">
+                  <em>全来源合并 Lv{{ mergedTraitBonus(trait).rawLevel }}</em>
+                  <p>{{ mergedTraitBonus(trait).effect }}</p>
+                </template>
+              </article>
+            </div>
+            <small v-else-if="selectedWeaponContext" class="hint">当前武器没有可验证的武炼结晶；不会凭武器类型补假数据。</small>
             <div v-if="weaponSkills.length" class="weapon-skill-list">
               <article v-for="skill in weaponSkills" :key="`${skill.slot}-${skill.traitHash}`">
                 <span><b>{{ skill.name || '未收录武器技能' }}</b><em>{{ formatWeaponSkillLevel(skill) }}</em></span>
                 <p class="weapon-skill-effect">{{ skill.effect || '暂无可验证效果说明' }}</p>
+                <small v-if="skill.runtimeObserved">有效等级 · 游戏运行时 {{ skill.stableReads }} 次稳定读取；静态表 Lv{{ skill.staticLevel }}</small>
                 <small v-if="skill.unlockCondition">解锁阶段 · {{ skill.unlockCondition }}</small>
                 <small>来源 · {{ skill.sourceWeapon || '未收录武器' }}</small>
               </article>
@@ -1532,6 +1606,7 @@ async function apply() {
                 <span>{{ node.rankLabel }} · {{ node.catLabel }}</span>
                 <b v-if="node.name">{{ node.name }}</b>
                 <p>{{ node.desc }}</p>
+                <small v-if="node.rawDesc">解包原始文本：{{ node.rawDesc }} · 显示尺度 ×{{ node.displayScale }} · {{ node.evidence }}</small>
               </div>
             </div>
           </details>
@@ -1587,6 +1662,24 @@ async function apply() {
 .profile-stat-cap .profile-stat-value { color:#a23f65; }
 .profile-stat-label { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
 .profile-stat-value { margin:0; white-space:nowrap; color:var(--text-primary); font-size:calc(15px * var(--editor-scale)); font-weight:700; font-variant-numeric:tabular-nums; }
+.runtime-comparison { display:flex; flex-direction:column; gap:3px; margin-top:7px; padding-top:7px; border-top:1px dashed var(--line-soft); }
+.runtime-comparison-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:3px 8px; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
+.runtime-comparison-head small { color:var(--text-muted); font-weight:400; }
+.runtime-comparison-row { display:grid; grid-template-columns:minmax(48px,.8fr) repeat(2,minmax(62px,1fr)) minmax(64px,auto); gap:5px; align-items:center; padding:4px 6px; border-left:2px solid #b36a55; background:rgba(179,106,85,.06); font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
+.runtime-comparison-row.exact { border-left-color:#4f8061; background:rgba(79,128,97,.07); }
+.runtime-comparison-row > span { display:flex; flex-direction:column; color:var(--text-primary); font-weight:600; }
+.runtime-comparison-row small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-weight:400; }
+.runtime-comparison-row em { justify-self:end; color:#9b4f42; font-style:normal; font-weight:700; white-space:nowrap; }
+.runtime-comparison-row.exact em { color:#3f7653; }
+.legacy-mastery-audit { margin-top:8px; padding-top:8px; border-top:1px solid var(--line-soft); }
+.legacy-mastery-audit-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 10px; margin-bottom:6px; }
+.legacy-mastery-audit-head small { color:var(--text-muted); }
+.legacy-mastery-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.legacy-mastery-tabs article { min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px 7px; padding:7px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.045); }
+.legacy-mastery-tabs article > strong, .legacy-mastery-tabs article > small { grid-column:1 / -1; }
+.legacy-mastery-tabs article span { display:flex; justify-content:space-between; gap:5px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
+.legacy-mastery-tabs article b { color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.legacy-mastery-tabs article small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
 .character-profile > .source-badge,
 .final-stat-detail-disclosure,
 .overlimit-disclosure,
@@ -1798,12 +1891,25 @@ async function apply() {
 .weapon-skill-list article em { color:#765126; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; white-space:nowrap; }
 .weapon-skill-list article p { margin:3px 0 0; color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.45; white-space:pre-line; }
 .weapon-skill-list article small { display:block; margin-top:3px; color:var(--text-muted); font-size:var(--fs-xs); }
+.wrightstone-audit { display:flex; flex-direction:column; gap:4px; padding:7px; border:1px solid rgba(100,68,137,.22); border-radius:7px; background:rgba(100,68,137,.045); }
+.wrightstone-audit-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; padding-bottom:4px; border-bottom:1px solid rgba(100,68,137,.14); }
+.wrightstone-audit-head > span { min-width:0; display:flex; flex-direction:column; }
+.wrightstone-audit-head b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); overflow-wrap:anywhere; }
+.wrightstone-audit-head small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-family:ui-monospace,monospace; }
+.wrightstone-audit-head em { color:#684489; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; }
+.wrightstone-audit article { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:2px 7px; align-items:center; padding:5px 6px; border-left:3px solid #8061a0; border-radius:5px; background:rgba(255,255,255,.52); }
+.wrightstone-audit article > span { min-width:0; display:flex; flex-direction:column; }
+.wrightstone-audit article b { overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
+.wrightstone-audit article small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-family:ui-monospace,monospace; }
+.wrightstone-audit article strong, .wrightstone-audit article em { white-space:nowrap; color:#684489; font-size:calc(11px * var(--editor-scale)); font-style:normal; }
+.wrightstone-audit article p { grid-column:1/-1; margin:2px 0 0; color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.4; white-space:pre-line; }
 .calculation-scope-note { margin:0 0 9px; padding:8px 9px; border:1px solid rgba(139,103,55,.18); border-radius:6px; background:rgba(139,103,55,.05); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.55; }
 .mastery-effect-list { display:flex; flex-direction:column; gap:4px; padding-right:2px; }
 .mastery-effect { padding:6px 7px; border-left:3px solid var(--line-gold); border-radius:4px; background:var(--surface-row); }
 .mastery-effect > span { display:block; font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
 .mastery-effect > b { display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--gold); }
 .mastery-effect > p { margin:2px 0 0; font-size:var(--fs-xs); line-height:1.4; color:var(--text-secondary); }
+.mastery-effect > small { display:block; margin-top:3px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.4; }
 .share-card > p { margin:0 0 8px; font-size:calc(11px * var(--editor-scale)); line-height:1.5; color:var(--text-muted); }
 .share-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .share-actions button { min-height:30px; border:1px solid var(--line-gold); border-radius:6px; background:var(--panel); color:var(--text-primary); font-size:var(--fs-xs); cursor:pointer; }

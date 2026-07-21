@@ -10,16 +10,20 @@ import (
 
 const loadoutFinalStatsScope = "人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。"
 
-const loadoutFinalStatsFormulaWarning = "角色基础值、命运篇章与角色强化固定基准按 2.0.2 存档及游戏表精确读取；HP/攻击的配装百分比乘区与中间量化顺序尚未闭环，最终值仍为草稿估算。已确认最终聚合使用 float32 并向零截断。"
+const loadoutFinalStatsFormulaWarning = "角色基础值、命运篇章与角色强化固定基准优先按 2.0.2 运行时状态对象读取，离线时回退存档及游戏表；HP/攻击的任意草稿百分比乘区尚未覆盖全部组合，因此未实读草稿仍标记为估算。已确认普通面板聚合使用 float32 后四舍五入，重制终末武器独立末乘区再向零截断。"
 
 // LoadoutPanelBonus is an unconditional value that is safe to apply to the
 // compact character-panel stats. Conditional skillboard text is kept in
 // the detailed mastery list, but deliberately does not enter this structure.
 type LoadoutPanelBonus struct {
-	Label  string  `json:"label"`
-	Unit   string  `json:"unit"` // flat | pct
-	Value  float64 `json:"value"`
-	Source string  `json:"source"`
+	Label        string  `json:"label"`
+	Unit         string  `json:"unit"` // flat | pct
+	Value        float64 `json:"value"`
+	RawValue     float64 `json:"rawValue"`
+	RawType      string  `json:"rawType,omitempty"`
+	DisplayScale float64 `json:"displayScale"`
+	Evidence     string  `json:"evidence,omitempty"`
+	Source       string  `json:"source"`
 }
 
 // LoadoutFinalStats mirrors the values shown by the in-game-style panel and
@@ -118,7 +122,17 @@ func parseMasteryPanelBonus(desc, source string) (LoadoutPanelBonus, bool) {
 	if match[4] == "%" {
 		unit = "pct"
 	}
-	return LoadoutPanelBonus{Label: match[1], Unit: unit, Value: value, Source: source}, true
+	panel := LoadoutPanelBonus{
+		Label: match[1], Unit: unit, Value: value, RawValue: value,
+		RawType: "table-number", DisplayScale: 1, Evidence: "2.0.2-table", Source: source,
+	}
+	if panel.Label == "昏厥值" && panel.Unit == "flat" {
+		panel.RawType = "f32"
+		panel.DisplayScale = legacyMasteryStunPanelScale
+		panel.Value = panel.RawValue * panel.DisplayScale
+		panel.Evidence = "2.0.2-table+runtime-display-scale"
+	}
+	return panel, true
 }
 
 func masteryCalculationRankCaps(growth LoadoutPermanentGrowth) (map[string]int, bool) {
@@ -404,15 +418,21 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 
 	hpMultiplier *= 1 + masteryHPPct/100
 	atkMultiplier *= 1 + masteryATKPct/100
-	finalHP := int(hpFlat * hpMultiplier)
+	finalHP := int(math.Round(float64(hpFlat * hpMultiplier)))
+	// The ordinary attack producer rounds to its integer panel subtotal before
+	// the HP-gated rebuilt Terminus multiplier is applied. Io's observed 2.0.2
+	// path is round(29496*2.3)=67841, then trunc(67841*1.64)=111259.
+	attackSubtotal := atkFlat * atkMultiplier
+	finalAttack := int(math.Round(float64(attackSubtotal)))
 	if hpGatedTerminus != nil && hpGatedTerminus.MaxHPCondition > 0 && float64(finalHP) <= hpGatedTerminus.MaxHPCondition {
+		finalAttack = int(math.Round(float64(attackSubtotal)))
 		for _, component := range hpGatedTerminus.Components {
 			if !component.Additive || component.Unit != "pct" {
 				continue
 			}
 			switch component.Label {
 			case "攻击力":
-				atkMultiplier *= 1 + float32(component.Value)/100
+				finalAttack = int(float32(finalAttack) * (1 + float32(component.Value)/100))
 			case "普通攻击伤害上限", "能力伤害上限", "奥义伤害上限", "伤害上限":
 				addPanelCap(component.Label, component.Value, &normalCap, &abilityCap, &skyboundCap)
 			}
@@ -439,7 +459,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 	warnings = append(warnings, loadoutFinalStatsFormulaWarning)
 	return LoadoutFinalStats{
 		HP:                finalHP,
-		Attack:            int(atkFlat * atkMultiplier),
+		Attack:            finalAttack,
 		CritRate:          crit,
 		StunPower:         stun,
 		DefenseBonus:      defenseBonus,

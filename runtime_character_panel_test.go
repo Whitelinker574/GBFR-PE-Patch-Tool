@@ -144,6 +144,116 @@ func TestReadRuntimeCharacterPanelReturnsExactGameValuesForRequestedCharacter(t 
 	}
 }
 
+func TestReadRuntimeWeaponWrightstoneUsesEffectiveRuntimeLevels(t *testing.T) {
+	memory := newFakeRuntimePanelMemory()
+	status := uintptr(0x250000000)
+	memory.put(status, make([]byte, runtimeCharacterEffectiveWeaponSkillOffset+runtimeCharacterEffectiveWeaponSkillCount*8))
+	memory.putU32(status+runtimeCharacterWeaponSlotOffset, 52)
+	memory.putU32(status+runtimeCharacterWeaponHashOffset, 0x1779CD60)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset, 0xCEB700EE)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset+4, 20)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset+8, 0x57AB5B10)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset+12, 15)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset+16, 0x8D78A19B)
+	memory.putU32(status+runtimeCharacterWrightstoneTraitOffset+20, 10)
+	memory.putU32(status+runtimeCharacterWrightstoneHashOffset, 0x09E6F629)
+	memory.putU32(status+runtimeCharacterEffectiveWeaponSkillOffset, 0x1E1CECCE)
+	memory.putU32(status+runtimeCharacterEffectiveWeaponSkillOffset+4, 32)
+	memory.putU32(status+runtimeCharacterEffectiveWeaponSkillOffset+8, 0x7CCFF74F)
+	memory.putU32(status+runtimeCharacterEffectiveWeaponSkillOffset+12, 22)
+
+	snapshot, err := readRuntimeWeaponWrightstoneSnapshot(memory, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.WeaponSlotID != 52 || snapshot.WeaponHash != 0x1779CD60 || snapshot.WrightstoneHash != 0x09E6F629 {
+		t.Fatalf("runtime weapon identity = %+v", snapshot)
+	}
+	want := []runtimeWeaponTrait{{Hash: 0xCEB700EE, Level: 20}, {Hash: 0x57AB5B10, Level: 15}, {Hash: 0x8D78A19B, Level: 10}}
+	if len(snapshot.Traits) != len(want) {
+		t.Fatalf("runtime wrightstone traits = %+v", snapshot.Traits)
+	}
+	for index := range want {
+		if snapshot.Traits[index] != want[index] {
+			t.Fatalf("runtime wrightstone trait %d = %+v, want %+v", index, snapshot.Traits[index], want[index])
+		}
+	}
+	wantSkills := []runtimeWeaponTrait{{Hash: 0x1E1CECCE, Level: 32}, {Hash: 0x7CCFF74F, Level: 22}}
+	if len(snapshot.Skills) != len(wantSkills) {
+		t.Fatalf("runtime weapon skills = %+v", snapshot.Skills)
+	}
+	for index := range wantSkills {
+		if snapshot.Skills[index] != wantSkills[index] {
+			t.Fatalf("runtime weapon skill %d = %+v, want %+v", index, snapshot.Skills[index], wantSkills[index])
+		}
+	}
+}
+
+func TestRuntimeWeaponSnapshotOffsetsMatchObserved202RuntimeLayout(t *testing.T) {
+	if runtimeCharacterWeaponSlotOffset != 0x50 || runtimeCharacterWeaponHashOffset != 0x54 ||
+		runtimeCharacterWrightstoneTraitOffset != 0x70 || runtimeCharacterWrightstoneHashOffset != 0x88 ||
+		runtimeCharacterEffectiveWeaponSkillOffset != 0xF4 {
+		t.Fatalf("unexpected runtime weapon layout: slot=%#x hash=%#x traits=%#x stone=%#x skills=%#x",
+			runtimeCharacterWeaponSlotOffset, runtimeCharacterWeaponHashOffset,
+			runtimeCharacterWrightstoneTraitOffset, runtimeCharacterWrightstoneHashOffset,
+			runtimeCharacterEffectiveWeaponSkillOffset)
+	}
+}
+
+func TestReadRuntimeCharacterGrowthSnapshotUsesCharacterSpecificRuntimeValues(t *testing.T) {
+	memory := newFakeRuntimePanelMemory()
+	status := uintptr(0x250000000)
+	memory.putI32(status+runtimeCharacterBaseLevelOffset, 100)
+	memory.putI32(status+runtimeCharacterBaseHPOffset, 3430)
+	memory.putI32(status+runtimeCharacterBaseAttackOffset, 677)
+	memory.putF32(status+runtimeCharacterBaseStunOffset, 8)
+	memory.putI32(status+runtimeCharacterBaseCritOffset, 5)
+	memory.putI32(status+runtimeCharacterMasterHPOffset, 2400)
+	memory.putI32(status+runtimeCharacterMasterAttackOffset, 1200)
+	memory.putI32(status+runtimeCharacterFateHPOffset, 640)
+	memory.putI32(status+runtimeCharacterFateAttackOffset, 165)
+	memory.putF32(status+runtimeCharacterPermanentAttackOffset, 5271)
+	memory.putF32(status+runtimeCharacterPermanentHPOffset, 32550)
+	memory.putF32(status+runtimeCharacterPermanentCritOffset, 45)
+	memory.putF32(status+runtimeCharacterPermanentStunOffset, 6.1)
+
+	got, err := readRuntimeCharacterGrowthSnapshot(memory, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Level != 100 || got.BaseHP != 3430 || got.BaseATK != 677 || got.BaseStun != 8 || got.BaseCritRate != 5 ||
+		got.MasterHP != 2400 || got.MasterATK != 1200 || got.FateHP != 640 || got.FateATK != 165 {
+		t.Fatalf("runtime character growth fields = %+v", got)
+	}
+	if got.Permanent.Attack != 5271 || got.Permanent.HP != 32550 || got.Permanent.CritRate != 45 ||
+		math.Abs(got.Permanent.StunPanel-61) > 0.001 {
+		t.Fatalf("runtime permanent aggregate = %+v", got.Permanent)
+	}
+}
+
+func TestRuntimeCharacterGrowthOffsetsMatchObserved202Layout(t *testing.T) {
+	if runtimeCharacterBaseLevelOffset != 0x5B44 || runtimeCharacterBaseHPOffset != 0x5B48 ||
+		runtimeCharacterBaseAttackOffset != 0x5B4C || runtimeCharacterBaseStunOffset != 0x5B54 ||
+		runtimeCharacterBaseCritOffset != 0x5B58 || runtimeCharacterMasterHPOffset != 0x5B64 ||
+		runtimeCharacterMasterAttackOffset != 0x5B68 || runtimeCharacterFateHPOffset != 0x5B70 ||
+		runtimeCharacterFateAttackOffset != 0x5B74 {
+		t.Fatal("runtime character growth offsets no longer match the verified 2.0.2 layout")
+	}
+}
+
+func TestStableRuntimeCharacterGrowthRejectsChangingFateValues(t *testing.T) {
+	calls := 0
+	_, err := readStableRuntimeCharacterGrowthSnapshots(func() (runtimeCharacterGrowthSnapshot, error) {
+		calls++
+		return runtimeCharacterGrowthSnapshot{Level: 100, BaseHP: 3430, BaseATK: 677, BaseStun: 8, BaseCritRate: 5,
+			MasterHP: 2400, MasterATK: 1200, FateHP: 640 + calls, FateATK: 165,
+			Permanent: LoadoutPermanentPanelStats{Attack: 5271, HP: 32550, CritRate: 45, StunRaw: 6.1, StunPanel: 61}}, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "连续三次") {
+		t.Fatalf("changing runtime character growth must fail stability gate: %v", err)
+	}
+}
+
 func TestLocateRuntimeCharacterPanelStatusReturnsTheMatchedStatusObject(t *testing.T) {
 	fixture := newRuntimePanelFixture()
 	fixture.setIDs(0x11, 0x22)
@@ -245,11 +355,14 @@ func TestRuntimeCharacterPanelLayoutDescriptorIsVersionedAndEvidenceBound(t *tes
 	if layout.SchemaVersion != 1 || layout.LayoutID == "" || layout.GameExecutableSHA256 != runtimeCharacterPanelGameEXESHA256 || len(layout.Guards) != len(runtimeCharacterPanelVersionGuards) {
 		t.Fatalf("layout identity is incomplete: %+v", layout)
 	}
-	if len(layout.AccessChain) < 4 || len(layout.Fields) != 4 {
+	if len(layout.AccessChain) < 4 || len(layout.Fields) != 17 {
 		t.Fatalf("layout access chain/fields are incomplete: %+v", layout)
 	}
 	if layout.Fields[2].Name != "stunPower" || layout.Fields[2].RawType != "f32" || layout.Fields[2].RelativeOffset != "0x10" || layout.Fields[2].DisplayScale != 10 || layout.Fields[2].SampleRoleCount < 2 {
 		t.Fatalf("stun layout evidence is incomplete: %+v", layout.Fields[2])
+	}
+	if layout.Fields[15].Name != "fateHP" || layout.Fields[15].RelativeOffset != "0x5B70" || layout.Fields[15].SampleRoleCount != 2 {
+		t.Fatalf("runtime Fate layout evidence is incomplete: %+v", layout.Fields[15])
 	}
 }
 

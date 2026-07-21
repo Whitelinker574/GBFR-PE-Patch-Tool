@@ -171,7 +171,7 @@ func buildFormulaSampleBundle(experimentType string, events []FormulaSampleEvent
 		PanelRestoredBitExact: formulaPanelValuesBitEqual(events[0].Panel, events[2].Panel),
 		CandidateABABVerified: len(candidates) > 0,
 		KnownProbeCoverage:    []string{"final_hp", "final_attack", "final_stun_power", "final_critical_rate", "status_object_relative_scalar_candidates"},
-		UnavailableProbes:     []string{"independently-labelled_base_component", "independently-labelled_master_component", "independently-labelled_fate_component"},
+		UnavailableProbes:     []string{"absolute_defense", "battle_damage_cap_resolution", "conditional_combat_skill_resolution"},
 	}
 	redaction := FormulaRedactionReport{
 		RawMemoryIncluded: false,

@@ -28,11 +28,47 @@ type LoadoutWeaponSkill struct {
 	TraitID         string `json:"traitId"`
 	Name            string `json:"name"`
 	Level           int    `json:"level"`
+	StaticLevel     int    `json:"staticLevel,omitempty"`
+	RuntimeObserved bool   `json:"runtimeObserved,omitempty"`
+	StableReads     int    `json:"stableReads,omitempty"`
 	Effect          string `json:"effect"`
 	Source          string `json:"source"`
 	SourceWeapon    string `json:"sourceWeapon"`
 	LevelTableHash  string `json:"levelTableHash"`
 	UnlockCondition string `json:"unlockCondition"`
+}
+
+func applyRuntimeWeaponSkillLevels(skills []LoadoutWeaponSkill, observed []runtimeWeaponTrait) {
+	byHash := make(map[uint32]int, len(observed))
+	for _, skill := range observed {
+		byHash[skill.Hash] = skill.Level
+	}
+	values := loadTraitValues()
+	for index := range skills {
+		hash, err := ParseHashHex(skills[index].TraitHash)
+		if err != nil {
+			continue
+		}
+		level, ok := byHash[hash]
+		if !ok {
+			continue
+		}
+		skills[index].StaticLevel = skills[index].Level
+		skills[index].Level = level
+		skills[index].RuntimeObserved = true
+		skills[index].StableReads = 3
+		definition := values[skills[index].TraitID]
+		if definition == nil {
+			definition = values[skills[index].TraitHash]
+		}
+		if definition != nil {
+			presentationLevel := level
+			if definition.MaxLevel > 0 && presentationLevel > definition.MaxLevel {
+				presentationLevel = definition.MaxLevel
+			}
+			skills[index].Effect, _ = renderTraitEffect(definition, presentationLevel)
+		}
+	}
 }
 
 // LoadoutWeaponSkillOption is one legal trait for a single 2818 vector slot at
@@ -55,31 +91,54 @@ type LoadoutWeaponSkillSlot struct {
 	Options      []LoadoutWeaponSkillOption `json:"options"`
 }
 
+// LoadoutWeaponWrightstoneTrait is one of the three traits copied onto a
+// weapon instance when a Wrightstone is imbued.  These live in the weapon's
+// own 140000000-range trait slots; they are not inventory sigils and must not
+// receive the 因子强化 level boost.
+type LoadoutWeaponWrightstoneTrait struct {
+	Index   int    `json:"index"`
+	Hash    string `json:"hash"`
+	TraitID string `json:"traitId"`
+	Name    string `json:"name"`
+	Level   int    `json:"level"`
+}
+
+type LoadoutWeaponWrightstone struct {
+	Hash            string                          `json:"hash"`
+	InternalID      string                          `json:"internalId"`
+	Name            string                          `json:"name"`
+	Traits          []LoadoutWeaponWrightstoneTrait `json:"traits"`
+	Evidence        string                          `json:"evidence"`
+	RuntimeObserved bool                            `json:"runtimeObserved"`
+	StableReads     int                             `json:"stableReads"`
+}
+
 type LoadoutWeaponContext struct {
-	UnitID                 uint32                   `json:"unitId"`
-	SlotID                 uint32                   `json:"slotId"`
-	StoredHash             string                   `json:"storedHash"`
-	BaseHash               string                   `json:"baseHash"`
-	Name                   string                   `json:"name"`
-	InternalID             string                   `json:"internalId"`
-	WeaponType             string                   `json:"weaponType"`
-	Level                  int                      `json:"level"`
-	XP                     uint32                   `json:"xp"`
-	Uncap                  int                      `json:"uncap"`
-	Mirage                 int                      `json:"mirage"`
-	Awakening              int                      `json:"awakening"`
-	Transcendence          int                      `json:"transcendence"`
-	TranscendenceSkill     string                   `json:"transcendenceSkill"`
-	TranscendenceSkillName string                   `json:"transcendenceSkillName"`
-	Base                   WeaponStatLine           `json:"base"`
-	AwakeningBonus         WeaponStatLine           `json:"awakeningBonus"`
-	MirageBonus            WeaponStatLine           `json:"mirageBonus"`
-	RebuildBonus           WeaponStatLine           `json:"rebuildBonus"`
-	Total                  WeaponStatLine           `json:"total"`
-	Skills                 []LoadoutWeaponSkill     `json:"skills"`
-	SkillSlots             []LoadoutWeaponSkillSlot `json:"skillSlots"`
-	Warnings               []string                 `json:"warnings"`
-	FormulaVerified        bool                     `json:"formulaVerified"`
+	UnitID                 uint32                    `json:"unitId"`
+	SlotID                 uint32                    `json:"slotId"`
+	StoredHash             string                    `json:"storedHash"`
+	BaseHash               string                    `json:"baseHash"`
+	Name                   string                    `json:"name"`
+	InternalID             string                    `json:"internalId"`
+	WeaponType             string                    `json:"weaponType"`
+	Level                  int                       `json:"level"`
+	XP                     uint32                    `json:"xp"`
+	Uncap                  int                       `json:"uncap"`
+	Mirage                 int                       `json:"mirage"`
+	Awakening              int                       `json:"awakening"`
+	Transcendence          int                       `json:"transcendence"`
+	TranscendenceSkill     string                    `json:"transcendenceSkill"`
+	TranscendenceSkillName string                    `json:"transcendenceSkillName"`
+	Base                   WeaponStatLine            `json:"base"`
+	AwakeningBonus         WeaponStatLine            `json:"awakeningBonus"`
+	MirageBonus            WeaponStatLine            `json:"mirageBonus"`
+	RebuildBonus           WeaponStatLine            `json:"rebuildBonus"`
+	Total                  WeaponStatLine            `json:"total"`
+	Skills                 []LoadoutWeaponSkill      `json:"skills"`
+	SkillSlots             []LoadoutWeaponSkillSlot  `json:"skillSlots"`
+	Wrightstone            *LoadoutWeaponWrightstone `json:"wrightstone,omitempty"`
+	Warnings               []string                  `json:"warnings"`
+	FormulaVerified        bool                      `json:"formulaVerified"`
 }
 
 type weaponStatKeyframe struct {
@@ -248,8 +307,71 @@ func readLoadoutWeaponContext(save *SaveData, slotID uint32) (*LoadoutWeaponCont
 	}
 	context.Skills = readLoadoutWeaponSkills(save, data, catalog, row, context)
 	context.SkillSlots = buildLoadoutWeaponSkillSlots(save, data, catalog, row, context)
+	context.Wrightstone = readLoadoutWeaponWrightstone(save, context.UnitID, &context.Warnings)
 	markUnresolvedWeaponSkills(context)
 	return context, nil
+}
+
+func readLoadoutWeaponWrightstone(save *SaveData, weaponUnitID uint32, warnings *[]string) *LoadoutWeaponWrightstone {
+	if save == nil || weaponUnitID < weaponSlotBase {
+		return nil
+	}
+	stoneEntry, ok := save.findUnitExact(weaponStoneSubType, weaponUnitID)
+	if !ok || stoneEntry.ValueCnt != 1 {
+		if warnings != nil {
+			*warnings = append(*warnings, fmt.Sprintf("武器实例 %d 缺少武炼结晶类型字段 2816", weaponUnitID))
+		}
+		return nil
+	}
+	stoneHash := stoneEntry.Uint32()
+	if stoneHash == 0 || stoneHash == EmptyHash {
+		return nil
+	}
+	catalog, err := LoadWrightstoneCatalog()
+	if err != nil {
+		if warnings != nil {
+			*warnings = append(*warnings, err.Error())
+		}
+		return nil
+	}
+	definition := catalog.LookupWrightstoneByHash(stoneHash)
+	if definition == nil {
+		if warnings != nil {
+			*warnings = append(*warnings, fmt.Sprintf("武器实例 %d 的武炼结晶 %08X 未收录", weaponUnitID, stoneHash))
+		}
+		return nil
+	}
+	result := &LoadoutWeaponWrightstone{
+		Hash: hashText(stoneHash), InternalID: definition.InternalID,
+		Name: cnWrightstone(definition.DisplayName), Evidence: "save:2816+weapon-trait-slots",
+	}
+	traitBase := weaponTraitBase + (int(weaponUnitID)-weaponSlotBase)*weaponTraitStride
+	for index := 0; index < 3; index++ {
+		hashEntry, hashOK := save.findUnitExact(TraitHashIDType, uint32(traitBase+index))
+		levelEntry, levelOK := save.findUnitExact(TraitLevelIDType, uint32(traitBase+index))
+		if !hashOK || !levelOK || hashEntry.ValueCnt != 1 || levelEntry.ValueCnt != 1 {
+			if warnings != nil {
+				*warnings = append(*warnings, fmt.Sprintf("武器实例 %d 的武炼结晶词条槽 %d 损坏", weaponUnitID, index+1))
+			}
+			continue
+		}
+		traitHash, level := hashEntry.Uint32(), int(levelEntry.Int32())
+		if traitHash == 0 || traitHash == EmptyHash || level <= 0 {
+			continue
+		}
+		trait := catalog.LookupTraitByHash(traitHash)
+		if trait == nil {
+			if warnings != nil {
+				*warnings = append(*warnings, fmt.Sprintf("武器实例 %d 的武炼结晶词条 %08X 未收录", weaponUnitID, traitHash))
+			}
+			continue
+		}
+		result.Traits = append(result.Traits, LoadoutWeaponWrightstoneTrait{
+			Index: index, Hash: hashText(traitHash), TraitID: trait.InternalID,
+			Name: cnWrightstoneTrait(trait.DisplayName), Level: level,
+		})
+	}
+	return result
 }
 
 func resolveLoadoutWeaponTableRow(data *loadoutWeaponStatsFile, storedHash uint32) (loadoutWeaponTableRow, bool) {

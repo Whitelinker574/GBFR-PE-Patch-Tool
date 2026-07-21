@@ -130,6 +130,15 @@ test('character detail separates save base, permanent growth and the fixed basel
   assert.match(source, /角色强化伤害上限/)
 })
 
+test('character detail exposes all four permanent mastery tabs and stun raw/display units', () => {
+	for (const tab of ['attackTab', 'defenseTab', 'collectionTab', 'transcendenceTab']) {
+		assert.match(source, new RegExp(`legacyMastery\\?\\.${tab}`))
+	}
+	for (const label of ['攻击强化', 'HP・抗性', '武器收集加成', '上限突破']) assert.ok(source.includes(label))
+	assert.match(source, /原始 f32/)
+	assert.match(source, /×10 面板/)
+})
+
 test('mastery separates editable structure from the character current unlock and effective calculation', () => {
 	assert.match(source, /permanentGrowth\?\.masteryRankCaps/)
 	assert.match(source, /permanentGrowth\.masterTotalMsp/)
@@ -185,6 +194,29 @@ test('weapon skill rows keep missing fields honest instead of rendering undefine
 	assert.match(source, /class="weapon-skill-effect"[\s\S]*skill\.effect/)
 	assert.match(source, /暂无可验证效果说明/)
 	assert.match(source, /来源 · \{\{ skill\.sourceWeapon \|\| '未收录武器' \}\}/)
+	assert.match(source, /有效等级 · 游戏运行时 \{\{ skill\.stableReads \}\} 次稳定读取；静态表 Lv\{\{ skill\.staticLevel \}\}/)
+})
+
+test('runtime calibration exposes per-stat deltas and the effective wrightstone snapshot', () => {
+	assert.match(source, /const runtimeStatComparisons = computed/)
+	assert.match(source, /草稿 \/ 当前游戏逐项对照/)
+	assert.match(source, /formatComparisonDelta\(row\.delta, row\.unit\)/)
+	assert.match(source, /class="wrightstone-audit"/)
+	assert.match(source, /wrightstone\.runtimeObserved/)
+	assert.match(source, /游戏运行时 · \{\{ selectedWeaponContext\.wrightstone\.stableReads \}\} 次稳定读取/)
+	assert.match(source, /全来源合并 Lv\{\{ mergedTraitBonus\(trait\)\.rawLevel \}\}/)
+	assert.match(source, /不会凭武器类型补假数据/)
+})
+
+test('mastery details distinguish verified panel scale from unpacked raw text', () => {
+	assert.match(source, /解包原始文本：\{\{ node\.rawDesc \}\}/)
+	assert.match(source, /显示尺度 ×\{\{ node\.displayScale \}\}/)
+})
+
+test('fixed character growth identifies character-specific runtime evidence', () => {
+	assert.match(source, /statContext\.permanentGrowth\?\.runtimeObserved/)
+	assert.match(source, /角色基础、命运篇章、角色强化固定成长：2\.0\.2 运行时状态对象/)
+	assert.match(source, /连续 \{\{ statContext\.permanentGrowth\?\.stableReads \}\} 次稳定读取（角色独立）/)
 })
 
 test('dedicated editing hides the global portrait background while ordinary viewing retains it', () => {

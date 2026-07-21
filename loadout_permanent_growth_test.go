@@ -71,7 +71,7 @@ func TestLoadoutStatContextReadsRealIoPermanentBaseline(t *testing.T) {
 		growth.MasterHP != 6000 || growth.MasterATK != 3000 || growth.MasterDamageCap != 100 {
 		t.Fatalf("real Io Master growth = %+v", growth)
 	}
-	if ctx.BaselineHP != 9796 || ctx.BaselineATK != 3831 || ctx.BaselineStun != 8 || ctx.BaselineCritRate != 5 || ctx.BaselineDamageCap != 100 {
+	if ctx.BaselineHP != 65496 || ctx.BaselineATK != 12413 || ctx.BaselineStunRaw != 18.5 || ctx.BaselineStun != 185 || ctx.BaselineCritRate != 83 || ctx.BaselineDamageCap != 100 {
 		t.Fatalf("real Io permanent baseline = HP %d ATK %d Stun %g Crit %g Cap %g", ctx.BaselineHP, ctx.BaselineATK, ctx.BaselineStun, ctx.BaselineCritRate, ctx.BaselineDamageCap)
 	}
 
@@ -79,7 +79,7 @@ func TestLoadoutStatContextReadsRealIoPermanentBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if simulation.FinalStats == nil || simulation.FinalStats.HP != 9796 || simulation.FinalStats.Attack != 3831 || simulation.FinalStats.CritRate != 5 {
+	if simulation.FinalStats == nil || simulation.FinalStats.HP != 65496 || simulation.FinalStats.Attack != 12413 || simulation.FinalStats.CritRate != 83 || simulation.FinalStats.StunPower != 225 {
 		t.Fatalf("offline estimate did not start from the real permanent baseline: %+v", simulation.FinalStats)
 	}
 	if simulation.FinalStats.DamageCap != 100 || simulation.FinalStats.NormalDamageCap != 120 ||

@@ -96,13 +96,16 @@ func skillboardNodeForHash(hash uint32) (SkillboardNode, bool) {
 }
 
 type LoadoutMasteryNode struct {
-	Hash      string `json:"hash"`
-	Cat       string `json:"cat"`
-	Grp       string `json:"grp"`
-	Rank      string `json:"rank"`
-	RankLabel string `json:"rankLabel"`
-	Name      string `json:"name"` // 具名节点名（可为空）
-	Desc      string `json:"desc"` // 效果说明
+	Hash         string  `json:"hash"`
+	Cat          string  `json:"cat"`
+	Grp          string  `json:"grp"`
+	Rank         string  `json:"rank"`
+	RankLabel    string  `json:"rankLabel"`
+	Name         string  `json:"name"` // 具名节点名（可为空）
+	Desc         string  `json:"desc"` // 按游戏面板尺度显示的效果说明
+	RawDesc      string  `json:"rawDesc,omitempty"`
+	DisplayScale float64 `json:"displayScale,omitempty"`
+	Evidence     string  `json:"evidence,omitempty"`
 }
 
 func loadoutMasteryNodeForHash(hash uint32) (LoadoutMasteryNode, bool) {
@@ -114,9 +117,17 @@ func loadoutMasteryNodeForHash(hash uint32) (LoadoutMasteryNode, bool) {
 	if !rankOK {
 		return LoadoutMasteryNode{}, false
 	}
+	desc, rawDesc, displayScale, evidence := n.Desc, "", float64(0), "2.0.2-table"
+	if panel, parsed := parseMasteryPanelBonus(n.Desc, ""); parsed && panel.Label == "昏厥值" && panel.Unit == "flat" {
+		rawDesc = n.Desc
+		desc = fmt.Sprintf("昏厥值%+.10g（原始 f32 %g ×%g 面板）", panel.Value, panel.RawValue, panel.DisplayScale)
+		displayScale = panel.DisplayScale
+		evidence = panel.Evidence
+	}
 	return LoadoutMasteryNode{
 		Hash: fmt.Sprintf("%08X", hash), Cat: n.Cat, Grp: n.Grp,
-		Rank: rank, RankLabel: masteryRankLabel(rank), Name: n.Name, Desc: n.Desc,
+		Rank: rank, RankLabel: masteryRankLabel(rank), Name: n.Name, Desc: desc,
+		RawDesc: rawDesc, DisplayScale: displayScale, Evidence: evidence,
 	}, true
 }
 

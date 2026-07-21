@@ -18,7 +18,7 @@ func TestParseMasteryPanelBonusesOnlyCountsUnconditionalPanelStats(t *testing.T)
 		{"攻击力+500", "攻击力", "flat", 500, true},
 		{"攻击力+12.5%", "攻击力", "pct", 12.5, true},
 		{"暴击率+25%", "暴击率", "pct", 25, true},
-		{"昏厥值+0.4", "昏厥值", "flat", 0.4, true},
+		{"昏厥值+0.4", "昏厥值", "flat", 4, true},
 		{"防御力+18%", "防御力", "pct", 18, true},
 		{"伤害上限+30%", "伤害上限", "pct", 30, true},
 		{"攻击的伤害上限+35%", "攻击的伤害上限", "pct", 35, true},
@@ -40,6 +40,9 @@ func TestParseMasteryPanelBonusesOnlyCountsUnconditionalPanelStats(t *testing.T)
 			}
 			if got.Label != test.wantLabel || got.Unit != test.wantUnit || got.Value != test.wantValue || got.Source != "专精" {
 				t.Fatalf("parseMasteryPanelBonus(%q)=%+v", test.desc, got)
+			}
+			if test.desc == "昏厥值+0.4" && (got.RawValue != 0.4 || got.DisplayScale != 10 || got.RawType != "f32") {
+				t.Fatalf("昏厥专精必须保留原始 f32 和面板尺度: %+v", got)
 			}
 		})
 	}
@@ -124,13 +127,13 @@ func TestCalculateLoadoutFinalStatsUsesSafeUnconditionalSources(t *testing.T) {
 	}
 
 	got := calculateLoadoutFinalStats(input)
-	// HP: trunc((3156 + 1099 + 10000 + 8000 + 15000) * 1.8 * 0.8 * 1.2)
-	if got.HP != 64376 {
-		t.Fatalf("HP=%d, want 64376: %+v", got.HP, got)
+	// HP: round((3156 + 1099 + 10000 + 8000 + 15000) * 1.8 * 0.8 * 1.2)
+	if got.HP != 64377 {
+		t.Fatalf("HP=%d, want 64377: %+v", got.HP, got)
 	}
-	// ATK: trunc((666 + 9283 + 2000 + 1000 + 500) * 1.10 * 1.50 * 1.30 * 1.20)
-	if got.Attack != 34617 {
-		t.Fatalf("Attack=%d, want 34617: %+v", got.Attack, got)
+	// ATK: round((666 + 9283 + 2000 + 1000 + 500) * 1.10 * 1.50 * 1.30 * 1.20)
+	if got.Attack != 34618 {
+		t.Fatalf("Attack=%d, want 34618: %+v", got.Attack, got)
 	}
 	if got.CritRate != 83 || math.Abs(got.StunPower-24.4) > 1e-9 {
 		t.Fatalf("crit/stun wrong: %+v", got)
@@ -249,7 +252,7 @@ func TestCalculateLoadoutFinalStatsPreservesRealZeroAndFractionalStun(t *testing
 	}
 }
 
-func TestCalculateLoadoutFinalStatsTruncatesPositiveHPAndAttackLikeRuntime(t *testing.T) {
+func TestCalculateLoadoutFinalStatsRoundsOrdinaryPositiveHPAndAttackLikeRuntime(t *testing.T) {
 	got := calculateLoadoutFinalStats(loadoutPanelInputs{
 		CharacterHP:  101,
 		CharacterATK: 101,
@@ -258,14 +261,14 @@ func TestCalculateLoadoutFinalStatsTruncatesPositiveHPAndAttackLikeRuntime(t *te
 			{Label: "攻击力", Unit: "pct", Value: 0.5},
 		},
 	})
-	if got.HP != 101 || got.Attack != 101 {
-		t.Fatalf("2.0.2 HP/ATK 转整数使用向零截断，不是 ceil/round: %+v", got)
+	if got.HP != 102 || got.Attack != 102 {
+		t.Fatalf("2.0.2 普通 HP/ATK 聚合使用 float32 后四舍五入: %+v", got)
 	}
 }
 
-func TestCalculateLoadoutFinalStatsUsesRuntimeFloat32BeforeTruncation(t *testing.T) {
-	// Binary64 evaluates 25 * 1.16 just below 29 and would truncate to 28.
-	// The observed VCVTSI2SS/VMULSS/VCVTTSS2SI path evaluates it to float32 29.
+func TestCalculateLoadoutFinalStatsUsesRuntimeFloat32BeforeRounding(t *testing.T) {
+	// Preserve the scalar float32 arithmetic observed in the producer before
+	// the ordinary panel result is rounded to its integer display value.
 	got := calculateLoadoutFinalStats(loadoutPanelInputs{
 		CharacterHP:  25,
 		CharacterATK: 25,
@@ -311,6 +314,20 @@ func TestCalculateLoadoutFinalStatsAppliesOnlyDeterminableWeaponAndFactorCaps(t 
 	above := calculateLoadoutFinalStats(loadoutPanelInputs{CharacterHP: 150001, CharacterATK: 1000, Bonuses: []TraitBonus{terminus, mageSavvy}})
 	if above.Attack != 1000 || above.DamageCap != 50 || above.NormalDamageCap != 50 || above.AbilityDamageCap != 50 || above.SkyboundDamageCap != 50 {
 		t.Fatalf("HP-gated terminus effect must be excluded above 150000 while Mage's Savvy remains global: %+v", above)
+	}
+}
+
+func TestRebuiltTerminusAttackQuantizesBeforeItsOwnMultiplier(t *testing.T) {
+	terminus := TraitBonus{TraitID: "SKILL_143_10", Name: "浩劫", MaxHPCondition: 170000, Components: []BonusComponent{
+		{Label: "攻击力", Unit: "pct", Value: 64, Additive: true},
+	}}
+	got := calculateLoadoutFinalStats(loadoutPanelInputs{
+		CharacterHP: 100000, CharacterATK: 29496,
+		Mastery: []LoadoutPanelBonus{{Label: "攻击力", Unit: "pct", Value: 130}},
+		Bonuses: []TraitBonus{terminus},
+	})
+	if got.Attack != 111259 {
+		t.Fatalf("rebuilt Terminus two-stage panel quantization = %d, want 111259", got.Attack)
 	}
 }
 
@@ -366,5 +383,19 @@ func TestCelestialLumenAliasesStayVisibleButOutOfStaticPanel(t *testing.T) {
 		if got.HP != 10000 || got.Attack != 1000 || got.DamageCap != 0 {
 			t.Fatalf("当前HP比例未知时，天星之煌不应进入默认静态面板: %+v", got)
 		}
+	}
+}
+
+func TestLoadoutMasteryStunUsesRawGameUnitAndPanelScale(t *testing.T) {
+	bonuses, err := loadoutMasteryPanelBonuses("PL0400", []string{"1F52146F"}, loadoutFactorCategoryCounts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bonuses) != 1 {
+		t.Fatalf("EX stun bonuses=%+v, want exactly one", bonuses)
+	}
+	bonus := bonuses[0]
+	if bonus.Label != "昏厥值" || bonus.RawValue != 0.4 || bonus.DisplayScale != 10 || bonus.Value != 4 {
+		t.Fatalf("EX stun unit conversion=%+v, want raw f32 0.4 -> panel +4", bonus)
 	}
 }

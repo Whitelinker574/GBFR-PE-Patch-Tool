@@ -108,6 +108,19 @@ func TestLoadoutMasteryNodeCarriesOfficialRank(t *testing.T) {
 	}
 }
 
+func TestLoadoutMasteryStunUsesVerifiedPanelScaleButKeepsRawText(t *testing.T) {
+	node, ok := loadoutMasteryNodeForHash(0x1F52146F)
+	if !ok {
+		t.Fatal("未找到伊欧 EX 昏厥节点 1F52146F")
+	}
+	if node.Desc != "昏厥值+4（原始 f32 0.4 ×10 面板）" || node.RawDesc != "昏厥值+0.4" || node.DisplayScale != 10 {
+		t.Fatalf("昏厥节点没有同时保留原始值和真实面板值: %+v", node)
+	}
+	if node.Evidence != "2.0.2-table+runtime-display-scale" {
+		t.Fatalf("昏厥节点证据等级=%q", node.Evidence)
+	}
+}
+
 func TestMasterySummaryFollowsThreeDirectionActivationRules(t *testing.T) {
 	// 1阶三方向各 3 项均可生效；2阶只能觉醒达到 6 项；3阶沿用觉醒；EX 不产生第四种专精类型。
 	toHashes := func(values ...string) []uint32 {
