@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, reactive, ref } from 'vue'
-import { CharaAcquire, CharaRelease, MonsterEnhanceGetStatusOwned, MonsterEnhanceSetPatchValueEnabledOwned, DamageMeterGetStatus } from '../../wailsjs/go/main/App'
+import { CharaAcquire, CharaRelease, MonsterEnhanceGetStatusOwned, MonsterEnhanceSetPatchValueEnabledOwned, DamageMeterGetStatus } from '../../wailsjs/go/backend/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])

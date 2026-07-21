@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 const source = readFileSync(new URL('./components/SummonSaveEditor.vue', import.meta.url), 'utf8')
 const saveSource = readFileSync(new URL('./components/SaveSourcePicker.vue', import.meta.url), 'utf8')
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
-const binding = readFileSync(new URL('../wailsjs/go/main/SummonSaveGen.js', import.meta.url), 'utf8')
+const binding = readFileSync(new URL('../wailsjs/go/backend/SummonSaveGen.js', import.meta.url), 'utf8')
 
 test('offline summon editor is separate from the runtime memory page', () => {
   assert.match(shell, /summonSave:\s*\{[\s\S]*?group:\s*'save'/)

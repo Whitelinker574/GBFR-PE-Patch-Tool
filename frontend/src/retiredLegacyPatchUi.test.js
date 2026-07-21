@@ -9,7 +9,7 @@ const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf
 
 test('retired mission and commendation EXE editors are absent from the application', () => {
   const shell = read('components/PatchTool.vue')
-  const backend = read('../../app.go')
+  const backend = read('../../internal/backend/app.go')
 
   for (const retiredText of ['挑战次数', '点赞数值']) {
     assert.doesNotMatch(shell, new RegExp(retiredText))
@@ -21,7 +21,7 @@ test('retired mission and commendation EXE editors are absent from the applicati
 
 test('live feature pages do not expose retired source labels', () => {
   const userFacingSources = [
-    '../../app.go',
+    '../../internal/backend/app.go',
     'components/RuntimePatchFeatures.vue',
     'runtimePatchFeatureView.js',
     'runtimePatchMonitorView.js',

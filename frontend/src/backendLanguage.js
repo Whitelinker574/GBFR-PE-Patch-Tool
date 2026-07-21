@@ -1,4 +1,4 @@
-import { SetLanguage } from '../wailsjs/go/main/App'
+import { SetLanguage } from '../wailsjs/go/backend/App'
 import { getStoredLanguage } from './i18n'
 
 const selectedLanguage = getStoredLanguage()

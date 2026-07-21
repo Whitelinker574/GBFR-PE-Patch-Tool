@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v1.91.3 consistently', () => {
-  assert.match(readRoot('app.go'), /appVersion\s*=\s*"v1\.91\.3"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.3')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.3')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.3')
+test('release metadata uses v1.91.4 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.91\.4"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.4')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.4')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.4')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -16,8 +16,8 @@ test('application and evidence content links only to this repository', () => {
     'docs/FORMULAS_2.0.2.md',
     'frontend/src/components/PatchTool.vue',
     'frontend/src/assets/gbfr/README.md',
-    'data/summon_natural_rules_202.json',
-    'data/wrightstone_traits.json',
+    'internal/backend/data/summon_natural_rules_202.json',
+    'internal/backend/data/wrightstone_traits.json',
   ]
   const allowedPrefix = 'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool'
 
@@ -63,7 +63,7 @@ test('packaged metadata no longer identifies another maintainer', () => {
 })
 
 test('release navigation cannot open a caller-supplied website', () => {
-  const backend = readRoot('app.go')
+  const backend = readRoot('internal/backend/app.go')
   const shell = readRoot('frontend/src/components/PatchTool.vue')
   assert.match(backend, /func \(a \*App\) OpenReleasePage\(\) error/)
   assert.match(shell, /OpenReleasePage\(\)/)

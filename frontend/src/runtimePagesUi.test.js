@@ -203,7 +203,7 @@ test('async option loading and generated bindings honor the owner lease contract
   assert.match(loadOptionsBody, /await backendLanguageReady[\s\S]*if \(disposed/)
   assert.match(loadOptionsBody, /await SigilMemoryGetOptions\(\)[\s\S]*if \(disposed/)
 
-  const bindings = readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8')
+  const bindings = readFileSync(new URL('../wailsjs/go/backend/App.js', import.meta.url), 'utf8')
   for (const method of ['SigilMemoryAcquire', 'SigilMemoryRelease', 'SigilMemoryUpdateOwned', 'CharaAcquire', 'CharaRelease', 'SummonUpdateOwned']) {
     assert.match(bindings, new RegExp(`export function ${method}\\(`), `${method} binding is missing`)
   }

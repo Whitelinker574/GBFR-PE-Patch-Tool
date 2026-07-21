@@ -10,7 +10,7 @@ import {
 	FormulaSamplerStartChangeRecordingOwned,
   FormulaSamplerStatus,
 	FormulaSamplerStopChangeRecordingOwned,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { characterAssetIcon } from '../gameAssetIcons.js'
 import { language } from '../i18n.js'
 import {

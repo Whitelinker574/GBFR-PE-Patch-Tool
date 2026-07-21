@@ -7,7 +7,7 @@ import { CharaAcquire, CharaRelease,
          CollectibleTaskCompleteOwned,
          InfiniteChallengeGetStatusOwned, InfiniteChallengeSetEnabledOwned,
          TerminusDropGetStatusOwned, TerminusDropScanOwned, TerminusDropSetEnabledOwned,
-         MonsterEnhanceSetPatchValueEnabledOwned } from '../../wailsjs/go/main/App'
+         MonsterEnhanceSetPatchValueEnabledOwned } from '../../wailsjs/go/backend/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])

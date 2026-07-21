@@ -4,17 +4,19 @@
 
 <h1 align="center">GBFR PE Patch Tool</h1>
 
-<p align="center">Windows save editing, controlled runtime tools, and read-only formula calibration for <em>Granblue Fantasy: Relink</em> DLC 2.0.2</p>
+<p align="center">Windows save editing, live changes, and read-only monitoring for <em>Granblue Fantasy: Relink</em> DLC 2.0.2</p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Download v1.91.3</a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Download v1.91.4</a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation and evidence</a>
 </p>
 
 ![Feature home](docs/screenshots/home.png)
 
-The application brings offline save editing, runtime features, loadout construction, and formula evidence into one desktop interface. Its navigation keeps three operating modes separate: edit a save while the game is closed, connect to a running game for live changes, or monitor runtime data without writing. This is not an official tool and it does not unlock DLC systems that the save has not opened.
+This is an unofficial desktop tool whose data layouts and runtime locations target DLC 2.0.2. Its three operating modes have separate boundaries: offline save editing runs with the game closed and uses backup, checksum, and atomic replacement; live changes connect to the running game and write memory; read-only monitoring observes runtime values for diagnostics and formula calibration without writing.
+
+The tool works with records already present in local saves or the current game process. It does not unlock DLC content that an account does not own or a save has not opened. Development and limited field checks were performed on DLC 2.0.2, but not every game state has been exercised. Back up the target first and confirm every write through the page readback.
 
 ## Quick start
 
@@ -85,20 +87,26 @@ See [formula sources and evidence](docs/FORMULAS_2.0.2.md), the [sampling guide]
 ## Repository layout
 
 ```text
-app.go / *_store.go / *_gen.go     Wails API, save parsing, catalogs, transactions
-readonly_game_process.go           Read-only process lifecycle
-runtime_*.go / runtime_patch_*.go  Runtime locators, patch sessions, guards, readback
-formula_*.go                        Panel location, sampling state machine, evidence bundles
-data/                               Embedded 2.0.2 catalogs, layouts, and evidence
-frontend/src/components/           Vue pages and shared components
-frontend/src/*.test.js              Frontend catalog, interaction, and safety tests
-resources/ / src_dll/               Embedded native resources and reproducible source
-tools/                               Reproducible data audit, generation, and icon sync tools
-docs/                                Maintained docs, public screenshots, redacted evidence
-.github/workflows/ci.yml             Go, frontend, and static checks
+main.go                              Minimal Wails entry point and frontend embedding
+internal/backend/README.md           Backend feature-family and filename index
+internal/backend/loadout*.go         Loadout parsing, calculation, sharing, and transactions
+internal/backend/save_*.go           Save discovery, backup, parsing, and mutation
+internal/backend/sigil_*.go          Sigil save/live channels and shared catalog
+internal/backend/wrightstone_*.go    Wrightstone save/live channels and shared catalog
+internal/backend/summon_*.go         Summon catalog, save, and live channels
+internal/backend/runtime_*.go        Runtime patches, monitors, guards, and readback
+internal/backend/formula_*.go        Panel location, sampling, and redacted evidence
+internal/backend/*_test.go           Colocated backend regression tests; not shipped
+internal/backend/data/               Embedded 2.0.2 catalogs, layouts, and evidence
+internal/backend/resources/          Embedded native helper
+frontend/                             Vue application, generated bindings, and UI tests
+src_dll/                              Reproducible patch_core native source
+tools/                                Reproducible maintainer scripts only
+docs/                                 User, architecture, status, and evidence documentation
+.github/workflows/ci.yml              Go, frontend, and static checks
 ```
 
-Only reproducible release/data maintenance tools are kept online. One-off field QA scripts, machine-specific files, credentials, handoff bundles, and local screenshots stay outside the repository. Automated unit tests remain because they are part of release verification.
+Only reproducible release/data maintenance tools are kept online. One-off field QA scripts, machine-specific files, credentials, handoff bundles, and local screenshots stay outside the repository. `*_test.go` and `*.test.js` files are automated verification maintained beside the features they protect; they are not user-facing scripts and are not compiled into the release. See the [architecture guide](docs/ARCHITECTURE.md) and [backend file map](internal/backend/README.md).
 
 ## Build and verify on Windows
 

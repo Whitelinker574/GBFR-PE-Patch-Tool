@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { SigilMemoryAcquire, SigilMemoryGetOptions, SigilMemoryGetStatus, SigilMemoryRelease, SigilMemoryUpdateOwned } from '../../wailsjs/go/main/App'
+import { SigilMemoryAcquire, SigilMemoryGetOptions, SigilMemoryGetStatus, SigilMemoryRelease, SigilMemoryUpdateOwned } from '../../wailsjs/go/backend/App'
 import { matchText } from '../utils/matchText.js'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'

@@ -8,9 +8,9 @@ const patchTool = read('./components/PatchTool.vue')
 const home = read('./components/HomeJournal.vue')
 const patchPage = read('./components/RuntimePatchFeatures.vue')
 const uiI18n = read('./i18n-ui.js')
-const patchCatalogBackend = read('../../runtime_patch_catalog.go')
-const patchRuntimeBackend = read('../../runtime_patch_runtime.go')
-const productionCatalog = JSON.parse(read('../../data/runtime_patch_catalog.json'))
+const patchCatalogBackend = read('../../internal/backend/runtime_patch_catalog.go')
+const patchRuntimeBackend = read('../../internal/backend/runtime_patch_runtime.go')
+const productionCatalog = JSON.parse(read('../../internal/backend/data/runtime_patch_catalog.json'))
 
 test('one runtime patch operation gate blocks writes and disconnects during a delayed refresh, then invalidates stale publication on reset', async () => {
   const { createRuntimePatchOperationGate } = await import(`./runtimePatchOperationGate.js?gate=${Date.now()}`)

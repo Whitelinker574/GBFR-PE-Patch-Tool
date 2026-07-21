@@ -6,7 +6,7 @@ import {
   WrightstoneMemoryGetStatus,
   WrightstoneMemoryRelease,
   WrightstoneMemoryUpdateOwned,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
 import { backendLanguageReady } from '../backendLanguage.js'

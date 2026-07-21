@@ -7,7 +7,7 @@ import {
   SigilMemoryRelease,
   SigilMemoryUpdateOwned,
   SigilMemoryValidateLoadout,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { createOperationGate, freezeSigilLoadout } from '../runtimeOperationGate'
 import { createSelectionTracker, takeSelectionAddress } from '../sigilLoadoutSelection'

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { FindSaveFiles, GetQuests, LoadSave, UpdateQuestCounts } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, GetQuests, LoadSave, UpdateQuestCounts } from '../../wailsjs/go/backend/App'
 import BadgeUnlock from './BadgeUnlock.vue'
 
 const emit = defineEmits(['status'])

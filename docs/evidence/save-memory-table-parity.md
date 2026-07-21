@@ -61,7 +61,7 @@ preserve or write a raw encodable value without presenting it as natural.
   tier-index/rank matrix `0→2:11, 1→2:47, 2→0:3, 2→2:41`, so the tool does not
   derive Rank from tier.
 
-The checked-in normalized evidence is `data/summon_natural_rules_202.json`.
+The checked-in normalized evidence is `internal/backend/data/summon_natural_rules_202.json`.
 Its source role is secondary cross-check; local game-table hashes remain the
 primary identity evidence.
 

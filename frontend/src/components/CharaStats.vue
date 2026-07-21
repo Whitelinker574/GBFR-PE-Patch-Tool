@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { FindSaveFiles, GetCharacterStats, UpdateCharacterStats } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, GetCharacterStats, UpdateCharacterStats } from '../../wailsjs/go/backend/App'
 
 const emit = defineEmits(['status'])
 const slots = ref([])

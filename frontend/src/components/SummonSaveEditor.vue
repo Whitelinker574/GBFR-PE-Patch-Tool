@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/main/App'
-import { Apply, GetOptions, LoadSaveFile, SelectInputSave, SelectOutputSave } from '../../wailsjs/go/main/SummonSaveGen'
+import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/backend/App'
+import { Apply, GetOptions, LoadSaveFile, SelectInputSave, SelectOutputSave } from '../../wailsjs/go/backend/SummonSaveGen'
 import { summonAssetIcon, traitAssetIcon } from '../gameAssetIcons'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SaveSourcePicker from './SaveSourcePicker.vue'

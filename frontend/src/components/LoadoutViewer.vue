@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, SelectProgressionSave } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, LoadoutList, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import LoadoutEditor from './LoadoutEditor.vue'

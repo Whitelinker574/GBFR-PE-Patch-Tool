@@ -7,7 +7,7 @@ import {
   RuntimePatchGetStatusesOwned,
   RuntimePatchReleaseOwned,
   RuntimePatchSetEnabledOwned,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 import { language } from '../i18n.js'
 import {

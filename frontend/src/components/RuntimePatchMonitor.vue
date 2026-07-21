@@ -8,7 +8,7 @@ import {
   RuntimePatchSelectedItemsDisableOwned,
   RuntimePatchSelectedItemsEnableOwned,
   RuntimePatchSelectedItemsStatusOwned,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { language } from '../i18n.js'
 import { createOperationGate } from '../runtimeOperationGate.js'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'

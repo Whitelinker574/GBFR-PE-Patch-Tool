@@ -1,13 +1,13 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/backend/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits, GetAllowedLevels,
          GetPrimaryTraitLevels, GetSecondaryTraitLevels,
          LoadSaveFile, GetLoadedSaveInfo,
          GetQueue, AddToQueue, RemoveFromQueue, ClearQueue, CheckLegality,
          ApplyQueue, RemoveAllSigils,
          GetExistingSigils, DeleteSelectedSigils,
-         SelectSigilInputSave, SelectSigilOutputSave } from '../../wailsjs/go/main/SigilGen'
+         SelectSigilInputSave, SelectSigilOutputSave } from '../../wailsjs/go/backend/SigilGen'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'

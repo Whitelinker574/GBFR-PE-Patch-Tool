@@ -6,7 +6,7 @@ const patchTool = readFileSync(new URL('./components/PatchTool.vue', import.meta
 const homeJournal = readFileSync(new URL('./components/HomeJournal.vue', import.meta.url), 'utf8')
 const wrightstoneMemory = readFileSync(new URL('./components/WrightstoneMemoryGenerator.vue', import.meta.url), 'utf8')
 const uiScaleSource = readFileSync(new URL('./utils/uiScale.js', import.meta.url), 'utf8')
-const appGo = readFileSync(new URL('../../app.go', import.meta.url), 'utf8')
+const appGo = readFileSync(new URL('../../internal/backend/app.go', import.meta.url), 'utf8')
 
 function navigationIds(source, groupId) {
   const match = source.match(new RegExp(`\\{ id: '${groupId}',[^\\n]*items: \\[([^\\]]*)\\] \\}`))
@@ -124,7 +124,7 @@ test('user-facing page titles omit historical source-version suffixes', () => {
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.3"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.4"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 

@@ -4,6 +4,8 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 运行结构、代码域、写入边界与测试布局 |
+| [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) | 历史需求的已实现、现场验证和仍未闭环清单 |
 | [`FORMULAS_2.0.2.md`](FORMULAS_2.0.2.md) | 配装数值来源、证据等级与已知边界 |
 | [`角色公式采样操作说明.md`](角色公式采样操作说明.md) | 严格只读运行时公式采样操作 |
 | [`evidence/save-memory-table-parity.md`](evidence/save-memory-table-parity.md) | 因子、祝福和召唤石在存档/内存/配装入口的目录一致性与写入策略 |
@@ -17,4 +19,4 @@
 - 文档只记录当前版本仍可复现的操作、证据和限制，不保留聊天记录、临时排错过程或机器专用路径。
 - 表格数据必须注明游戏版本和校验身份；第三方公开资料只能作为交叉检查，不能替代本地游戏表、EXE 守卫和真实回读。
 - 公开截图必须由当前应用页面生成，并使用示例数据；不得出现真实用户名、存档路径、PID、模块基址或绝对地址。
-- 脚本的输入、输出和运行时机统一记录在 [`tools/README.md`](../tools/README.md)。一次性脚本放在已忽略的本地目录，不进入发布分支。
+- 后端文件按功能前缀索引在 [`internal/backend/README.md`](../internal/backend/README.md)。维护脚本的输入、输出和运行时机统一记录在 [`tools/README.md`](../tools/README.md)。一次性脚本放在已忽略的本地目录，不进入发布分支。

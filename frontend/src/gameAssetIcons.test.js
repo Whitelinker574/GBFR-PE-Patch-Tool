@@ -3,10 +3,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const catalog = JSON.parse(readFileSync(new URL('./gameAssetIcons.json', import.meta.url), 'utf8'))
-const traits = JSON.parse(readFileSync(new URL('../../data/traits.json', import.meta.url), 'utf8')).traits
-const weapons = JSON.parse(readFileSync(new URL('../../data/weapons.json', import.meta.url), 'utf8')).weapons
-const summons = JSON.parse(readFileSync(new URL('../../data/summons.json', import.meta.url), 'utf8')).summons
-const items = JSON.parse(readFileSync(new URL('../../data/items.json', import.meta.url), 'utf8')).items
+const traits = JSON.parse(readFileSync(new URL('../../internal/backend/data/traits.json', import.meta.url), 'utf8')).traits
+const weapons = JSON.parse(readFileSync(new URL('../../internal/backend/data/weapons.json', import.meta.url), 'utf8')).weapons
+const summons = JSON.parse(readFileSync(new URL('../../internal/backend/data/summons.json', import.meta.url), 'utf8')).summons
+const items = JSON.parse(readFileSync(new URL('../../internal/backend/data/items.json', import.meta.url), 'utf8')).items
 const iconSyncScript = readFileSync(new URL('../../tools/sync_reference_icons.ps1', import.meta.url), 'utf8')
 
 const expectedCharacterIcons = {

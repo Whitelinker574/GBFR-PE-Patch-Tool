@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import OpenCC from 'opencc-js/t2cn'
-import { LoadBadgeState, SetAllBadgeStates, SetBadgeState } from '../../wailsjs/go/main/App'
+import { LoadBadgeState, SetAllBadgeStates, SetBadgeState } from '../../wailsjs/go/backend/App'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { matchText } from '../utils/matchText.js'
 import { language } from '../i18n.js'

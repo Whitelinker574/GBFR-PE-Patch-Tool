@@ -4,8 +4,8 @@ setlocal
 cd /d "%~dp0" || exit /b %errorlevel%
 
 echo [1/4] Checking required embedded resources...
-if not exist "resources\patch_core.dll" (
-	echo ERROR: Missing resources\patch_core.dll. Build src_dll\patch_core as Release x64 first.
+if not exist "internal\backend\resources\patch_core.dll" (
+	echo ERROR: Missing internal\backend\resources\patch_core.dll. Build src_dll\patch_core as Release x64 first.
 	exit /b 1
 )
 if not exist "frontend\dist" mkdir "frontend\dist"

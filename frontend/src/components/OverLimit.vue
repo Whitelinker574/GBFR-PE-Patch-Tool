@@ -7,7 +7,7 @@ import {
   OverLimitRelease,
   OverLimitScan,
   OverLimitSetAllOwned,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])

@@ -1,10 +1,10 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/backend/App'
 import { GetWrightstoneList, GetTraitList, GetTraitLevels, GetDefaultTrait,
          LoadSaveFile, GetQueue, AddToQueue, RemoveFromQueue, ClearQueue,
          ApplyQueue, ApplyItems, CheckLegality, FileExists, SelectWrightstoneInputSave,
-         SelectWrightstoneOutputSave } from '../../wailsjs/go/main/WrightstoneGen'
+         SelectWrightstoneOutputSave } from '../../wailsjs/go/backend/WrightstoneGen'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'

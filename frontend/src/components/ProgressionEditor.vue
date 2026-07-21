@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { FindSaveFiles, ProgressionGetCatalog, ProgressionLoad, ProgressionApply, SelectProgressionSave } from '../../wailsjs/go/main/App'
+import { FindSaveFiles, ProgressionGetCatalog, ProgressionLoad, ProgressionApply, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { language } from '../i18n'
 import { backendLanguageReady } from '../backendLanguage'
 import { itemAssetIcon, weaponAssetIcon } from '../gameAssetIcons'

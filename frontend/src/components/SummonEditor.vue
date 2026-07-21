@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
-import { CharaAcquire, CharaRelease, SummonGetAll, SummonGetOptions, SummonUpdateOwned } from '../../wailsjs/go/main/App'
+import { CharaAcquire, CharaRelease, SummonGetAll, SummonGetOptions, SummonUpdateOwned } from '../../wailsjs/go/backend/App'
 import { summonAssetIcon, traitAssetIcon } from '../gameAssetIcons'
 import { matchText } from '../utils/matchText.js'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'

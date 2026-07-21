@@ -5,11 +5,11 @@
 <h1 align="center">GBFR PE Patch Tool</h1>
 
 <p align="center">
-  面向《碧蓝幻想：Relink》DLC 2.0.2 的 Windows 存档编辑、实时工具与只读公式校准工作台
+  《碧蓝幻想：Relink》DLC 2.0.2 的 Windows 存档编辑、实时修改与只读监测工具
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">下载 v1.91.3</a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">下载 v1.91.4</a> ·
   <a href="README_EN.md">English</a> ·
   <a href="docs/README.md">文档与证据</a>
 </p>
@@ -20,7 +20,9 @@
 
 ![功能主页](docs/screenshots/home.png)
 
-这个项目把原本分散的存档修改、运行时功能、配装构造和公式取证整理为同一个桌面应用。界面明确区分三种工作方式：退出游戏后修改存档、连接游戏进行实时修改、只读监测运行时数据。它不是官方工具，也不会替游戏解锁尚未开放的 DLC 系统。
+本项目是面向《碧蓝幻想：Relink》的非官方桌面工具，数据结构与偏移基于 DLC 2.0.2 版本整理。三种工作方式互相独立、边界固定：离线存档编辑要求完全退出游戏后进行，写入经过备份、校验与原子替换；实时写入需要连接正在运行的游戏进程，直接改动内存；只读监测只读取运行时数值，用于观察和公式校准，不产生任何写入。
+
+工具只操作本地存档和游戏进程中已有的数据，不会解锁账号尚未拥有或官方尚未开放的 DLC 内容。功能在 DLC 2.0.2 环境下开发并做过有限自测，未覆盖全部实机场景；写入前请备份存档与目标文件，写入后用页面回读核对结果。
 
 ## 快速开始
 
@@ -96,16 +98,20 @@ C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\
 
 ```text
 .
-├─ app.go / *_store.go / *_gen.go    Wails API、存档解析、目录与事务写入
-├─ readonly_game_process.go          只读进程连接与生命周期
-├─ runtime_*.go / runtime_patch_*.go  运行时定位、补丁会话、守卫和回读
-├─ formula_*.go                      面板定位、采样状态机与脱敏证据包
-├─ data/                              嵌入的 2.0.2 目录、布局和证据数据
+├─ main.go                            仅负责嵌入前端并启动 Wails 后端
+├─ internal/backend/
+│  ├─ README.md                       后端功能域与文件前缀索引
+│  ├─ loadout*.go / save_*.go         配装、存档解析和事务写入
+│  ├─ sigil_*.go / wrightstone_*.go   因子与祝福的存档/内存通道
+│  ├─ summon_*.go                     召唤石目录、存档和内存通道
+│  ├─ runtime_*.go / formula_*.go     运行时补丁、监测和公式证据
+│  ├─ *_test.go                       与对应功能同包的自动化回归测试
+│  ├─ data/                            嵌入的 2.0.2 目录、布局和证据
+│  └─ resources/                       随程序嵌入的原生资源
 ├─ frontend/
 │  ├─ src/components/                Vue 页面与共享组件
 │  ├─ src/*.test.js                  前端目录、交互和安全回归测试
 │  └─ wailsjs/                       Wails 自动生成绑定
-├─ resources/                         随程序嵌入的原生资源
 ├─ src_dll/                           可复现的 patch_core 原生组件源码
 ├─ tools/                             数据审计、目录生成与图标同步脚本
 ├─ docs/                              维护文档、公开截图与脱敏证据
@@ -113,7 +119,7 @@ C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\
 └─ .github/workflows/ci.yml           Go、前端和静态检查
 ```
 
-线上 `tools/` 只保留重建当前数据或发布所需的可复现脚本；一次性现场 QA、截图脚本、API 凭据、交接包和机器专用文件不进入仓库。自动化单元测试属于发布验证的一部分，会继续保留。
+线上 `tools/` 只保留重建当前数据或发布所需的可复现维护脚本；一次性现场 QA、截图脚本、API 凭据、交接包和机器专用文件不进入仓库。`*_test.go` 和 `*.test.js` 是随功能代码维护、但不会编入成品的自动化验证，不属于用户运行脚本。完整说明见 [架构文档](docs/ARCHITECTURE.md) 和 [后端文件索引](internal/backend/README.md)。
 
 ## 本地构建与验证
 

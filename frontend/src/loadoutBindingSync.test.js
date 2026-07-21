@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const appJS = readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8')
-const appTypes = readFileSync(new URL('../wailsjs/go/main/App.d.ts', import.meta.url), 'utf8')
+const appJS = readFileSync(new URL('../wailsjs/go/backend/App.js', import.meta.url), 'utf8')
+const appTypes = readFileSync(new URL('../wailsjs/go/backend/App.d.ts', import.meta.url), 'utf8')
 const models = readFileSync(new URL('../wailsjs/go/models.ts', import.meta.url), 'utf8')
 
 const loadoutMethods = [

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { SetLanguage } from '../../wailsjs/go/main/App'
+import { SetLanguage } from '../../wailsjs/go/backend/App'
 import { language, storeLanguage } from '../i18n'
 
 const applying = ref(false)

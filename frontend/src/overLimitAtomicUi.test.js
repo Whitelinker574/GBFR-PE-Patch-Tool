@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const component = readFileSync(new URL('./components/OverLimit.vue', import.meta.url), 'utf8')
-const bindings = readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8')
-const declarations = readFileSync(new URL('../wailsjs/go/main/App.d.ts', import.meta.url), 'utf8')
+const bindings = readFileSync(new URL('../wailsjs/go/backend/App.js', import.meta.url), 'utf8')
+const declarations = readFileSync(new URL('../wailsjs/go/backend/App.d.ts', import.meta.url), 'utf8')
 
 test('超限能力 UI 只发起一次四槽原子写入', () => {
   assert.match(component, /OverLimitSetAllOwned/)
@@ -20,5 +20,5 @@ test('超限能力 UI 只发起一次四槽原子写入', () => {
 test('Wails 绑定暴露四槽批量接口', () => {
   assert.match(bindings, /export function OverLimitSetAllOwned\(arg1, arg2\)/)
   assert.match(bindings, /\['OverLimitSetAllOwned'\]\(arg1, arg2\)/)
-  assert.match(declarations, /OverLimitSetAllOwned\(arg1:string,arg2:Array<main\.OverLimitUpdate>\):Promise<main\.OverLimitStatus>/)
+  assert.match(declarations, /OverLimitSetAllOwned\(arg1:string,arg2:Array<backend\.OverLimitUpdate>\):Promise<backend\.OverLimitStatus>/)
 })

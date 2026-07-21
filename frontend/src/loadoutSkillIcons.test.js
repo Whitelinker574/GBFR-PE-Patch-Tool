@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const skillIcons = JSON.parse(readFileSync(new URL('./loadoutSkillIcons.json', import.meta.url), 'utf8'))
-const skillCatalog = JSON.parse(readFileSync(new URL('../../data/skill_names.json', import.meta.url), 'utf8')).skills
+const skillCatalog = JSON.parse(readFileSync(new URL('../../internal/backend/data/skill_names.json', import.meta.url), 'utf8')).skills
 const editor = readFileSync(new URL('./components/LoadoutEditor.vue', import.meta.url), 'utf8')
 const viewer = readFileSync(new URL('./components/LoadoutViewer.vue', import.meta.url), 'utf8')
 const exactSkillFiles = new Set(readdirSync(new URL('../public/loadout-icons/skills/', import.meta.url)))

@@ -3,7 +3,7 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/backend/App'
 import {
   WindowMinimise,
   WindowToggleMaximise,

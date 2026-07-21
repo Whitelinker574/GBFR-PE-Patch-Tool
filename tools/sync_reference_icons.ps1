@@ -136,7 +136,7 @@ try {
         # Translated/community filenames are intentionally not used as a
         # fallback because similarly named and alternate-form skills can point
         # at different game assets.
-        $skillCatalog = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\skill_names.json') -Raw -Encoding UTF8 | ConvertFrom-Json).skills
+        $skillCatalog = (Get-Content -LiteralPath (Join-Path $repoRoot 'internal\backend\data\skill_names.json') -Raw -Encoding UTF8 | ConvertFrom-Json).skills
         $abilityTableBytes = [byte[]](Read-GameTableBytes 'ability.tbl')
         $abilityTableRowCount = [BitConverter]::ToInt64($abilityTableBytes, 0)
         $abilityTableRowSize = 96
@@ -231,7 +231,7 @@ try {
         }
     }
 
-    $traitRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\traits.json') -Raw -Encoding UTF8 | ConvertFrom-Json).traits
+    $traitRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'internal\backend\data\traits.json') -Raw -Encoding UTF8 | ConvertFrom-Json).traits
     $skillTableBytes = [byte[]](Read-GameTableBytes 'skill.tbl')
     $skillTableRowCount = [BitConverter]::ToInt64($skillTableBytes, 0)
     $skillTableRowSize = 112
@@ -288,7 +288,7 @@ try {
         $target = if ($entity -match '^WEP_') { $weaponsByID } else { $weaponsByHash }
         [void](Add-RecordIcon $target $entity $record 'weapons')
     }
-    $weaponRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\weapons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).weapons
+    $weaponRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'internal\backend\data\weapons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).weapons
     $weaponTableBytes = [byte[]](Read-GameTableBytes 'weapon.tbl')
     $weaponTableRowCount = [BitConverter]::ToInt64($weaponTableBytes, 0)
     $weaponTableRowSize = 292
@@ -363,7 +363,7 @@ try {
     # ASCII field at +16. Semantic aliases are useful as an index, but this
     # table join is the authoritative identity proof and prevents similarly
     # named materials from inheriting the wrong icon.
-    $itemRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\items.json') -Raw -Encoding UTF8 | ConvertFrom-Json).items
+    $itemRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'internal\backend\data\items.json') -Raw -Encoding UTF8 | ConvertFrom-Json).items
     $itemTableBytes = [byte[]](Read-GameTableBytes 'item.tbl')
     $itemRowCount = [BitConverter]::ToInt64($itemTableBytes, 0)
     $itemTableRowSize = 128
@@ -469,7 +469,7 @@ try {
     $skillBuild = Build-ExactPlayableSkillMap
     $skillMap = $skillBuild.map
 
-    $summonRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'data\summons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).summons
+    $summonRows = (Get-Content -LiteralPath (Join-Path $repoRoot 'internal\backend\data\summons.json') -Raw -Encoding UTF8 | ConvertFrom-Json).summons
     $coverage = [ordered]@{
         traits = "$(@($traitRows | Where-Object { $traitsByID.ContainsKey([string]$_.internalId) }).Count)/$($traitRows.Count)"
         weapons = "$(@($weaponRows | Where-Object { $weaponsByHash.ContainsKey((Normalize-Hex $_.hash)) }).Count)/$($weaponRows.Count)"
