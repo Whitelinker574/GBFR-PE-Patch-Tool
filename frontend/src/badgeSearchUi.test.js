@@ -4,7 +4,7 @@ import test from 'node:test'
 
 const source = readFileSync(new URL('./components/BadgeUnlock.vue', import.meta.url), 'utf8')
 
-test('title catalog search learned pinyin matching from upstream 1.8.5', () => {
+test('title catalog search supports pinyin matching', () => {
   assert.match(source, /import OpenCC from 'opencc-js\/t2cn'/)
   assert.match(source, /OpenCC\.Converter\(\{ from: 'tw', to: 'cn' \}\)/)
   assert.match(source, /import \{ matchText \} from '\.\.\/utils\/matchText\.js'/)

@@ -78,10 +78,10 @@ test('experimental runtime integrations are absent from the stable page', () => 
   }
 })
 
-test('continuous challenge is a stable owned v1.8.5 mission action', () => {
+test('continuous challenge is a stable owned mission action', () => {
   assert.match(source, /InfiniteChallengeGetStatusOwned/)
   assert.match(source, /InfiniteChallengeSetEnabledOwned/)
-  assert.match(source, /连续挑战[\s\S]*v1\.8\.5\s*特征/)
+  assert.match(source, /连续挑战[\s\S]*DLC 2\.0\.2\s*特征/)
   assert.match(source, /唯一 AOB · 三字节补丁 · 写后回读/)
   assert.match(source, /infiniteChallengeStatus\.owned/)
 })

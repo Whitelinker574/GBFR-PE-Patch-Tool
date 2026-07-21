@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const testStatsSave = `D:\gbf\Saved\SaveGames\SaveData2.dat`
+var testStatsSave = strings.TrimSpace(os.Getenv("GBFR_TEST_STATS_SAVE"))
 
 const testIoHash = "4D0A60C3"
 
@@ -22,9 +22,6 @@ func requireStatsSave(t *testing.T) {
 }
 
 func statsSaveFixturePath() string {
-	if path := strings.TrimSpace(os.Getenv("GBFR_TEST_STATS_SAVE")); path != "" {
-		return path
-	}
 	return testStatsSave
 }
 

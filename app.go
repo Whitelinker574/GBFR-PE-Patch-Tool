@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.2"
+	appVersion  = "v1.91.3"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -120,16 +120,16 @@ type App struct {
 	// this App instance. Exact entry bytes, rel32 cave and an in-cave marker are
 	// retained until restoration succeeds, so detach can fail closed and retry.
 	monsterEnhanceOwned map[string]monsterEnhanceOwnedPatch
-	// ct084PatchLeases owns only independently verified direct patches. The
+	// runtimePatchPatchLeases owns only independently verified direct patches. The
 	// process identity and exact bytes make every record a retryable recovery
-	// lease; ct084PatchOrder preserves reverse installation order on detach.
-	ct084PatchLeases map[string]ct084PatchLease
-	ct084PatchOrder  []string
+	// lease; runtimePatchPatchOrder preserves reverse installation order on detach.
+	runtimePatchPatchLeases map[string]runtimePatchPatchLease
+	runtimePatchPatchOrder  []string
 	// The selected-item monitor uses two independent read-only address-capture
 	// hooks. Keep exact recovery evidence until both entry restoration and
 	// tool-owned cave-pointer clearing are proven.
-	ct084SelectedMaterialHook ct084SelectedCaptureLease
-	ct084SelectedKeyItemHook  ct084SelectedCaptureLease
+	runtimePatchSelectedMaterialHook runtimePatchSelectedCaptureLease
+	runtimePatchSelectedKeyItemHook  runtimePatchSelectedCaptureLease
 	// retiredRuntimeCaves were reachable from a published entry whose original
 	// bytes are now proven restored. They intentionally remain mapped until the
 	// game exits because entry restoration cannot quiesce an in-flight thread.
@@ -714,10 +714,10 @@ var potionDefs = []potionDef{
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
-	if len(a.ct084PatchLeases) != 0 || len(a.ct084PatchOrder) != 0 {
+	if len(a.runtimePatchPatchLeases) != 0 || len(a.runtimePatchPatchOrder) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("实时补丁仍由当前页面持有，请先安全释放")
 	}
-	if a.hasCT084SelectedCaptureLeaseLocked() {
+	if a.hasRuntimePatchSelectedCaptureLeaseLocked() {
 		return CharaProcessInfo{}, fmt.Errorf("选中物品捕获仍由当前页面持有，请先安全释放")
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
@@ -739,10 +739,10 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
 		return CharaProcessInfo{}, err
 	}
-	if len(a.ct084PatchLeases) != 0 || len(a.ct084PatchOrder) != 0 {
+	if len(a.runtimePatchPatchLeases) != 0 || len(a.runtimePatchPatchOrder) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("实时补丁由另一运行时页面持有，请先安全释放")
 	}
-	if a.hasCT084SelectedCaptureLeaseLocked() {
+	if a.hasRuntimePatchSelectedCaptureLeaseLocked() {
 		return CharaProcessInfo{}, fmt.Errorf("选中物品捕获由另一运行时页面持有，请先安全释放")
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
@@ -1109,8 +1109,8 @@ func (a *App) CharaRelease(token string) error {
 	processLive := a.hProcess != 0 && processHandleAlive(a.hProcess)
 	if processLive {
 		a.runtimePatchMu.Lock()
-		selectedErr := a.releaseCT084SelectedCaptureHooksLocked(token, false)
-		ctErr := a.restoreAllCT084PatchesLocked(token)
+		selectedErr := a.releaseRuntimePatchSelectedCaptureHooksLocked(token, false)
+		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
 		if combined := errors.Join(selectedErr, ctErr, challengeErr); combined != nil {
@@ -1120,8 +1120,8 @@ func (a *App) CharaRelease(token string) error {
 			return fmt.Errorf("monster-enhance hook restoration failed; connection remains owned: %w", err)
 		}
 	} else {
-		a.dropCT084SelectedCaptureHooksLocked(token, false)
-		a.dropCT084PatchesForOwnerLocked(token)
+		a.dropRuntimePatchSelectedCaptureHooksLocked(token, false)
+		a.dropRuntimePatchPatchesForOwnerLocked(token)
 		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
 			a.infiniteChallengeOwnerToken = ""
 			a.infiniteChallengeAddr = 0
@@ -1175,10 +1175,10 @@ func (a *App) charaDetachLocked() error {
 		if err := a.restoreInfiniteChallengeOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous challenge: %w", err))
 		}
-		if err := a.releaseCT084SelectedCaptureHooksLocked("", true); err != nil {
+		if err := a.releaseRuntimePatchSelectedCaptureHooksLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("selected-item capture: %w", err))
 		}
-		if err := a.restoreAllCT084PatchesLocked(""); err != nil {
+		if err := a.restoreAllRuntimePatchPatchesLocked(""); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("live patches: %w", err))
 		}
 		a.runtimePatchMu.Unlock()
@@ -1231,10 +1231,10 @@ func (a *App) charaDetachLocked() error {
 	a.currencyCaveAddr = 0
 	a.currencyOriginal = nil
 	a.monsterEnhanceOwned = nil
-	a.ct084PatchLeases = nil
-	a.ct084PatchOrder = nil
-	a.ct084SelectedMaterialHook = ct084SelectedCaptureLease{}
-	a.ct084SelectedKeyItemHook = ct084SelectedCaptureLease{}
+	a.runtimePatchPatchLeases = nil
+	a.runtimePatchPatchOrder = nil
+	a.runtimePatchSelectedMaterialHook = runtimePatchSelectedCaptureLease{}
+	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
 	a.materialConsumeAddr = 0
 	a.infiniteChallengeAddr = 0
@@ -2694,10 +2694,10 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		a.currencyCaveAddr != 0 ||
 		len(a.currencyOriginal) != 0 ||
 		len(a.monsterEnhanceOwned) != 0 ||
-		len(a.ct084PatchLeases) != 0 ||
-		len(a.ct084PatchOrder) != 0 ||
+		len(a.runtimePatchPatchLeases) != 0 ||
+		len(a.runtimePatchPatchOrder) != 0 ||
 		a.infiniteChallengeOwnerToken != "" ||
-		a.hasCT084SelectedCaptureLeaseLocked()
+		a.hasRuntimePatchSelectedCaptureLeaseLocked()
 }
 
 // nextRuntimeOwnerToken is called only while procMu is held.

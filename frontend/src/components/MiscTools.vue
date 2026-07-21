@@ -44,7 +44,7 @@ const runtimeCatalog = computed(() => {
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
     mission: [
-      ['连续挑战', '阻止挑战完成次数递增，可重复完成当前挑战', 'v1.8.5 特征'],
+      ['连续挑战', '阻止挑战完成次数递增，可重复完成当前挑战', 'DLC 2.0.2 特征'],
       ['巴武掉落 100%', '移除巴武掉落的随机排除，保留原始资格检查', 'AOB 定位'],
     ],
   }
@@ -454,7 +454,7 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled && infiniteChallengeStatus.owned }">
           <div class="memory-header">
             <span class="memory-title">连续挑战</span>
-            <span class="info-dot" title="使用上游 v1.8.5 更新后的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
+            <span class="info-dot" title="使用 DLC 2.0.2 唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
             <span class="memory-hint">唯一 AOB · 三字节补丁 · 写后回读</span>
           </div>
           <p class="feature-help">用途：完成挑战后保持当前挑战次数，便于连续重复。进入挑战前开启，用完后立即恢复默认。</p>

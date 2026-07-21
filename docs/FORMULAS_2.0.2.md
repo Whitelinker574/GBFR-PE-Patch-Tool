@@ -133,7 +133,7 @@ HP  = [weapon+0x5C base] + [weapon+0x78 awake]
 
 副参数已审计的面板项：攻击、HP、暴击率、昏厥值、普通伤害上限、能力伤害上限、奥义伤害上限。编辑器只允许选择当前真实存档背包中四个不重复实例。
 
-主加护合法池不再沿用 CT 的 230 项通用词条下拉。游戏原表的两条独立证据链——`summon.tbl → summon_lot.tbl.SkillIdOrBaseParamId` 与 `summon_preset.tbl.SkillId`——得到完全相同的 82 个 SkillId；单石等级在 `summon_curve.tbl` 与预设中均不超过 15。旧目录额外混入的 110 个非召唤 SkillId 和 38 个 `GEEN_*` 物品 ID 已从写入选项移除。
+主加护合法池不再沿用早期的 230 项通用词条下拉。游戏原表的两条独立证据链——`summon.tbl → summon_lot.tbl.SkillIdOrBaseParamId` 与 `summon_preset.tbl.SkillId`——得到完全相同的 82 个 SkillId；单石等级在 `summon_curve.tbl` 与预设中均不超过 15。旧目录额外混入的 110 个非召唤 SkillId 和 38 个 `GEEN_*` 物品 ID 已从写入选项移除。
 
 2.0.2 新增的八项主加护由 52 字节、十数值列的 `skill_status.tbl` 直接补齐：
 

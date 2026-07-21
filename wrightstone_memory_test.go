@@ -73,7 +73,7 @@ func TestDecodeWrightstoneMemoryCaveRejectsForeignOrRegisterClobberingCode(t *te
 func TestWrightstoneMemoryOriginalSignatureIsExact(t *testing.T) {
 	wantV202 := []byte{0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE}
 	if !bytes.Equal(wrightstoneMemoryOriginalBytes, wantV202) {
-		t.Fatalf("wrightstone hook signature = % X, want CT 0.8.5 current-view bytes % X", wrightstoneMemoryOriginalBytes, wantV202)
+		t.Fatalf("wrightstone hook signature = % X, want DLC 2.0.2 runtime catalog current-view bytes % X", wrightstoneMemoryOriginalBytes, wantV202)
 	}
 	if !isWrightstoneMemoryOriginal(wrightstoneMemoryOriginalBytes) {
 		t.Fatal("verified original bytes should match")
@@ -87,7 +87,7 @@ func TestWrightstoneMemoryOriginalSignatureIsExact(t *testing.T) {
 	}
 }
 
-func TestWrightstoneMemoryCT085GuardIsExactAndRejectsPartialMatches(t *testing.T) {
+func TestWrightstoneMemoryDLCSupplementGuardIsExactAndRejectsPartialMatches(t *testing.T) {
 	want := []byte{
 		0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE, 0xE8, 0xF1, 0x05, 0xFC, 0xFF,
 		0x48, 0x39, 0xFE, 0x74, 0x4C, 0x48, 0x8D, 0x4E, 0x18, 0x8B, 0x47, 0x18,
@@ -96,10 +96,10 @@ func TestWrightstoneMemoryCT085GuardIsExactAndRejectsPartialMatches(t *testing.T
 		t.Fatalf("wrightstone current-view RVA = 0x%X, want 0x361CB4", wrightstoneMemoryHookRVA)
 	}
 	if !bytes.Equal(wrightstoneMemoryGuardBytes, want) {
-		t.Fatalf("wrightstone CT 0.8.5 guard = % X, want % X", wrightstoneMemoryGuardBytes, want)
+		t.Fatalf("wrightstone DLC 2.0.2 runtime catalog guard = % X, want % X", wrightstoneMemoryGuardBytes, want)
 	}
 	if !isWrightstoneMemoryGuard(want, false) {
-		t.Fatal("verified CT 0.8.5 guard should match")
+		t.Fatal("verified DLC 2.0.2 runtime catalog guard should match")
 	}
 	for i := range want {
 		mutated := append([]byte(nil), want...)
@@ -120,9 +120,9 @@ func TestWrightstoneMemoryCT085GuardIsExactAndRejectsPartialMatches(t *testing.T
 	}
 }
 
-func TestWrightstoneMemoryStatusIdentifiesCT085CaptureSource(t *testing.T) {
+func TestWrightstoneMemoryStatusIdentifiesDLCSupplementCaptureSource(t *testing.T) {
 	status := newWrightstoneMemoryStatus(true, false, 0x140361CB4, 0x140000000, wrightstoneMemoryOriginalBytes)
-	if status.CaptureSource != "ct085-current-view" || status.SourceVersion != "0.8.5" {
+	if status.CaptureSource != "dlcSupplement-current-view" || status.SourceVersion != "2.0.2" {
 		t.Fatalf("capture provenance = %q/%q", status.CaptureSource, status.SourceVersion)
 	}
 }

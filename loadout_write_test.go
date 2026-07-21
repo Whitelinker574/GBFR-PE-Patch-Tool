@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const testLoadoutSave = `D:\gbf\SaveData2(3).dat`
+var testLoadoutSave = strings.TrimSpace(os.Getenv("GBFR_TEST_LOADOUT_SAVE"))
 
 func haveSave(p string) bool {
 	_, err := os.Stat(p)
@@ -1281,7 +1281,10 @@ func TestLoadoutApplyActualSaveOptIn(t *testing.T) {
 	if os.Getenv("GBFR_REAL_SAVE_WRITE_QA") != "1" {
 		t.Skip("set GBFR_REAL_SAVE_WRITE_QA=1 to exercise the approved real-save write")
 	}
-	const path = `D:\gbf\Saved\SaveGames\SaveData2.dat`
+	path := strings.TrimSpace(os.Getenv("GBFR_REAL_SAVE_WRITE_QA_PATH"))
+	if path == "" {
+		t.Skip("set GBFR_REAL_SAVE_WRITE_QA_PATH to the explicitly approved test save")
+	}
 	groups, err := (&App{}).LoadoutList(path)
 	if err != nil {
 		t.Fatal(err)

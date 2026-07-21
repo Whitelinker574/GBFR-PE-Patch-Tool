@@ -17,9 +17,8 @@ var currencyCaveMarker = [...]byte{'G', 'B', 'F', 'R', 'C', 'U', 'R', '1'}
 
 var currencyInstallRemoteCodeHook = installRemoteCodeHook
 
-// DLC 2.0.2 CT v0.7.4 captures RCX at this instruction and then reads the
-// resource fields at +30/+34/+98/+9C. The wildcards are relocation- and
-// register-dependent bytes; fixed bytes identify the current code path.
+// This DLC 2.0.2 instruction captures RCX and reads the resource fields at
+// +30/+34/+98/+9C. Wildcards cover relocation- and register-dependent bytes.
 var currencyCapturePattern = []byte{
 	0xBA, 0, 0, 0, 0,
 	0x41, 0x89, 0,

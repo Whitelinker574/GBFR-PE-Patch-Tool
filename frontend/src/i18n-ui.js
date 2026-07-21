@@ -167,7 +167,7 @@ export const uiTranslations = {
   '实时保存': 'Live Save',
   '流程型': 'Guided Workflow',
   '需连接游戏': 'Game Connection Required',
-  '等待作者更新': 'Awaiting Upstream Update',
+  '等待作者更新': 'Awaiting a Compatible Update',
   '等待适配': 'Pending Compatibility',
   '本机设置': 'Local Setting',
   '已适配': 'Compatible',
@@ -826,7 +826,7 @@ export const uiTranslations = {
   '选择位置': 'Choose Location',
   '应用写入': 'Apply Write',
 
-  // Upstream v1.8.5 continuous-challenge integration.
+  // Continuous-challenge runtime state.
   '连续挑战': 'Continuous Challenges',
   '阻止挑战完成次数递增，可重复完成当前挑战': 'Prevent the completion counter from increasing so the current challenge can be repeated',
   '唯一 AOB · 三字节补丁 · 写后回读': 'Unique AOB · Three-byte patch · Read-back verification',

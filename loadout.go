@@ -503,12 +503,12 @@ func readLoadoutSigilSlots(e *unitEntry) []LoadoutSigil {
 	return result
 }
 
-// sigilDisplayName 尽量给出因子名（跟随界面语言，复用 ctName 的中/英表）。
+// sigilDisplayName returns the localized name when the runtime catalog proves one.
 func sigilDisplayName(hash uint32) string {
 	if hash == EmptyHash {
 		return ""
 	}
-	return ctName(hash)
+	return localizedRuntimeName(hash)
 }
 
 func indexedSigilTraits(hashByUnit, levelByUnit map[uint32]*unitEntry, gemUnitID uint32) (primaryHash uint32, primaryLevel int, secondaryHash uint32, secondaryLevel int) {
@@ -540,7 +540,7 @@ func loadoutTraitDisplayName(cat *Catalog, hash uint32) string {
 	if trait := cat.LookupTraitByHash(hash); trait != nil {
 		return cnTrait(trait.DisplayName)
 	}
-	if name := ctName(hash); name != "" {
+	if name := localizedRuntimeName(hash); name != "" {
 		return name
 	}
 	if useChinese() {

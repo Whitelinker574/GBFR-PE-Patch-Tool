@@ -22,13 +22,8 @@ func requireIsolatedSaveQA(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, protected := range []string{
-		`D:\gbf\Saved\SaveGames\SaveData2.dat`,
-		`D:\gbf\SaveData2(3).dat`,
-	} {
-		if samePath(abs, protected) {
-			t.Fatalf("%s must point to an isolated copy, not %s", isolatedSaveQAEnv, protected)
-		}
+	if protected := strings.TrimSpace(os.Getenv("GBFR_REAL_SAVE_WRITE_QA_PATH")); protected != "" && samePath(abs, protected) {
+		t.Fatalf("%s must point to an isolated copy, not GBFR_REAL_SAVE_WRITE_QA_PATH", isolatedSaveQAEnv)
 	}
 	info, err := os.Stat(abs)
 	if err != nil {

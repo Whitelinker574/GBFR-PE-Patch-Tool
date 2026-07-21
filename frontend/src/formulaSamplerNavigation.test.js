@@ -7,7 +7,7 @@ const home = readFileSync(new URL('./components/HomeJournal.vue', import.meta.ur
 
 test('formula sampler is routed after the general runtime monitor in the read-only group', () => {
   assert.match(shell, /import FormulaSampler from ['"]\.\/FormulaSampler\.vue['"]/)
-  assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]ctMonitor['"],\s*['"]formulaSampler['"]\]/)
+  assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]runtimeMonitor['"],\s*['"]formulaSampler['"]\]/)
   assert.match(shell, /<FormulaSampler\s+v-else-if="activeTab === 'formulaSampler'"\s+@status="showStatus"\s*\/>/)
   assert.match(home, /id:\s*['"]formulaSampler['"],[\s\S]*?title:\s*['"]公式采样['"]/)
 })

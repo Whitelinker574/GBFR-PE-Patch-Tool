@@ -7,7 +7,7 @@ const saveSource = readFileSync(new URL('./components/SaveSourcePicker.vue', imp
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 const binding = readFileSync(new URL('../wailsjs/go/main/SummonSaveGen.js', import.meta.url), 'utf8')
 
-test('offline summon editor is separate from the upstream runtime memory page', () => {
+test('offline summon editor is separate from the runtime memory page', () => {
   assert.match(shell, /summonSave:\s*\{[\s\S]*?group:\s*'save'/)
   assert.match(shell, /<SummonSaveEditor\s+v-else-if="activeTab === 'summonSave'"/)
   assert.match(shell, /summon:\s*\{[\s\S]*?group:\s*'memory'/)

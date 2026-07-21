@@ -29,7 +29,7 @@ func TestBadgeCatalogPR26Contract(t *testing.T) {
 		t.Fatalf("badge count=%d, want locked PR #26 count 1616", len(catalog))
 	}
 	if got := fmt.Sprintf("%x", sha256.Sum256(raw)); got != "2aab04739254bebb26d48db9ec5f9cd804cda6a37a09654de2344cd41f4d833f" {
-		t.Fatalf("badge catalog sha256=%s, upstream PR #26 data changed without review", got)
+		t.Fatalf("badge catalog sha256=%s, checked catalog data changed without review", got)
 	}
 	for key, name := range catalog {
 		id, err := strconv.Atoi(key)

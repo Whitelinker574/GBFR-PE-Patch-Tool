@@ -10,7 +10,10 @@ import (
 
 func actualLoadoutShareFixture(t *testing.T) (string, *LoadoutShare) {
 	t.Helper()
-	const path = `D:\gbf\Saved\SaveGames\SaveData2.dat`
+	path := strings.TrimSpace(os.Getenv("GBFR_TEST_SHARE_SAVE"))
+	if path == "" {
+		t.Skip("set GBFR_TEST_SHARE_SAVE to a read-only save fixture")
+	}
 	if _, err := os.Stat(path); err != nil {
 		t.Skipf("真实测试存档不存在: %v", err)
 	}
@@ -36,7 +39,10 @@ func actualLoadoutShareFixture(t *testing.T) (string, *LoadoutShare) {
 
 // 用用户提供的真实存档做单套配装分享往返测试；测试只读，不会写入原档。
 func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
-	const path = `D:\gbf\Saved\SaveGames\SaveData2.dat`
+	path := strings.TrimSpace(os.Getenv("GBFR_TEST_SHARE_SAVE"))
+	if path == "" {
+		t.Skip("set GBFR_TEST_SHARE_SAVE to a read-only save fixture")
+	}
 	if _, err := os.Stat(path); err != nil {
 		t.Skipf("真实测试存档不存在: %v", err)
 	}

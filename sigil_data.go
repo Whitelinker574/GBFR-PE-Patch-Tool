@@ -96,7 +96,7 @@ func LoadCatalog() (*Catalog, error) {
 		return nil, fmt.Errorf("加载特性数据失败: %w", err)
 	}
 	c.Traits = traits.Traits
-	appendCT085Catalog(c)
+	appendDLCSupplementCatalog(c)
 
 	rules, err := loadJSON[RuleFile]("data/secondary-trait-rules.json")
 	if err != nil {

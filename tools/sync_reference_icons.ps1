@@ -1,6 +1,8 @@
 param(
-    [string]$ReferenceZip = 'D:\gbf\GBFR-UI-Reference-Library-2.0.2.zip',
-    [string]$GameTableZip = 'D:\gbf\GBFR-DLC-shuju-20260716-184413.zip',
+    [Parameter(Mandatory = $true)]
+    [string]$ReferenceZip,
+    [Parameter(Mandatory = $true)]
+    [string]$GameTableZip,
     [switch]$SkillsOnly
 )
 

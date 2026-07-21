@@ -4,17 +4,15 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v1.91.2 consistently', () => {
-  assert.match(readRoot('app.go'), /appVersion\s*=\s*"v1\.91\.2"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.2')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.2')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.2')
+test('release metadata uses v1.91.3 consistently', () => {
+  assert.match(readRoot('app.go'), /appVersion\s*=\s*"v1\.91\.3"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.3')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.3')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.3')
 })
 
-test('user-facing project content links only to this repository', () => {
+test('application and evidence content links only to this repository', () => {
   const paths = [
-    'README.md',
-    'README_EN.md',
     'docs/FORMULAS_2.0.2.md',
     'frontend/src/components/PatchTool.vue',
     'frontend/src/assets/gbfr/README.md',
@@ -27,6 +25,28 @@ test('user-facing project content links only to this repository', () => {
     const urls = readRoot(path).match(/https?:\/\/[^\s)"'`]+/g) || []
     for (const url of urls) {
       assert.ok(url.startsWith(allowedPrefix), `${path} contains an external link: ${url}`)
+    }
+  }
+})
+
+test('README reference notes contain only the approved public links', () => {
+  const allowed = new Set([
+    'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest',
+    'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml',
+    'https://github.com/BitterG',
+    'https://b23.tv/uRLYpW8',
+    'https://b23.tv/xhiZ7fm',
+    'https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/',
+    'https://b23.tv/mnwxgDf',
+    'https://github.com/Nenkai',
+    'https://b23.tv/lKSX4zy',
+    'https://relinksummon.fate-go.top',
+  ])
+  for (const path of ['README.md', 'README_EN.md']) {
+    const urls = readRoot(path).match(/https?:\/\/[^\s)"'`]+/g) || []
+    for (const url of urls) {
+      const isProjectLink = url.startsWith('https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/')
+      assert.ok(isProjectLink || allowed.has(url), `${path} contains an unexpected link: ${url}`)
     }
   }
 })

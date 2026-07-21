@@ -67,8 +67,8 @@ primary identity evidence.
 
 ## Evidence boundary
 
-Production catalogs are derived from the audited local 2.0.2 game tables and
-are checked by executable regression tests. External spreadsheets, Cheat
-Engine tables, generated workbooks and local field-capture reports are review
-inputs only; they are intentionally not kept in this repository and never
-replace checked-in catalog data by filename alone.
+Production catalogs are derived from audited local 2.0.2 game tables and are
+checked by executable regression tests. External spreadsheets, third-party
+runtime tables, generated workbooks, and local field-capture reports are review
+inputs only. They are intentionally not kept in this repository and never
+replace checked-in catalog data by name alone.

@@ -39,8 +39,8 @@ func TestDLCTraitChineseNamesComeFromLocalSimplifiedChineseCatalog(t *testing.T)
 	if got := sigilMemoryNameByHash(sigilMemorySigils, 0x96D6FE5E); got != "刃姬的轮舞曲" {
 		t.Errorf("memory sigil 0x96D6FE5E = %q, want %q", got, "刃姬的轮舞曲")
 	}
-	if got := ctName(0x9ACE140B); got != "刃姬的轮舞曲" {
-		t.Errorf("ct name 0x9ACE140B = %q, want %q", got, "刃姬的轮舞曲")
+	if got := localizedRuntimeName(0x9ACE140B); got != "刃姬的轮舞曲" {
+		t.Errorf("runtime name 0x9ACE140B = %q, want %q", got, "刃姬的轮舞曲")
 	}
 }
 
@@ -55,8 +55,8 @@ func TestOverdriveTraitChineseNamesUseTheGameCatalogCasing(t *testing.T) {
 		0x3973C1C4: "Overdrive特效V+",
 	}
 	for hash, name := range want {
-		if got := ctName(hash); got != name {
-			t.Errorf("ctName(%08X) = %q, want %q", hash, got, name)
+		if got := localizedRuntimeName(hash); got != name {
+			t.Errorf("localizedRuntimeName(%08X) = %q, want %q", hash, got, name)
 		}
 	}
 }

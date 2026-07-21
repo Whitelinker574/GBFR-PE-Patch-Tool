@@ -601,7 +601,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 		status.SigilName = sigilMemoryNameByHash(sigilMemorySigils, status.SigilHash)
 	}
 	if status.SigilName == "" {
-		status.SigilName = ctName(status.SigilHash)
+		status.SigilName = localizedRuntimeName(status.SigilHash)
 	}
 	if status.SigilName == "" {
 		status.SigilName = fmt.Sprintf("0x%08X", status.SigilHash)
@@ -610,7 +610,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 		status.PrimaryTraitName = sigilMemoryNameByHash(sigilMemoryTraits, status.PrimaryTraitHash)
 	}
 	if status.PrimaryTraitName == "" {
-		status.PrimaryTraitName = ctName(status.PrimaryTraitHash)
+		status.PrimaryTraitName = localizedRuntimeName(status.PrimaryTraitHash)
 	}
 	if status.PrimaryTraitName == "" {
 		status.PrimaryTraitName = fmt.Sprintf("0x%08X", status.PrimaryTraitHash)
@@ -619,7 +619,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 		status.SecondaryTraitName = sigilMemoryNameByHash(sigilMemoryTraits, status.SecondaryTraitHash)
 	}
 	if status.SecondaryTraitName == "" {
-		status.SecondaryTraitName = ctName(status.SecondaryTraitHash)
+		status.SecondaryTraitName = localizedRuntimeName(status.SecondaryTraitHash)
 	}
 	if status.SecondaryTraitName == "" {
 		status.SecondaryTraitName = fmt.Sprintf("0x%08X", status.SecondaryTraitHash)

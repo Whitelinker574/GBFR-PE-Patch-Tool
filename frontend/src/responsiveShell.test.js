@@ -105,27 +105,27 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
   assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'])
-  assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'])
-  assert.deepEqual(navigationIds(patchTool, 'monitor'), ['ctMonitor', 'formulaSampler'])
+  assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
+  assert.deepEqual(navigationIds(patchTool, 'monitor'), ['runtimeMonitor', 'formulaSampler'])
   assert.deepEqual(navigationIds(patchTool, 'tools'), ['compatibility', 'language', 'patch'])
   assert.match(patchTool, /window\.setTimeout\(\(\) => warmTool\(navigation\.value\[0\]\?\.items\[0\]\), 60\)/)
 })
 
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
   assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave'])
-  assert.deepEqual(homeEntryIds('memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest'])
-  assert.deepEqual(homeEntryIds('monitor'), ['ctMonitor', 'formulaSampler'])
+  assert.deepEqual(homeEntryIds('memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest'])
+  assert.deepEqual(homeEntryIds('monitor'), ['runtimeMonitor', 'formulaSampler'])
 })
 
 test('user-facing page titles omit historical source-version suffixes', () => {
-  assert.match(patchTool, /ctMonitor:\s*\{[\s\S]*?title:\s*'运行监测'[\s\S]*?eyebrow:\s*'只读监测'/)
-  assert.match(patchTool, /ctCombat:\s*\{[\s\S]*?eyebrow:\s*'战斗补丁'/)
-  assert.match(patchTool, /ctCharacters:\s*\{[\s\S]*?eyebrow:\s*'角色机制'/)
-  assert.match(patchTool, /ctQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
+  assert.match(patchTool, /runtimeMonitor:\s*\{[\s\S]*?title:\s*'运行监测'[\s\S]*?eyebrow:\s*'只读监测'/)
+  assert.match(patchTool, /patchCombat:\s*\{[\s\S]*?eyebrow:\s*'战斗补丁'/)
+  assert.match(patchTool, /patchCharacters:\s*\{[\s\S]*?eyebrow:\s*'角色机制'/)
+  assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
-  assert.doesNotMatch(homeJournal, /运行监测（CT 0\.8\.4）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.2"/)
-  assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-ct\d+"/i)
+  assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.3"/)
+  assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 
 test('the workspace uses the character-free ornamental parchment as its only scene background', () => {

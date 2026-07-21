@@ -15,14 +15,14 @@ const assets = [
 ]
 
 const ctAssets = [
-  ['ctCombatArt', './assets/gbfr/cutouts/ct-combat-official-edge-safe.webp'],
-  ['ctCharactersArt', './assets/gbfr/cutouts/ct-characters-official-edge-safe.webp'],
-  ['ctQuestArt', './assets/gbfr/cutouts/ct-quest-official-edge-safe.webp'],
-  ['ctMonitorArt', './assets/gbfr/cutouts/ct-monitor-official-edge-safe.webp'],
-  ['ctCombatSticker', './assets/gbfr/stickers/ct-combat.webp'],
-  ['ctCharactersSticker', './assets/gbfr/stickers/ct-characters.webp'],
-  ['ctQuestSticker', './assets/gbfr/stickers/ct-quest.webp'],
-  ['ctMonitorSticker', './assets/gbfr/stickers/ct-monitor.webp'],
+  ['patchCombatArt', './assets/gbfr/cutouts/patch-combat-official-edge-safe.webp'],
+  ['patchCharactersArt', './assets/gbfr/cutouts/patch-characters-official-edge-safe.webp'],
+  ['patchQuestArt', './assets/gbfr/cutouts/patch-quest-official-edge-safe.webp'],
+  ['runtimeMonitorArt', './assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp'],
+  ['patchCombatSticker', './assets/gbfr/stickers/patch-combat.webp'],
+  ['patchCharactersSticker', './assets/gbfr/stickers/patch-characters.webp'],
+  ['patchQuestSticker', './assets/gbfr/stickers/patch-quest.webp'],
+  ['runtimeMonitorSticker', './assets/gbfr/stickers/runtime-monitor.webp'],
   ['formulaSamplerArt', './assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp'],
   ['formulaSamplerSticker', './assets/gbfr/stickers/formula-sampler.webp'],
 ]
@@ -43,7 +43,7 @@ test('pages that previously repeated portraits now own function-specific approve
   assert.match(shell, /summonSave:\s*summonSaveSticker/)
 })
 
-test('CT pages ship their approved function-specific assets without repeated binaries', () => {
+test('runtime patch pages ship their approved function-specific assets without repeated binaries', () => {
   const hashes = new Map()
   for (const [binding, path] of ctAssets) {
     const relativePath = path.replace('./assets', '../assets')
@@ -60,9 +60,9 @@ test('CT pages ship their approved function-specific assets without repeated bin
 })
 
 test('character mechanics keeps its dedicated Vaseraga production assets and guidance', () => {
-  assert.match(shell, /ctCharactersArt.*ct-characters-official-edge-safe\.webp/)
-  assert.match(shell, /ctCharactersSticker.*ct-characters\.webp/)
-  assert.match(shell, /ctCharacters:\s*\{[\s\S]*?speaker:\s*'巴萨拉卡'/)
+  assert.match(shell, /patchCharactersArt.*patch-characters-official-edge-safe\.webp/)
+  assert.match(shell, /patchCharactersSticker.*patch-characters\.webp/)
+  assert.match(shell, /patchCharacters:\s*\{[\s\S]*?speaker:\s*'巴萨拉卡'/)
   assert.match(shell, /note:\s*'冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。'/)
 })
 
@@ -96,8 +96,8 @@ test('every function portrait stays top-anchored so tall windows keep faces and 
 
   const portraitPages = [
     'progression', 'sigil', 'sigilMemory', 'loadout', 'loadoutPresets', 'wrightstone',
-    'wrightstoneMemory', 'summonSave', 'summon', 'overlimit', 'runtime', 'ctMonitor', 'formulaSampler', 'ctCombat',
-    'ctCharacters', 'ctQuest', 'chara', 'save', 'compatibility',
+    'wrightstoneMemory', 'summonSave', 'summon', 'overlimit', 'runtime', 'runtimeMonitor', 'formulaSampler', 'patchCombat',
+    'patchCharacters', 'patchQuest', 'chara', 'save', 'compatibility',
     'monster', 'patch', 'language',
   ]
   for (const page of portraitPages) {

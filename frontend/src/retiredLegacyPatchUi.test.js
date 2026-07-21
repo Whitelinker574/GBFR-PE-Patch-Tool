@@ -19,17 +19,17 @@ test('retired mission and commendation EXE editors are absent from the applicati
   assert.doesNotMatch(backend, /func \(a \*App\) PatchFile\b/)
 })
 
-test('live feature pages do not expose the historical CT 0.8.4 source label', () => {
+test('live feature pages do not expose retired source labels', () => {
   const userFacingSources = [
     '../../app.go',
-    'components/CT084Features.vue',
-    'ct084FeatureView.js',
-    'ct084RuntimeMonitorView.js',
-    'ct084Translations.js',
+    'components/RuntimePatchFeatures.vue',
+    'runtimePatchFeatureView.js',
+    'runtimePatchMonitorView.js',
+    'runtimePatchTranslations.js',
     'i18n-ui.js',
   ]
 
   for (const source of userFacingSources) {
-    assert.doesNotMatch(read(source), /CT 0\.8\.4/, source)
+    assert.doesNotMatch(read(source), /runtime patch 0\.8\.4/, source)
   }
 })

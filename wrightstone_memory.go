@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// CT 0.8.5 node 40000 captures RDX while the game opens/refreshes the
-	// currently viewed wrightstone record. The RVA and full instruction window
-	// below were independently matched once in the local 2.0.2 executable.
+	// This DLC 2.0.2 instruction captures RDX while the game opens or refreshes
+	// the currently viewed wrightstone record. The RVA and full instruction
+	// window below were independently matched in the local 2.0.2 executable.
 	wrightstoneMemoryHookRVA        = uintptr(0x361CB4)
 	wrightstoneMemorySaveRVA        = uintptr(0x79D820)
 	wrightstoneMemoryHookSize       = uintptr(6)
@@ -23,8 +23,8 @@ const (
 
 var (
 	// The six displaced instructions are insufficient as a version guard on
-	// their own. Keep the complete CT 0.8.5 window, including its local CALL and
-	// the following record-ID read, so a coincidental MOV pair cannot pass.
+	// their own. Keep the complete DLC 2.0.2 instruction window, including its
+	// local CALL and following record-ID read, so a coincidental MOV pair cannot pass.
 	wrightstoneMemoryOriginalBytes = []byte{0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE}
 	wrightstoneMemoryGuardBytes    = []byte{
 		0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE, 0xE8, 0xF1, 0x05, 0xFC, 0xFF,
@@ -120,7 +120,7 @@ func (a *App) scanWrightstoneMemoryLocked() (WrightstoneMemoryStatus, error) {
 		// The save function uses a version-specific fixed RVA too. Relocating only
 		// this hook from an eight-byte match would create a false sense of version
 		// compatibility and could later start a thread at the wrong function.
-		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常 (%s)：当前游戏版本未通过 2.0.2 / CT 0.8.5 完整守卫", bytesToHex(guard))
+		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常 (%s)：当前游戏版本未通过 2.0.2 / DLC 2.0.2 runtime catalog 完整守卫", bytesToHex(guard))
 	}
 
 	a.wrightstoneMemoryHookAddr = addr
@@ -516,7 +516,7 @@ func wrightstoneMemoryDisplayName(hash uint32, current string) string {
 		}
 		return "None"
 	}
-	if name := ctName(hash); name != "" {
+	if name := localizedRuntimeName(hash); name != "" {
 		return name
 	}
 	return fmt.Sprintf("0x%08X", hash)
@@ -557,8 +557,8 @@ func newWrightstoneMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr
 		RVA:           uint64(hookAddr - moduleBase),
 		SaveRVA:       uint64(wrightstoneMemorySaveRVA),
 		CurrentBytes:  bytesToHex(current),
-		CaptureSource: "ct085-current-view",
-		SourceVersion: "0.8.5",
+		CaptureSource: "dlcSupplement-current-view",
+		SourceVersion: "2.0.2",
 	}
 }
 

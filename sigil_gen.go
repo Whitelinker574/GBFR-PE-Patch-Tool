@@ -974,7 +974,7 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 		hash := u.Uint32()
 		if sigil := sg.catalog.LookupSigilByHash(hash); sigil != nil {
 			es.SigilName = cnName(sigil.DisplayName)
-		} else if name := ctName(hash); name != "" {
+		} else if name := localizedRuntimeName(hash); name != "" {
 			es.SigilName = name
 		}
 
@@ -986,7 +986,7 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 			ph := pt.Uint32()
 			if trait := sg.catalog.LookupTraitByHash(ph); trait != nil {
 				es.PrimaryTraitName = cnTrait(trait.DisplayName)
-			} else if name := ctName(ph); name != "" {
+			} else if name := localizedRuntimeName(ph); name != "" {
 				es.PrimaryTraitName = name
 			}
 		}
@@ -999,7 +999,7 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 			if sh != EmptyHash {
 				if trait := sg.catalog.LookupTraitByHash(sh); trait != nil {
 					es.SecondaryTraitName = cnTrait(trait.DisplayName)
-				} else if name := ctName(sh); name != "" {
+				} else if name := localizedRuntimeName(sh); name != "" {
 					es.SecondaryTraitName = name
 				} else {
 					es.SecondaryTraitName = fmt.Sprintf("0x%08X", sh)

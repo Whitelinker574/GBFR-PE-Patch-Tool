@@ -422,7 +422,7 @@
       "canAppearAsPrimary": true,
       "canAppearAsSecondary": true,
       "bannedAsSecondaryOnPlusSigils": false,
-      "notes": "Blessing storage cap 45 confirmed by upstream issue #21; slot legality still uses the natural 20/15/10 caps.",
+      "notes": "The record stores values up to 45; natural slot guidance remains 20/15/10.",
       "source": "data/traits.json SKILL_066_00; user-provided game-memory observation",
       "confidence": "high"
     },

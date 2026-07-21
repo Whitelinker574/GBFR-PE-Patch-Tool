@@ -78,12 +78,12 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 		if strings.Contains(sigil.Source, "fresh local 2.0.2 gem.tbl") {
 			tableBacked++
 		}
-		if strings.EqualFold(derefStr(sigil.Category), "ct085_supplement") {
+		if strings.EqualFold(derefStr(sigil.Category), "dlc_supplement") {
 			supplemental++
 		}
 	}
 	if tableBacked != len(evidence.Rows) || supplemental != 35 || len(catalog.Sigils) != tableBacked+supplemental {
-		t.Fatalf("catalog rows=%d, table-backed=%d, CT 0.8.5 supplemental=%d; want 219/184/35", len(catalog.Sigils), tableBacked, supplemental)
+		t.Fatalf("catalog rows=%d, table-backed=%d, DLC 2.0.2 runtime catalog supplemental=%d; want 219/184/35", len(catalog.Sigils), tableBacked, supplemental)
 	}
 	for _, row := range evidence.Rows {
 		if row.Status != "verified" {

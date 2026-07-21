@@ -1,46 +1,108 @@
-[简体中文](README.md) · [Documentation index](docs/README.md)
+<p align="center">
+  <img src="build/appicon.png" width="112" alt="GBFR PE Patch Tool" />
+</p>
 
-# GBFR PE Patch Tool · DLC 2.0.2
+<h1 align="center">GBFR PE Patch Tool</h1>
 
-[Release v1.91.2](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest)
-[![CI](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml)
+<p align="center">Windows save editing, controlled runtime tools, and read-only formula calibration for <em>Granblue Fantasy: Relink</em> DLC 2.0.2</p>
 
-A Windows project for local save editing, controlled runtime tools, and read-only formula calibration for *Granblue Fantasy: Relink* DLC 2.0.2. It is not an official tool. Use it only with your own offline saves and local single-player environment, and keep recoverable backups.
+<p align="center">
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Download v1.91.3</a> ·
+  <a href="README.md">简体中文</a> ·
+  <a href="docs/README.md">Documentation and evidence</a>
+</p>
 
-The current stable release is **v1.91.2**. Releases include a Windows amd64 archive and SHA-256 checksums, and the in-app update checker only contacts this repository's releases.
+![Feature home](docs/screenshots/home.png)
 
-## What is included
+The application brings offline save editing, runtime features, loadout construction, and formula evidence into one desktop interface. Its navigation keeps three operating modes separate: edit a save while the game is closed, connect to a running game for live changes, or monitor runtime data without writing. This is not an official tool and it does not unlock DLC systems that the save has not opened.
 
-| Area | Current scope |
-| --- | --- |
-| Offline saves | Sigils, wrightstones, summons, loadouts, weapon skills, progression, quest counts, and title records. Writes use backup, checksum repair, atomic replacement, and readback. |
-| Loadout workspace | Character, weapon, twelve sigils, mastery, and summons, with draft-versus-live HP/attack/critical/stun comparison. Unverified formulas remain estimates. |
-| Runtime editors | Selected sigil, wrightstone, and summon records plus verified character/quest functions. Every write is bound to the process, owner token, selected target, and readback. |
-| Read-only calibration | Final-panel reads, stability checks, strict A/B/A/B experiments, and redacted evidence bundles. This path does not inject, write memory, or edit saves. |
-| EXE/compatibility | Audited local patches, backup/restore, and version diagnostics. Experimental items are labelled in the UI. |
+## Quick start
 
-## Catalog and write policy
+1. Download the Windows amd64 archive from [Releases](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) and verify the supplied SHA-256.
+2. Close the game before editing a save. Back up the target before changing a save or executable.
+3. Choose `Save Editing (Offline)`, `Live Injection`, or `Memory Monitoring (Read Only)` from the sidebar.
+4. Confirm the save slot, character, item, and destination before every write, then inspect the readback result.
 
-The sigil, wrightstone, and summon catalogs are shared by offline-save, runtime-memory, and loadout routes and are sourced from audited 2.0.2 tables. Natural pools, combinations, and observed levels provide defaults and compact warnings only: every encodable selection is writable by default, with no separate force-mode switch.
-
-That does not bypass safety checks. Target ownership, stale snapshots, storage bounds, integer encoding, checksums, transaction rollback, and field-by-field readback remain mandatory. An unopened-DLC save may receive values in existing preallocated summon records, but this does not unlock the system or guarantee that the game will consume the record.
-
-## Before using it
-
-1. Copy your save. Confirm the displayed backup path before an in-place write.
-2. Back up the EXE before patching it; Steam file verification can restore it.
-3. For runtime writes, confirm that the selected in-game character or item is the intended target. Re-read after changing character, reloading, or leaving the page.
-4. Do not use runtime changes in multiplayer sessions or in ways that affect other players.
-
-Default save path:
+Default save directory:
 
 ```text
 C:\Users\YOUR_NAME\AppData\Local\GBFR\Saved\SaveGames\
 ```
 
-## Build and test on Windows
+Multiple detected saves are displayed as separate slots, and a file can also be selected manually. Offline writes use backup creation, checksum repair, a temporary file, atomic replacement, and a fresh read. Never edit the same save offline while the game is using it.
 
-Requirements: Windows amd64, Go 1.25+, Node.js/npm, Wails CLI v2.13, and the WebView2 Runtime. Visual Studio/MSBuild is needed only when rebuilding `src_dll/patch_core`.
+## Feature map
+
+| Workspace | Pages | Scope |
+| --- | --- | --- |
+| Save Editing (Offline) | 7 | Loadout presets, sigils, items and weapons, wrightstones, summon saves, character usage, quest and title records |
+| Live Injection | 10 | General live values, live sigils/wrightstones, loadout capture, summons, Over Mastery, combat/character/quest patches, monster experiments |
+| Memory Monitoring (Read Only) | 2 | Party and selected-item monitoring, final character panel reads, and A/B/A/B sampling |
+| Tools & Settings | 3 | Version diagnostics, language/display, and game-file maintenance |
+
+### Saves and loadouts
+
+![Loadout presets and three save slots](docs/screenshots/loadout-presets.png)
+
+- Save, memory, and loadout editors share the same audited 2.0.2 sigil, wrightstone, and summon catalogs.
+- The loadout workspace reads all fifteen preset slots per character and edits weapons, twelve sigils, four skills, three mastery trees, and summons.
+- A single loadout can be imported or exported. Import only maps resources already owned by the selected save; it is not a bulk save transfer.
+- Natural combinations, observed levels, and summon legality are compact warnings. Every encodable user selection is writable by default, while ownership, storage bounds, integer ranges, checksums, and readback remain mandatory.
+- Writing a preallocated record in a pre-DLC save does not unlock the system or guarantee that the game will consume the record.
+
+The estimator separates character progression, weapons, sigils, mastery, Over Mastery, and summon contributions. When live final HP, attack, critical rate, and stun are available, draft values are compared against the game. Results without field evidence remain labelled estimate, candidate, or open—not final formulas.
+
+### Runtime tools and patches
+
+![Combat patch catalog](docs/screenshots/patch-combat.png)
+
+- Live writes are bound to the current process, an ownership token, and the selected target. Character changes, save reloads, and stale targets invalidate old snapshots.
+- Combat, character, and quest patch pages share a persistent connection. Switching pages keeps active patches; explicit disconnect or application shutdown restores them together.
+- Patch sites are locked to DLC 2.0.2 original bytes, signatures, and writeback. Conflicts are catalogued explicitly and version guards are not weakened to accept look-alike sites.
+- The auto-perfect-guard combo fix, solo party monitor, and training-area defense samples have repeated field evidence. Runtime functions not exercised in every scenario are not advertised as universally field-tested.
+
+Use live features only in a local single-player environment. Reconnect after restarting the game, and do not carry runtime changes into multiplayer sessions.
+
+### Read-only monitoring and calibration
+
+![Character formula sampler](docs/screenshots/formula-sampler.png)
+
+The formula sampler requests query and read access only: it installs no hook, injects nothing, writes no memory, and edits no save. It continuously reads final HP, attack, critical rate, and stun, can capture stable before/transition/after states, and retains strict A1/B1/A2/B2 validation. Exported evidence removes PIDs, module bases, absolute addresses, user names, and local paths.
+
+Defense, reduction, damage caps, and conditional skills may not change the character panel. They require training-area hit or target-dummy samples; an unchanged four-stat panel is only a negative observation.
+
+## Safety and evidence boundaries
+
+| Layer | Enforced behavior | Not promised |
+| --- | --- | --- |
+| Save writes | Backup, transaction, checksums, atomic replacement, readback | DLC unlocking or game acceptance of every unsupported combination |
+| Runtime writes | Version guard, owner token, target snapshot, writeback, restoration | Multiplayer support or compatibility with unknown executables |
+| Read-only monitoring | Bounded object reads, stability checks, redacted export | Full-process dumps or presenting candidates as final formulas |
+| Loadout estimates | Source breakdown, evidence level, live-value delta | Hard-coded screenshot values or unverified scaling made to look exact |
+
+See [formula sources and evidence](docs/FORMULAS_2.0.2.md), the [sampling guide](docs/角色公式采样操作说明.md), and [save/memory catalog parity](docs/evidence/save-memory-table-parity.md).
+
+## Repository layout
+
+```text
+app.go / *_store.go / *_gen.go     Wails API, save parsing, catalogs, transactions
+readonly_game_process.go           Read-only process lifecycle
+runtime_*.go / runtime_patch_*.go  Runtime locators, patch sessions, guards, readback
+formula_*.go                        Panel location, sampling state machine, evidence bundles
+data/                               Embedded 2.0.2 catalogs, layouts, and evidence
+frontend/src/components/           Vue pages and shared components
+frontend/src/*.test.js              Frontend catalog, interaction, and safety tests
+resources/ / src_dll/               Embedded native resources and reproducible source
+tools/                               Reproducible data audit, generation, and icon sync tools
+docs/                                Maintained docs, public screenshots, redacted evidence
+.github/workflows/ci.yml             Go, frontend, and static checks
+```
+
+Only reproducible release/data maintenance tools are kept online. One-off field QA scripts, machine-specific files, credentials, handoff bundles, and local screenshots stay outside the repository. Automated unit tests remain because they are part of release verification.
+
+## Build and verify on Windows
+
+Requirements: Windows amd64, Go 1.25+, Node.js/npm, Wails CLI v2.13, and WebView2 Runtime. Visual Studio/MSBuild is needed only to rebuild `src_dll/patch_core`.
 
 ```powershell
 cd frontend
@@ -49,22 +111,17 @@ npm run build
 cd ..
 
 go test ./...
+go vet ./...
 node --test frontend/src/*.test.js
 wails build -platform windows/amd64 -clean
 ```
 
-The executable is written to `build\bin\GBFR PE Patch Tool.exe`.
+The executable is written to `build\bin\GBFR PE Patch Tool.exe`. Before publishing, launch the packaged executable and verify its version, main pages, release link, and SHA-256.
 
-## Documentation and evidence
+## Use boundary and references
 
-- [Formula sources and evidence levels](docs/FORMULAS_2.0.2.md)
-- [Read-only runtime formula sampling](docs/角色公式采样操作说明.md)
-- [Save/memory catalog parity](docs/evidence/save-memory-table-parity.md)
+This project is for learning and personal local use. It is not affiliated with, sponsored by, or authorized by Cygames, SEGA, the game's publishers, or the community authors mentioned below. Save, executable, and runtime changes can damage data, lose progress, or trigger the game's own validation. Work only with files you are entitled to use, keep recoverable backups, and accept responsibility for the result. Do not package this project as a paid modification service or use it to affect other players online.
 
-Verified runtime reads are not presented as proof of every formula. Conditional buffs, damage reduction, damage caps, and combat settlement still require the appropriate training-area or target-dummy samples.
+The repository does not contain, mirror, bypass, or resell third-party paid tables, membership content, or restricted downloads. Runtime patches are released only with DLC 2.0.2 executable identity, signatures, original bytes, unique-match checks, writeback, and field evidence. Public community demonstrations are used only to compare feature concepts and testing approaches; they are neither runtime dependencies nor download sources.
 
-## Attribution and disclaimer
-
-Required historical provenance and third-party licenses remain in the repository; current maintenance, downloads, and in-app updates point only to this repository.
-
-This project is for learning and personal local use. You are responsible for the consequences of modifying saves, game files, or runtime memory.
+For reproducibility, the following links identify public material that was used only for cross-checking; they do not imply collaboration, authorization, copied implementation, or endorsement. Early save and sigil record notes can be found in [BitterG's public project](https://github.com/BitterG) and [public page](https://b23.tv/uRLYpW8). Loadout interaction was compared with public work by [意地悪い骷髅](https://b23.tv/xhiZ7fm) and the [loadout simulator](https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/). Chinese terminology was checked against public material by [LKong621](https://b23.tv/mnwxgDf); data extraction used public tools by [Nenkai](https://github.com/Nenkai); and summon warnings were compared with public notes from [SinnohDawn](https://b23.tv/lKSX4zy) and [Relink Summon](https://relinksummon.fate-go.top). Other public demonstrations were used only to compare feature names and test scenarios. This repository provides no related paid content, download route, or reconstructed material.

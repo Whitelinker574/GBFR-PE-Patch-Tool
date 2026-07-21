@@ -367,7 +367,7 @@ onBeforeUnmount(() => {
           <p class="connection-message ui-notice" :class="{ 'is-warn': stale }" aria-live="polite">{{ liveMessage }}</p>
         </div>
         <p class="ui-hint">{{ text('读取 Hook 启用期间不要切入铁匠铺的其他操作；写入成功后会自动停止读取，避免游戏闪退。', 'Do not switch to other blacksmith actions while the capture hook is active. Capture stops automatically after a successful write to avoid crashes.') }}</p>
-        <p v-if="status.sourceVersion" class="ui-hint capture-source">{{ text(`捕获来源：CT ${status.sourceVersion} 当前查看项（2.0.2 完整指令守卫）`, `Capture source: CT ${status.sourceVersion} current-view entry (full 2.0.2 instruction guard)`) }}</p>
+        <p v-if="status.sourceVersion" class="ui-hint capture-source">{{ text(`捕获来源：runtime patch ${status.sourceVersion} 当前查看项（2.0.2 完整指令守卫）`, `Capture source: runtime patch ${status.sourceVersion} current-view entry (full 2.0.2 instruction guard)`) }}</p>
       </section>
 
       <section class="record-panel section ui-card">

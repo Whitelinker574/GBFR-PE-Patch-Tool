@@ -47,15 +47,15 @@ import monsterSticker from '../assets/gbfr/stickers/monster.webp'
 import patchSticker from '../assets/gbfr/stickers/patch.webp'
 import languageSticker from '../assets/gbfr/stickers/language.webp'
 
-const ctCombatArt = new URL('../assets/gbfr/cutouts/ct-combat-official-edge-safe.webp', import.meta.url).href
-const ctCharactersArt = new URL('../assets/gbfr/cutouts/ct-characters-official-edge-safe.webp', import.meta.url).href
-const ctQuestArt = new URL('../assets/gbfr/cutouts/ct-quest-official-edge-safe.webp', import.meta.url).href
-const ctMonitorArt = new URL('../assets/gbfr/cutouts/ct-monitor-official-edge-safe.webp', import.meta.url).href
+const patchCombatArt = new URL('../assets/gbfr/cutouts/patch-combat-official-edge-safe.webp', import.meta.url).href
+const patchCharactersArt = new URL('../assets/gbfr/cutouts/patch-characters-official-edge-safe.webp', import.meta.url).href
+const patchQuestArt = new URL('../assets/gbfr/cutouts/patch-quest-official-edge-safe.webp', import.meta.url).href
+const runtimeMonitorArt = new URL('../assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp', import.meta.url).href
 const formulaSamplerArt = new URL('../assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp', import.meta.url).href
-const ctCombatSticker = new URL('../assets/gbfr/stickers/ct-combat.webp', import.meta.url).href
-const ctCharactersSticker = new URL('../assets/gbfr/stickers/ct-characters.webp', import.meta.url).href
-const ctQuestSticker = new URL('../assets/gbfr/stickers/ct-quest.webp', import.meta.url).href
-const ctMonitorSticker = new URL('../assets/gbfr/stickers/ct-monitor.webp', import.meta.url).href
+const patchCombatSticker = new URL('../assets/gbfr/stickers/patch-combat.webp', import.meta.url).href
+const patchCharactersSticker = new URL('../assets/gbfr/stickers/patch-characters.webp', import.meta.url).href
+const patchQuestSticker = new URL('../assets/gbfr/stickers/patch-quest.webp', import.meta.url).href
+const runtimeMonitorSticker = new URL('../assets/gbfr/stickers/runtime-monitor.webp', import.meta.url).href
 const formulaSamplerSticker = new URL('../assets/gbfr/stickers/formula-sampler.webp', import.meta.url).href
 
 // 桌面应用将页面组件静态打入主包，切页时同步渲染。
@@ -73,8 +73,8 @@ import MiscTools from './MiscTools.vue'
 import CharaStats from './CharaStats.vue'
 import SaveEditor from './SaveEditor.vue'
 import MonsterEnhance from './MonsterEnhance.vue'
-import CT084Features from './CT084Features.vue'
-import CT084RuntimeMonitor from './CT084RuntimeMonitor.vue'
+import RuntimePatchFeatures from './RuntimePatchFeatures.vue'
+import RuntimePatchMonitor from './RuntimePatchMonitor.vue'
 import FormulaSampler from './FormulaSampler.vue'
 import LanguageSettings from './LanguageSettings.vue'
 
@@ -87,16 +87,16 @@ const state = reactive({
 })
 
 const activeTab = ref('home')
-const CT_FEATURE_MODES = Object.freeze({
-  ctCombat: 'combat',
-  ctCharacters: 'characters',
-  ctQuest: 'quest',
+const RUNTIME_PATCH_MODES = Object.freeze({
+  patchCombat: 'combat',
+  patchCharacters: 'characters',
+  patchQuest: 'quest',
 })
-const ctFeaturesMounted = ref(false)
+const runtimePatchesMounted = ref(false)
 const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, pid: 0 })
-const lastCTFeatureTab = ref('ctCombat')
-const isCTFeatureTab = computed(() => Boolean(CT_FEATURE_MODES[activeTab.value]))
-const ctFeatureMode = computed(() => CT_FEATURE_MODES[activeTab.value] || CT_FEATURE_MODES[lastCTFeatureTab.value])
+const lastRuntimePatchTab = ref('patchCombat')
+const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
+const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || RUNTIME_PATCH_MODES[lastRuntimePatchTab.value])
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const loadoutEditing = ref(false)
@@ -111,9 +111,9 @@ const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdat
 let hasAttemptedGameDetection = false
 
 watch(activeTab, (value) => {
-  if (!CT_FEATURE_MODES[value]) return
-  ctFeaturesMounted.value = true
-  lastCTFeatureTab.value = value
+  if (!RUNTIME_PATCH_MODES[value]) return
+  runtimePatchesMounted.value = true
+  lastRuntimePatchTab.value = value
 }, { immediate: true })
 
 function updateCTFeatureSession(value) {
@@ -206,7 +206,7 @@ const toolMeta = {
     caution: '重启游戏后运行时设置会失效，需要重新连接。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
-  ctMonitor: {
+  runtimeMonitor: {
     group: 'monitor', title: '运行监测', eyebrow: '只读监测', status: '只读 · 需连接游戏', tone: 'live',
     description: '只读展示玩家、三名队员、碧的小红龙，以及游戏列表当前选中的素材或关键物品。',
     usage: ['启动游戏并进入稳定场景', '连接后读取队伍快照', '选中素材或关键物品后刷新并读取一次'],
@@ -220,21 +220,21 @@ const toolMeta = {
     caution: '面板未稳定或同时改变多个项目会让样本失效；采样器不安装 Hook，也不写进程。',
     speaker: '卡塔莉娜', note: '一次只动一项，等数字站稳再记。前后能复现，公式才算有证据。',
   },
-  ctCombat: {
+  patchCombat: {
     group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
     description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
     usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '三个补丁页共用常驻连接；明确断开时恢复全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
     speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。切换页面不会打断，明确断开时才会全部恢复。',
   },
-  ctCharacters: {
+  patchCharacters: {
     group: 'memory', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
     description: '按角色整理已验证的专属机制补丁，可搜索角色与功能名称并查看明确冲突。',
     usage: ['启动游戏并进入单机内容', '选择角色分组后启用机制', '冲突项先恢复当前功能再切换'],
     caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
     speaker: '巴萨拉卡', note: '冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。',
   },
-  ctQuest: {
+  patchQuest: {
     group: 'memory', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
     description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
     usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
@@ -289,8 +289,8 @@ const toolMeta = {
 // 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'ctCombat', 'ctCharacters', 'ctQuest', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['ctMonitor', 'formulaSampler'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
+  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['runtimeMonitor', 'formulaSampler'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
 ])
 
@@ -299,7 +299,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
   baselineSummary: '22 个实际工具页 + 1 个主页已接入。',
-  baselineBoundary: '真实游戏进程 E2E 仍待实机验证',
+  baselineBoundary: '关键运行时路径已完成 DLC 2.0.2 现场验证；其余功能按页面证据标注',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
   featureHint: '只展示能由代码、测试与锁定游戏数据证明的状态。',
@@ -312,14 +312,14 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   experimentKicker: '实验入口',
   experimentTitle: '不计入稳定完成项',
   experimentName: '怪物倍率与伤害记录',
-  experimentDetail: '页面已保留；真实游戏进程 E2E 未完成',
+  experimentDetail: '页面已保留；怪物倍率写入尚未完成全场景现场验证',
   open: '查看 ›',
 } : {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
   baselineSummary: '22 tool pages plus the home page are integrated.',
-  baselineBoundary: 'Real-process E2E validation is still pending',
+  baselineBoundary: 'Critical runtime paths have DLC 2.0.2 field evidence; remaining features keep page-level evidence labels',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
   featureHint: 'Only states supported by code, tests, and locked game data are shown.',
@@ -332,30 +332,30 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   experimentKicker: 'Experimental Entry',
   experimentTitle: 'Not counted as stable completion',
   experimentName: 'Monster Multipliers & Damage Log',
-  experimentDetail: 'The page is retained; real-process E2E is not complete',
+  experimentDetail: 'The page is retained; monster-multiplier writes are not field-tested across all scenarios',
   open: 'Open ›',
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
-  { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、CT 战斗、CT 角色、CT 任务、怪物实验' },
+  { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、怪物实验' },
   { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '运行监测与角色公式采样；公式采样不安装 Hook、不写进程或存档' },
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
-  { scope: 'CT 安全直接覆盖', status: '60 / 64', tone: 'ok', detail: '58 个新增功能 + 2 个已有安全实现；4 个拒绝项未作为可用开关暴露' },
-  { scope: 'CT 生产目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 原字节与唯一命中证据' },
-  { scope: 'CT 0.8.5 增量审计', status: '58 稳定项零变化 + 1', tone: 'ok', detail: '原 58 个直补丁逐字节未变；新增当前查看祝福石捕获点已按本机 EXE 唯一 RVA 与 23 字节守卫接入' },
-  { scope: '上游 v1.8.5 增量', status: '2 / 2 已提炼', tone: 'ok', detail: '称号搜索支持拼音；连续挑战改用新版唯一特征码、三字节补丁与写后回读' },
-  { scope: '真实游戏进程 E2E', status: '待实机验证', tone: 'pending', detail: '本轮未连接正在运行的目标游戏；运行时功能不得视为全场景实机通过' },
+  { scope: '运行时补丁覆盖', status: '60 / 64', tone: 'ok', detail: '58 个目录功能 + 2 个已有安全实现；4 个证据不足项未作为可用开关暴露' },
+  { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
+  { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 现场修复', tone: 'ok', detail: '当前目录逐站点验证；祝福石捕获与自动完美格挡连招修复使用独立版本守卫和写后回读' },
+  { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
+  { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
   { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
-  { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, CT combat, CT characters, CT quests, monster experiments' },
+  { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, combat rules, character mechanics, quest utilities, monster experiments' },
   { scope: 'Read-only monitor pages', status: '2 / 2', tone: 'ok', detail: 'Runtime monitoring and formula sampling; formula sampling installs no hooks and writes neither process nor save data' },
   { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
-  { scope: 'CT safe direct coverage', status: '60 / 64', tone: 'ok', detail: '58 new features plus 2 existing safe implementations; 4 rejected candidates are not exposed' },
-  { scope: 'CT production catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to DLC 2.0.2 original-byte and unique-hit evidence' },
-  { scope: 'CT 0.8.5 delta audit', status: '58 stable sites unchanged + 1', tone: 'ok', detail: 'All 58 direct patches are byte-identical; the current-view wrightstone capture uses the unique local EXE RVA and a 23-byte guard' },
-  { scope: 'Upstream v1.8.5 delta', status: '2 / 2 integrated', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use the new unique signature, three-byte patch, and write-back verification' },
-  { scope: 'Real game-process E2E', status: 'Pending', tone: 'pending', detail: 'No running target game was connected in this pass; live features are not claimed as fully field-tested' },
+  { scope: 'Runtime patch coverage', status: '60 / 64', tone: 'ok', detail: '58 catalog features plus 2 existing safe implementations; 4 candidates without enough evidence are not exposed' },
+  { scope: 'Runtime patch catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
+  { scope: 'DLC 2.0.2 delta audit', status: '58 stable entries + 1 field fix', tone: 'ok', detail: 'Every catalog site is validated; wrightstone capture and the auto-perfect-guard combo fix use independent version guards and writeback' },
+  { scope: 'Current maintenance delta', status: '2 / 2 verified', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use a unique signature, three-byte patch, and writeback verification' },
+  { scope: 'Real game-process E2E', status: 'Critical paths verified', tone: 'ok', detail: 'DLC 2.0.2 field evidence covers final HP reads, solo party monitoring, repeated defense +5% hit samples, and auto-perfect-guard combos; untested features retain their original evidence level' },
 ])
 
 const iconCoverageRows = computed(() => language.value === 'zh' ? [
@@ -388,10 +388,10 @@ const functionArt = {
   summon: summonArt,
   overlimit: overlimitArt,
   runtime: runtimeArt,
-  ctCombat: ctCombatArt,
-  ctCharacters: ctCharactersArt,
-  ctQuest: ctQuestArt,
-  ctMonitor: ctMonitorArt,
+  patchCombat: patchCombatArt,
+  patchCharacters: patchCharactersArt,
+  patchQuest: patchQuestArt,
+  runtimeMonitor: runtimeMonitorArt,
   formulaSampler: formulaSamplerArt,
   chara: charaArt,
   save: saveArt,
@@ -413,10 +413,10 @@ const functionStickers = {
   summon: summonSticker,
   overlimit: overlimitSticker,
   runtime: runtimeSticker,
-  ctCombat: ctCombatSticker,
-  ctCharacters: ctCharactersSticker,
-  ctQuest: ctQuestSticker,
-  ctMonitor: ctMonitorSticker,
+  patchCombat: patchCombatSticker,
+  patchCharacters: patchCharactersSticker,
+  patchQuest: patchQuestSticker,
+  runtimeMonitor: runtimeMonitorSticker,
   formulaSampler: formulaSamplerSticker,
   chara: charaSticker,
   save: saveSticker,
@@ -601,11 +601,11 @@ function showStatus(message, type) {
       <button
         v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
         type="button"
-        class="titlebar-ct-session"
+        class="titlebar-patch-session"
         style="--wails-draggable:no-drag"
         :class="{ 'is-releasing': ctFeatureSession.releasePending }"
         :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
-        @click="selectTool(lastCTFeatureTab)"
+        @click="selectTool(lastRuntimePatchTab)"
       >
         <span aria-hidden="true"></span>
         {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项` }}
@@ -702,14 +702,14 @@ function showStatus(message, type) {
               </header>
 
               <main class="tool-panel" :data-tool="activeTab">
-            <CT084Features
-              v-if="ctFeaturesMounted"
-              v-show="isCTFeatureTab"
-              :mode="ctFeatureMode"
+            <RuntimePatchFeatures
+              v-if="runtimePatchesMounted"
+              v-show="isRuntimePatchTab"
+              :mode="runtimePatchMode"
               @status="showStatus"
               @session-change="updateCTFeatureSession"
             />
-            <ProgressionEditor v-if="!isCTFeatureTab && activeTab === 'progression'" @status="showStatus" />
+            <ProgressionEditor v-if="!isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
             <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
             <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
@@ -720,7 +720,7 @@ function showStatus(message, type) {
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
-            <CT084RuntimeMonitor v-else-if="activeTab === 'ctMonitor'" @status="showStatus" />
+            <RuntimePatchMonitor v-else-if="activeTab === 'runtimeMonitor'" @status="showStatus" />
             <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
@@ -872,7 +872,7 @@ button,input,select { font:inherit; }
   background:rgba(255,255,255,.08);
   font-size:var(--fs-xs);
 }
-.titlebar-ct-session {
+.titlebar-patch-session {
   flex:0 0 auto;
   display:inline-flex;
   align-items:center;
@@ -888,19 +888,19 @@ button,input,select { font:inherit; }
   white-space:nowrap;
   cursor:pointer;
 }
-.titlebar-ct-session span {
+.titlebar-patch-session span {
   width:7px;
   height:7px;
   border-radius:50%;
   background:#8ce0c8;
   box-shadow:0 0 0 3px rgba(140,224,200,.13);
 }
-.titlebar-ct-session.is-releasing {
+.titlebar-patch-session.is-releasing {
   border-color:rgba(255,213,133,.52);
   color:#fff0c7;
   background:rgba(130,85,25,.62);
 }
-.titlebar-ct-session.is-releasing span { background:#ffd585; }
+.titlebar-patch-session.is-releasing span { background:#ffd585; }
 .titlebar-status {
   position:absolute;
   z-index:1;
@@ -1444,11 +1444,11 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="runtimeMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
-.tool-stage[data-tool="ctQuest"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="patchCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="patchCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="patchQuest"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="chara"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="save"] { --art-scale:160%; --art-x:calc(-43.10dvh + 57px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="compatibility"] { --art-scale:160%; --art-x:calc(-35.81dvh + 47px); --art-y:calc(3dvh - 4px); }
@@ -1719,7 +1719,7 @@ button,input,select { font:inherit; }
 }
 @media (max-width:960px) {
   .build-chip { display:none; }
-  .titlebar-ct-session { max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+  .titlebar-patch-session { max-width:180px; overflow:hidden; text-overflow:ellipsis; }
   .titlebar-status { max-width:36vw; }
   .workspace-state { display:none; }
   .tool-page-heading { padding:var(--space-5) var(--space-6); }

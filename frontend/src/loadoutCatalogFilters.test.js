@@ -24,7 +24,7 @@ test('constructor search selects the first real match instead of leaving the nat
   assert.equal(resolveConstructSelection([], 'A', '不存在'), '')
 })
 
-test('constructor search keeps CT 0.8.5 DLC factors discoverable by Chinese family name', () => {
+test('constructor search keeps DLC 2.0.2 runtime catalog DLC factors discoverable by Chinese family name', () => {
   assert.deepEqual(filterConstructCatalog(constructCatalog, '天星').map(item => item.internalId), ['D'])
   assert.deepEqual(filterConstructCatalog(constructCatalog, '止息').map(item => item.internalId), ['D'])
 })

@@ -59,9 +59,8 @@ fallback. The 2.0.2 tables and supplied archives have no authoritative icon for:
   `E8C461CA`, `F384E322`, `CD6AF550`, `EAC2D7AB`, `131A4636`, `9FC6585E`, and
   `CE0B379E`; `item.tbl` requires `cmn_icitm_50_0000..0010`
 
-An exact filename scan of every ZIP supplied in `D:\gbf` on 2026-07-19
-(including the 2.0.2 UI Reference Library, Portrait/Skill Portable pack and
-both DLC extract packs) found none of the files above. Similar `wp2106`,
+An exact filename scan of the supplied 2.0.2 UI and DLC asset archives found
+none of the files above. Similar `wp2106`,
 `wp2206`, and `wp2306` images are deliberately not reused. The eight Sky
 Memory records are fully mapped: `item.tbl` proves that all eight reuse the
 official `cmn_icitm_50_0100.png` image.

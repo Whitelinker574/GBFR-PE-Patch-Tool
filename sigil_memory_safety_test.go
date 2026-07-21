@@ -80,7 +80,7 @@ func TestValidateSigilMemoryUpdateUsesVerifiedDiscreteLevels(t *testing.T) {
 	}
 }
 
-func TestValidateSigilMemoryUpdateAcceptsCT085RowsNowInsideUnifiedCatalog(t *testing.T) {
+func TestValidateSigilMemoryUpdateAcceptsDLCSupplementRowsNowInsideUnifiedCatalog(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestValidateSigilMemoryUpdateAcceptsCT085RowsNowInsideUnifiedCatalog(t *tes
 		PrimaryTraitLevel: 15,
 	}
 	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
-		t.Fatalf("CT 0.8.5 supplemental row should be accepted by the unified catalog: %v", err)
+		t.Fatalf("DLC 2.0.2 runtime catalog supplemental row should be accepted by the unified catalog: %v", err)
 	}
 }
 
