@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.9</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.10</strong></a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
 </p>
