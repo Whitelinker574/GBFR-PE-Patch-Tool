@@ -44,6 +44,27 @@ func TestWeaponExperienceTable(t *testing.T) {
 	}
 }
 
+func TestWeaponImbuedTraitUnitBaseUsesWeaponInstance(t *testing.T) {
+	for _, test := range []struct {
+		unitID uint32
+		want   uint32
+	}{
+		{unitID: 40127, want: 130012700},
+		{unitID: 40040, want: 130004000},
+	} {
+		got, err := weaponImbuedTraitUnitBase(test.unitID)
+		if err != nil || got != test.want {
+			t.Fatalf("weapon %d imbued trait base=%d want=%d err=%v", test.unitID, got, test.want, err)
+		}
+	}
+	if _, err := weaponImbuedTraitUnitBase(weaponSlotBase - 1); err == nil {
+		t.Fatal("out-of-range weapon unit ID must be rejected")
+	}
+	if _, err := weaponImbuedTraitUnitBase(^uint32(0)); err == nil {
+		t.Fatal("overflowing weapon unit ID must be rejected")
+	}
+}
+
 func TestProgressionCatalog202(t *testing.T) {
 	catalog, err := loadProgressionCatalog()
 	if err != nil {

@@ -185,6 +185,14 @@ onMounted(async () => {
               <span class="wep">{{ lo.weaponName || '未收录武器' }}</span>
               <em>{{ (lo.sigils || []).length }}因子 · {{ (lo.mastery || []).length }}专精</em>
             </button>
+            <div v-if="lo.weapon" class="weapon-loadout-summary">
+              <span><b>{{ lo.weapon.name || lo.weaponName }}</b><small>Lv{{ lo.weapon.level }} · 觉醒 {{ lo.weapon.awakening }} · 超凡 {{ lo.weapon.transcendence }}</small></span>
+              <i v-for="skill in lo.weapon.skills" :key="`${skill.slot}-${skill.traitHash}`" :title="skill.effect || skill.unlockCondition">
+                {{ skill.name || '未收录武器技能' }} <em>Lv{{ skill.level }}</em>
+              </i>
+              <i v-if="lo.weapon.wrightstone" class="wrightstone-chip">祝福 · {{ lo.weapon.wrightstone.name || '未收录祝福' }}</i>
+              <i v-for="trait in lo.weapon.wrightstone?.traits || []" :key="`${lo.unitId}-stone-${trait.index}-${trait.hash}`" class="wrightstone-chip">{{ trait.name || trait.hash }} <em>Lv{{ trait.level }}</em></i>
+            </div>
             <div class="skills-line">
               <span>技能</span>
               <i v-for="s in lo.skills" :key="s.hash"><img :src="skillIcon(s)" alt="" />{{ s.name || '未收录技能' }}</i>
@@ -266,7 +274,8 @@ onMounted(async () => {
 /* 配装卡横向自适应网格：图标缩小、从左往右排；展开的卡占满整行显示明细 */
 .card-grid { --ui-grid-min:360px; align-items:start; }
 .loadout-card { display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--accent); background:var(--surface-card-pop); }
-.loadout-card.party { border-left-color:var(--success); }
+.loadout-card.party { grid-column:1 / -1; order:-1; border-left-color:var(--success); background:linear-gradient(110deg,rgba(74,139,105,.1),rgba(255,253,247,.92) 52%); box-shadow:inset 0 0 0 1px rgba(74,139,105,.08); }
+.loadout-card.party .loadout-card-toggle { grid-template-columns:62px auto minmax(0,1.2fr) minmax(150px,.8fr) auto; }
 .loadout-card.open { border-color:var(--border-strong); grid-column:1/-1; }
 .loadout-card-toggle { width:100%; min-height:var(--control-height-sm); display:grid; grid-template-columns:62px auto minmax(0,1fr) minmax(120px,.8fr) auto; align-items:center; gap:var(--space-3); padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; user-select:none; }
 .loadout-weapon-icon { width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
@@ -277,6 +286,13 @@ onMounted(async () => {
 .loadout-card-toggle strong { color:var(--text-primary); font-size:var(--fs-md); transition:color var(--dur-base) var(--ease-out); }
 .loadout-card-toggle .wep { color:var(--text-secondary); font-size:var(--fs-sm); }
 .loadout-card-toggle em { color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
+.weapon-loadout-summary { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; padding:7px 9px; border:1px solid rgba(139,103,55,.16); border-radius:8px; background:rgba(139,103,55,.045); }
+.weapon-loadout-summary > span { min-width:150px; display:flex; flex-direction:column; margin-right:3px; }
+.weapon-loadout-summary > span b { color:var(--text-primary); font-size:var(--fs-sm); }
+.weapon-loadout-summary > span small { color:var(--text-muted); font-size:var(--fs-xs); }
+.weapon-loadout-summary > i { padding:2px 7px; border:1px solid var(--line-soft); border-radius:10px; background:var(--panel-solid); color:var(--text-secondary); font-size:var(--fs-xs); font-style:normal; }
+.weapon-loadout-summary > i em { color:var(--accent); font-style:normal; }
+.weapon-loadout-summary > i.wrightstone-chip { border-color:rgba(123,89,154,.28); background:rgba(123,89,154,.08); color:#6c4c82; }
 .skills-line, .mastery-summary { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; font-size:var(--fs-sm); }
 .skills-line span, .mastery-summary span { color:var(--text-muted); }
 .skills-line i, .mastery-summary i { font-style:normal; padding:1px 8px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel-solid); color:var(--text-secondary); }
@@ -309,6 +325,7 @@ onMounted(async () => {
   .back-button { grid-row:2; }
   .editor-workspace-meta { grid-row:2; }
   .loadout-card-toggle { grid-template-columns:52px auto minmax(0,1fr) auto; }
+  .loadout-card.party .loadout-card-toggle { grid-template-columns:52px auto minmax(0,1fr) auto; }
   .loadout-card-toggle .wep { grid-column:3/-1; grid-row:2; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
 }

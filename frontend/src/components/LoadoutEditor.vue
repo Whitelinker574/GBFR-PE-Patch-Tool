@@ -11,6 +11,7 @@ import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } 
 import skillIconFiles from '../loadoutSkillIcons.json'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import LoadoutImportDialog from './LoadoutImportDialog.vue'
 
 const props = defineProps({
   savePath: { type: String, default: '' },
@@ -27,6 +28,8 @@ const applying = ref(false)
 const sharing = ref(false)
 const importMissing = ref([])
 const importApplyPayload = ref(null)
+const importDraft = ref(null)
+const importSelection = ref(null)
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -107,6 +110,14 @@ const runtimeStatComparisons = computed(() => {
 function utf8Bytes(s) { return new TextEncoder().encode(s || '').length }
 const nameBytes = computed(() => utf8Bytes(form.value.name))
 const nameTooLong = computed(() => nameBytes.value > 63)
+const stagedImportLabels = computed(() => {
+  const choices = importSelection.value || {}
+  return [choices.factors && '因子', choices.skills && '技能', choices.mastery && '专精配置', choices.masterProgress && '专精等级',
+    choices.weapon && '装备武器', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
+    choices.overLimit && '上限突破', choices.characterGrowth && '角色强化进度', choices.characterWeaponCollection && '整组角色武器收藏',
+		choices.characterWeaponWrightstones && '全部武器祝福'].filter(Boolean)
+})
+function masteryProgressStars(value) { return '★'.repeat(Math.max(0, Math.min(5, Number(value) - 50))) }
 
 const slots = computed(() => ctx.value?.slots || [])
 const occupiedSlots = computed(() => slots.value.filter(s => s.occupied))
@@ -518,6 +529,8 @@ watch(constructSigilId, async value => {
 const masteryMode = ref('free')     // copy | free
 const masteryPool = ref([])         // [{rank,label,cap,nodes}]
 const masteryPick = ref({})         // { R1:[hash...], R2:[], R3:[], EX:[] }
+const importedMasterySnapshot = ref([])
+const importedWeaponSkillSnapshot = ref([])
 const masteryRankTab = ref('R1')
 const CAT_ABBR = { SB_ATK: '攻', SB_DEF: '防', SB_LIMIT: '界' }
 function catAbbr(cat) { return CAT_ABBR[cat] || '基' }
@@ -537,6 +550,7 @@ const masteryRankCaps = computed(() => masteryUnlockAmbiguous.value
 const masteryUnlockedRankCap = rank => Math.max(0, Number(masteryRankCaps.value?.[rank] || 0))
 const masteryUnlockedCapacity = computed(() => masteryRanks.reduce((total, rank) => total + masteryUnlockedRankCap(rank), 0))
 function toggleNode(rank, hash, cap) {
+	importedMasterySnapshot.value = []
   const arr = masteryPick.value[rank] || (masteryPick.value[rank] = [])
   const i = arr.indexOf(hash)
   if (i >= 0) arr.splice(i, 1)
@@ -747,6 +761,10 @@ function setMasteryHashes(hashes) {
 function hydrateFromTarget() {
   importMissing.value = []
   importApplyPayload.value = null
+  importDraft.value = null
+  importSelection.value = null
+  importedMasterySnapshot.value = []
+  importedWeaponSkillSnapshot.value = []
   const loadout = selectedLoadout.value
   pendingSkillHash.value = ''
   form.value = {
@@ -758,6 +776,7 @@ function hydrateFromTarget() {
   factorSlots.value = createFactorSlots(loadout?.sigils || [])
   activeFactorIndex.value = Math.min(activeFactorIndex.value, 11)
   setMasteryHashes(loadout?.mastery || [])
+	importedMasterySnapshot.value = (loadout?.mastery || []).map(item => item.hash).filter(Boolean)
   const fullestRank = ['R1', 'R2', 'R3', 'EX'].find(rank => rankPicked(rank) < (masteryPool.value.find(pool => pool.rank === rank)?.cap || 0))
   masteryRankTab.value = fullestRank || 'EX'
 }
@@ -792,6 +811,8 @@ async function loadCtx() {
     while (summonSlotIds.value.length < 4) summonSlotIds.value.push(0)
     writeGlobalSummons.value = false
     importApplyPayload.value = null
+    importDraft.value = null
+    importSelection.value = null
     summonInlineEnabled.value = false
     await loadMasteryPool()
     // 默认打开该角色内容最完整的一套，真实存档可直接看到 12 因子、4 技能与 50 专精。
@@ -934,15 +955,24 @@ function buildWriteRequest() {
     if (writeGlobalSummons.value) w.summonSlotIds = [...summonSlotIds.value]
     w.skillHashes = [...form.value.skillHashes]
     if (masteryMode.value === 'free') {
-      w.masteryHashes = [...selectedMasteryHashes.value]
+      w.masteryHashes = importedMasterySnapshot.value.length
+        ? [...importedMasterySnapshot.value]
+        : [...selectedMasteryHashes.value]
     } else {
       const source = masterySources.value.find(item => item.unitId === form.value.masterySource)
       w.masteryHashes = source ? [...source.nodeHashes] : []
+    }
+    if (importedWeaponSkillSnapshot.value.length === 5) {
+      w.weaponSkillHashes = [...importedWeaponSkillSnapshot.value]
     }
   } else if (op.value === 'clone') {
     w.cloneFromUnitId = cloneFrom.value
   }
   return w
+}
+
+function onWeaponSelectionChanged() {
+  importedWeaponSkillSnapshot.value = []
 }
 
 const writeInvalid = computed(() => {
@@ -986,11 +1016,17 @@ async function importLoadout() {
   try {
     const draft = await LoadoutImport(props.savePath, props.charaHash)
     if (!draft) return
-    importApplyPayload.value = draft.applyPayload || null
-    form.value.name = draft.name || form.value.name
-    form.value.weaponSlotId = draft.weaponSlotId || 0
-    factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
-    for (const constructed of draft.constructedSigils || []) {
+    importDraft.value = draft
+  } catch (err) {
+    emit('status', String(err), 'error')
+  } finally {
+    sharing.value = false
+  }
+}
+
+function stageImportedFactors(draft) {
+  factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
+  for (const constructed of draft.constructedSigils || []) {
       const item = constructed?.item || {}
       factorSlots.value = putConstructedFactor(factorSlots.value, Number(constructed.index), item, {
         name: item.sigilName || '导入因子',
@@ -1000,30 +1036,75 @@ async function importLoadout() {
         secondaryTraitName: item.secondaryTraitName || '',
         secondaryTraitLevel: Number(item.secondaryLevel || 0),
       })
-    }
-    if (Array.isArray(draft.summonSlotIds) && draft.summonSlotIds.length === 4) {
-      summonSlotIds.value = [...draft.summonSlotIds]
-      const generated = new Set((draft.applyPayload?.constructedSummons || []).map(item => Number(item.index)))
-      writeGlobalSummons.value = draft.summonSlotIds.every((slotId, index) => Number(slotId) > 0 || generated.has(index))
-    }
-    activeFactorIndex.value = 0
+  }
+  activeFactorIndex.value = 0
+}
+
+function applyImportChoices(choices) {
+  const draft = importDraft.value
+  if (!draft) return
+  const sourcePayload = draft.applyPayload || {}
+  form.value.name = draft.name || form.value.name
+  if (choices.weapon) form.value.weaponSlotId = draft.weaponSlotId || form.value.weaponSlotId
+  if (choices.weapon) importedWeaponSkillSnapshot.value = [...(draft.weaponSkillHashes || [])]
+  if (choices.factors) stageImportedFactors(draft)
+  if (choices.skills) {
     form.value.skillHashes = [...(draft.skillHashes || [])]
     pendingSkillHash.value = ''
+  }
+  if (choices.mastery) {
     masteryMode.value = 'free'
     setMasteryHashes(draft.masteryHashes || [])
+    importedMasterySnapshot.value = [...(draft.masteryHashes || [])]
     masteryRankTab.value = 'EX'
-    importMissing.value = [...(draft.missing || [])]
-    if (importMissing.value.length) {
-      emit('status', `已载入草稿，但当前存档缺少 ${importMissing.value.length} 项不能自动生成的资源：${importMissing.value.join('；')}；为避免部分配装落盘，已禁止保存。补齐资源后请重新导入`, 'error')
-    } else {
-      const count = draft.constructedSigils?.length || 0
-      const summonCount = draft.applyPayload?.constructedSummons?.length || 0
-      emit('status', `单套配装已完整载入；保存时将生成 ${count} 枚独立因子${summonCount ? `、补建 ${summonCount} 个缺失召唤石` : ''}，并同步专精等级、角色强化及武器强化/祝福`, 'success')
-    }
-  } catch (err) {
-    emit('status', String(err), 'error')
-  } finally {
-    sharing.value = false
+  }
+  if (choices.summons && Array.isArray(draft.summonSlotIds) && draft.summonSlotIds.length === 4) {
+    summonSlotIds.value = [...draft.summonSlotIds]
+    const generated = new Set((sourcePayload.constructedSummons || []).map(item => Number(item.index)))
+    writeGlobalSummons.value = draft.summonSlotIds.every((slotId, index) => Number(slotId) > 0 || generated.has(index))
+  }
+
+  const payload = {
+    character: sourcePayload.character || null,
+    weapon: sourcePayload.weapon || null,
+    constructedSummons: choices.summons ? [...(sourcePayload.constructedSummons || [])] : [],
+    overLimit: choices.overLimit ? [...(sourcePayload.overLimit || [])] : [],
+    applyMasteryConfiguration: !!choices.mastery,
+    applyMasterProgress: !!choices.masterProgress,
+    masterProgressIndex: Number(choices.masterProgressIndex || 1),
+    applyCharacterGrowth: !!choices.characterGrowth,
+    applyCharacterWeaponCollection: !!choices.characterWeaponCollection,
+		applyCharacterWeaponWrightstones: !!choices.characterWeaponWrightstones,
+    applyWeaponEnhancement: !!choices.weaponEnhancement,
+    applyWeaponWrightstone: !!choices.wrightstone,
+    applyOverLimit: !!choices.overLimit,
+  }
+  const needsPayload = payload.constructedSummons.length || payload.applyMasteryConfiguration || payload.applyMasterProgress ||
+    payload.applyCharacterGrowth || payload.applyCharacterWeaponCollection || payload.applyCharacterWeaponWrightstones || payload.applyWeaponEnhancement || payload.applyWeaponWrightstone || payload.applyOverLimit
+  importApplyPayload.value = needsPayload ? payload : null
+  importSelection.value = { ...choices }
+
+  const byScope = draft.missingByScope || {}
+  const scopes = []
+	if (choices.weapon || choices.weaponEnhancement) scopes.push('weapon')
+	if (choices.wrightstone) scopes.push('wrightstone')
+  if (choices.skills) scopes.push('skills')
+	if (choices.mastery) scopes.push('mastery')
+	if (choices.characterGrowth) scopes.push('characterGrowth')
+  if (choices.summons) scopes.push('summons')
+  importMissing.value = [...new Set(scopes.flatMap(scope => byScope[scope] || []))]
+  importDraft.value = null
+
+  const labels = [
+    choices.factors && '因子', choices.skills && '技能', choices.mastery && '专精配置', choices.masterProgress && `专精进度 ${choices.masterProgressIndex}`,
+    choices.weapon && '装备武器', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
+    choices.overLimit && '上限突破', choices.characterGrowth && '角色强化进度', choices.characterWeaponCollection && '整组角色武器收藏',
+		choices.characterWeaponWrightstones && '全部武器祝福',
+  ].filter(Boolean)
+  if (importMissing.value.length) {
+    emit('status', `已载入所选草稿，但缺少：${importMissing.value.join('；')}；保存已锁定`, 'error')
+  } else {
+    emit('status', `已载入：${labels.join('、')}。未选择的目标存档内容保持原值`, 'success')
   }
 }
 
@@ -1271,7 +1352,7 @@ async function apply() {
 
         <div class="ed-field">
           <label>武器（{{ ctx.weapons.length }} 可选）</label>
-          <select v-model.number="form.weaponSlotId" class="ed-select ui-select">
+          <select v-model.number="form.weaponSlotId" class="ed-select ui-select" @change="onWeaponSelectionChanged">
             <option :value="0">— 不设置武器 —</option>
             <option v-for="w in ctx.weapons" :key="w.slotId" :value="w.slotId">
               {{ w.name }}{{ w.ownerCode ? '' : '（通用）' }}
@@ -1281,6 +1362,10 @@ async function apply() {
             <img v-if="selectedWeaponIcon" class="weapon-context-icon" :src="selectedWeaponIcon" alt="" />
             <span><b>{{ selectedWeaponContext.name }}</b><small>Lv{{ selectedWeaponContext.level }} · 觉醒 {{ selectedWeaponContext.awakening }} · 超凡 {{ selectedWeaponContext.transcendence }}</small></span>
             <em>HP {{ formatFinalStat(selectedWeaponContext.total?.hp) }} · 攻击 {{ formatFinalStat(selectedWeaponContext.total?.attack) }}</em>
+          </div>
+          <div v-if="selectedWeaponContext" class="equipped-resource-summary" aria-label="当前草稿装备摘要">
+            <div><b>武器技能</b><span><i v-for="skill in selectedWeaponContext.skills" :key="`${skill.slot}-${skill.traitHash}`">{{ skill.name || '未收录' }} Lv{{ skill.level }}</i><i v-if="!selectedWeaponContext.skills?.length" class="dim">无</i></span></div>
+            <div><b>武器祝福</b><span><i v-if="selectedWeaponContext.wrightstone">{{ selectedWeaponContext.wrightstone.name || '未收录祝福' }}</i><i v-for="trait in selectedWeaponContext.wrightstone?.traits || []" :key="`${trait.index}-${trait.hash}`">{{ trait.name || trait.hash }} Lv{{ trait.level }}</i><i v-if="!selectedWeaponContext.wrightstone" class="dim">无</i></span></div>
           </div>
           <div v-if="weaponInlineAvailable" class="inline-resource-panel weapon-inline-panel">
             <label class="inline-resource-toggle ui-check">
@@ -1397,7 +1482,12 @@ async function apply() {
           </button>
         </div>
       </div>
-      <p class="single-loadout-scope">单套文件会复制武器及其强化、觉醒/超凡与祝福，12 个独立因子、4 个技能、专精选择与等级、角色强化进度及全局召唤石；目标存档缺少的召唤石会自动补建。系统开放状态和角色上限突破保持目标存档原值，缺少对应武器时不做部分写入。</p>
+      <p class="single-loadout-scope">导入文件后会先选择写入范围。因子、技能、专精、装备武器、祝福、召唤石与上限突破可任意多选；当前武器强化、角色强化进度和整组武器收藏默认不改，只有明确勾选才会覆盖。</p>
+      <section v-if="importSelection" class="staged-import-bar" aria-label="当前导入范围">
+        <span><b>已载入导入草稿</b><small>{{ stagedImportLabels.join(' · ') || '未选择项目' }}</small></span>
+        <label v-if="importApplyPayload?.applyMasterProgress"><small>专精进度</small><input v-model.number="importApplyPayload.masterProgressIndex" type="number" min="1" max="55" @change="importApplyPayload.masterProgressIndex = Math.min(55, Math.max(1, Number(importApplyPayload.masterProgressIndex) || 1))" /><strong>MLv{{ importApplyPayload.masterProgressIndex }} {{ masteryProgressStars(importApplyPayload.masterProgressIndex) }}</strong></label>
+        <button type="button" class="ui-btn is-ghost" @click="hydrateFromTarget">取消导入草稿</button>
+      </section>
       <p v-if="op === 'write' && importMissing.length" class="import-blocker" role="alert">导入草稿缺少资源，为避免只写入部分配装，保存已锁定：{{ importMissing.join('；') }}。补齐后请重新导入。</p>
       <template v-if="op === 'write'">
 
@@ -1725,6 +1815,7 @@ async function apply() {
       </aside>
       </div>
     </template>
+    <LoadoutImportDialog :draft="importDraft" @cancel="importDraft = null" @apply="applyImportChoices" />
     <ConfirmDialog ref="confirmDialog" />
   </div>
 </template>
@@ -1852,6 +1943,13 @@ async function apply() {
 .single-loadout-label { padding:0 3px 0 1px; color:var(--text-muted); font-size:var(--fs-xs); font-weight:700; white-space:nowrap; }
 .single-loadout-action { border-color:var(--line-gold); background:rgba(255,255,255,.5); color:#765126; }
 .single-loadout-scope { margin:0; padding:7px 12px; border-bottom:1px solid var(--line-soft); background:rgba(255,255,255,.38); color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.staged-import-bar { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:8px 12px; border-bottom:1px solid rgba(92,130,91,.3); background:rgba(92,130,91,.08); }
+.staged-import-bar > span { min-width:0; display:flex; flex-direction:column; }
+.staged-import-bar > span b { color:#466a51; font-size:var(--fs-sm); }
+.staged-import-bar > span small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
+.staged-import-bar label { display:grid; grid-template-columns:auto 72px auto; gap:6px; align-items:center; color:var(--text-muted); font-size:var(--fs-xs); }
+.staged-import-bar input { width:72px; min-height:30px; padding:0 7px; border:1px solid var(--line-gold); border-radius:5px; background:var(--panel-solid); color:var(--text-primary); }
+.staged-import-bar strong { min-width:92px; color:#9b6b20; font-size:var(--fs-xs); }
 .import-blocker { position:sticky; z-index:11; top:48px; margin:0; padding:8px 12px; border-bottom:1px solid var(--danger); background:var(--danger-bg); color:var(--danger); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .editor-save-button { flex:0 0 auto; min-width:142px; }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
@@ -1865,6 +1963,12 @@ async function apply() {
 .weapon-context-strip b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
 .weapon-context-strip small { color:var(--text-muted); font-size:var(--fs-xs); }
 .weapon-context-strip em { grid-column:2 / -1; min-width:0; color:#765126; font-size:var(--fs-xs); font-style:normal; font-variant-numeric:tabular-nums; white-space:normal; overflow-wrap:anywhere; }
+.equipped-resource-summary { display:grid; gap:5px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(255,255,255,.42); }
+.equipped-resource-summary > div { min-width:0; display:grid; grid-template-columns:58px minmax(0,1fr); gap:7px; align-items:start; }
+.equipped-resource-summary > div > b { color:var(--text-muted); font-size:var(--fs-xs); line-height:22px; }
+.equipped-resource-summary > div > span { min-width:0; display:flex; flex-wrap:wrap; gap:4px; }
+.equipped-resource-summary i { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:2px 6px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-solid); color:var(--text-secondary); font-size:var(--fs-xs); font-style:normal; }
+.equipped-resource-summary i.dim { border-style:dashed; background:transparent; color:var(--text-muted); }
 .inline-resource-panel { display:grid; gap:7px; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:rgba(139,103,55,.055); }
 .inline-resource-panel > small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.4; }
 .inline-resource-toggle { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; cursor:pointer; }
@@ -2234,5 +2338,8 @@ async function apply() {
   .editor-persistent-actions .single-loadout-label { grid-column:1/-1; padding:0; }
   .editor-persistent-actions .single-loadout-action { width:100%; }
   .editor-persistent-actions .editor-save-button { grid-column:1/-1; width:100%; }
+  .staged-import-bar { grid-template-columns:1fr; }
+  .staged-import-bar label { grid-template-columns:auto 70px minmax(0,1fr); }
+  .staged-import-bar > button { width:100%; }
 }
 </style>

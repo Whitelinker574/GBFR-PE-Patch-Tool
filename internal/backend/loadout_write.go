@@ -20,6 +20,7 @@ import (
 //   1402 武器  1 值 = 武器 SlotID（2802）
 //   1403 因子  13 值，前≤12 = 因子 SlotID（2702），其余填 0（**不是** EmptyHash），第 13 位恒 0
 //   1404 技能  4 值，≤4 技能 hash，其余填 EmptyHash
+//   3005 武器技能 5 值，严格保留位置；通常取所选武器 2818 的五槽快照
 //   3007 专精  50 值，≤50 节点 hash，其余填 EmptyHash
 //   3003 角色  1 值 = 角色 hash
 
@@ -39,6 +40,7 @@ type LoadoutWrite struct {
 	WeaponSlotID      uint32                    `json:"weaponSlotId"`                // 1402
 	SigilSlotIDs      []uint32                  `json:"sigilSlotIds"`                // 1403，≤12
 	SkillHashes       []string                  `json:"skillHashes"`                 // 1404，≤4，8 位 hex
+	WeaponSkillHashes []string                  `json:"weaponSkillHashes,omitempty"` // 3005，恰好 5 个位置敏感值
 	MasteryHashes     []string                  `json:"masteryHashes"`               // 3007，≤50，8 位 hex
 	SummonSlotIDs     []uint32                  `json:"summonSlotIds,omitempty"`     // 可选的全局 1451 四召唤石配置；仅 Op=="write" 生效
 	ConstructedSigils []LoadoutConstructedSigil `json:"constructedSigils,omitempty"` // 写入时原子创建并替换 0 基因子槽
@@ -168,11 +170,8 @@ func buildLoadoutIndex(save *SaveData) *loadoutIndex {
 		wepBySlotID: map[uint32]uint32{},
 		charName:    map[uint32]string{},
 	}
-	for _, e := range save.findAllUnitsByType(SaveID_CharacterID) {
-		idx := int(e.UnitID) - 10000
-		if idx >= 0 && idx < len(charaNames) && charaNames[idx] != "" {
-			ix.charName[e.Uint32()] = charaNames[idx]
-		}
+	for hash, name := range characterNameByHash {
+		ix.charName[hash] = name
 	}
 	ix.gemHash = entriesByUnitID(save.findAllUnitsByType(GemIDType))
 	ix.gemLevel = entriesByUnitID(save.findAllUnitsByType(GemLevelIDType))
@@ -362,16 +361,17 @@ func (s *SaveData) writeLoadoutVector(idType, unitID uint32, vals []uint32, want
 
 // resolvedWrite 是一条 LoadoutWrite 经完整预校验后的、可直接落盘的结果。
 type resolvedWrite struct {
-	unitID      uint32
-	op          string
-	charaHash   uint32   // 写入 3003 的实测推导值
-	name        string   // Op=="write"
-	weaponSID   uint32   // 1402
-	sigilSIDs   []uint32 // 1403（≤12）
-	skills      []uint32 // 1404（≤4）
-	mastery     []uint32 // 3007（≤50）
-	keepWeapon  bool     // clear 时保持 1402 原值
-	constructed []*preparedLoadoutSigil
+	unitID       uint32
+	op           string
+	charaHash    uint32   // 写入 3003 的实测推导值
+	name         string   // Op=="write"
+	weaponSID    uint32   // 1402
+	sigilSIDs    []uint32 // 1403（≤12）
+	skills       []uint32 // 1404（≤4）
+	weaponSkills []uint32 // 3005（严格 5 槽）
+	mastery      []uint32 // 3007（≤50）
+	keepWeapon   bool     // clear 时保持 1402 原值
+	constructed  []*preparedLoadoutSigil
 }
 
 type preparedLoadoutSigil struct {
@@ -703,7 +703,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 	}{
 		{loadoutCharIDType, 1, "角色"}, {loadoutNameIDType, 64, "名称"},
 		{loadoutWeaponIDType, 1, "武器"}, {loadoutSigilsIDType, 13, "因子"},
-		{loadoutSkillsIDType, 4, "技能"}, {loadoutMasteryIDType, 50, "专精"},
+		{loadoutSkillsIDType, 4, "技能"}, {loadoutWeaponSkillsIDType, 5, "武器技能"}, {loadoutMasteryIDType, 50, "专精"},
 	} {
 		e, ok := save.findUnitExact(f.id, w.UnitID)
 		if !ok {
@@ -750,6 +750,7 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		}
 		rw.sigilSIDs = readLoadoutSigilVector(save, src)
 		rw.skills = readVec(save, loadoutSkillsIDType, src, loadoutMaxSkills)
+		rw.weaponSkills = readFixedVec(save, loadoutWeaponSkillsIDType, src, 5)
 		rw.mastery = readVec(save, loadoutMasteryIDType, src, loadoutMaxMastery)
 		rw.name = entryTextAt(save, src)
 		if len(rw.mastery) > 0 {
@@ -790,6 +791,25 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 			return nil, fmt.Errorf("武器 SlotID %d 写入校验失败: %w", w.WeaponSlotID, err)
 		}
 		rw.weaponSID = w.WeaponSlotID
+		if len(w.WeaponSkillHashes) == 0 {
+			extra, exists := save.findUnitExact(weaponExtraIDType, wu)
+			if !exists || extra.ValueCnt < 5 {
+				return nil, fmt.Errorf("武器 SlotID %d 缺少 2818 五技能向量", w.WeaponSlotID)
+			}
+			rw.weaponSkills = readFixedVec(save, weaponExtraIDType, wu, 5)
+		}
+	}
+	if len(w.WeaponSkillHashes) > 0 {
+		if len(w.WeaponSkillHashes) != 5 {
+			return nil, fmt.Errorf("配装武器技能 3005 必须恰好有 5 槽")
+		}
+		for index, value := range w.WeaponSkillHashes {
+			hash, parseErr := ParseHashHex(value)
+			if parseErr != nil {
+				return nil, fmt.Errorf("配装武器技能槽 %d 无效: %w", index+1, parseErr)
+			}
+			rw.weaponSkills = append(rw.weaponSkills, hash)
+		}
 	}
 
 	// 因子（1403）：≤12。已有 SlotID 与按 0 基索引提交的构造草稿先共同
@@ -868,12 +888,17 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 	if len(w.MasteryHashes) > loadoutMaxMastery {
 		return nil, fmt.Errorf("专精节点最多 %d 个，收到 %d", loadoutMaxMastery, len(w.MasteryHashes))
 	}
+	exactMasterySlots := len(w.MasteryHashes) == loadoutMaxMastery
+	activeMastery := make([]uint32, 0, len(w.MasteryHashes))
 	for _, hx := range w.MasteryHashes {
 		v, err := ParseHashHex(hx)
 		if err != nil {
 			return nil, fmt.Errorf("专精 hash 无效: %v", err)
 		}
 		if v == EmptyHash || v == 0 {
+			if exactMasterySlots {
+				rw.mastery = append(rw.mastery, EmptyHash)
+			}
 			continue
 		}
 		node, ok := skillboardNodeForHash(v)
@@ -884,11 +909,12 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 			return nil, fmt.Errorf("专精节点 %08X 属于 %s，不属于该角色（%s）", v, node.Char, ownerCode)
 		}
 		rw.mastery = append(rw.mastery, v)
+		activeMastery = append(activeMastery, v)
 	}
 	// 配额校验先保护专精盘固有的分档与方向规则，再按目标角色自身的
 	// 1323 Master 总 MSP 派生等级容量；低级角色不能借前端或克隆写入未解锁档位。
-	if len(rw.mastery) > 0 {
-		if err := validateLoadoutMasteryForCharacter(save, blockChara, ownerCode, rw.mastery); err != nil {
+	if len(activeMastery) > 0 {
+		if err := validateLoadoutMasteryForCharacter(save, blockChara, ownerCode, activeMastery); err != nil {
 			return nil, err
 		}
 	}
@@ -912,6 +938,22 @@ func readVec(save *SaveData, idType, unitID uint32, maxN int) []uint32 {
 			continue
 		}
 		out = append(out, v)
+	}
+	return out
+}
+
+func readFixedVec(save *SaveData, idType, unitID uint32, count int) []uint32 {
+	e, ok := save.findUnitExact(idType, unitID)
+	if !ok || e.ValueCnt < count {
+		return nil
+	}
+	out := make([]uint32, 0, count)
+	for i := 0; i < count; i++ {
+		value, err := e.Uint32At(i)
+		if err != nil {
+			return nil
+		}
+		out = append(out, value)
 	}
 	return out
 }
@@ -957,6 +999,9 @@ func applyResolvedWrite(save *SaveData, rw *resolvedWrite) error {
 		if err := save.writeLoadoutVector(loadoutSkillsIDType, rw.unitID, nil, 4, EmptyHash); err != nil {
 			return err
 		}
+		if err := save.writeLoadoutVector(loadoutWeaponSkillsIDType, rw.unitID, nil, 5, EmptyHash); err != nil {
+			return err
+		}
 		if err := save.writeLoadoutVector(loadoutMasteryIDType, rw.unitID, nil, 50, EmptyHash); err != nil {
 			return err
 		}
@@ -976,6 +1021,9 @@ func applyResolvedWrite(save *SaveData, rw *resolvedWrite) error {
 		return err
 	}
 	if err := save.writeLoadoutVector(loadoutSkillsIDType, rw.unitID, rw.skills, 4, EmptyHash); err != nil {
+		return err
+	}
+	if err := save.writeLoadoutVector(loadoutWeaponSkillsIDType, rw.unitID, rw.weaponSkills, 5, EmptyHash); err != nil {
 		return err
 	}
 	if err := save.writeLoadoutVector(loadoutMasteryIDType, rw.unitID, rw.mastery, 50, EmptyHash); err != nil {
@@ -1010,6 +1058,10 @@ func verifyResolvedWrite(save *SaveData, rw *resolvedWrite) (int, error) {
 	hit++
 	if !vecMatches(save, loadoutSkillsIDType, rw.unitID, rw.skills, 4, EmptyHash) {
 		return hit, fmt.Errorf("回读技能向量不符")
+	}
+	hit++
+	if !vecMatches(save, loadoutWeaponSkillsIDType, rw.unitID, rw.weaponSkills, 5, EmptyHash) {
+		return hit, fmt.Errorf("回读武器技能向量不符")
 	}
 	hit++
 	if !vecMatches(save, loadoutMasteryIDType, rw.unitID, rw.mastery, 50, EmptyHash) {
@@ -1300,6 +1352,11 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 			return nil, err
 		}
 		resolved = append(resolved, rw)
+	}
+	if request.ImportPayload != nil {
+		if err := validateImportedMasteryCapacity(save, preparedImport, resolved, request.ImportPayload.ApplyMasteryConfiguration); err != nil {
+			return nil, err
+		}
 	}
 	inlineResources, err := prepareLoadoutInlineResources(save, request, resolved, inlineSummonSlotIDs)
 	if err != nil {

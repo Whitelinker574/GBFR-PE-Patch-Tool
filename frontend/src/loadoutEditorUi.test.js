@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const source = readFileSync(new URL('./components/LoadoutEditor.vue', import.meta.url), 'utf8')
 const viewer = readFileSync(new URL('./components/LoadoutViewer.vue', import.meta.url), 'utf8')
+const importDialog = readFileSync(new URL('./components/LoadoutImportDialog.vue', import.meta.url), 'utf8')
 const patchTool = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 
 test('mastery starts collapsed while the three-direction summary stays visible', () => {
@@ -306,10 +307,53 @@ test('single-loadout import constructs independent factors and blocks partial wr
   assert.match(source, /importMissing\.value\.length > 0/)
   assert.match(source, /op === 'write' && importMissing\.length/)
   assert.match(source, /为避免只写入部分配装，保存已锁定/)
-  assert.match(source, /补齐后请重新导入/)
-  assert.match(source, /12 个独立因子/)
-  assert.match(source, /同步专精等级、角色强化及武器强化\/祝福/)
-  assert.match(source, /系统开放状态和角色上限突破保持目标存档原值/)
+  assert.match(source, /missingByScope/)
+  assert.match(source, /applyWeaponEnhancement:\s*!!choices\.weaponEnhancement/)
+  assert.match(source, /applyCharacterGrowth:\s*!!choices\.characterGrowth/)
+  assert.match(source, /applyCharacterWeaponCollection:\s*!!choices\.characterWeaponCollection/)
+	assert.match(source, /applyCharacterWeaponWrightstones:\s*!!choices\.characterWeaponWrightstones/)
+  assert.match(importDialog, /默认保留目标角色强化、当前武器成长和整组武器收藏/)
+  assert.match(importDialog, /只导入武器祝福/)
+  assert.match(importDialog, /缺少时自动新增并登记/)
+  assert.match(importDialog, /上限突破[\s\S]*可选择不覆盖/)
+  assert.match(importDialog, /角色强化进度[\s\S]*不改任何武器/)
+  assert.match(importDialog, /整组角色武器收藏[\s\S]*同步该角色全部武器/)
+	assert.match(importDialog, /同步全部武器祝福[\s\S]*实际生效的三条附加技能/)
+  assert.match(importDialog, /characterGrowth:\s*false/)
+  assert.match(importDialog, /characterWeaponCollection:\s*false/)
+	assert.match(importDialog, /characterWeaponWrightstones:\s*false/)
+  assert.match(importDialog, /MLv\{\{ masteryProgress \}\}/)
+  assert.match(importDialog, /max="55"/)
+})
+
+test('preset cards and editor summary expose only weapon skills and complete wrightstone traits', () => {
+  assert.match(viewer, /class="weapon-loadout-summary"/)
+  assert.match(viewer, /v-for="skill in lo\.weapon\.skills"/)
+  assert.match(viewer, /lo\.weapon\.wrightstone/)
+	assert.match(viewer, /lo\.weapon\.wrightstone\?\.traits/)
+  assert.match(source, /class="equipped-resource-summary"/)
+  assert.match(source, /v-for="skill in selectedWeaponContext\.skills"/)
+	assert.match(source, /selectedWeaponContext\.wrightstone\?\.traits/)
+	const summaryStart = source.indexOf('class="equipped-resource-summary"')
+	const summaryEnd = source.indexOf('class="inline-resource-panel weapon-inline-panel"', summaryStart)
+	const summary = source.slice(summaryStart, summaryEnd)
+	assert.match(summary, />武器技能</)
+	assert.match(summary, />武器祝福</)
+	assert.doesNotMatch(summary, />主动技能</)
+	assert.doesNotMatch(summary, />已装因子</)
+})
+
+test('imported mastery keeps the source 3007 order until a manual node edit', () => {
+	assert.match(source, /const importedMasterySnapshot = ref\(\[\]\)/)
+	assert.match(source, /importedMasterySnapshot\.value = \[\.\.\.\(draft\.masteryHashes \|\| \[\]\)\]/)
+	assert.match(source, /w\.masteryHashes = importedMasterySnapshot\.value\.length/)
+	assert.match(source, /function toggleNode[\s\S]*?importedMasterySnapshot\.value = \[\]/)
+	assert.match(source, /w\.weaponSkillHashes = \[\.\.\.importedWeaponSkillSnapshot\.value\]/)
+})
+
+test('the current live loadout is visually promoted ahead of saved presets', () => {
+  assert.match(viewer, /\.loadout-card\.party\s*\{[^}]*grid-column\s*:\s*1\s*\/\s*-1[^}]*order\s*:\s*-1/is)
+  assert.match(viewer, /当前实时配装/)
 })
 
 test('merged total names and source ledgers wrap instead of being ellipsized', () => {

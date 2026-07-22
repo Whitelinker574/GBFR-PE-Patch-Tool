@@ -45,3 +45,12 @@ test('component freezes each accepted address and does not use content signature
   assert.match(component, /expectedSelectedAddr:\s*selectedAddr/)
   assert.doesNotMatch(component, /seen\.has\(currentSignature\)|lastSignature/)
 })
+
+test('recording uses a two-edge handshake when the hook cannot see the already selected first row', () => {
+  assert.match(component, /'record-prime': '正在确认第一项'/)
+  assert.match(component, /请按一次↓到第二项，再按↑回到第一项/)
+  assert.match(component, /if \(!recordPrimeSeen\)[\s\S]*recordPrimeSeen = true[\s\S]*回到第一项/)
+  assert.match(component, /entries\.value = \[normalizeEntry\(status\)\][\s\S]*mode\.value = 'record'/)
+  assert.match(component, /resetSelectionTracker\(selectedAddr\)[\s\S]*mode\.value = 'record'/)
+  assert.match(component, /function resetSelectionTracker\(selectedAddr = 0\)[\s\S]*takeSelectionAddress\(selectionTracker, selectedAddr\)/)
+})

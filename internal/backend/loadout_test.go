@@ -52,6 +52,34 @@ func TestLoadoutSlotAlwaysInRange(t *testing.T) {
 	}
 }
 
+func TestSortLoadoutsPlacesCurrentPartySnapshotFirst(t *testing.T) {
+	loadouts := []LoadoutEntry{
+		{UnitID: 20002, Slot: 3},
+		{UnitID: 104000, Slot: 1, IsParty: true},
+		{UnitID: 20000, Slot: 1},
+	}
+	sortLoadoutsCurrentFirst(loadouts)
+	if !loadouts[0].IsParty || loadouts[0].UnitID != 104000 || loadouts[1].UnitID != 20000 || loadouts[2].UnitID != 20002 {
+		t.Fatalf("current snapshot was not sorted first: %+v", loadouts)
+	}
+}
+
+func TestDLCCharacterHashesAreNotFilteredByLegacySlotOrder(t *testing.T) {
+	want := map[uint32]string{
+		0x1BB37EF0: "伽兰查",
+		0x25D46F4B: "玛琪拉菲菈",
+		0x9A8AF295: "贝阿朵丽丝",
+		0x9B15CFB1: "尤斯提斯",
+		0x646C3168: "芙劳",
+		0x74DD4C79: "菲迪埃尔",
+	}
+	for hash, name := range want {
+		if got := characterNameByHash[hash]; got != name {
+			t.Fatalf("DLC 角色 %08X = %q, want %q", hash, got, name)
+		}
+	}
+}
+
 // vecLen 必须钳制 ValueCnt：tryReadUnitEntry 不校验它与剩余字节的关系，
 // 损坏/伪造存档可给出巨大的 ValueCnt，照此预分配会直接 OOM。
 func TestVecLenClampsHostileValueCnt(t *testing.T) {

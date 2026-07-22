@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -120,6 +121,10 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	if len(share.Sigils) != 12 || len(share.Skills) != 4 || len(share.MasteryHashes) != 50 {
 		t.Fatalf("导出丢字段: 因子%d 技能%d 专精%d", len(share.Sigils), len(share.Skills), len(share.MasteryHashes))
 	}
+	if len(share.WeaponSkillHashes) != 5 || share.Character == nil || len(share.Character.EnhancementPanel) != 2 || len(share.Character.EnhancementNodes) == 0 || !share.Character.WeaponWrightstonesCaptured ||
+		share.Weapon == nil || share.Weapon.Wrightstone == nil {
+		t.Fatalf("v8 精确快照不完整: weaponSkills=%v character=%+v weapon=%+v", share.WeaponSkillHashes, share.Character, share.Weapon)
+	}
 
 	draft, err := resolveLoadoutShare(path, source.CharaHash, share)
 	if err != nil {
@@ -130,6 +135,9 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	}
 	if len(draft.SigilSlotIDs) != 12 || len(draft.ConstructedSigils) != 12 || len(draft.SkillHashes) != 4 || len(draft.MasteryHashes) != 50 {
 		t.Fatalf("导入解析丢字段: 因子槽%d 构造%d 技能%d 专精%d", len(draft.SigilSlotIDs), len(draft.ConstructedSigils), len(draft.SkillHashes), len(draft.MasteryHashes))
+	}
+	if !reflect.DeepEqual(draft.MasteryHashes, share.MasteryHashes) || !reflect.DeepEqual(draft.WeaponSkillHashes, share.WeaponSkillHashes) {
+		t.Fatalf("位置敏感快照在导入解析时被重排: mastery=%v weapon=%v", draft.MasteryHashes, draft.WeaponSkillHashes)
 	}
 	ctx, err := app.LoadoutEditContext(path, source.CharaHash)
 	if err != nil {
@@ -238,9 +246,9 @@ func TestLoadoutShareReadsLegacyV1DenseSigils(t *testing.T) {
 	}
 }
 
-func TestLoadoutShareV1V2AndV3WithoutSummonsRemainCompatible(t *testing.T) {
+func TestLoadoutShareV1ThroughV5WithoutSummonsRemainCompatible(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
-	for _, version := range []int{loadoutShareLegacyVersion, 2, loadoutShareVersion} {
+	for _, version := range []int{loadoutShareLegacyVersion, 2, 3, 4, loadoutShareVersion} {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			legacy := *share
 			legacy.Version = version

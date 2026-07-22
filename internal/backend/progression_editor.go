@@ -32,15 +32,26 @@ const (
 	weaponMirageIDType        uint32 = 2806
 	weaponAwakeIDType         uint32 = 2807
 	weaponFlagsIDType         uint32 = 2813
-	weaponStoneIDType         uint32 = 2814
+	weaponVariantIDType       uint32 = 2814
 	weaponStateIDType         uint32 = 2815
 	weaponStoneSubType        uint32 = 2816
 	weaponTranscendenceIDType uint32 = 2817
 	weaponExtraIDType         uint32 = 2818
 	weaponSlotBase                   = 40000
-	weaponTraitBase                  = 140000000
+	weaponImbuedTraitBase            = 130000000
 	weaponTraitStride                = 100
 )
+
+func weaponImbuedTraitUnitBase(weaponUnitID uint32) (uint32, error) {
+	if weaponUnitID < weaponSlotBase {
+		return 0, fmt.Errorf("武器实例 %d 越界，无法定位祝福生效词条", weaponUnitID)
+	}
+	base := uint64(weaponImbuedTraitBase) + uint64(weaponUnitID-weaponSlotBase)*uint64(weaponTraitStride)
+	if base+2 > uint64(^uint32(0)) {
+		return 0, fmt.Errorf("武器实例 %d 的祝福生效词条编号溢出", weaponUnitID)
+	}
+	return uint32(base), nil
+}
 
 // weaponExpByLevel is the cumulative EXP table extracted from the installed
 // 2.0.2 game's system/table/weapon_exp.tbl. Index 0 is level 1.
@@ -800,7 +811,7 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 			return false, expected, fmt.Errorf("存档缺少武器最大槽位字段")
 		}
 		newSlotID := maxSlot.Uint32() + 1
-		for _, required := range []uint32{weaponSlotIDType, weaponIDType, weaponXPIDType, weaponUncapIDType, weaponMirageIDType, weaponAwakeIDType, weaponFlagsIDType, weaponStoneIDType, weaponStateIDType, weaponStoneSubType, weaponTranscendenceIDType, weaponExtraIDType} {
+		for _, required := range []uint32{weaponSlotIDType, weaponIDType, weaponXPIDType, weaponUncapIDType, weaponMirageIDType, weaponAwakeIDType, weaponFlagsIDType, weaponVariantIDType, weaponStateIDType, weaponStoneSubType, weaponTranscendenceIDType, weaponExtraIDType} {
 			if _, ok := save.findUnit(required, unitID); !ok {
 				return false, expected, fmt.Errorf("武器槽 %d 缺少字段 %d", unitID, required)
 			}
@@ -808,7 +819,7 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 		maxSlot.SetUint32(newSlotID)
 		for _, patch := range []struct{ id, value uint32 }{
 			{weaponSlotIDType, newSlotID}, {weaponIDType, hash}, {weaponFlagsIDType, 0},
-			{weaponStoneIDType, EmptyHash}, {weaponStateIDType, 1}, {weaponStoneSubType, EmptyHash},
+			{weaponVariantIDType, EmptyHash}, {weaponStateIDType, 1}, {weaponStoneSubType, EmptyHash},
 		} {
 			if err := save.patchUint(patch.id, unitID, patch.value); err != nil {
 				return false, expected, err
@@ -824,9 +835,12 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 				}
 			}
 		}
-		weaponIndex := int(unitID) - weaponSlotBase
+		traitBase, traitBaseErr := weaponImbuedTraitUnitBase(unitID)
+		if traitBaseErr != nil {
+			return false, expected, traitBaseErr
+		}
 		for i := 0; i < 3; i++ {
-			traitUnit := uint32(weaponTraitBase + weaponIndex*weaponTraitStride + i)
+			traitUnit := traitBase + uint32(i)
 			if entry, ok := save.findUnit(TraitHashIDType, traitUnit); ok {
 				entry.SetUint32(EmptyHash)
 			}

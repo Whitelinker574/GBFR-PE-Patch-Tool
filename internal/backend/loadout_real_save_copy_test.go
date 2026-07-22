@@ -234,7 +234,7 @@ func TestIsolatedRealSaveLoadoutFeatureIntegration(t *testing.T) {
 	}
 }
 
-// The write path works on a second-generation temp copy. It constructs one
+// The write path reads one isolated copy and writes another. It constructs one
 // natural factor and binds it into an existing complete loadout in the same
 // transaction, then relies on LoadoutApply's disk re-read verification.
 func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
@@ -259,7 +259,8 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 	sigils, skills, mastery := loadoutVectors(source)
 	oldFirstSlot := sigils[0]
 	item := naturalConstructedSigilItem(t)
-	result, err := app.LoadoutApply(work, work, []LoadoutWrite{{
+	output := filepath.Join(t.TempDir(), "SaveData2.dat")
+	result, err := app.LoadoutApply(work, output, []LoadoutWrite{{
 		UnitID: source.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: source.Name,
 		WeaponSlotID: source.WeaponSlotID, SigilSlotIDs: sigils, SkillHashes: skills,
 		MasteryHashes: mastery, SummonSlotIDs: stats.EquippedSummonSlotIDs,
@@ -271,14 +272,7 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 	if result.SlotsWritten != 1 || result.CreatedCount != 1 || result.VerifiedCount != 1 || result.VerifiedFields < 7 || len(result.SlotIDs) != 1 {
 		t.Fatalf("atomic write/readback result is incomplete: %+v", result)
 	}
-	if result.BackupPath == "" {
-		t.Fatal("in-place temp-copy write did not create a backup")
-	}
-	if _, err := os.Stat(result.BackupPath); err != nil {
-		t.Fatalf("write backup cannot be read: %v", err)
-	}
-
-	_, after := isolatedIoLoadout(t, work)
+	_, after := isolatedIoLoadout(t, output)
 	if after.UnitID != source.UnitID {
 		t.Fatalf("readback selected a different loadout: before=%d after=%d", source.UnitID, after.UnitID)
 	}
@@ -293,7 +287,7 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 		first.PrimaryTraitName == "" || first.PrimaryTraitLevel != item.PrimaryLevel {
 		t.Fatalf("constructed factor was not bound/read back with real traits: old=%d result=%v factor=%+v", oldFirstSlot, result.SlotIDs, first)
 	}
-	afterStats, err := app.LoadoutStatContext(work, group.CharaHash)
+	afterStats, err := app.LoadoutStatContext(output, group.CharaHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +297,7 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 	if got := isolatedSaveDigest(t, fixture); got != fixtureDigest {
 		t.Fatal("temp-copy write changed the isolated source fixture")
 	}
-	t.Logf("verified isolated save integration: %s; backup=%s", fmt.Sprintf("new factor SlotID %d", first.SlotID), result.BackupPath)
+	t.Logf("verified isolated save integration: %s; output=%s", fmt.Sprintf("new factor SlotID %d", first.SlotID), result.OutputPath)
 }
 
 func TestIsolatedRealSaveImportCreatesIndependentCompleteFactorSet(t *testing.T) {
@@ -342,7 +336,8 @@ func TestIsolatedRealSaveImportCreatesIndependentCompleteFactorSet(t *testing.T)
 		t.Fatalf("import draft is incomplete: missing=%v factors=%d", draft.Missing, len(draft.ConstructedSigils))
 	}
 	sourceSlots, _, _ := loadoutVectors(source)
-	result, err := app.LoadoutApply(work, work, []LoadoutWrite{{
+	output := filepath.Join(t.TempDir(), "SaveData2.dat")
+	result, err := app.LoadoutApply(work, output, []LoadoutWrite{{
 		UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
 		WeaponSlotID: draft.WeaponSlotID, SigilSlotIDs: draft.SigilSlotIDs,
 		ConstructedSigils: draft.ConstructedSigils, SkillHashes: draft.SkillHashes,
@@ -355,7 +350,7 @@ func TestIsolatedRealSaveImportCreatesIndependentCompleteFactorSet(t *testing.T)
 		t.Fatalf("complete import did not create twelve factors: %+v", result)
 	}
 
-	afterGroups, err := app.LoadoutList(work)
+	afterGroups, err := app.LoadoutList(output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,9 +433,6 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 			t.Fatal(err)
 		}
 	}
-	if err := save.patchUint(weaponStoneIDType, weaponUnitID, EmptyHash); err != nil {
-		t.Fatal(err)
-	}
 	if err := save.patchUint(weaponStoneSubType, weaponUnitID, EmptyHash); err != nil {
 		t.Fatal(err)
 	}
@@ -457,12 +449,15 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 	if missingCollectionWeapon == "" {
 		t.Fatal("真实存档没有可用于武器收集补建测试的第二把角色武器")
 	}
-	traitBase := weaponTraitBase + (int(weaponUnitID)-weaponSlotBase)*weaponTraitStride
+	traitBase, err := weaponImbuedTraitUnitBase(weaponUnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for index := 0; index < 3; index++ {
-		if err := save.patchUint(TraitHashIDType, uint32(traitBase+index), EmptyHash); err != nil {
+		if err := save.patchUint(TraitHashIDType, traitBase+uint32(index), EmptyHash); err != nil {
 			t.Fatal(err)
 		}
-		if err := save.patchInt(TraitLevelIDType, uint32(traitBase+index), 0); err != nil {
+		if err := save.patchInt(TraitLevelIDType, traitBase+uint32(index), 0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -490,6 +485,15 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 	if draft.ApplyPayload == nil || draft.ApplyPayload.Character == nil || draft.ApplyPayload.Weapon == nil || len(draft.ApplyPayload.ConstructedSummons) != 1 {
 		t.Fatalf("import payload did not capture missing state: %+v", draft.ApplyPayload)
 	}
+	draft.ApplyPayload.ApplyMasteryConfiguration = true
+	draft.ApplyPayload.ApplyMasterProgress = true
+	draft.ApplyPayload.MasterProgressIndex = draft.Capabilities.SourceMasterProgressIndex
+	draft.ApplyPayload.ApplyCharacterGrowth = true
+	draft.ApplyPayload.ApplyCharacterWeaponCollection = true
+	draft.ApplyPayload.ApplyCharacterWeaponWrightstones = true
+	draft.ApplyPayload.ApplyWeaponEnhancement = true
+	draft.ApplyPayload.ApplyWeaponWrightstone = true
+	draft.ApplyPayload.ApplyOverLimit = len(draft.ApplyPayload.OverLimit) > 0
 	var target LoadoutEntry
 	for _, candidate := range group.Loadouts {
 		if !candidate.IsParty && candidate.UnitID != source.UnitID {
@@ -500,7 +504,8 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 	if target.UnitID == 0 {
 		t.Fatal("no target preset")
 	}
-	result, err := (&App{}).LoadoutApplyWithResources(work, work, LoadoutApplyRequest{
+	output := filepath.Join(t.TempDir(), "SaveData2.dat")
+	result, err := (&App{}).LoadoutApplyWithResources(work, output, LoadoutApplyRequest{
 		Changes: []LoadoutWrite{{
 			UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
 			WeaponSlotID: draft.WeaponSlotID, SigilSlotIDs: draft.SigilSlotIDs, ConstructedSigils: draft.ConstructedSigils,
@@ -514,14 +519,14 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 	if result.CreatedSummonCount != 1 {
 		t.Fatalf("missing summon was not generated: %+v", result)
 	}
-	afterStats, err := (&App{}).LoadoutStatContext(work, group.CharaHash)
+	afterStats, err := (&App{}).LoadoutStatContext(output, group.CharaHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if afterStats.PermanentGrowth.MasterTotalMSP != share.Character.MasterTotalMSP || afterStats.PermanentGrowth.LegacyProgress != share.Character.LegacyProgress {
 		t.Fatalf("character progression mismatch: got %+v want %+v", afterStats.PermanentGrowth, share.Character)
 	}
-	afterSave, err := LoadSave(work)
+	afterSave, err := LoadSave(output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +540,7 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 		t.Fatalf("weapon state mismatch: got %+v want %+v", afterWeapon, share.Weapon)
 	}
 	foundCollectionWeapon := false
-	for _, weapon := range progressionInventory(afterSave, work).Weapons {
+	for _, weapon := range progressionInventory(afterSave, output).Weapons {
 		if weapon.InternalID == missingCollectionWeapon {
 			foundCollectionWeapon = true
 			break
@@ -544,7 +549,207 @@ func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *test
 	if !foundCollectionWeapon {
 		t.Fatalf("角色强化武器收集缺少自动补建的 %s", missingCollectionWeapon)
 	}
+	sourceWeaponByID := make(map[string]LoadoutShareProgressionWeapon, len(share.Character.Weapons))
+	for _, weapon := range share.Character.Weapons {
+		sourceWeaponByID[weapon.InternalID] = weapon
+	}
+	verifiedWrightstones := 0
+	for _, weapon := range progressionInventory(afterSave, output).Weapons {
+		sourceWeapon, ok := sourceWeaponByID[weapon.InternalID]
+		if !ok {
+			continue
+		}
+		snapshot, prepareErr := prepareWeaponWrightstone(sourceWeapon.Wrightstone)
+		if prepareErr != nil {
+			t.Fatal(prepareErr)
+		}
+		if verifyErr := verifyPreparedWeaponWrightstone(afterSave, expectedWeaponWrightstone{unitID: weapon.UnitID, snapshot: snapshot}); verifyErr != nil {
+			t.Fatalf("角色武器 %s 的祝福未同步: %v", weapon.InternalID, verifyErr)
+		}
+		verifiedWrightstones++
+	}
+	if verifiedWrightstones != len(sourceWeaponByID) {
+		t.Fatalf("整组武器祝福验证数量=%d，期望=%d", verifiedWrightstones, len(sourceWeaponByID))
+	}
 	if len(afterStats.EquippedSummons) != 4 || !strings.EqualFold(afterStats.EquippedSummons[0].TypeHash, share.Summons[0].TypeHash) {
 		t.Fatalf("missing summon was not rebuilt into the equipped set: %+v", afterStats.EquippedSummons)
 	}
+}
+
+func TestIsolatedRealSaveSelectiveWeaponImportPreservesGrowthAndCanApplyOnlyWrightstone(t *testing.T) {
+	fixture := requireIsolatedSaveQA(t)
+	payload, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(t.TempDir(), "SaveData2.dat")
+	if err := os.WriteFile(work, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata"))
+
+	app := &App{}
+	group, source := isolatedIoLoadout(t, work)
+	share, err := buildLoadoutShare(work, source.UnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.Weapon == nil || share.Weapon.Wrightstone == nil {
+		t.Fatal("real source loadout needs a weapon with a wrightstone")
+	}
+	var target LoadoutEntry
+	for _, candidate := range group.Loadouts {
+		if !candidate.IsParty && candidate.UnitID != source.UnitID {
+			target = candidate
+			break
+		}
+	}
+	if target.UnitID == 0 {
+		t.Fatal("real source save needs a second loadout slot")
+	}
+
+	save, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	weaponUnitID, err := exactWeaponUnitForSlot(save, source.WeaponSlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	differentInt := func(value int) int {
+		if value == 0 {
+			return 1
+		}
+		return 0
+	}
+	targetXP := share.Weapon.XP + 1
+	if targetXP == 0 {
+		targetXP = share.Weapon.XP - 1
+	}
+	targetUncap := differentInt(share.Weapon.Uncap)
+	targetMirage := differentInt(share.Weapon.Mirage)
+	targetAwakening := differentInt(share.Weapon.Awakening)
+	targetTranscendence := differentInt(share.Weapon.Transcendence)
+	weaponContext, err := readLoadoutWeaponContext(save, source.WeaponSlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var collectionProbe OwnedProgressionWeapon
+	for _, weapon := range progressionInventory(save, work).Weapons {
+		if weapon.OwnerCode == share.OwnerCode && weapon.InternalID != "" && weapon.InternalID != weaponContext.InternalID {
+			collectionProbe = weapon
+			break
+		}
+	}
+	if collectionProbe.UnitID == 0 {
+		t.Fatal("real source save needs a second character weapon for collection isolation")
+	}
+	collectionProbeMirage := differentInt(collectionProbe.Mirage)
+	if err := save.patchUint(weaponXPIDType, weaponUnitID, targetXP); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []struct {
+		id    uint32
+		value int
+	}{
+		{weaponUncapIDType, targetUncap},
+		{weaponMirageIDType, targetMirage},
+		{weaponAwakeIDType, targetAwakening},
+		{weaponTranscendenceIDType, targetTranscendence},
+	} {
+		if err := save.patchInt(field.id, weaponUnitID, field.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := save.patchInt(weaponMirageIDType, collectionProbe.UnitID, collectionProbeMirage); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.patchUint(weaponStoneSubType, weaponUnitID, EmptyHash); err != nil {
+		t.Fatal(err)
+	}
+	traitBase, err := weaponImbuedTraitUnitBase(weaponUnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 3; index++ {
+		if err := save.patchUint(TraitHashIDType, traitBase+uint32(index), EmptyHash); err != nil {
+			t.Fatal(err)
+		}
+		if err := save.patchInt(TraitLevelIDType, traitBase+uint32(index), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := save.FixChecksums(); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.Write(work); err != nil {
+		t.Fatal(err)
+	}
+
+	draft, err := resolveLoadoutShare(work, group.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.ApplyPayload == nil || draft.ApplyPayload.Weapon == nil {
+		t.Fatal("selective import draft omitted the source weapon state")
+	}
+	// 角色强化进度与整组角色武器收藏是两个独立范围。只选前者时，
+	// 即使分享文件携带了全部角色武器，也不能改动未装备的收藏武器。
+	draft.ApplyPayload.ApplyCharacterGrowth = true
+	targetSigils, targetSkills, targetMastery := loadoutVectors(target)
+	write := LoadoutWrite{
+		UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
+		WeaponSlotID: draft.WeaponSlotID, SigilSlotIDs: targetSigils, SkillHashes: targetSkills, MasteryHashes: targetMastery,
+	}
+	preservedOutput := filepath.Join(t.TempDir(), "SaveData2.dat")
+	result, err := app.LoadoutApplyWithResources(work, preservedOutput, LoadoutApplyRequest{
+		Changes: []LoadoutWrite{write}, ImportPayload: draft.ApplyPayload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SlotsWritten != 1 || result.VerifiedFields < 6 {
+		t.Fatalf("selective import did not complete: %+v", result)
+	}
+	assertWeaponState := func(path string, wantWrightstone bool) {
+		t.Helper()
+		gotSave, loadErr := LoadSave(path)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		got, readErr := readLoadoutWeaponContext(gotSave, draft.WeaponSlotID)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if got.XP != targetXP || got.Uncap != targetUncap || got.Mirage != targetMirage ||
+			got.Awakening != targetAwakening || got.Transcendence != targetTranscendence {
+			t.Fatalf("unselected weapon growth changed: got=%+v want xp=%d uncap=%d mirage=%d awakening=%d transcendence=%d",
+				got, targetXP, targetUncap, targetMirage, targetAwakening, targetTranscendence)
+		}
+		if wantWrightstone {
+			if got.Wrightstone == nil || !strings.EqualFold(got.Wrightstone.Hash, share.Weapon.Wrightstone.Hash) {
+				t.Fatalf("wrightstone-only import mismatch: got=%+v want=%+v", got.Wrightstone, share.Weapon.Wrightstone)
+			}
+		} else if got.Wrightstone != nil {
+			t.Fatalf("default import unexpectedly changed the target wrightstone: %+v", got.Wrightstone)
+		}
+		probe, ok := gotSave.findUnitExact(weaponMirageIDType, collectionProbe.UnitID)
+		if !ok || int(probe.Int32()) != collectionProbeMirage {
+			t.Fatalf("character growth import changed an unrelated collection weapon: got=%v want=%d", probe, collectionProbeMirage)
+		}
+	}
+	assertWeaponState(preservedOutput, false)
+
+	wrightstoneDraft, err := resolveLoadoutShare(preservedOutput, group.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrightstoneDraft.ApplyPayload.ApplyWeaponWrightstone = true
+	wrightstoneOutput := filepath.Join(t.TempDir(), "SaveData2.dat")
+	if _, err := app.LoadoutApplyWithResources(preservedOutput, wrightstoneOutput, LoadoutApplyRequest{
+		Changes: []LoadoutWrite{write}, ImportPayload: wrightstoneDraft.ApplyPayload,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertWeaponState(wrightstoneOutput, true)
 }

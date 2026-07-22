@@ -37,10 +37,12 @@ let activeRunToken = null
 let hookOwnerToken = ''
 let stoppingPromise = null
 let writeSnapshot = Object.freeze([])
+let recordPrimeSeen = false
 
 const isActive = computed(() => mode.value !== 'idle')
 const modeLabel = computed(() => ({
   'starting-record': '正在启动记录',
+  'record-prime': '正在确认第一项',
   'starting-write': '正在启动复刻',
   record: '正在记录',
   write: '正在复刻',
@@ -83,7 +85,10 @@ function isSelectable(status) {
 function takeSelectableAddress(status) {
   return takeSelectionAddress(selectionTracker, isSelectable(status) ? status.selectedAddr : 0)
 }
-function resetSelectionTracker() { selectionTracker = createSelectionTracker() }
+function resetSelectionTracker(selectedAddr = 0) {
+  selectionTracker = createSelectionTracker()
+  if (selectedAddr) takeSelectionAddress(selectionTracker, selectedAddr)
+}
 function formatHash(value) { return `0x${uint(value).toString(16).toUpperCase().padStart(8, '0')}` }
 function sigilName(entry) { return sigilNames.value.get(uint(entry.sigilHash)) || formatHash(entry.sigilHash) }
 function traitName(hash) {
@@ -165,7 +170,7 @@ async function poll() {
   if (disposed || mode.value === 'idle' || polling) return
   const token = activeRunToken
   const activeMode = mode.value
-  if (!token || !operationGate.isCurrent(token) || !['record', 'write'].includes(activeMode)) return
+  if (!token || !operationGate.isCurrent(token) || !['record-prime', 'record', 'write'].includes(activeMode)) return
   polling = true
   try {
     const status = await SigilMemoryGetStatus()
@@ -173,7 +178,18 @@ async function poll() {
     const selectedAddr = takeSelectableAddress(status)
     if (!selectedAddr) return
 
-    if (activeMode === 'record') {
+    if (activeMode === 'record-prime') {
+      if (!recordPrimeSeen) {
+        recordPrimeSeen = true
+        showStatus('已捕获预热项；现在回到第一项，第一项会作为第 1 个因子正式记录', 'info')
+        return
+      }
+      entries.value = [normalizeEntry(status)]
+      progress.value = 1
+      resetSelectionTracker(selectedAddr)
+      mode.value = 'record'
+      showStatus('第一项已确认，请从第二项开始逐项向下移动', 'success')
+    } else if (activeMode === 'record') {
       const entry = normalizeEntry(status)
       entries.value = [...entries.value, entry]
       progress.value = entries.value.length
@@ -195,7 +211,7 @@ async function poll() {
     await failRun(token, error)
   } finally {
     polling = false
-    if (!disposed && operationGate.isCurrent(token) && ['record', 'write'].includes(mode.value)) {
+    if (!disposed && operationGate.isCurrent(token) && ['record-prime', 'record', 'write'].includes(mode.value)) {
       pollTimer = window.setTimeout(poll, POLL_DELAY)
     }
   }
@@ -209,6 +225,7 @@ async function startRecord() {
   mode.value = 'starting-record'
   entries.value = []
   progress.value = 0
+  recordPrimeSeen = false
   resetSelectionTracker()
   try {
     const status = await SigilMemoryAcquire(nextRuntimeAcquireRequestID())
@@ -220,14 +237,14 @@ async function startRecord() {
     }
     hookOwnerToken = acquiredOwnerToken
     mode.value = 'record'
-    showStatus('记录已开始：从第一个因子开始逐项移动选择', 'success')
-    // Enable returns the item that is already selected.  Capture it before
-    // polling; otherwise the first row would be skipped when the user starts
-    // recording while already resting on row 1.
     if (takeSelectableAddress(status)) {
       const entry = normalizeEntry(status)
       entries.value = [entry]
       progress.value = 1
+      showStatus('已自动记录当前第一项，请移动到第二项并继续向下', 'success')
+    } else {
+      mode.value = 'record-prime'
+      showStatus('读取器刚启用，尚无当前项：请按一次↓到第二项，再按↑回到第一项；程序会从第一项正式记录', 'info')
     }
     pollTimer = window.setTimeout(poll, POLL_DELAY)
   } catch (error) { await failRun(token, error) }
@@ -355,19 +372,19 @@ onBeforeUnmount(() => {
       <section class="ui-card ui-panel workflow-card">
         <h2 class="ui-section-title">配装读取 <small>最多记录 12 个因子</small></h2>
         <div class="ui-notice status-strip" :class="{ 'is-info': mode !== 'idle' }" aria-live="polite">
-          <div><b>{{ modeLabel }}</b><span>{{ mode === 'record' ? '在游戏因子列表中逐项向下移动' : mode === 'write' ? '每次移动到下一件备用因子都会写入' : '启动游戏并进入因子列表后开始' }}</span></div>
+          <div><b>{{ modeLabel }}</b><span>{{ mode === 'record-prime' ? '先按↓再按↑回到第一项，完成首项握手' : mode === 'record' ? '在游戏因子列表中逐项向下移动' : mode === 'write' ? '每次移动到下一件备用因子都会写入' : '启动游戏并进入因子列表后开始' }}</span></div>
           <strong>{{ progressLabel }}</strong>
         </div>
         <div class="ui-actions primary-actions">
-          <button class="ui-btn is-primary is-grow" :disabled="!['idle', 'record'].includes(mode)" @click="mode === 'record' ? stop('已停止记录') : startRecord()">
-            {{ mode === 'record' ? '停止记录' : mode === 'starting-record' ? '正在启动…' : '记录当前配装' }}
+          <button class="ui-btn is-primary is-grow" :disabled="!['idle', 'record-prime', 'record'].includes(mode)" @click="['record-prime', 'record'].includes(mode) ? stop('已停止记录') : startRecord()">
+            {{ ['record-prime', 'record'].includes(mode) ? '停止记录' : mode === 'starting-record' ? '正在启动…' : '记录当前配装' }}
           </button>
           <button class="ui-btn is-primary is-grow" :disabled="!['idle', 'write'].includes(mode) || (mode === 'idle' && !entries.length)" @click="mode === 'write' ? stop('已停止复刻') : startWrite()">
             {{ mode === 'write' ? '停止复刻' : mode === 'starting-write' ? '正在启动…' : '复刻到备用因子' }}
           </button>
           <button v-if="mode === 'error'" class="ui-btn is-danger is-grow" @click="stop()">重试恢复游戏指令</button>
         </div>
-        <div class="ui-notice operation-note"><b>操作顺序</b><span>先装备目标角色的 12 个因子，在物品列表按角色筛选；记录或复刻时从第一项开始，逐项向下移动，不要快速滚动。</span></div>
+        <div class="ui-notice operation-note"><b>操作顺序</b><span>先装备目标角色的 12 个因子并停在第一项。若启动时没有自动读到第一项，按提示“↓一次、↑一次”完成首项握手，再从第二项逐项向下移动。</span></div>
       </section>
 
       <section class="ui-card ui-panel file-card">

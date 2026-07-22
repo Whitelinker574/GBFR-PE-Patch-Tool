@@ -93,7 +93,7 @@ type LoadoutWeaponSkillSlot struct {
 
 // LoadoutWeaponWrightstoneTrait is one of the three traits copied onto a
 // weapon instance when a Wrightstone is imbued.  These live in the weapon's
-// own 140000000-range trait slots; they are not inventory sigils and must not
+// own 130000000-range effective trait slots; they are not inventory sigils and must not
 // receive the 因子强化 level boost.
 type LoadoutWeaponWrightstoneTrait struct {
 	Index   int    `json:"index"`
@@ -343,12 +343,18 @@ func readLoadoutWeaponWrightstone(save *SaveData, weaponUnitID uint32, warnings 
 	}
 	result := &LoadoutWeaponWrightstone{
 		Hash: hashText(stoneHash), InternalID: definition.InternalID,
-		Name: cnWrightstone(definition.DisplayName), Evidence: "save:2816+weapon-trait-slots",
+		Name: cnWrightstone(definition.DisplayName), Evidence: "save:2816+130000000-weapon-effective-traits",
 	}
-	traitBase := weaponTraitBase + (int(weaponUnitID)-weaponSlotBase)*weaponTraitStride
+	traitBase, traitBaseErr := weaponImbuedTraitUnitBase(weaponUnitID)
+	if traitBaseErr != nil {
+		if warnings != nil {
+			*warnings = append(*warnings, traitBaseErr.Error())
+		}
+		return result
+	}
 	for index := 0; index < 3; index++ {
-		hashEntry, hashOK := save.findUnitExact(TraitHashIDType, uint32(traitBase+index))
-		levelEntry, levelOK := save.findUnitExact(TraitLevelIDType, uint32(traitBase+index))
+		hashEntry, hashOK := save.findUnitExact(TraitHashIDType, traitBase+uint32(index))
+		levelEntry, levelOK := save.findUnitExact(TraitLevelIDType, traitBase+uint32(index))
 		if !hashOK || !levelOK || hashEntry.ValueCnt != 1 || levelEntry.ValueCnt != 1 {
 			if warnings != nil {
 				*warnings = append(*warnings, fmt.Sprintf("武器实例 %d 的武炼结晶词条槽 %d 损坏", weaponUnitID, index+1))

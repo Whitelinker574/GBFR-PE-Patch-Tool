@@ -19,6 +19,7 @@ import (
 //	  1402 (1)    武器 —— 存的是武器的 SlotID（weaponSlotIDType 2802 的值），不是武器 hash
 //	  1403 (13)   因子 ×12(+1 填充) —— 存的是因子的 SlotID（gemSlotIDType 2702 的值）
 //	  1404 (4)    技能 ×4（技能 hash）
+//	  3005 (5)    当前配装武器技能 ×5（位置敏感；与所选武器 2818 快照一致）
 //	  3007 (50)   专精 —— 技能盘节点 hash（对应 DB skillboard_layout.Key）
 //
 // 关键点：1402/1403 是「SlotID 引用」，只能指向存档里真实存在的武器/因子，
@@ -34,12 +35,13 @@ import (
 // 3003=1 / 3002=64 / 1402=1 / 1403=13 / 1404=4 / 3007=50。
 // 因此写入配装只需原地改值（sigil_store.go 的 patchUint 系列），无需插入 FlatBuffer 条目。
 const (
-	loadoutNameIDType    uint32 = 3002
-	loadoutCharIDType    uint32 = 3003
-	loadoutWeaponIDType  uint32 = 1402
-	loadoutSigilsIDType  uint32 = 1403
-	loadoutSkillsIDType  uint32 = 1404
-	loadoutMasteryIDType uint32 = 3007
+	loadoutNameIDType         uint32 = 3002
+	loadoutCharIDType         uint32 = 3003
+	loadoutWeaponIDType       uint32 = 1402
+	loadoutSigilsIDType       uint32 = 1403
+	loadoutSkillsIDType       uint32 = 1404
+	loadoutWeaponSkillsIDType uint32 = 3005
+	loadoutMasteryIDType      uint32 = 3007
 
 	gemSlotIDType uint32 = 2702 // 因子的 SlotID（与武器的 2802 对称）
 
@@ -223,24 +225,35 @@ type LoadoutSigil struct {
 }
 
 type LoadoutEntry struct {
-	UnitID       uint32               `json:"unitId"`
-	Slot         int                  `json:"slot"`    // 该角色下的第几个槽（1..15），无法推断时为 0
-	IsParty      bool                 `json:"isParty"` // true = 当前队伍成员的实时配装（UnitID 104000+），不是玩家保存的预设
-	Name         string               `json:"name"`
-	CharaHash    string               `json:"charaHash"`
-	CharaName    string               `json:"charaName"`
-	WeaponSlotID uint32               `json:"weaponSlotId"`
-	WeaponHash   string               `json:"weaponHash"`
-	WeaponName   string               `json:"weaponName"`
-	Sigils       []LoadoutSigil       `json:"sigils"`
-	Skills       []LoadoutSkill       `json:"skills"`  // 4 个技能（含中文名）
-	Mastery      []LoadoutMasteryNode `json:"mastery"` // 专精（技能盘）节点，含中文效果
+	UnitID            uint32                `json:"unitId"`
+	Slot              int                   `json:"slot"`    // 该角色下的第几个槽（1..15），无法推断时为 0
+	IsParty           bool                  `json:"isParty"` // true = 当前队伍成员的实时配装（UnitID 104000+），不是玩家保存的预设
+	Name              string                `json:"name"`
+	CharaHash         string                `json:"charaHash"`
+	CharaName         string                `json:"charaName"`
+	WeaponSlotID      uint32                `json:"weaponSlotId"`
+	WeaponHash        string                `json:"weaponHash"`
+	WeaponName        string                `json:"weaponName"`
+	Weapon            *LoadoutWeaponContext `json:"weapon,omitempty"`
+	Sigils            []LoadoutSigil        `json:"sigils"`
+	Skills            []LoadoutSkill        `json:"skills"`            // 4 个技能（含中文名）
+	WeaponSkillHashes []string              `json:"weaponSkillHashes"` // 3005 的五槽原始顺序
+	Mastery           []LoadoutMasteryNode  `json:"mastery"`           // 专精（技能盘）节点，含中文效果
 }
 
 type CharacterLoadouts struct {
 	CharaName string         `json:"charaName"`
 	CharaHash string         `json:"charaHash"`
 	Loadouts  []LoadoutEntry `json:"loadouts"`
+}
+
+func sortLoadoutsCurrentFirst(loadouts []LoadoutEntry) {
+	sort.SliceStable(loadouts, func(i, j int) bool {
+		if loadouts[i].IsParty != loadouts[j].IsParty {
+			return loadouts[i].IsParty
+		}
+		return loadouts[i].UnitID < loadouts[j].UnitID
+	})
 }
 
 // maxLoadoutVec 限制单个向量字段的读取长度。tryReadUnitEntry 只校验
@@ -319,14 +332,8 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 		return nil, err
 	}
 
-	// 角色 hash -> 名字
-	charName := map[uint32]string{}
-	for _, e := range save.findAllUnitsByType(SaveID_CharacterID) {
-		idx := int(e.UnitID) - 10000
-		if idx >= 0 && idx < len(charaNames) && charaNames[idx] != "" {
-			charName[e.Uint32()] = charaNames[idx]
-		}
-	}
+	// 角色块在转换存档和 DLC 存档中的位置不同，名称只能按角色 hash 解析。
+	charName := characterNameByHash
 
 	gemHash := entriesByUnitID(save.findAllUnitsByType(GemIDType))
 	gemLevel := entriesByUnitID(save.findAllUnitsByType(GemLevelIDType))
@@ -356,7 +363,9 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 	weapons := entriesByUnitID(save.findAllUnitsByType(loadoutWeaponIDType))
 	sigils := entriesByUnitID(save.findAllUnitsByType(loadoutSigilsIDType))
 	skills := entriesByUnitID(save.findAllUnitsByType(loadoutSkillsIDType))
+	weaponSkills := entriesByUnitID(save.findAllUnitsByType(loadoutWeaponSkillsIDType))
 	mastery := entriesByUnitID(save.findAllUnitsByType(loadoutMasteryIDType))
+	weaponContexts := make(map[uint32]*LoadoutWeaponContext)
 
 	byChara := map[uint32]*CharacterLoadouts{}
 	for _, ce := range save.findAllUnitsByType(loadoutCharIDType) {
@@ -387,6 +396,12 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 						lo.WeaponName = progressionWeaponName(d)
 					}
 				}
+			}
+			if cached, exists := weaponContexts[sid]; exists {
+				lo.Weapon = cached
+			} else if context, contextErr := readLoadoutWeaponContext(save, sid); contextErr == nil {
+				weaponContexts[sid] = context
+				lo.Weapon = context
 			}
 		}
 
@@ -444,6 +459,17 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 			}
 		}
 
+		// 武器技能：3005 是配装自身保存的五槽快照，必须保留位置。
+		if e := weaponSkills[u]; e != nil {
+			for i := 0; i < vecLen(e) && i < 5; i++ {
+				v, readErr := e.Uint32At(i)
+				if readErr != nil {
+					break
+				}
+				lo.WeaponSkillHashes = append(lo.WeaponSkillHashes, fmt.Sprintf("%08X", v))
+			}
+		}
+
 		// 专精：3007 = 技能盘节点 hash（经 skillboard_nodes.json 翻译成中文效果）
 		if e := mastery[u]; e != nil {
 			for i, n := 0, vecLen(e); i < n; i++ {
@@ -472,7 +498,7 @@ func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
 
 	result := make([]CharacterLoadouts, 0, len(byChara))
 	for _, g := range byChara {
-		sort.Slice(g.Loadouts, func(i, j int) bool { return g.Loadouts[i].UnitID < g.Loadouts[j].UnitID })
+		sortLoadoutsCurrentFirst(g.Loadouts)
 		result = append(result, *g)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].CharaName < result[j].CharaName })
