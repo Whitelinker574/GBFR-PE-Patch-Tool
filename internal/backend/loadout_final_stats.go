@@ -60,6 +60,7 @@ type LoadoutFinalStats struct {
 	NormalDamageCap   float64              `json:"normalDamageCap"`
 	AbilityDamageCap  float64              `json:"abilityDamageCap"`
 	SkyboundDamageCap float64              `json:"skyboundDamageCap"`
+	ChainDamageCap    float64              `json:"chainDamageCap"`
 	Mode              string               `json:"mode"`
 	Scope             string               `json:"scope"`
 	FormulaVerified   bool                 `json:"formulaVerified"`
@@ -137,6 +138,7 @@ func calculateLoadoutDefenseModel(bonuses []TraitBonus, unconditionalDefense flo
 }
 
 type loadoutPanelInputs struct {
+	OwnerCode          string
 	CharacterHP        float64
 	CharacterATK       float64
 	CharacterCritRate  float64
@@ -189,7 +191,7 @@ func loadoutPrimaryFactorCategoryCounts(cat *Catalog, primaryHashes []uint32) lo
 	return counts
 }
 
-var masteryPanelBonusPattern = regexp.MustCompile(`^(最大HP|攻击力|暴击率|昏厥值|防御力|伤害上限|攻击的伤害上限|普通攻击的伤害上限|普通攻击伤害上限|能力的伤害上限|能力伤害上限|奥义的伤害上限|奥义伤害上限)([+-])([0-9]+(?:\.[0-9]+)?)(%)?$`)
+var masteryPanelBonusPattern = regexp.MustCompile(`^(最大HP|攻击力|暴击率|昏厥值|防御力|伤害上限|攻击的伤害上限|普通攻击的伤害上限|普通攻击伤害上限|能力的伤害上限|能力伤害上限|奥义的伤害上限|奥义伤害上限|奥义连锁伤害上限|连锁伤害上限)([+-])([0-9]+(?:\.[0-9]+)?)(%)?$`)
 
 // parseMasteryPanelBonus accepts only a complete, unconditional panel line.
 // Text such as “花耀七闪的伤害上限…” or “中毒状态期间…” intentionally fails
@@ -347,7 +349,12 @@ func addPanelBonusesToTotals(totals *[]EffectTotal, bonuses []LoadoutPanelBonus)
 	}
 }
 
-func panelTraitAllowed(name string) bool {
+func panelTraitAllowed(bonus TraitBonus) bool {
+	switch bonus.TraitID {
+	case "SKILL_313_00", "SKILL_316_00", "SKILL_317_00", "SKILL_318_00", "SKILL_319_00":
+		return true
+	}
+	name := strings.TrimSpace(bonus.Name)
 	switch strings.TrimSpace(name) {
 	case "体力", "攻击力", "暴击率", "昏厥", "伤害上限",
 		"守护", "金刚", "暴君", "刀上舞", "穷寇心",
@@ -359,7 +366,8 @@ func panelTraitAllowed(name string) bool {
 	}
 }
 
-func panelTraitPercentMultiplier(name, label string) bool {
+func panelTraitPercentMultiplier(bonus TraitBonus, label string) bool {
+	name := strings.TrimSpace(bonus.Name)
 	if label == "最大HP" {
 		switch name {
 		case "守护", "金刚", "暴君", "钳蟹的报恩", "天星之界":
@@ -367,6 +375,9 @@ func panelTraitPercentMultiplier(name, label string) bool {
 		}
 	}
 	if label == "攻击力" {
+		if bonus.TraitID == "SKILL_313_00" {
+			return true
+		}
 		// 暴君 is an unconditional trade-off. Conditional attack traits such as
 		// Quick Charge, Stamina and Enmity never reach this branch.
 		switch name {
@@ -385,7 +396,12 @@ func panelTraitFlatAttack(name string) bool {
 	return name == "攻击力" || name == "钳蟹的共鸣"
 }
 
-func panelTraitDamageCap(name string) bool {
+func panelTraitDamageCap(bonus TraitBonus) bool {
+	switch bonus.TraitID {
+	case "SKILL_313_00", "SKILL_316_00", "SKILL_317_00", "SKILL_318_00", "SKILL_319_00":
+		return true
+	}
+	name := strings.TrimSpace(bonus.Name)
 	switch name {
 	case "伤害上限", "刀上舞", "天司长的灵威", "天星之界":
 		return true
@@ -394,7 +410,7 @@ func panelTraitDamageCap(name string) bool {
 	}
 }
 
-func addPanelCap(label string, value float64, normal, ability, skybound *float64) {
+func addPanelCap(label string, value float64, normal, ability, skybound, chain *float64) {
 	for _, canonical := range canonicalEffectLabels(label) {
 		switch canonical {
 		case "普通攻击伤害上限":
@@ -403,6 +419,8 @@ func addPanelCap(label string, value float64, normal, ability, skybound *float64
 			*ability += value
 		case "奥义伤害上限":
 			*skybound += value
+		case "奥义连锁伤害上限":
+			*chain += value
 		}
 	}
 }
@@ -420,7 +438,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 	atkMultiplier := float32(1)
 	masteryHPPct := float32(0)
 	masteryATKPct := float32(0)
-	normalCap, abilityCap, skyboundCap := input.CharacterDamageCap, input.CharacterDamageCap, input.CharacterDamageCap
+	normalCap, abilityCap, skyboundCap, chainCap := input.CharacterDamageCap, input.CharacterDamageCap, input.CharacterDamageCap, input.CharacterDamageCap
 	var hpGatedTerminus *TraitBonus
 
 	for index := range input.Bonuses {
@@ -435,7 +453,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			continue
 		}
 		name := strings.TrimSpace(bonus.Name)
-		if bonus.TraitID != "SKILL_117_01" && !panelTraitAllowed(name) {
+		if bonus.TraitID != "SKILL_117_01" && !panelTraitAllowed(bonus) {
 			continue
 		}
 		for _, component := range bonus.Components {
@@ -445,7 +463,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			label := strings.TrimSpace(component.Label)
 			switch {
 			case bonus.TraitID == "SKILL_117_01" && component.Unit == "pct" && strings.Contains(label, "伤害上限"):
-				addPanelCap(label, component.Value, &normalCap, &abilityCap, &skyboundCap)
+				addPanelCap(label, component.Value, &normalCap, &abilityCap, &skyboundCap, &chainCap)
 			case panelTraitFlatHP(name) && label == "最大HP" && component.Unit == "flat":
 				hpFlat += float32(component.Value)
 			case panelTraitFlatAttack(name) && label == "攻击力" && component.Unit == "flat":
@@ -454,9 +472,9 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 				crit += component.Value
 			case name == "昏厥" && label == "昏厥值" && component.Unit == "flat":
 				stun += component.Value
-			case panelTraitDamageCap(name) && component.Unit == "pct" && strings.Contains(label, "伤害上限"):
-				addPanelCap(label, component.Value, &normalCap, &abilityCap, &skyboundCap)
-			case component.Unit == "pct" && panelTraitPercentMultiplier(name, label):
+			case panelTraitDamageCap(bonus) && component.Unit == "pct" && strings.Contains(label, "伤害上限"):
+				addPanelCap(label, component.Value, &normalCap, &abilityCap, &skyboundCap, &chainCap)
+			case component.Unit == "pct" && panelTraitPercentMultiplier(bonus, label):
 				if label == "最大HP" {
 					hpMultiplier *= 1 + float32(component.Value)/100
 				} else if label == "攻击力" {
@@ -483,7 +501,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		case bonus.Label == "防御力" && bonus.Unit == "pct":
 			defenseBonus += bonus.Value
 		case bonus.Unit == "pct" && strings.Contains(bonus.Label, "伤害上限"):
-			addPanelCap(bonus.Label, bonus.Value, &normalCap, &abilityCap, &skyboundCap)
+			addPanelCap(bonus.Label, bonus.Value, &normalCap, &abilityCap, &skyboundCap, &chainCap)
 		}
 	}
 
@@ -500,7 +518,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		case bonus.Name == "防御力" && bonus.Unit == "pct":
 			defenseBonus += bonus.Value
 		case bonus.Unit == "pct" && strings.Contains(bonus.Name, "伤害上限"):
-			addPanelCap(bonus.Name, bonus.Value, &normalCap, &abilityCap, &skyboundCap)
+			addPanelCap(bonus.Name, bonus.Value, &normalCap, &abilityCap, &skyboundCap, &chainCap)
 		}
 	}
 
@@ -522,10 +540,14 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			case "攻击力":
 				finalAttack = int(float32(finalAttack) * (1 + float32(component.Value)/100))
 			case "普通攻击伤害上限", "能力伤害上限", "奥义伤害上限", "伤害上限":
-				addPanelCap(component.Label, component.Value, &normalCap, &abilityCap, &skyboundCap)
+				addPanelCap(component.Label, component.Value, &normalCap, &abilityCap, &skyboundCap, &chainCap)
 			}
 		}
 	}
+	// Keep the legacy compact value as the common increase shared by normal,
+	// ability and SBA. Chain Burst has separate effects in the 2.0.2 tables and
+	// is therefore shown only in its dedicated field until generic-cap sharing
+	// is proven by a runtime sample.
 	commonCap := math.Min(normalCap, math.Min(abilityCap, skyboundCap))
 	warnings := append([]string(nil), input.Warnings...)
 	for _, bonus := range input.Bonuses {
@@ -561,6 +583,7 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		NormalDamageCap:   normalCap,
 		AbilityDamageCap:  abilityCap,
 		SkyboundDamageCap: skyboundCap,
+		ChainDamageCap:    chainCap,
 		Mode:              "permanent-baseline+changeable-loadout",
 		Scope:             loadoutFinalStatsScope,
 		// The final scalar-float32 aggregation and toward-zero conversions are

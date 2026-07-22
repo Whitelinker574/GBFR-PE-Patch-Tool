@@ -18,8 +18,12 @@ test('character and preset grids reflow by available component width', () => {
   assert.match(viewer, /\.loadout-viewer\s*\{[^}]*container\s*:\s*loadout-viewer\s*\/\s*inline-size/is)
   assert.match(viewer, /\.chara-row\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,\s*minmax\(156px,\s*1fr\)\)/is)
   assert.match(viewer, /\.chara-chip-name\s*\{[^}]*min-width\s*:\s*0[^}]*text-overflow\s*:\s*ellipsis[^}]*white-space\s*:\s*nowrap/is)
-  assert.match(viewer, /\.loadout-card-toggle\s*\{[^}]*grid-template-columns\s*:\s*62px\s+auto\s+minmax\(0,1fr\)\s+minmax\(120px,/is)
-  assert.match(viewer, /@container\s+loadout-viewer\s*\(max-width\s*:\s*760px\)/i)
+  assert.match(viewer, /\.loadout-viewer\s*\{[^}]*max-width\s*:\s*100%[^}]*overflow-x\s*:\s*hidden/is)
+  assert.match(viewer, /\.card-grid\s*\{[^}]*minmax\(min\(100%,420px\),1fr\)/is)
+  assert.match(viewer, /\.loadout-card-toggle\s*\{[^}]*min-width\s*:\s*0[^}]*grid-template-columns\s*:\s*62px\s+auto\s+minmax\(120px,1fr\)/is)
+  assert.match(viewer, /@container\s+loadout-viewer\s*\(max-width\s*:\s*900px\)/i)
+  assert.match(viewer, /@container\s+loadout-viewer\s*\(max-width\s*:\s*900px\)\s*\{[\s\S]*?\.loadout-card-toggle \.expand-mark\s*\{[^}]*grid-column\s*:\s*4/is)
+  assert.doesNotMatch(viewer, /runtime-lab-grid|damage-source-overview/)
 })
 
 test('loadout editor uses its own container rather than viewport breakpoints', () => {
@@ -48,7 +52,8 @@ test('full-screen loadout editing keeps one reachable scroll owner at compact de
 
 test('dense editor details stay readable and the narrow identity header cannot overlap', () => {
   assert.doesNotMatch(editor, /font-size\s*:\s*(?:calc\((?:8|9|10)(?:\.\d+)?px\s*\*\s*var\(--editor-scale\)\)|\.(?:[0-7]\d*)rem)/i)
-  assert.match(editor, /\.result-metrics\s*\{[^}]*grid-template-columns\s*:\s*repeat\(2,\s*minmax\(0,1fr\)\)/is)
+  assert.match(editor, /\.result-sidebar\s*\{[^}]*display\s*:\s*flex[^}]*flex-direction\s*:\s*column/is)
+  assert.match(editor, /@container\s+loadout-editor\s*\(max-width\s*:\s*900px\)\s*\{[\s\S]*?\.result-sidebar\s*\{[^}]*grid-template-columns\s*:\s*repeat\(2,minmax\(0,1fr\)\)/is)
   assert.match(editor, /\.ed-head\s+strong\s*\{[^}]*overflow\s*:\s*hidden[^}]*text-overflow\s*:\s*ellipsis/is)
   assert.match(editor, /@container\s+loadout-editor\s*\(max-width\s*:\s*760px\)\s*\{[\s\S]*?\.ed-head\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)/is)
 })

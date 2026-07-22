@@ -324,6 +324,14 @@ func TestLoadoutSimulateBuildMergesRealSummonsAndOverLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(result.DynamicTotals) == 0 {
+		t.Fatal("dynamic totals must retain changeable summon/loadout effects")
+	}
+	for _, total := range result.DynamicTotals {
+		if sourceContains(total.Sources, "极限加成") {
+			t.Fatalf("fixed over-limit bonus leaked into dynamic ledger: %+v", total)
+		}
+	}
 	checks := []struct {
 		label string
 		value float64

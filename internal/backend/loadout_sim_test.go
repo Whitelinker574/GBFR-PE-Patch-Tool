@@ -71,6 +71,9 @@ func TestSummonMainSkillCatalogCoverageIsExplicit(t *testing.T) {
 			t.Errorf("summon main skill %s returned %d bonuses instead of an effect or diagnostic", skill.Hash, len(bonuses))
 			continue
 		}
+		if bonuses[0].Name != skill.DisplayName {
+			t.Errorf("summon main skill %s name = %q, want catalog name %q", skill.Hash, bonuses[0].Name, skill.DisplayName)
+		}
 		stats := calculateLoadoutFinalStats(loadoutPanelInputs{Bonuses: bonuses})
 		if strings.Contains(strings.Join(stats.Warnings, "\n"), strings.TrimPrefix(strings.ToUpper(skill.Hash), "0X")) {
 			warned++
@@ -157,6 +160,32 @@ func TestMageSavvyUsesVerifiedIoTraitIDAndLevel15GlobalCap(t *testing.T) {
 	effect, components := renderTraitEffect(definition, 15)
 	if effect != "伤害上限+50%" || len(components) != 1 || components[0].Label != "伤害上限" || components[0].Unit != "pct" || components[0].Value != 50 || !components[0].Additive {
 		t.Fatalf("Mage's Savvy Lv15 must be a global +50%% damage cap: effect=%q components=%+v", effect, components)
+	}
+}
+
+func TestGutsUsesLethalSurvivalAndLevelValue3Cooldown(t *testing.T) {
+	const hash = uint32(0xE69A4694)
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	trait := catalog.LookupTraitByHash(hash)
+	if trait == nil || trait.InternalID != "SKILL_045_00" {
+		t.Fatalf("Guts hash mapping = %+v", trait)
+	}
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{{hash: hash, level: 15}}, traitHashMapWithRawKeys(catalog))
+	if len(bonuses) != 1 {
+		t.Fatalf("Guts produced %d bonuses", len(bonuses))
+	}
+	bonus := bonuses[0]
+	if bonus.Name != "豪胆" || !strings.Contains(bonus.Effect, "致命伤害时HP保持1") || !strings.Contains(bonus.Effect, "160秒") {
+		t.Fatalf("Guts Lv15 mapping is wrong: %+v", bonus)
+	}
+	if strings.Contains(bonus.Name+bonus.Effect, "根性") || strings.Contains(bonus.Effect, "等待2秒") {
+		t.Fatalf("Guts still exposes the stale name or LevelValue2 flag: %+v", bonus)
 	}
 }
 
@@ -247,6 +276,41 @@ func TestConditionalDLCWeaponSkillsStayOutOfTotalsWithoutBattleState(t *testing.
 				t.Fatalf("conditional skill leaked into static totals: %+v", totals)
 			}
 		})
+	}
+}
+
+func TestAggregateTraitEffectsKeepsConcreteDynamicSources(t *testing.T) {
+	bonus := TraitBonus{
+		Name: "攻击力", CatLabel: "攻击类",
+		Sources:    []string{"因子01 · 攻击力", "武器 · 测试武器 · 攻击力 Lv15"},
+		Components: []BonusComponent{{Label: "攻击力", Unit: "pct", Value: 20, Additive: true}},
+	}
+	totals := aggregateTraitEffects([]TraitBonus{bonus})
+	if len(totals) != 1 || len(totals[0].Sources) != 2 || totals[0].Sources[0] != "因子01 · 攻击力" {
+		t.Fatalf("concrete source ledger lost: %+v", totals)
+	}
+}
+
+func TestResolveTraitValueIDUsesExactDLCHashAliasForMissingCatalogRow(t *testing.T) {
+	const fatebreakerHash = uint32(0xD029FE08)
+	got := resolveTraitValueID(fatebreakerHash, map[uint32]string{
+		fatebreakerHash: "SKILL_CATALOG_ROW_WITHOUT_VALUE_DATA",
+	})
+	if got != "SKILL_325_00" {
+		t.Fatalf("DLC hash alias mismatch: got %q, want SKILL_325_00", got)
+	}
+}
+
+func TestDLCSummonRuntimeAliasesShareOneOfficialTraitIdentity(t *testing.T) {
+	hashes := []uint32{0xA7726190, 0x20492635}
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{{hashes[0], 8}, {hashes[1], 7}}, map[uint32]string{
+		hashes[0]: hashText(hashes[0]), hashes[1]: hashText(hashes[1]),
+	})
+	if len(bonuses) != 1 || bonuses[0].TraitID != "SKILL_321_00" || bonuses[0].Level != 15 || bonuses[0].RawLevel != 15 {
+		t.Fatalf("DLC summon aliases must merge under SKILL_321_00: %+v", bonuses)
 	}
 }
 

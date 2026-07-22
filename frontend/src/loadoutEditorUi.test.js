@@ -10,7 +10,7 @@ const patchTool = readFileSync(new URL('./components/PatchTool.vue', import.meta
 test('mastery starts collapsed while the three-direction summary stays visible', () => {
   assert.match(source, /const masteryExpanded = ref\(false\)/)
   const toggle = source.indexOf('class="mastery-toggle"')
-  const summary = source.indexOf('class="mastery-direction-map"')
+  const summary = source.indexOf('class="mastery-direction-strip"')
   const details = source.indexOf('v-if="masteryExpanded" class="mastery-panel"')
   assert.ok(toggle >= 0 && summary > toggle && details > summary,
     'the direction summary must sit between the toggle and collapsible details')
@@ -24,16 +24,31 @@ test('mastery direction is derived from selected nodes without a manual directio
   assert.doesNotMatch(source, /isMasteryNodeSelectable/)
 })
 
-test('specialization effects remain directly visible in the three-direction summary', () => {
-  assert.match(source, /row\.effect/)
-  assert.match(source, /class="direction-effect"/)
+test('mastery summary is compact and distinguishes MLv from node capacity', () => {
+  assert.match(source, /MLv\{\{ currentMasterLevel \}\}\/55/)
+  assert.match(source, /permanentGrowth\?\.masterProgressIndex/)
+  assert.match(source, /节点 \{\{ selectedMasteryHashes\.length \}\}\/50/)
+  assert.match(source, /50 是专精配置节点总容量（10 \/ 10 \/ 10 \/ 20），不是专精等级/)
+  assert.match(source, /direction\.activeStages/)
+  assert.doesNotMatch(source, /class="direction-effect"/)
 })
 
-test('result sidebar follows the stable overview, skills, totals and mastery order', () => {
-  const titles = ['角色效果总计', '技能效果', '总计加成', '专精解锁内估算']
+test('expanded mastery shows every stage effect and its real node threshold', () => {
+  assert.match(source, /aria-label="当前专精逐阶效果"/)
+  assert.match(source, /1阶 3 项、2阶 6 项、3阶沿用主方向 6 项/)
+  assert.match(source, /v-for="row in direction\.rows"/)
+  assert.match(source, /row\.active \? '已生效'/)
+  assert.match(source, /\{\{ row\.effect \|\| '该阶段没有可显示的独立效果文本' \}\}/)
+  assert.doesNotMatch(source, /masteryStageSkillPicked/)
+})
+
+test('result sidebar contains exactly the dynamic skill ledger and merged totals', () => {
+  const titles = ['动态技能等级', '动态加成汇总']
   const positions = titles.map(title => source.indexOf(`<strong>${title}</strong>`))
   assert.ok(positions.every(position => position >= 0), `missing result heading: ${positions}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
+  assert.equal((source.match(/<section class="result-card/g) || []).length, 2)
+  assert.doesNotMatch(source, /class="result-card (?:result-overview|skill-summary-card|mastery-summary-card)/)
 })
 
 test('single-loadout import and export stay in the sticky save bar at every editor size', () => {
@@ -132,10 +147,10 @@ test('complete build simulation follows weapon, factors, mastery and summon slot
   assert.match(source, /w\.summonSlotIds\s*=\s*\[\.\.\.summonSlotIds\.value\]/)
 })
 
-test('calculation scope is explicit beside merged totals', () => {
-	const scope = '人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。'
+test('dynamic calculation scope excludes fixed character progression', () => {
+	const scope = '只汇总会随当前配装变化的武器数值、因子、武器技能、祝福、专精与召唤石效果。角色任务、角色强化、命运篇章和上限突破等固定基础成长保留在左侧，不在这里重复计算。'
 	assert.equal(source.split(scope).length - 1, 1)
-	const totalsTitle = source.indexOf('<strong>总计加成</strong>')
+	const totalsTitle = source.indexOf('<strong>动态加成汇总</strong>')
 	const note = source.indexOf(scope)
 	const list = source.indexOf('class="effect-total-list"')
 	assert.ok(totalsTitle >= 0 && note > totalsTitle && list > note)
@@ -167,14 +182,14 @@ test('mastery separates editable structure from the character current unlock and
 	assert.match(source, /const effectiveMasteryHashes = computed/)
 	assert.match(source, /limitMasteryHashesByRankCaps/)
 	assert.match(source, /toggleNode\(activeRankPool\.rank, n\.hash, masteryStructuralRankCap\(activeRankPool\.rank\)\)/)
-	assert.match(source, /草稿 \{\{ selectedMasteryHashes\.length \}\}\/\{\{ masteryCapacity \}\}/)
-	assert.match(source, /解锁内估算 \{\{ effectiveMasteryHashes\.length \}\}\/\{\{ masteryUnlockedCapacity \}\}/)
+	assert.match(source, /节点 \{\{ selectedMasteryHashes\.length \}\}\/50/)
+	assert.match(source, /当前生效 \{\{ effectiveMasteryHashes\.length \}\}\/\{\{ masteryUnlockedCapacity \}\}/)
 	assert.match(source, /离线属性暂按各阶存档顺序截取到当前容量/)
-	assert.match(source, /masteryUnlockedRankCap\(rank\.rank\)/)
-	assert.match(source, /角色强化 Lv\{\{ statContext\.permanentGrowth\?\.masterLevel \|\| 1 \}\} HP/)
+	assert.match(source, /masteryUnlockedRankCap\(p\.rank\)/)
+	assert.match(source, /角色强化产生的固定 HP、攻击等基础成长只保留在左侧人物属性/)
 })
 
-test('final stats expose the three independent damage-cap totals in a compact drill-down', () => {
+test('editor final stats keep the four independent damage-cap totals in a compact drill-down', () => {
 	assert.match(source, /class="final-stat-detail-disclosure[^\"]*"/)
 	assert.match(source, />普通伤害上限</)
 	assert.match(source, /finalStats\?\.normalDamageCap/)
@@ -182,7 +197,9 @@ test('final stats expose the three independent damage-cap totals in a compact dr
 	assert.match(source, /finalStats\?\.abilityDamageCap/)
 	assert.match(source, />奥义伤害上限</)
 	assert.match(source, /finalStats\?\.skyboundDamageCap/)
-	assert.match(source, /\.cap-detail-grid\s*\{[^}]*grid-template-columns\s*:\s*repeat\(3,/is)
+	assert.match(source, />奥义连锁上限</)
+	assert.match(source, /finalStats\?\.chainDamageCap/)
+	assert.match(source, /\.cap-detail-grid\s*\{[^}]*grid-template-columns\s*:\s*repeat\(4,/is)
 })
 
 test('merged totals surface effective and overflow trait levels without another permanent panel', () => {
@@ -194,26 +211,21 @@ test('merged totals surface effective and overflow trait levels without another 
 	assert.match(source, /v-if="traitLevelSummary\.overflow > 0"/)
 })
 
-test('weapon skills are visible and traceable in the result sidebar', () => {
-	assert.match(source, /const weaponSkills = ref\(\[\]\)/)
-	assert.match(source, /weaponSkills\.value\s*=\s*result\?\.weaponSkills\s*\|\|\s*\[\]/)
-	assert.match(source, />武器技能</)
-	assert.match(source, /skill\.name/)
-	assert.match(source, /formatWeaponSkillLevel\(skill\)/)
-	assert.match(source, /skill\.effect/)
-	assert.match(source, /skill\.sourceWeapon/)
-	assert.match(source, /skill\.unlockCondition/)
-	assert.match(source, /解锁阶段/)
+test('all passive skill sources are merged, sorted and expandable', () => {
+	assert.match(source, /const dynamicSkillLedger = computed/)
+	assert.match(source, /Number\(right\.rawLevel \|\| 0\) - Number\(left\.rawLevel \|\| 0\)/)
+	assert.match(source, /<details v-for="bonus in dynamicSkillLedger"/)
+	assert.match(source, /bonus\.effect/)
+	assert.match(source, /bonus\.sources/)
+	assert.match(source, /因子技能、武器技能、武器祝福与召唤石技能按同名效果合并/)
 })
 
-test('weapon skill rows keep missing fields honest instead of rendering undefined', () => {
-	assert.match(source, /import \{[^}]*formatFinalStat[^}]*formatWeaponSkillLevel[^}]*\} from '\.\.\/loadoutFinalStats'/)
-	assert.match(source, /formatWeaponSkillLevel\(skill\)/)
-	assert.match(source, /skill\.name \|\| '未收录武器技能'/)
-	assert.match(source, /class="weapon-skill-effect"[\s\S]*skill\.effect/)
-	assert.match(source, /暂无可验证效果说明/)
-	assert.match(source, /来源 · \{\{ skill\.sourceWeapon \|\| '未收录武器' \}\}/)
-	assert.match(source, /有效等级 · 游戏运行时 \{\{ skill\.stableReads \}\} 次稳定读取；静态表 Lv\{\{ skill\.staticLevel \}\}/)
+test('dynamic totals use the dedicated backend slice and keep source attribution', () => {
+	assert.match(source, /dynamicTotals\.value = result\?\.dynamicTotals \|\| result\?\.totals \|\| \[\]/)
+	assert.match(source, /const displayDynamicTotals = computed\(\(\) => groupEffectTotals\(dynamicTotals\.value\)\)/)
+	assert.match(source, /v-for="total in displayDynamicTotals"/)
+	assert.match(source, /v-for="source in total\.sources"/)
+	assert.doesNotMatch(source, /const weaponSkills = ref/)
 })
 
 test('runtime calibration exposes per-stat deltas and the effective wrightstone snapshot', () => {
@@ -227,11 +239,9 @@ test('runtime calibration exposes per-stat deltas and the effective wrightstone 
 	assert.match(source, /游戏当前/)
 	assert.match(source, /runtimePanelStats\.currentWeaponSlotId/)
 	assert.match(source, /formatComparisonDelta\(row\.delta, row\.unit\)/)
-	assert.match(source, /class="wrightstone-audit"/)
-	assert.match(source, /wrightstone\.runtimeObserved/)
-	assert.match(source, /游戏运行时 · \{\{ selectedWeaponContext\.wrightstone\.stableReads \}\} 次稳定读取/)
-	assert.match(source, /全来源合并 Lv\{\{ mergedTraitBonus\(trait\)\.rawLevel \}\}/)
-	assert.match(source, /不会凭武器类型补假数据/)
+	assert.match(source, /bonus\.sources\?\.length/)
+	assert.match(source, /class="dynamic-source-list"/)
+	assert.match(source, /当前等级暂无可验证的数值说明/)
 })
 
 test('pre-DLC saves keep loadout preview open when summon and mastery systems are unavailable', () => {
@@ -242,9 +252,10 @@ test('pre-DLC saves keep loadout preview open when summon and mastery systems ar
 	assert.match(source, /缺失层按未开启处理/)
 })
 
-test('mastery details distinguish verified panel scale from unpacked raw text', () => {
-	assert.match(source, /解包原始文本：\{\{ node\.rawDesc \}\}/)
-	assert.match(source, /显示尺度 ×\{\{ node\.displayScale \}\}/)
+test('mastery details are folded into dynamic totals instead of a duplicate sidebar panel', () => {
+	assert.match(source, /动态加成汇总/)
+	assert.doesNotMatch(source, /mastery-detail-disclosure/)
+	assert.doesNotMatch(source, /专精解锁内估算/)
 })
 
 test('fixed character growth identifies character-specific runtime evidence', () => {
@@ -280,7 +291,7 @@ test('successful parent reload rehydrates the editor from the newly read save', 
 
 test('maximised editor fills its workspace while keeping bounded side-column measures', () => {
 	assert.match(source, /\.loadout-editor\s*\{[^}]*width\s*:\s*100%/is)
-	assert.match(source, /grid-template-columns\s*:\s*clamp\(250px,\s*20vw,\s*360px\)\s+minmax\(540px,\s*1fr\)\s+clamp\(280px,\s*22vw,\s*400px\)/)
+	assert.match(source, /grid-template-columns\s*:\s*clamp\(240px,\s*17vw,\s*310px\)\s+minmax\(500px,\s*1fr\)\s+clamp\(380px,\s*30vw,\s*520px\)/)
 	assert.match(source, /justify-content\s*:\s*stretch/)
 	assert.doesNotMatch(source, /\.editor-layout\s*\{[^}]*justify-content\s*:\s*center/is)
   assert.match(source, /container\s*:\s*loadout-editor\s*\/\s*inline-size/)
@@ -356,9 +367,27 @@ test('the current live loadout is visually promoted ahead of saved presets', () 
   assert.match(viewer, /当前实时配装/)
 })
 
+test('viewer keeps lightweight estimates beside every expandable preset', () => {
+	assert.match(viewer, /LoadoutPreviewList/)
+	assert.match(viewer, /class="loadout-stat-strip"/)
+	assert.match(viewer, /class="expand-mark"/)
+	assert.match(viewer, /v-if="expanded\.has\(lo\.unitId\)" class="detail"/)
+	assert.doesNotMatch(viewer, /实战数值台|runtime-lab|DamageMeterGetStatus|LoadoutRuntimePanelStats/)
+})
+
+test('dynamic skill level and disclosure marker use separate grid columns', () => {
+	assert.match(source, /\.result-sidebar\s*\{[^}]*overflow-x\s*:\s*hidden/is)
+	assert.match(source, /\.dynamic-skill-entry\s*\{[^}]*max-width\s*:\s*100%[^}]*min-width\s*:\s*0/is)
+	assert.match(source, /\.dynamic-skill-entry summary\s*\{[^}]*grid-template-columns\s*:\s*30px\s+minmax\(0,1fr\)\s+minmax\(44px,auto\)\s+14px/is)
+	assert.match(source, /\.dynamic-skill-level\s*\{[^}]*grid-column\s*:\s*3/is)
+	assert.match(source, /\.dynamic-skill-entry summary::after\s*\{[^}]*grid-column\s*:\s*4/is)
+})
+
 test('merged total names and source ledgers wrap instead of being ellipsized', () => {
-  assert.match(source, /\.effect-total-row\s*>\s*span\s+b\s*\{[^}]*white-space\s*:\s*normal/is)
-  assert.match(source, /\.effect-total-row\s*>\s*span\s+small\s*\{[^}]*white-space\s*:\s*normal/is)
+  assert.match(source, /class="effect-total-sources"/)
+  assert.match(source, /<i>关联<\/i>/)
+  assert.match(source, /\.effect-total-copy\s*>\s*b\s*\{[^}]*white-space\s*:\s*normal/is)
+  assert.match(source, /\.effect-total-sources\s*>\s*span\s*\{[^}]*overflow-wrap\s*:\s*anywhere/is)
 })
 
 test('fullscreen editor keeps a persistent save action and compact preset metadata', () => {
@@ -399,6 +428,6 @@ test('constructor exposes the complete trait catalog while natural table rules r
 test('narrow weapon skill editor uses a single shrinkable column', () => {
 	assert.match(source, /\.weapon-skill-edit-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/is)
 	assert.match(source, /\.weapon-skill-edit-row\s+\.ui-select\s*\{[^}]*width\s*:\s*100%/is)
-	assert.match(source, /\.sim-name\s*\{[^}]*min-width\s*:\s*0[^}]*white-space\s*:\s*normal[^}]*overflow-wrap\s*:\s*anywhere/is)
-	assert.match(source, /\.sim-lv\s*\{[^}]*white-space\s*:\s*nowrap/is)
+	assert.match(source, /\.dynamic-skill-title\s*\{[^}]*min-width\s*:\s*0/is)
+	assert.match(source, /\.dynamic-skill-level\s*\{[^}]*white-space\s*:\s*nowrap/is)
 })

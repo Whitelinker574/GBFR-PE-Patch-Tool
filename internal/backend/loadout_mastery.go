@@ -50,7 +50,7 @@ type MasteryNode struct {
 	CatLabel       string `json:"catLabel"`       // 真谛（攻击盘）等
 	Name           string `json:"name"`           // 1阶具名节点名（可空）
 	Desc           string `json:"desc"`           // 效果说明（数值已填充）
-	Specialization bool   `json:"specialization"` // 专精主技能；2/3阶由原始 layout 的100-MSP节点确认
+	Specialization bool   `json:"specialization"` // 保留给前端兼容；可选3007节点始终为false
 }
 
 // MasteryRankPool 是某一档的可选节点池 + 配额。
@@ -146,9 +146,15 @@ func (a *App) MasteryNodePool(ownerCode string) ([]MasteryRankPool, error) {
 			continue
 		}
 		hash, _ := ParseHashHex(n.Hash)
+		// Stage effect rows belong to the unlock table, not the save's 50-slot
+		// 3007 vector. The game activates their effects from the selected-node
+		// counts (3/6/6), so they must not consume an editable node slot.
+		if (rank == "R1" && strings.TrimSpace(n.Name) != "") || isMasterySpecializationHash(hash) {
+			continue
+		}
 		byRank[rank] = append(byRank[rank], MasteryNode{
 			Hash: n.Hash, Cat: n.Cat, CatLabel: catLabelOf(n.Cat), Name: n.Name, Desc: n.Desc,
-			Specialization: strings.TrimSpace(n.Name) != "" || isMasterySpecializationHash(hash),
+			Specialization: false,
 		})
 	}
 	var out []MasteryRankPool
@@ -218,10 +224,8 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 	}
 	catOrder := []string{"SB_ATK", "SB_DEF", "SB_LIMIT"}
 	counts := map[string]map[string]int{}
-	stageSkillSelected := map[string]map[string]bool{}
 	for _, rank := range masteryRanks {
 		counts[rank.Rank] = map[string]int{}
-		stageSkillSelected[rank.Rank] = map[string]bool{}
 	}
 
 	result := &MasteryBuildSummary{}
@@ -241,9 +245,6 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 			return nil, fmt.Errorf("专精节点 %08X 阶级未知", hash)
 		}
 		counts[rank][node.Cat]++
-		if (rank == "R1" && strings.TrimSpace(node.Name) != "") || isMasterySpecializationHash(hash) {
-			stageSkillSelected[rank][node.Cat] = true
-		}
 		result.Total++
 	}
 
@@ -271,25 +272,19 @@ func summarizeMasteryHashes(ownerCode string, hashes []uint32) (*MasteryBuildSum
 			}
 			switch rank.Rank {
 			case "R1":
-				cs.Active = count >= threshold && stageSkillSelected[rank.Rank][cat]
-				if !stageSkillSelected[rank.Rank][cat] {
-					cs.Reason = "未选择1阶专精技能"
-				} else if !cs.Active {
+				cs.Active = count >= threshold
+				if !cs.Active {
 					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
 				}
 			case "R2":
-				cs.Active = r2Primary == cat && count >= threshold && stageSkillSelected[rank.Rank][cat]
-				if !stageSkillSelected[rank.Rank][cat] {
-					cs.Reason = "未选择2阶专精技能"
-				} else if !cs.Active {
+				cs.Active = r2Primary == cat && count >= threshold
+				if !cs.Active {
 					cs.Reason = fmt.Sprintf("未达到2阶方向门槛（%d/%d）", count, threshold)
 				}
 			case "R3":
-				cs.Active = r2Primary == cat && count >= threshold && stageSkillSelected[rank.Rank][cat]
+				cs.Active = r2Primary == cat && count >= threshold
 				if r2Primary != cat {
 					cs.Reason = "未沿用2阶主方向"
-				} else if !stageSkillSelected[rank.Rank][cat] {
-					cs.Reason = "未选择3阶专精技能"
 				} else if !cs.Active {
 					cs.Reason = fmt.Sprintf("需 %d 项，当前 %d 项", threshold, count)
 				}

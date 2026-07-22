@@ -126,6 +126,16 @@ func loadTraitValues() map[string]*traitValueDef {
 		if mageSavvy := traitValuesByID["SKILL_117_01"]; mageSavvy != nil {
 			mageSavvy.Name = "魔法师的伶俐"
 		}
+		// LevelValue2 is an internal trigger flag, not the cooldown. The 2.0.2
+		// skill_status row stores the cooldown in LevelValue3.
+		if guts := traitValuesByID["SKILL_045_00"]; guts != nil {
+			guts.Name = "豪胆"
+			guts.Format = "受到致命伤害时HP保持1\n再次触发等待{2}秒"
+			guts.Placeholders = []traitPlaceholder{{
+				Ph: 2, Col: 3, Unit: "flat",
+				Values: []float64{230, 225, 220, 215, 210, 205, 200, 195, 190, 185, 180, 175, 170, 165, 160, 155, 150, 140, 130, 120},
+			}}
+		}
 	})
 	return traitValuesByID
 }
@@ -141,6 +151,7 @@ type TraitBonus struct {
 	Capped     bool             `json:"capped"`
 	Effect     string           `json:"effect"`     // 渲染好的中文效果串（数值已代入）
 	Components []BonusComponent `json:"components"` // 结构化数值，供聚合（如总HP）
+	Sources    []string         `json:"sources,omitempty"`
 	Warning    string           `json:"warning,omitempty"`
 	// MaxHPCondition is non-zero only when the current panel can determine an
 	// HP-gated skill. It is deliberately structured instead of inferred from
@@ -170,11 +181,12 @@ type EffectTotal struct {
 
 // LoadoutSimulation 同时保留合并后的总计与逐词条明细。
 type LoadoutSimulation struct {
-	Totals       []EffectTotal         `json:"totals"`
-	Bonuses      []TraitBonus          `json:"bonuses"`
-	FinalStats   *LoadoutFinalStats    `json:"finalStats,omitempty"`
-	Weapon       *LoadoutWeaponContext `json:"weapon,omitempty"`
-	WeaponSkills []LoadoutWeaponSkill  `json:"weaponSkills"`
+	Totals        []EffectTotal         `json:"totals"`
+	DynamicTotals []EffectTotal         `json:"dynamicTotals"`
+	Bonuses       []TraitBonus          `json:"bonuses"`
+	FinalStats    *LoadoutFinalStats    `json:"finalStats,omitempty"`
+	Weapon        *LoadoutWeaponContext `json:"weapon,omitempty"`
+	WeaponSkills  []LoadoutWeaponSkill  `json:"weaponSkills"`
 }
 
 // SimSigilInput 是模拟器的单颗因子输入（主/副词条 hash + 等级）。
@@ -202,21 +214,7 @@ func simulateTraits(pairs []struct {
 		if p.hash == EmptyHash || p.hash == 0 || p.level <= 0 {
 			continue
 		}
-		id := hashToID[p.hash]
-		rawID := fmt.Sprintf("%08X", p.hash)
-		// Some summon-only hashes have an audited raw-hash row but no craftable
-		// trait definition. Prefer that exact row when a catalog ID has no value
-		// definition; never infer an alias merely from a matching display name.
-		if (id == "" || tv[id] == nil) && tv[rawID] != nil {
-			id = rawID
-		}
-		// A summon catalog entry with no value row must still survive the join so
-		// the final panel can explain that it was deliberately left out.
-		if id == "" {
-			if _, isSummonMain := summonNames[p.hash]; isSummonMain {
-				id = rawID
-			}
-		}
+		id := resolveTraitValueID(p.hash, hashToID)
 		if id == "" {
 			continue // 未知词条，跳过
 		}
@@ -252,7 +250,10 @@ func simulateTraits(pairs []struct {
 			capped = true
 		}
 		name := strings.TrimSpace(def.Name)
-		if name == "" && isSummonMain {
+		if name == "" {
+			name = strings.TrimSpace(localizedRuntimeName(hash))
+		}
+		if isSummonMain && strings.TrimSpace(summonName) != "" {
 			name = summonName
 		}
 		b := TraitBonus{
@@ -283,6 +284,49 @@ func simulateTraits(pairs []struct {
 		return out[i].Level > out[j].Level
 	})
 	return out
+}
+
+func resolveTraitValueID(hash uint32, hashToID map[uint32]string) string {
+	id := hashToID[hash]
+	rawID := fmt.Sprintf("%08X", hash)
+	values := loadTraitValues()
+	// DLC hashes can have a save-catalog ID and a newer audited value-table
+	// alias. Resolve by the exact hash join used by simulateTraits so source
+	// attribution and level aggregation always land on the same canonical row.
+	if (id == "" || values[id] == nil) && values[rawID] != nil {
+		id = rawID
+	}
+	// A summon catalog entry with no value row must still survive the join so
+	// the final panel can explain that it was deliberately left out.
+	if id == "" {
+		if _, isSummonMain := loadSummonMainSkillNames()[hash]; isSummonMain {
+			id = rawID
+		}
+	}
+	return canonicalTraitValueID(id)
+}
+
+func canonicalTraitValueID(id string) string {
+	if strings.HasPrefix(id, "SKILL_") {
+		return id
+	}
+	definition := loadTraitValues()[id]
+	if definition == nil {
+		return id
+	}
+	canonical := ""
+	for candidate, candidateDefinition := range loadTraitValues() {
+		if candidateDefinition != definition || !strings.HasPrefix(candidate, "SKILL_") {
+			continue
+		}
+		if canonical == "" || candidate < canonical {
+			canonical = candidate
+		}
+	}
+	if canonical != "" {
+		return canonical
+	}
+	return id
 }
 
 func catRank(label string) int {
@@ -420,15 +464,21 @@ func aggregateTraitEffects(bonuses []TraitBonus) []EffectTotal {
 					order = append(order, key)
 				}
 				total.Value += component.Value
-				seen := false
-				for _, source := range total.Sources {
-					if source == bonus.Name {
-						seen = true
-						break
-					}
+				sources := bonus.Sources
+				if len(sources) == 0 && bonus.Name != "" {
+					sources = []string{bonus.Name}
 				}
-				if !seen && bonus.Name != "" {
-					total.Sources = append(total.Sources, bonus.Name)
+				for _, source := range sources {
+					seen := false
+					for _, existing := range total.Sources {
+						if existing == source {
+							seen = true
+							break
+						}
+					}
+					if !seen && source != "" {
+						total.Sources = append(total.Sources, source)
+					}
 				}
 			}
 		}
@@ -459,6 +509,8 @@ func canonicalEffectLabels(label string) []string {
 		return []string{"能力伤害上限"}
 	case "奥义的伤害上限", "奥义伤害上限":
 		return []string{"奥义伤害上限"}
+	case "奥义连锁伤害上限", "连锁伤害上限":
+		return []string{"奥义连锁伤害上限"}
 	default:
 		return []string{strings.TrimSpace(label)}
 	}

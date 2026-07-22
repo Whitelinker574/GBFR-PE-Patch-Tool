@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { FindSaveFiles, LoadoutList, LoadoutPreviewList, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import LoadoutEditor from './LoadoutEditor.vue'
@@ -14,6 +14,9 @@ const groups = ref([])
 const selectedChara = ref('')
 const expanded = ref(new Set())
 const mode = ref('view') // view | edit
+const previews = ref(new Map())
+const previewLoading = ref(false)
+let previewRequestId = 0
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
 
@@ -35,6 +38,30 @@ const presetCount = computed(() => {
   for (const g of groups.value) for (const lo of g.loadouts) if (!lo.isParty) n++
   return n
 })
+function previewFor(loadout) { return previews.value.get(loadout?.unitId) || null }
+function formatNumber(value, digits = 0) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  return numeric.toLocaleString('zh-CN', { maximumFractionDigits: digits })
+}
+async function loadPreviews() {
+  if (!savePath.value || !currentGroup.value) return
+  const path = savePath.value
+  const charaHash = currentGroup.value.charaHash
+  const requestId = ++previewRequestId
+  previewLoading.value = true
+  try {
+    const result = await LoadoutPreviewList(path, charaHash)
+    if (requestId !== previewRequestId || path !== savePath.value || charaHash !== currentGroup.value?.charaHash) return
+    previews.value = new Map((result || []).map(entry => [entry.unitId, entry]))
+  } catch (err) {
+    if (requestId !== previewRequestId) return
+    previews.value = new Map()
+    emit('status', `配装数值预览失败：${String(err)}`, 'error')
+  } finally {
+    if (requestId === previewRequestId) previewLoading.value = false
+  }
+}
 
 function masterySummary(lo) {
   const order = ['R1', 'R2', 'R3', 'EX']
@@ -77,6 +104,10 @@ function leaveEdit() {
 watch(isEditing, value => emit('editing-change', value), { immediate: true })
 watch(currentGroup, value => {
   if (!value && mode.value === 'edit') mode.value = 'view'
+  previews.value = new Map()
+  previewRequestId++
+  previewLoading.value = false
+  if (value && savePath.value) loadPreviews()
 })
 
 async function load(path) {
@@ -174,7 +205,7 @@ onMounted(async () => {
       </section>
 
       <section v-if="currentGroup" class="section ui-card ui-panel">
-        <div class="section-title ui-section-title"><span>{{ currentGroup.charaName }} 的配装</span><small>点击卡片展开真实因子词条与专精明细</small></div>
+        <div class="section-title ui-section-title"><span>{{ currentGroup.charaName }} 的配装</span><small>{{ previewLoading ? '正在估算每套配装…' : '当前实时配装置顶；点击卡片展开因子与专精明细' }}</small></div>
         <div class="card-grid ui-card-grid">
           <article v-for="lo in currentGroup.loadouts" :key="lo.unitId" class="loadout-card ui-card is-flat" :class="{ open: expanded.has(lo.unitId), party: lo.isParty }">
             <button type="button" class="loadout-card-toggle" :aria-expanded="expanded.has(lo.unitId)" @click="toggle(lo)">
@@ -184,6 +215,7 @@ onMounted(async () => {
               <strong>{{ lo.name || (lo.isParty ? '当前实时配装' : '(未命名)') }}</strong>
               <span class="wep">{{ lo.weaponName || '未收录武器' }}</span>
               <em>{{ (lo.sigils || []).length }}因子 · {{ (lo.mastery || []).length }}专精</em>
+              <span class="expand-mark">{{ expanded.has(lo.unitId) ? '收起' : '展开' }}<i aria-hidden="true">⌄</i></span>
             </button>
             <div v-if="lo.weapon" class="weapon-loadout-summary">
               <span><b>{{ lo.weapon.name || lo.weaponName }}</b><small>Lv{{ lo.weapon.level }} · 觉醒 {{ lo.weapon.awakening }} · 超凡 {{ lo.weapon.transcendence }}</small></span>
@@ -202,6 +234,13 @@ onMounted(async () => {
               <i v-for="t in masterySummary(lo)" :key="t.rank">{{ t.label }} {{ t.count }}点</i>
               <i v-if="!(lo.mastery || []).length" class="dim">未保存</i>
             </div>
+            <div v-if="previewFor(lo)?.finalStats" class="loadout-stat-strip">
+              <span><small>HP</small><b>≈{{ formatNumber(previewFor(lo).finalStats.hp) }}</b></span>
+              <span><small>攻击</small><b>≈{{ formatNumber(previewFor(lo).finalStats.attack) }}</b></span>
+              <span><small>暴击</small><b>≈{{ formatNumber(previewFor(lo).finalStats.critRate, 1) }}%</b></span>
+              <span><small>昏厥</small><b>≈{{ formatNumber(previewFor(lo).finalStats.stunPower, 1) }}</b></span>
+            </div>
+            <p v-if="previewFor(lo)?.error" class="preview-error">{{ previewFor(lo).error }}</p>
             <div v-if="expanded.has(lo.unitId)" class="detail">
               <div class="detail-block sigil-detail-block">
                 <h4>因子（{{ (lo.sigils || []).length }}）</h4>
@@ -246,9 +285,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.loadout-viewer { min-width:0; font-size:var(--fs-md); container:loadout-viewer / inline-size; }
+.loadout-viewer { width:100%; max-width:100%; min-width:0; overflow-x:hidden; font-size:var(--fs-md); container:loadout-viewer / inline-size; }
 .loadout-viewer.editing { width:100%; height:100%; min-height:0; gap:0; overflow:hidden; }
-.section-title { min-width:0; }
+.section { width:100%; max-width:100%; min-width:0; overflow:hidden; }
+.section-title { min-width:0; flex-wrap:wrap; }
+.section-title > small { min-width:0; overflow-wrap:anywhere; }
 .edit-launch { margin-left:auto; }
 .edit-launch span { font-size:var(--fs-lg); }
 .editor-workspace { min-width:0; height:100%; min-height:0; display:flex; flex-direction:column; gap:14px; overflow:hidden; }
@@ -271,13 +312,12 @@ onMounted(async () => {
 .chara-chip-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chara-chip i { flex:0 0 auto; margin-left:auto; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
 .chara-chip.is-on i { color:var(--accent-soft); }
-/* 配装卡横向自适应网格：图标缩小、从左往右排；展开的卡占满整行显示明细 */
-.card-grid { --ui-grid-min:360px; align-items:start; }
-.loadout-card { display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--accent); background:var(--surface-card-pop); }
+.card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:var(--space-4); align-items:start; min-width:0; }
+.loadout-card { min-width:0; display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--accent); background:var(--surface-card-pop); }
 .loadout-card.party { grid-column:1 / -1; order:-1; border-left-color:var(--success); background:linear-gradient(110deg,rgba(74,139,105,.1),rgba(255,253,247,.92) 52%); box-shadow:inset 0 0 0 1px rgba(74,139,105,.08); }
-.loadout-card.party .loadout-card-toggle { grid-template-columns:62px auto minmax(0,1.2fr) minmax(150px,.8fr) auto; }
+.loadout-card.party .loadout-card-toggle { grid-template-columns:62px auto minmax(120px,1.2fr) minmax(120px,.8fr) auto auto; }
 .loadout-card.open { border-color:var(--border-strong); grid-column:1/-1; }
-.loadout-card-toggle { width:100%; min-height:var(--control-height-sm); display:grid; grid-template-columns:62px auto minmax(0,1fr) minmax(120px,.8fr) auto; align-items:center; gap:var(--space-3); padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; user-select:none; }
+.loadout-card-toggle { width:100%; min-width:0; min-height:var(--control-height-sm); display:grid; grid-template-columns:62px auto minmax(120px,1fr) minmax(100px,.72fr) auto auto; align-items:center; gap:var(--space-3); padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; user-select:none; }
 .loadout-weapon-icon { width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
 .loadout-card-toggle:hover strong { color:var(--accent-hover); }
 .loadout-card-toggle b { color:var(--accent); font-size:var(--fs-sm); }
@@ -286,7 +326,10 @@ onMounted(async () => {
 .loadout-card-toggle strong { color:var(--text-primary); font-size:var(--fs-md); transition:color var(--dur-base) var(--ease-out); }
 .loadout-card-toggle .wep { color:var(--text-secondary); font-size:var(--fs-sm); }
 .loadout-card-toggle em { color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
-.weapon-loadout-summary { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; padding:7px 9px; border:1px solid rgba(139,103,55,.16); border-radius:8px; background:rgba(139,103,55,.045); }
+.expand-mark { display:inline-flex; align-items:center; justify-content:flex-end; gap:3px; color:var(--accent-hover); font-size:var(--fs-xs); font-weight:var(--fw-semibold); white-space:nowrap; }
+.expand-mark i { display:inline-block; font-size:14px; font-style:normal; transition:transform var(--dur-base) var(--ease-out); }
+.loadout-card.open .expand-mark i { transform:rotate(180deg); }
+.weapon-loadout-summary { min-width:0; display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; padding:7px 9px; border:1px solid rgba(139,103,55,.16); border-radius:8px; background:rgba(139,103,55,.045); }
 .weapon-loadout-summary > span { min-width:150px; display:flex; flex-direction:column; margin-right:3px; }
 .weapon-loadout-summary > span b { color:var(--text-primary); font-size:var(--fs-sm); }
 .weapon-loadout-summary > span small { color:var(--text-muted); font-size:var(--fs-xs); }
@@ -318,15 +361,26 @@ onMounted(async () => {
 .sigil-traits span { min-width:0; display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:var(--space-2); align-items:center; color:var(--text-secondary); font-size:var(--fs-sm); line-height:1.35; }
 .sigil-traits i { width:20px; height:18px; display:grid; place-items:center; border:1px solid var(--border-strong); border-radius:var(--radius-sm); color:var(--accent-hover); background:var(--accent-soft); font-size:var(--fs-xs); font-style:normal; font-weight:var(--fw-bold); }
 .sigil-traits em { color:var(--accent); font-size:var(--fs-xs); font-style:normal; font-weight:var(--fw-semibold); }
+.preview-error { margin:var(--space-3) 0 0; color:var(--danger-ink,#a6473f); font-size:var(--fs-xs); line-height:1.5; }
+.loadout-stat-strip { display:grid; grid-template-columns:repeat(4,minmax(72px,1fr)); gap:4px; padding-top:var(--space-2); border-top:1px dashed var(--line-soft); }
+.loadout-stat-strip span { min-width:0; display:flex; flex-direction:column; padding:4px 6px; background:rgba(139,103,55,.045); }
+.loadout-stat-strip small { color:var(--text-muted); font-size:10px; }
+.loadout-stat-strip b { overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .empty { margin:0; }
-@container loadout-viewer (max-width:760px) {
+@container loadout-viewer (max-width:900px) {
+  .section-title .edit-launch { width:100%; margin-left:0; }
   .editor-workspace-bar { grid-template-columns:1fr auto; }
   .editor-workspace-title { grid-column:1/-1; grid-row:1; }
   .back-button { grid-row:2; }
   .editor-workspace-meta { grid-row:2; }
   .loadout-card-toggle { grid-template-columns:52px auto minmax(0,1fr) auto; }
   .loadout-card.party .loadout-card-toggle { grid-template-columns:52px auto minmax(0,1fr) auto; }
-  .loadout-card-toggle .wep { grid-column:3/-1; grid-row:2; }
+  .loadout-card-toggle > b { grid-column:2; grid-row:1; }
+  .loadout-card-toggle > strong { grid-column:3; grid-row:1; }
+  .loadout-card-toggle .wep { grid-column:2/4; grid-row:2; }
+  .loadout-card-toggle > em { grid-column:2/4; grid-row:3; }
+  .loadout-card-toggle .expand-mark { grid-column:4; grid-row:1/4; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
+  .loadout-stat-strip { grid-template-columns:repeat(2,minmax(70px,1fr)); }
 }
 </style>

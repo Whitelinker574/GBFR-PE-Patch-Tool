@@ -113,6 +113,42 @@ type RuntimeCharacterFactorReading struct {
 	RuntimeSlotID       uint32 `json:"runtimeSlotId"`
 }
 
+type RuntimeCharacterWeaponTraitReading struct {
+	Index int    `json:"index"`
+	Hash  string `json:"hash"`
+	Level int    `json:"level"`
+}
+
+type RuntimeCharacterGrowthReading struct {
+	Level        int                        `json:"level"`
+	BaseHP       int                        `json:"baseHp"`
+	BaseATK      int                        `json:"baseAtk"`
+	BaseStun     float64                    `json:"baseStun"`
+	BaseCritRate float64                    `json:"baseCritRate"`
+	MasterHP     int                        `json:"masterHp"`
+	MasterATK    int                        `json:"masterAtk"`
+	FateHP       int                        `json:"fateHp"`
+	FateATK      int                        `json:"fateAtk"`
+	Permanent    LoadoutPermanentPanelStats `json:"permanent"`
+	StableReads  int                        `json:"stableReads"`
+}
+
+type RuntimeCharacterSnapshotCoverage struct {
+	Panel   bool     `json:"panel"`
+	Weapon  bool     `json:"weapon"`
+	Factors bool     `json:"factors"`
+	Growth  bool     `json:"growth"`
+	Notes   []string `json:"notes"`
+}
+
+func exportRuntimeWeaponTraits(values []runtimeWeaponTrait) []RuntimeCharacterWeaponTraitReading {
+	result := make([]RuntimeCharacterWeaponTraitReading, len(values))
+	for index, value := range values {
+		result[index] = RuntimeCharacterWeaponTraitReading{Index: index, Hash: hashText(value.Hash), Level: value.Level}
+	}
+	return result
+}
+
 func readRuntimeCharacterFactors(memory runtimeCharacterPanelMemory, status uintptr, characterHash uint32) ([]RuntimeCharacterFactorReading, error) {
 	array, err := readRuntimePanelPointerOffset(memory, status, runtimeCharacterFactorArrayPointerOffset)
 	if err != nil {
@@ -457,29 +493,33 @@ var runtimeCharacterPanelVersionGuards = []runtimeCharacterPanelVersionGuard{
 // panel aggregator. Unlike the offline loadout estimate, these fields are not
 // recalculated by this application.
 type RuntimeCharacterPanelStats struct {
-	CharacterHash            string                            `json:"characterHash"`
-	RuntimeID                string                            `json:"runtimeId"`
-	CandidateObjectHash      string                            `json:"candidateObjectHash"`
-	IdentitySource           string                            `json:"identitySource"`
-	HP                       int32                             `json:"hp"`
-	Attack                   int32                             `json:"attack"`
-	StunPower                float32                           `json:"stunPower"`
-	RawStunPower             float32                           `json:"rawStunPower"`
-	CritRate                 float32                           `json:"critRate"`
-	CurrentWeaponSlotID      uint32                            `json:"currentWeaponSlotId,omitempty"`
-	CurrentWeaponHash        string                            `json:"currentWeaponHash,omitempty"`
-	CurrentWrightstoneHash   string                            `json:"currentWrightstoneHash,omitempty"`
-	CurrentWeaponStableReads int                               `json:"currentWeaponStableReads,omitempty"`
-	CurrentFactors           []RuntimeCharacterFactorReading   `json:"currentFactors,omitempty"`
-	CurrentFactorStableReads int                               `json:"currentFactorStableReads,omitempty"`
-	HPField                  RuntimeCharacterPanelFieldReading `json:"hpField"`
-	AttackField              RuntimeCharacterPanelFieldReading `json:"attackField"`
-	StunField                RuntimeCharacterPanelFieldReading `json:"stunField"`
-	CritField                RuntimeCharacterPanelFieldReading `json:"critField"`
-	Source                   string                            `json:"source"`
-	Verification             string                            `json:"verification"`
-	GameVersion              string                            `json:"gameVersion"`
-	RuntimeVerified          bool                              `json:"runtimeVerified"`
+	CharacterHash            string                               `json:"characterHash"`
+	RuntimeID                string                               `json:"runtimeId"`
+	CandidateObjectHash      string                               `json:"candidateObjectHash"`
+	IdentitySource           string                               `json:"identitySource"`
+	HP                       int32                                `json:"hp"`
+	Attack                   int32                                `json:"attack"`
+	StunPower                float32                              `json:"stunPower"`
+	RawStunPower             float32                              `json:"rawStunPower"`
+	CritRate                 float32                              `json:"critRate"`
+	CurrentWeaponSlotID      uint32                               `json:"currentWeaponSlotId,omitempty"`
+	CurrentWeaponHash        string                               `json:"currentWeaponHash,omitempty"`
+	CurrentWrightstoneHash   string                               `json:"currentWrightstoneHash,omitempty"`
+	CurrentWeaponStableReads int                                  `json:"currentWeaponStableReads,omitempty"`
+	CurrentWrightstoneTraits []RuntimeCharacterWeaponTraitReading `json:"currentWrightstoneTraits,omitempty"`
+	CurrentWeaponSkills      []RuntimeCharacterWeaponTraitReading `json:"currentWeaponSkills,omitempty"`
+	CurrentFactors           []RuntimeCharacterFactorReading      `json:"currentFactors,omitempty"`
+	CurrentFactorStableReads int                                  `json:"currentFactorStableReads,omitempty"`
+	Growth                   *RuntimeCharacterGrowthReading       `json:"growth,omitempty"`
+	Coverage                 RuntimeCharacterSnapshotCoverage     `json:"coverage"`
+	HPField                  RuntimeCharacterPanelFieldReading    `json:"hpField"`
+	AttackField              RuntimeCharacterPanelFieldReading    `json:"attackField"`
+	StunField                RuntimeCharacterPanelFieldReading    `json:"stunField"`
+	CritField                RuntimeCharacterPanelFieldReading    `json:"critField"`
+	Source                   string                               `json:"source"`
+	Verification             string                               `json:"verification"`
+	GameVersion              string                               `json:"gameVersion"`
+	RuntimeVerified          bool                                 `json:"runtimeVerified"`
 }
 
 type RuntimeCharacterPanelFieldReading struct {
@@ -554,6 +594,7 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 	// readable while no valid weapon object is loaded, so failure here must not
 	// turn an otherwise valid final-panel read into an error.
 	if object, locateErr := locateRuntimeCharacterPanelObject(memory, moduleBase, targetHash); locateErr == nil {
+		stats.Coverage.Panel = true
 		if snapshot, snapshotErr := readStableRuntimeWeaponWrightstoneSnapshot(func() (runtimeWeaponWrightstoneSnapshot, error) {
 			return readRuntimeWeaponWrightstoneSnapshot(memory, object.Status)
 		}); snapshotErr == nil {
@@ -561,14 +602,37 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 			stats.CurrentWeaponHash = hashText(snapshot.WeaponHash)
 			stats.CurrentWrightstoneHash = hashText(snapshot.WrightstoneHash)
 			stats.CurrentWeaponStableReads = 3
+			stats.CurrentWrightstoneTraits = exportRuntimeWeaponTraits(snapshot.Traits)
+			stats.CurrentWeaponSkills = exportRuntimeWeaponTraits(snapshot.Skills)
+			stats.Coverage.Weapon = true
+		} else {
+			stats.Coverage.Notes = append(stats.Coverage.Notes, "当前武器对象未稳定，未输出武器技能与祝福词条")
 		}
 		if factors, factorErr := readStableRuntimeCharacterFactors(func() ([]RuntimeCharacterFactorReading, error) {
 			return readRuntimeCharacterFactors(memory, object.Status, targetHash)
 		}); factorErr == nil {
 			stats.CurrentFactors = factors
 			stats.CurrentFactorStableReads = 3
+			stats.Coverage.Factors = true
+		} else {
+			stats.Coverage.Notes = append(stats.Coverage.Notes, "当前因子数组未稳定，未输出因子快照")
+		}
+		if growth, growthErr := readStableRuntimeCharacterGrowthSnapshots(func() (runtimeCharacterGrowthSnapshot, error) {
+			return readRuntimeCharacterGrowthSnapshot(memory, object.Status)
+		}); growthErr == nil {
+			stats.Growth = &RuntimeCharacterGrowthReading{
+				Level: growth.Level, BaseHP: growth.BaseHP, BaseATK: growth.BaseATK,
+				BaseStun: growth.BaseStun, BaseCritRate: growth.BaseCritRate,
+				MasterHP: growth.MasterHP, MasterATK: growth.MasterATK,
+				FateHP: growth.FateHP, FateATK: growth.FateATK,
+				Permanent: growth.Permanent, StableReads: 3,
+			}
+			stats.Coverage.Growth = true
+		} else {
+			stats.Coverage.Notes = append(stats.Coverage.Notes, "角色基础、命运与强化聚合未稳定，未输出成长快照")
 		}
 	}
+	stats.Coverage.Notes = append(stats.Coverage.Notes, "奥义、连锁与战斗条件状态尚无已验证访问链，不以静态推断冒充运行时数据")
 	return &stats, nil
 }
 

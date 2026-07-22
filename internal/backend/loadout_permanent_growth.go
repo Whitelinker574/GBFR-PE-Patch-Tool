@@ -128,7 +128,8 @@ type masterStatUnlockRow struct {
 }
 
 // Non-zero HealthAdd/AttackAdd/DmgCapAdd rows from skillboard_unlock.tbl
-// 2.0.2. The table ends at MasterLevel 50, so post-50 progress is clamped.
+// 2.0.2. Permanent stat unlocks end at MLv50; MLv51..55 remain real
+// progression levels and are shown as the five post-50 stars.
 var masterStatUnlockRows = [...]masterStatUnlockRow{
 	{2, 400, 200, 5}, {5, 400, 200, 5}, {10, 500, 250, 6},
 	{15, 500, 250, 6}, {20, 600, 300, 7}, {25, 600, 300, 7},
@@ -144,7 +145,7 @@ func deriveMasterGrowth(totalMSP int) masterGrowth {
 	if progressIndex < 0 {
 		progressIndex = 0
 	}
-	masterLevel := min(progressIndex, 50)
+	masterLevel := min(progressIndex, 55)
 	result := masterGrowth{
 		ProgressIndex: progressIndex,
 		MasterLevel:   masterLevel,

@@ -3,6 +3,7 @@
 
 # Wails build output
 /build/bin/*
+/build/release/
 
 # Frontend dependencies and build artifacts
 /frontend/node_modules/

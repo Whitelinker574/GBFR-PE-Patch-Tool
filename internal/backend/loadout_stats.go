@@ -397,13 +397,24 @@ func readOverLimit(data *SaveDataBinary, charaUnitID uint32, warnings *[]string)
 // LoadoutStatContext reads character base fields, the complete summon
 // inventory, equipped summon order, and the character's four over-limit slots.
 func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, error) {
+	parsed, err := LoadSaveFile(path)
+	if err != nil {
+		return nil, err
+	}
+	editableSave, err := LoadSave(path)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadoutStatContextFromLoaded(path, charaHex, parsed, editableSave, true)
+}
+
+func (a *App) loadoutStatContextFromLoaded(path, charaHex string, parsed *SaveGameFile, editableSave *SaveData, allowRuntime bool) (*LoadoutStatContext, error) {
 	charaHash, err := ParseHashHex(charaHex)
 	if err != nil {
 		return nil, fmt.Errorf("角色 hash 无效: %w", err)
 	}
-	parsed, err := LoadSaveFile(path)
-	if err != nil {
-		return nil, err
+	if parsed == nil {
+		return nil, fmt.Errorf("存档解析结果不能为空")
 	}
 	if parsed.SlotData == nil {
 		return nil, fmt.Errorf("存档没有 SlotData")
@@ -455,9 +466,8 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	if err != nil {
 		return nil, err
 	}
-	editableSave, err := LoadSave(path)
-	if err != nil {
-		return nil, err
+	if editableSave == nil {
+		return nil, fmt.Errorf("存档编辑视图不能为空")
 	}
 	if _, err := loadProgressionCatalog(); err != nil {
 		return nil, err
@@ -520,31 +530,33 @@ func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, er
 	if err != nil {
 		return nil, err
 	}
-	if observed, runtimeErr := loadoutRuntimeCharacterGrowth(charaHash); runtimeErr == nil {
-		context.Level = observed.Level
-		context.BaseHP = observed.BaseHP
-		context.BaseATK = observed.BaseATK
-		context.BaseStun = observed.BaseStun
-		context.BaseStunPanel = observed.BaseStun * legacyMasteryStunPanelScale
-		context.BaseCritRate = observed.BaseCritRate
-		context.PermanentGrowth.MasterHP = observed.MasterHP
-		context.PermanentGrowth.MasterATK = observed.MasterATK
-		context.PermanentGrowth.FateHP = observed.FateHP
-		context.PermanentGrowth.FateATK = observed.FateATK
-		context.PermanentGrowth.RuntimeObserved = true
-		context.PermanentGrowth.StableReads = 3
-		context.PermanentGrowth.Evidence = "runtime-2.0.2-character-growth-three-stable-reads"
-		legacy := &context.PermanentGrowth.LegacyMastery
-		legacy.Total = legacyMasteryFromRuntimeAggregate(observed.Permanent, context.OverLimit)
-		legacy.Complete = true
-		legacy.RuntimeObserved = true
-		legacy.StableReads = 3
-		legacy.Evidence = "runtime-2.0.2-three-stable-reads-minus-overlimit"
-		context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP + int(legacy.Total.HP)
-		context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK + int(legacy.Total.Attack)
-		context.BaselineStunRaw = context.BaseStun + legacy.Total.StunRaw
-		context.BaselineStun = context.BaselineStunRaw * legacyMasteryStunPanelScale
-		context.BaselineCritRate = context.BaseCritRate + legacy.Total.CritRate
+	if allowRuntime {
+		if observed, runtimeErr := loadoutRuntimeCharacterGrowth(charaHash); runtimeErr == nil {
+			context.Level = observed.Level
+			context.BaseHP = observed.BaseHP
+			context.BaseATK = observed.BaseATK
+			context.BaseStun = observed.BaseStun
+			context.BaseStunPanel = observed.BaseStun * legacyMasteryStunPanelScale
+			context.BaseCritRate = observed.BaseCritRate
+			context.PermanentGrowth.MasterHP = observed.MasterHP
+			context.PermanentGrowth.MasterATK = observed.MasterATK
+			context.PermanentGrowth.FateHP = observed.FateHP
+			context.PermanentGrowth.FateATK = observed.FateATK
+			context.PermanentGrowth.RuntimeObserved = true
+			context.PermanentGrowth.StableReads = 3
+			context.PermanentGrowth.Evidence = "runtime-2.0.2-character-growth-three-stable-reads"
+			legacy := &context.PermanentGrowth.LegacyMastery
+			legacy.Total = legacyMasteryFromRuntimeAggregate(observed.Permanent, context.OverLimit)
+			legacy.Complete = true
+			legacy.RuntimeObserved = true
+			legacy.StableReads = 3
+			legacy.Evidence = "runtime-2.0.2-three-stable-reads-minus-overlimit"
+			context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP + int(legacy.Total.HP)
+			context.BaselineATK = context.BaseATK + context.PermanentGrowth.FateATK + context.PermanentGrowth.MasterATK + int(legacy.Total.Attack)
+			context.BaselineStunRaw = context.BaseStun + legacy.Total.StunRaw
+			context.BaselineStun = context.BaselineStunRaw * legacyMasteryStunPanelScale
+			context.BaselineCritRate = context.BaseCritRate + legacy.Total.CritRate
+		}
 	}
 	if context.OwnerCode != "" && !context.PermanentGrowth.LegacyMastery.Complete {
 		appendWarning(&context.Warnings,
@@ -689,6 +701,21 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	if err != nil {
 		return nil, err
 	}
+	parsed, err := LoadSaveFile(path)
+	if err != nil {
+		return nil, err
+	}
+	context, err := a.loadoutStatContextFromLoaded(path, charaHex, parsed, save, true)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadoutSimulateBuildFromLoaded(path, charaHex, weaponSlotID, sigilSlotIDs, constructed, masteryHexes, summonSlotIDs, cat, save, context, true)
+}
+
+func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID uint32, sigilSlotIDs []uint32, constructed []LoadoutConstructedSigil, masteryHexes []string, summonSlotIDs []uint32, cat *Catalog, save *SaveData, context *LoadoutStatContext, allowRuntimeWeapon bool) (*LoadoutSimulation, error) {
+	if cat == nil || save == nil || context == nil {
+		return nil, fmt.Errorf("配装模拟缺少已加载的目录或存档上下文")
+	}
 	ix := buildLoadoutIndex(save)
 	charaHash, err := ParseHashHex(charaHex)
 	if err != nil {
@@ -713,25 +740,37 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		// traits can differ from the on-disk save (for example after an external
 		// save edit without a reload). Prefer three stable read-only observations
 		// only when the runtime weapon slot is the weapon being simulated.
-		if runtimeWrightstone, runtimeSkills, runtimeErr := loadoutRuntimeWeaponObservation(charaHash, weaponSlotID); runtimeErr == nil {
-			weapon.Wrightstone = runtimeWrightstone
-			applyRuntimeWeaponSkillLevels(weapon.Skills, runtimeSkills)
+		if allowRuntimeWeapon {
+			if runtimeWrightstone, runtimeSkills, runtimeErr := loadoutRuntimeWeaponObservation(charaHash, weaponSlotID); runtimeErr == nil {
+				weapon.Wrightstone = runtimeWrightstone
+				applyRuntimeWeaponSkillLevels(weapon.Skills, runtimeSkills)
+			}
 		}
+		applyMasterProgressWeaponSkillLevels(weapon.Skills, context.PermanentGrowth)
 	}
 
 	factorPairs := collectStoredSigilPairs(save, ix, sigilSlotIDs)
+	type traitSourcePair struct {
+		hash   uint32
+		source string
+	}
+	factorSources := make([]traitSourcePair, 0, len(factorPairs))
 	factorPrimaryHashes := make([]uint32, 0, len(sigilSlotIDs)+len(constructed))
-	for _, slotID := range sigilSlotIDs {
+	for index, slotID := range sigilSlotIDs {
 		gemUnitID, ok := ix.gemBySlotID[slotID]
 		if !ok {
 			continue
 		}
-		primaryHash, primaryLevel, _, _ := readSigilTraits(save, gemUnitID)
+		primaryHash, primaryLevel, secondaryHash, secondaryLevel := readSigilTraits(save, gemUnitID)
 		if primaryHash != 0 && primaryHash != EmptyHash && primaryLevel > 0 {
 			factorPrimaryHashes = append(factorPrimaryHashes, primaryHash)
+			factorSources = append(factorSources, traitSourcePair{primaryHash, fmt.Sprintf("因子%02d · %s", index+1, loadoutTraitDisplayName(cat, primaryHash))})
+		}
+		if secondaryHash != 0 && secondaryHash != EmptyHash && secondaryLevel > 0 {
+			factorSources = append(factorSources, traitSourcePair{secondaryHash, fmt.Sprintf("因子%02d · %s", index+1, loadoutTraitDisplayName(cat, secondaryHash))})
 		}
 	}
-	for _, draft := range constructed {
+	for index, draft := range constructed {
 		prepared, err := prepareLoadoutSigil(cat, draft)
 		if err != nil {
 			return nil, fmt.Errorf("第 %d 个构造草稿无法模拟: %w", draft.Index+1, err)
@@ -741,11 +780,13 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 			level int
 		}{prepared.primaryHash, prepared.item.PrimaryLevel})
 		factorPrimaryHashes = append(factorPrimaryHashes, prepared.primaryHash)
+		factorSources = append(factorSources, traitSourcePair{prepared.primaryHash, fmt.Sprintf("构造因子%02d · %s", index+1, loadoutTraitDisplayName(cat, prepared.primaryHash))})
 		if prepared.secondaryHash != 0 && prepared.secondaryHash != EmptyHash && prepared.secondaryLevel > 0 {
 			factorPairs = append(factorPairs, struct {
 				hash  uint32
 				level int
 			}{prepared.secondaryHash, prepared.secondaryLevel})
+			factorSources = append(factorSources, traitSourcePair{prepared.secondaryHash, fmt.Sprintf("构造因子%02d · %s", index+1, loadoutTraitDisplayName(cat, prepared.secondaryHash))})
 		}
 	}
 	// 因子强化 is a weapon skill that raises every equipped factor trait before
@@ -788,10 +829,6 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		}
 	}
 
-	context, err := a.LoadoutStatContext(path, charaHex)
-	if err != nil {
-		return nil, err
-	}
 	normalizedSummonSlotIDs, sparseSummonSelection, err := normalizeLoadoutSimulationSummonSlots(summonSlotIDs)
 	if err != nil {
 		return nil, err
@@ -841,11 +878,22 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 			}
 		}
 	}
-	bonuses := simulateTraits(pairs, hashToID)
-	totals := aggregateTraitEffects(bonuses)
-
-	// Preserve real summon instance names in main-trait source attribution.
 	sourcesByTraitID := map[string][]string{}
+	addTraitSource := func(traitID, source string) {
+		traitID = canonicalTraitValueID(traitID)
+		if traitID == "" || source == "" {
+			return
+		}
+		for _, existing := range sourcesByTraitID[traitID] {
+			if existing == source {
+				return
+			}
+		}
+		sourcesByTraitID[traitID] = append(sourcesByTraitID[traitID], source)
+	}
+	for _, pair := range factorSources {
+		addTraitSource(resolveTraitValueID(pair.hash, hashToID), pair.source)
+	}
 	if weapon != nil {
 		if weapon.Wrightstone != nil {
 			for _, trait := range weapon.Wrightstone.Traits {
@@ -853,7 +901,7 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 					continue
 				}
 				source := fmt.Sprintf("武炼结晶 · %s · %s Lv%d", weapon.Wrightstone.Name, trait.Name, trait.Level)
-				sourcesByTraitID[trait.TraitID] = append(sourcesByTraitID[trait.TraitID], source)
+				addTraitSource(trait.TraitID, source)
 			}
 		}
 		for _, skill := range weapon.Skills {
@@ -861,7 +909,7 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 				continue
 			}
 			source := fmt.Sprintf("武器 · %s · %s Lv%d", weapon.Name, skill.Name, skill.Level)
-			sourcesByTraitID[skill.TraitID] = append(sourcesByTraitID[skill.TraitID], source)
+			addTraitSource(skill.TraitID, source)
 		}
 	}
 	for _, summon := range selected {
@@ -869,29 +917,16 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		if parseErr != nil {
 			continue
 		}
-		traitID := hashToID[hash]
+		traitID := resolveTraitValueID(hash, hashToID)
 		if traitID != "" {
-			sourcesByTraitID[traitID] = append(sourcesByTraitID[traitID], summon.Name)
+			addTraitSource(traitID, "召唤石 · "+summon.Name)
 		}
 	}
-	for _, bonus := range bonuses {
-		for _, component := range bonus.Components {
-			if !component.Additive || component.Label == "" {
-				continue
-			}
-			for _, label := range canonicalEffectLabels(component.Label) {
-				key := component.Unit + "|" + label
-				for i := range totals {
-					if totals[i].Key != key {
-						continue
-					}
-					for _, source := range sourcesByTraitID[bonus.TraitID] {
-						addTotalSource(&totals[i], source)
-					}
-				}
-			}
-		}
+	bonuses := simulateTraits(pairs, hashToID)
+	for index := range bonuses {
+		bonuses[index].Sources = append([]string(nil), sourcesByTraitID[bonuses[index].TraitID]...)
 	}
+	totals := aggregateTraitEffects(bonuses)
 	if weapon != nil {
 		weaponSource := "武器 · " + weapon.Name
 		if weapon.Total.HP != 0 {
@@ -931,11 +966,14 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		addTotal(&totals, label, summon.SubParamUnit, summon.SubParamValue, "召唤石", summon.Name)
 		panelBonuses = append(panelBonuses, LoadoutPanelBonus{Label: label, Unit: summon.SubParamUnit, Value: summon.SubParamValue, Source: summon.Name})
 	}
+	sortEffectTotals(totals)
+	dynamicTotals := append([]EffectTotal(nil), totals...)
 	for _, bonus := range context.OverLimit {
 		addTotal(&totals, bonus.Name, bonus.Unit, bonus.Value, "极限加成", "极限加成")
 	}
 	sortEffectTotals(totals)
 	panelInput := loadoutPanelInputs{
+		OwnerCode:   ownerCode,
 		CharacterHP: float64(context.BaselineHP), CharacterATK: float64(context.BaselineATK),
 		CharacterCritRate: context.BaselineCritRate, CharacterStun: context.BaselineStun,
 		CharacterDamageCap: context.BaselineDamageCap,
@@ -976,7 +1014,10 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 		panelInput.Warnings = append(panelInput.Warnings, weapon.Warnings...)
 	}
 	finalStats := calculateLoadoutFinalStats(panelInput)
-	result := &LoadoutSimulation{Totals: totals, Bonuses: bonuses, FinalStats: &finalStats, Weapon: weapon}
+	result := &LoadoutSimulation{
+		Totals: totals, DynamicTotals: dynamicTotals, Bonuses: bonuses, FinalStats: &finalStats,
+		Weapon: weapon,
+	}
 	if weapon != nil {
 		result.WeaponSkills = append([]LoadoutWeaponSkill(nil), weapon.Skills...)
 	}

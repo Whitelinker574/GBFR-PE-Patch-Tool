@@ -31,37 +31,24 @@ func TestMasteryNodePool(t *testing.T) {
 	}
 }
 
-func TestMasteryNodePoolMarksStageSpecializationNodes(t *testing.T) {
+func TestMasteryNodePoolExcludesStageUnlockRowsFromThe50SlotVector(t *testing.T) {
 	pools, err := (&App{}).MasteryNodePool("PL0400")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]map[string]string{
-		"R2": {"SB_ATK": "80490676", "SB_DEF": "58E2FE10", "SB_LIMIT": "49E65B86"},
-		"R3": {"SB_ATK": "88DCAC00", "SB_DEF": "81F4970A", "SB_LIMIT": "E63217E6"},
+	unlockRows := map[string]bool{
+		"80490676": true, "58E2FE10": true, "49E65B86": true,
+		"88DCAC00": true, "81F4970A": true, "E63217E6": true,
 	}
 	for _, pool := range pools {
-		expected, ok := want[pool.Rank]
-		if !ok {
-			continue
-		}
-		seen := map[string]string{}
 		for _, node := range pool.Nodes {
-			if node.Specialization {
-				if previous := seen[node.Cat]; previous != "" {
-					t.Fatalf("%s/%s 出现多个专精主技能节点: %s, %s", pool.Rank, node.Cat, previous, node.Hash)
-				}
-				seen[node.Cat] = node.Hash
+			if unlockRows[node.Hash] || node.Specialization || strings.TrimSpace(node.Name) != "" {
+				t.Errorf("%s 的阶段解锁行 %s 不应占用 3007 配置槽: %+v", pool.Rank, node.Hash, node)
 			}
 		}
-		if len(seen) != 3 {
-			t.Fatalf("%s 应有三个方向各一个专精主技能节点，得到 %v", pool.Rank, seen)
-		}
-		for cat, hash := range expected {
-			if seen[cat] != hash {
-				t.Errorf("%s/%s 主技能节点=%s，期望原始 layout 的 %s", pool.Rank, cat, seen[cat], hash)
-			}
-		}
+	}
+	if effect := masterySpecializationEffect("PL0400", "R3", "SB_ATK"); strings.TrimSpace(effect) == "" {
+		t.Fatal("阶段解锁行虽不进入 3007，但必须继续提供逐阶效果说明")
 	}
 }
 
@@ -121,8 +108,9 @@ func TestLoadoutMasteryStunUsesVerifiedPanelScaleButKeepsRawText(t *testing.T) {
 	}
 }
 
-func TestMasterySummaryFollowsThreeDirectionActivationRules(t *testing.T) {
-	// 1阶三方向各 3 项均可生效；2阶只能觉醒达到 6 项；3阶沿用觉醒；EX 不产生第四种专精类型。
+func TestMasterySummaryFollowsRealSaveCountActivationRules(t *testing.T) {
+	// 伊欧实档的 3007 向量不包含阶段解锁行：1阶三个方向各达到3项；
+	// 2阶真谛达到6项；3阶继续真谛达到6项，必须直接显示真谛3/3。
 	toHashes := func(values ...string) []uint32 {
 		out := make([]uint32, 0, len(values))
 		for _, value := range values {
@@ -135,34 +123,34 @@ func TestMasterySummaryFollowsThreeDirectionActivationRules(t *testing.T) {
 		return out
 	}
 	hashes := toHashes(
-		"C5E2C95C", "8330DD47", "F5F495BE", // R1 真谛：主技能 + 2 子词条
-		"B29EF8B8", "12AA6898", "1F55589B", // R1 觉醒：主技能 + 2 子词条
-		"6FA783B6", "64D850F3", "DACCAB76", // R1 秘义：主技能 + 2 子词条
-		"58E2FE10", "2904689B", "6ED1BE0F", "DF5883DE", "D69522F1", "AD6575D4", // R2 觉醒 6（含100 MSP主技能）
-		"81F4970A", "3AA0FBEF", "E0E6FF0C", "7580D66D", "16271F83", "E03C3AD2", // R3 觉醒 6（含100 MSP主技能）
+		"8330DD47", "F5F495BE", "C20A0EC1", // R1 真谛 3
+		"1F55589B", "1AD4D530", "82EE504B", // R1 觉醒 3
+		"7EBE8989", "DACCAB76", "EC9C657D", // R1 秘义 3
+		"082EBAC9", "F84D6E7C", "B09E1B0F", "774106C7", "A7E5980C", "2C218F9E", // R2 真谛 6
+		"729ED65E", "75DB4733", "CBD26730", "8EE99564", "5C5381FA", "DE9B3B33", // R3 真谛 6
 		"5B124A50", // EX 节点
 	)
 	summary, err := summarizeMasteryHashes("PL0400", hashes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.PrimaryCat != "SB_DEF" || summary.PrimaryLabel != "觉醒：专注强化" {
-		t.Fatalf("主方向=%s/%s，期望觉醒：专注强化", summary.PrimaryCat, summary.PrimaryLabel)
+	if summary.PrimaryCat != "SB_ATK" || summary.PrimaryLabel != "真谛：魔法连锁" {
+		t.Fatalf("主方向=%s/%s，期望真谛：魔法连锁", summary.PrimaryCat, summary.PrimaryLabel)
 	}
 	r1 := summary.rank("R1")
 	if r1 == nil || r1.activeCategoryCount() != 3 {
 		t.Fatalf("1阶应三方向生效: %+v", r1)
 	}
 	r2 := summary.rank("R2")
-	if r2 == nil || !r2.category("SB_DEF").Active || r2.activeCategoryCount() != 1 {
-		t.Fatalf("2阶应仅觉醒生效: %+v", r2)
+	if r2 == nil || !r2.category("SB_ATK").Active || r2.activeCategoryCount() != 1 {
+		t.Fatalf("2阶应仅真谛生效: %+v", r2)
 	}
-	if strings.TrimSpace(r2.category("SB_DEF").Effect) == "" {
-		t.Fatalf("2阶方向摘要必须直接携带真实专精效果: %+v", r2.category("SB_DEF"))
+	if strings.TrimSpace(r2.category("SB_ATK").Effect) == "" {
+		t.Fatalf("2阶方向摘要必须直接携带真实专精效果: %+v", r2.category("SB_ATK"))
 	}
 	r3 := summary.rank("R3")
-	if r3 == nil || !r3.category("SB_DEF").Active || r3.activeCategoryCount() != 1 {
-		t.Fatalf("3阶应沿用觉醒: %+v", r3)
+	if r3 == nil || !r3.category("SB_ATK").Active || r3.activeCategoryCount() != 1 {
+		t.Fatalf("3阶应沿用真谛: %+v", r3)
 	}
 	ex := summary.rank("EX")
 	if ex == nil || ex.Label != "EX阶专精技能" || ex.activeCategoryCount() != 0 {
@@ -262,31 +250,20 @@ func TestMasteryQuota(t *testing.T) {
 	if _, err := validateMasteryQuota(pick("R1", "", 3), "PL0400", true); err != nil {
 		t.Errorf("部分专精向量可编码，只能提示未点满，得错误: %v", err)
 	}
-	// 真实存档允许 2/3 阶只配置方向内的子词条而不选择 100-MSP 专精技能。
-	// 这种满盘必须能保存/分享，但摘要应明确该阶专精效果未生效。
-	missingRoot := append([]uint32{}, pick("R1", "", 10)...)
-	r2WithoutRoot := pickSubtraits("R2", "SB_DEF", 6)
-	r2WithoutRoot = append(r2WithoutRoot, pickSubtraits("R2", "SB_ATK", 2)...)
-	r2WithoutRoot = append(r2WithoutRoot, pickSubtraits("R2", "SB_LIMIT", 2)...)
-	missingRoot = append(missingRoot, r2WithoutRoot...)
-	missingRoot = append(missingRoot, pickDirectionalRank("R3", "SB_DEF")...)
-	missingRoot = append(missingRoot, pick("EX", "", 20)...)
-	if _, err := validateMasteryQuota(missingRoot, "PL0400", true); err != nil {
-		t.Errorf("方向子词条满盘即使未选择2阶专精技能也应可保存: %v", err)
+	// 实档证明阶段效果不占用3007槽；达到3/6/6数量门槛即激活。
+	countActivated := append([]uint32{}, pick("R1", "", 10)...)
+	countActivated = append(countActivated, pickDirectionalRank("R2", "SB_DEF")...)
+	countActivated = append(countActivated, pickDirectionalRank("R3", "SB_DEF")...)
+	countActivated = append(countActivated, pick("EX", "", 20)...)
+	if _, err := validateMasteryQuota(countActivated, "PL0400", true); err != nil {
+		t.Errorf("不含阶段解锁行的真实50槽配置应可保存: %v", err)
 	}
-	missingSummary, err := summarizeMasteryHashes("PL0400", missingRoot)
+	countSummary, err := summarizeMasteryHashes("PL0400", countActivated)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, rank := range missingSummary.Ranks {
-		if rank.Rank != "R2" {
-			continue
-		}
-		for _, category := range rank.Categories {
-			if category.Cat == "SB_DEF" && (category.Active || category.Reason != "未选择2阶专精技能") {
-				t.Fatalf("未选择2阶专精技能时不应激活，得到 %+v", category)
-			}
-		}
+	if countSummary.PrimaryCat != "SB_DEF" || !countSummary.rank("R2").category("SB_DEF").Active || !countSummary.rank("R3").category("SB_DEF").Active {
+		t.Fatalf("3/6/6数量门槛没有生成3阶觉醒效果: %+v", countSummary)
 	}
 	// R1 超一个（11），应拒绝。
 	over := append(pick("R1", "", 11), pick("R2", "", 10)...)

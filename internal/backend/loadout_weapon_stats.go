@@ -71,6 +71,36 @@ func applyRuntimeWeaponSkillLevels(skills []LoadoutWeaponSkill, observed []runti
 	}
 }
 
+// SKILL_319_00 is stored in weapon_skill_level_rebuild as a one-level
+// activation flag, while its 2.0.2 skill_status curve has 55 effect levels.
+// Those 55 rows align with chara_master_exp progress indices 1..55, including
+// the five post-50 star levels. Runtime observations remain authoritative;
+// offline previews derive the effective level from the selected character.
+func applyMasterProgressWeaponSkillLevels(skills []LoadoutWeaponSkill, growth LoadoutPermanentGrowth) {
+	if !growth.MasterSystemAvailable || growth.MasterProgressIndex <= 0 {
+		return
+	}
+	values := loadTraitValues()
+	for index := range skills {
+		skill := &skills[index]
+		if skill.TraitID != "SKILL_319_00" || skill.Level <= 0 || skill.RuntimeObserved {
+			continue
+		}
+		definition := values[skill.TraitID]
+		if definition == nil {
+			continue
+		}
+		level := min(growth.MasterProgressIndex, definition.MaxLevel)
+		if level <= 0 {
+			continue
+		}
+		skill.StaticLevel = skill.Level
+		skill.Level = level
+		skill.Effect, _ = renderTraitEffect(definition, level)
+		skill.UnlockCondition += fmt.Sprintf(" · 按角色专精进度 Lv%d 生效", level)
+	}
+}
+
 // LoadoutWeaponSkillOption is one legal trait for a single 2818 vector slot at
 // the weapon's current transcendence stage. Options are deliberately scoped to
 // the weapon table group instead of exposing a global trait list.

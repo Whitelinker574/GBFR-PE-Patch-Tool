@@ -4,7 +4,7 @@ import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, 
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/backend/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
-import { formatFinalStat, formatWeaponSkillLevel, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
+import { formatFinalStat, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { buildConstructCatalog, collectBagTraitOptions, filterAndSortBagSigils, filterConstructCatalog, resolveConstructSelection } from '../loadoutCatalogFilters'
 import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
@@ -70,12 +70,13 @@ const weaponInlineEnabled = ref(false)
 const weaponSkillDrafts = ref([])
 const finalStats = ref(null)
 const simulationError = ref('')
-const weaponSkills = ref([])
 const selectedWeaponContext = ref(null)
 const runtimePanelStats = ref(null)
 const runtimePanelLoading = ref(false)
 const runtimePanelError = ref('')
 const statPanelMode = ref('estimate')
+const runtimePanelLive = ref(false)
+let runtimePanelTimer = 0
 const displayedPanelStats = computed(() => statPanelMode.value === 'runtime' && runtimePanelStats.value
   ? { ...runtimePanelStats.value, damageCap: finalStats.value?.damageCap }
   : (finalStats.value || {}))
@@ -426,12 +427,6 @@ function defenseEvidenceLabel(value) {
     'battle-state-unavailable': '需要战斗状态',
   })[value] || value
 }
-function mergedTraitBonus(trait) {
-  const id = String(trait?.traitId || '').toUpperCase()
-  const hash = normalizedHash(trait?.hash)
-  return bonuses.value.find(item => String(item?.traitId || '').toUpperCase() === id || normalizedHash(item?.traitId) === hash) || null
-}
-
 async function readRuntimePanel(silent = false) {
   if (!props.charaHash || runtimePanelLoading.value) return
   runtimePanelLoading.value = true
@@ -446,6 +441,21 @@ async function readRuntimePanel(silent = false) {
   } finally {
     runtimePanelLoading.value = false
   }
+}
+function stopRuntimePanelLive() {
+  runtimePanelLive.value = false
+  clearInterval(runtimePanelTimer)
+  runtimePanelTimer = 0
+}
+async function toggleRuntimePanelLive() {
+  if (runtimePanelLive.value) {
+    stopRuntimePanelLive()
+    return
+  }
+  runtimePanelLive.value = true
+  await readRuntimePanel(false)
+  if (!runtimePanelLive.value) return
+  runtimePanelTimer = window.setInterval(() => readRuntimePanel(true), 900)
 }
 function summonOptionLabel(summon) {
   const main = summon.mainTraitName ? `${summon.mainTraitName} Lv${summon.mainTraitLevel}` : '无主词条'
@@ -604,17 +614,8 @@ const effectiveMasteryDirection = computed(() => inferMasteryDirection(effective
 function masteryCategoryPicked(rank, cat) {
   return (effectiveMasteryPick.value[rank] || []).filter(hash => masteryNodeByHash.value.get(hash)?.cat === cat).length
 }
-function masteryStageSkillPicked(rank, cat) {
-  return (effectiveMasteryPick.value[rank] || []).some(hash => {
-    const node = masteryNodeByHash.value.get(hash)
-    return node?.cat === cat && node.specialization
-  })
-}
 const displayedMasteryDirection = computed(() => masterySummary.value?.primaryCat || '')
-const selectedMasteryDetails = computed(() => effectiveMasteryHashes.value.map(hash => masteryNodeByHash.value.get(hash)).filter(Boolean))
-const selectedSkills = computed(() => form.value.skillHashes.map(hash => ctx.value?.skills?.find(skill => skill.hash === hash)).filter(Boolean))
 const masterySummary = ref(null)
-const summarizingMastery = ref(false)
 const masteryDirectionCards = computed(() => {
   const rankOne = masteryPool.value.find(pool => pool.rank === 'R1')
   return groupMasteryNodes(rankOne?.nodes || []).map(group => {
@@ -625,21 +626,19 @@ const masteryDirectionCards = computed(() => {
       if (masteryMode.value === 'free') {
         const count = masteryCategoryPicked(rank, group.cat)
         const rankCap = masteryUnlockedRankCap(rank)
-        const hasStageSkill = masteryStageSkillPicked(rank, group.cat)
         const directionMatches = rank === 'R1' || effectiveMasteryDirection.value === group.cat
         let reason = ''
         if (rankCap === 0) reason = `角色强化 Lv${statContext.value?.permanentGrowth?.masterLevel || 1} 尚未解锁`
         else if (rankCap < threshold) reason = `本阶已解锁 ${rankCap}/${threshold}，尚不能激活效果`
         else if (rank !== 'R1' && !effectiveMasteryDirection.value) reason = '当前生效的2阶节点尚未形成唯一主方向'
         else if (rank !== 'R1' && !directionMatches) reason = '非推导主方向，专精技能通常不生效'
-        else if (!hasStageSkill) reason = `未选择${rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶'}专精技能`
         else if (count < threshold) reason = `需 ${threshold} 项，当前 ${count} 项`
         return {
           rank,
           label: rank === 'R1' ? '1阶' : rank === 'R2' ? '2阶' : '3阶',
           count,
           threshold,
-          active: rankCap >= threshold && directionMatches && hasStageSkill && count >= threshold,
+          active: rankCap >= threshold && directionMatches && count >= threshold,
           reason,
           effect: category?.effect || masteryPool.value.find(pool => pool.rank === rank)?.nodes?.find(node => node.cat === group.cat && node.specialization)?.desc || '',
         }
@@ -655,11 +654,13 @@ const masteryDirectionCards = computed(() => {
       }
     })
     const summaryCategory = masterySummary.value?.ranks?.find(item => item.rank === 'R1')?.categories?.find(item => item.cat === group.cat)
+    const activeStages = rows.filter(row => row.active).length
     return {
       cat: group.cat,
       label: group.label,
       specialization: summaryCategory?.specialization || group.nodes.find(node => node.name)?.name || group.label,
       rows,
+      activeStages,
     }
   })
 })
@@ -673,18 +674,28 @@ function masteryNodeTitle(rank, node) {
 
 // ── 配装模拟器：随所选因子实时算「词条加成汇总」 ──
 const bonuses = ref([])
-const totals = ref([])
-const displayTotals = computed(() => groupEffectTotals(totals.value))
+const dynamicTotals = ref([])
+const displayDynamicTotals = computed(() => groupEffectTotals(dynamicTotals.value))
+const dynamicSkillLedger = computed(() => [...bonuses.value].sort((left, right) =>
+  Number(right.rawLevel || 0) - Number(left.rawLevel || 0)
+  || Number(right.level || 0) - Number(left.level || 0)
+  || String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN')
+))
 const traitLevelSummary = computed(() => summarizeTraitLevels(bonuses.value))
+const currentMasterLevel = computed(() => Math.max(1, Math.min(55, Number(
+  statContext.value?.permanentGrowth?.masterProgressIndex
+  || statContext.value?.permanentGrowth?.masterLevel
+  || 1,
+))))
+const currentMasterStars = computed(() => masteryProgressStars(currentMasterLevel.value))
 const simulating = ref(false)
 let simTimer = null
 let masteryTimer = null
 let simRequestId = 0
 function clearSimulationResult() {
   bonuses.value = []
-  totals.value = []
+  dynamicTotals.value = []
   finalStats.value = null
-  weaponSkills.value = []
   selectedWeaponContext.value = null
 }
 function refreshSim() {
@@ -711,9 +722,8 @@ function refreshSim() {
       )
       if (requestId !== simRequestId) return
       bonuses.value = result?.bonuses || []
-      totals.value = result?.totals || []
+      dynamicTotals.value = result?.dynamicTotals || result?.totals || []
       finalStats.value = result?.finalStats || null
-      weaponSkills.value = result?.weaponSkills || []
       selectedWeaponContext.value = result?.weapon || null
     } catch (error) {
       if (requestId !== simRequestId) return
@@ -741,10 +751,8 @@ function refreshMasterySummary() {
   masteryTimer = setTimeout(async () => {
     const hashes = effectiveMasteryHashes.value
     if (!ctx.value?.ownerCode || !hashes.length) { masterySummary.value = null; return }
-    summarizingMastery.value = true
     try { masterySummary.value = await MasterySummarize(ctx.value.ownerCode, hashes) }
     catch { masterySummary.value = null }
-    finally { summarizingMastery.value = false }
   }, 100)
 }
 watch(() => effectiveMasteryHashes.value.slice(), refreshMasterySummary, { deep: true })
@@ -791,6 +799,7 @@ async function loadCtx() {
 	simRequestId++
 	clearTimeout(simTimer)
 	clearSimulationResult()
+	stopRuntimePanelLive()
 	simulating.value = false
   runtimePanelStats.value = null
   runtimePanelError.value = ''
@@ -984,7 +993,7 @@ const writeInvalid = computed(() => {
     || (writeGlobalSummons.value && !summonSelectionValid.value)
 })
 
-onBeforeUnmount(() => { simRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer) })
+onBeforeUnmount(() => { simRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer); stopRuntimePanelLive() })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -1186,9 +1195,9 @@ async function apply() {
             </div>
           </div>
           <div class="runtime-read-row">
-            <small v-if="statPanelMode === 'runtime' && runtimePanelStats">2.0.2 游戏已计算对象 · 当前游戏内已应用配装</small>
-            <small v-else>离线草稿近似值仅用于比较，写入游戏后可读取真实面板</small>
-            <button type="button" :disabled="runtimePanelLoading" @click="readRuntimePanel(false)">{{ runtimePanelLoading ? '读取中…' : (runtimePanelStats ? '刷新游戏回读' : '从游戏读取') }}</button>
+            <small v-if="statPanelMode === 'runtime' && runtimePanelStats">2.0.2 游戏已计算对象 · {{ runtimePanelLive ? '每 0.9 秒稳定回读' : '当前游戏内已应用配装' }}</small>
+            <small v-else>离线草稿近似值仅用于比较；连接后从游戏读取并持续刷新真实面板</small>
+            <button type="button" :class="{ active: runtimePanelLive }" :disabled="runtimePanelLoading" @click="toggleRuntimePanelLive">{{ runtimePanelLive ? '停止实时跟随' : (runtimePanelLoading ? '连接中…' : '连接并实时跟随') }}</button>
           </div>
           <small v-if="runtimePanelError" class="runtime-read-error" role="alert">{{ runtimePanelError }}</small>
           <dl class="profile-stats" aria-label="人物属性面板">
@@ -1276,10 +1285,11 @@ async function apply() {
               </article>
             </div>
           </div>
-          <div class="cap-detail-grid" aria-label="三类伤害上限明细">
+          <div class="cap-detail-grid" aria-label="四类伤害上限明细">
             <span><small>普通伤害上限</small><b>{{ formatFinalStat(finalStats?.normalDamageCap, 'signedPct') }}</b></span>
             <span><small>能力伤害上限</small><b>{{ formatFinalStat(finalStats?.abilityDamageCap, 'signedPct') }}</b></span>
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
+            <span><small>奥义连锁上限</small><b>{{ formatFinalStat(finalStats?.chainDamageCap, 'signedPct') }}</b></span>
           </div>
           <section v-if="finalStats?.defenseModel?.zones" class="defense-model" aria-label="防御分区计算">
             <header><b>防御分区</b><span>{{ finalStats.defenseModel.formula }} · 满血静态参考</span></header>
@@ -1619,17 +1629,17 @@ async function apply() {
 
         <div class="ed-field mastery-field">
           <button class="mastery-toggle" :aria-expanded="masteryExpanded" @click="masteryExpanded = !masteryExpanded">
-            <span><b>专精配置</b><small>位于因子配置下方 · 三方向 1–3 阶 + EX</small></span>
-            <em>草稿 {{ selectedMasteryHashes.length }}/{{ masteryCapacity }} · 解锁内估算 {{ effectiveMasteryHashes.length }}/{{ masteryUnlockedCapacity }}</em>
+            <span><b>专精技能配置</b><small>三方向 1–3 阶 + EX · 点击进入节点选择</small></span>
+            <span class="mastery-level-badge"><b>MLv{{ currentMasterLevel }}/55</b><small>{{ currentMasterStars || '未升星' }}</small></span>
+            <em>节点 {{ selectedMasteryHashes.length }}/50 · 当前生效 {{ effectiveMasteryHashes.length }}/{{ masteryUnlockedCapacity }}</em>
             <i>{{ masteryExpanded ? '收起' : '展开' }}</i>
           </button>
-          <div class="mastery-direction-map" aria-label="三个专精方向与阶段效果">
-            <article v-for="direction in masteryDirectionCards" :key="direction.cat" :class="['direction-card', 'cat-' + catAbbr(direction.cat), { 'is-primary-direction': displayedMasteryDirection === direction.cat }]">
-              <header><span class="cat-mark">{{ catAbbr(direction.cat) }}</span><div><small>{{ direction.label }}</small><b>{{ direction.specialization }}</b></div><em v-if="displayedMasteryDirection === direction.cat">当前主方向</em></header>
-              <div v-for="row in direction.rows" :key="row.rank" class="direction-stage" :class="{ active: row.active }">
-                <b>{{ row.label }}</b><span>{{ row.count }}/{{ row.threshold }}</span><small>{{ row.active ? '专精效果生效' : row.reason }}</small>
-                <p v-if="row.effect" class="direction-effect">{{ row.effect }}</p>
-              </div>
+          <div class="mastery-direction-strip" aria-label="三个专精方向的紧凑状态">
+            <article v-for="direction in masteryDirectionCards" :key="direction.cat" :class="['mastery-direction-pill', 'cat-' + catAbbr(direction.cat), { 'is-primary-direction': displayedMasteryDirection === direction.cat }]">
+              <span class="cat-mark">{{ catAbbr(direction.cat) }}</span>
+              <span><small>{{ direction.label }}</small><b>{{ direction.specialization }}</b></span>
+              <em>{{ direction.activeStages }}/3 阶</em>
+              <i v-if="displayedMasteryDirection === direction.cat">主方向</i>
             </article>
           </div>
 
@@ -1637,6 +1647,20 @@ async function apply() {
           <small v-if="masteryDraftOverflow" class="hint mastery-unlock-warning">越过当前角色强化解锁范围的节点仍保留在可写草稿中；离线属性暂按各阶存档顺序截取到当前容量，非法超量在游戏内的实际生效顺序待实机验证。</small>
 
           <div v-if="masteryExpanded" class="mastery-panel">
+          <section class="mastery-effect-overview" aria-label="当前专精逐阶效果">
+            <header><span><b>当前专精效果</b><small>按真实 3007 节点数量计算：1阶 3 项、2阶 6 项、3阶沿用主方向 6 项</small></span><em>{{ displayedMasteryDirection ? `主方向 · ${masteryDirectionCards.find(item => item.cat === displayedMasteryDirection)?.specialization || displayedMasteryDirection}` : '尚未形成2阶主方向' }}</em></header>
+            <div class="mastery-effect-directions">
+              <article v-for="direction in masteryDirectionCards" :key="`effect-${direction.cat}`" :class="['mastery-effect-direction', 'cat-' + catAbbr(direction.cat), { 'is-primary-direction': displayedMasteryDirection === direction.cat }]">
+                <h4><span class="cat-mark">{{ catAbbr(direction.cat) }}</span><span><small>{{ direction.label }}</small><b>{{ direction.specialization }}</b></span><em>{{ direction.activeStages }}/3 阶</em></h4>
+                <div class="mastery-stage-effect-list">
+                  <div v-for="row in direction.rows" :key="`${direction.cat}-${row.rank}`" :class="['mastery-stage-effect', { active: row.active }]">
+                    <span><b>{{ row.label }}</b><small>{{ row.count }}/{{ row.threshold }} 节点</small><em>{{ row.active ? '已生效' : row.reason || '未生效' }}</em></span>
+                    <p>{{ row.effect || '该阶段没有可显示的独立效果文本' }}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
           <div class="op-row ui-seg">
             <button class="op-btn ui-seg-btn" :class="{ 'is-on': masteryMode === 'copy' }" @click="masteryMode = 'copy'">复制现有</button>
             <button class="op-btn ui-seg-btn" :class="{ 'is-on': masteryMode === 'free' }" @click="masteryMode = 'free'" :disabled="!ctx.ownerCode">自由配置</button>
@@ -1659,7 +1683,7 @@ async function apply() {
             </div>
             <div class="rank-tabs">
               <button v-for="p in masteryPool" :key="p.rank" class="rank-tab" :class="{ on: masteryRankTab === p.rank }" :disabled="masteryStructuralRankCap(p.rank) === 0" @click="masteryRankTab = p.rank">
-                {{ p.label }}<i :class="{ full: rankPicked(p.rank) >= masteryStructuralRankCap(p.rank) }">草稿 {{ rankPicked(p.rank) }}/{{ masteryStructuralRankCap(p.rank) }} · 解锁容量 {{ masteryUnlockedRankCap(p.rank) }}</i>
+                <b>{{ p.label }}</b><i :class="{ full: rankPicked(p.rank) >= masteryStructuralRankCap(p.rank) }">节点 {{ rankPicked(p.rank) }}/{{ masteryStructuralRankCap(p.rank) }}</i><small>已解锁 {{ masteryUnlockedRankCap(p.rank) }}</small>
               </button>
             </div>
             <div v-if="['R2', 'R3'].includes(masteryRankTab)" class="mastery-rule direction-rule">
@@ -1692,7 +1716,7 @@ async function apply() {
                 </div>
               </section>
             </div>
-            <small class="hint">存档结构容量 {{ masteryStructuralRankCap('R1') }} / {{ masteryStructuralRankCap('R2') }} / {{ masteryStructuralRankCap('R3') }} / {{ masteryStructuralRankCap('EX') }}；角色强化 Lv{{ statContext.permanentGrowth?.masterLevel || 1 }} HP/攻击等固定成长已从存档读取。</small>
+            <small class="hint mastery-capacity-note">50 是专精配置节点总容量（10 / 10 / 10 / 20），不是专精等级；当前 MLv{{ currentMasterLevel }}/55 {{ currentMasterStars }}。角色强化产生的固定 HP、攻击等基础成长只保留在左侧人物属性。</small>
           </template>
           </div>
         </div>
@@ -1701,64 +1725,43 @@ async function apply() {
       </main>
 
       <aside class="editor-column result-sidebar">
-        <section class="result-card result-overview ui-card ui-panel is-compact">
-          <header><strong>角色效果总计</strong><span>随当前槽实时更新</span></header>
-          <div class="result-metrics">
-            <div><b>{{ configuredFactorCount }}</b><span>/12 因子</span></div>
-            <div><b>{{ form.skillHashes.length }}</b><span>/4 技能</span></div>
-            <div><b>{{ effectiveMasteryHashes.length }}</b><span>/{{ masteryUnlockedCapacity }} 解锁内估算</span></div>
-            <div><b>{{ selectedSummons.filter(Boolean).length }}</b><span>/4 召唤</span></div>
-          </div>
-        </section>
-
-        <section class="result-card skill-summary-card ui-card ui-panel is-compact">
-          <header><strong>技能效果</strong><span>{{ selectedSkills.length }} 主动 · {{ weaponSkills.length }} 武器 · {{ selectedMasteryDetails.length }} 专精</span></header>
-          <div class="skill-chips">
-            <span v-for="(skill, index) in selectedSkills" :key="skill.hash"><b>{{ index + 1 }}</b><img :src="skillIcon(skill)" alt="" />{{ skill.name || '未收录技能' }}</span>
-            <i v-if="!selectedSkills.length">未配置主动技能</i>
-          </div>
-          <div class="weapon-skill-block">
-            <div class="weapon-skill-title"><b>武器技能</b><span>{{ selectedWeaponContext?.name || '未选择武器' }}</span></div>
-            <div v-if="selectedWeaponContext?.wrightstone" class="wrightstone-audit" aria-label="武炼结晶有效词条">
-              <div class="wrightstone-audit-head">
-                <span><b>武炼结晶 · {{ selectedWeaponContext.wrightstone.name || '未收录名称' }}</b><small>{{ selectedWeaponContext.wrightstone.hash }}</small></span>
-                <em v-if="selectedWeaponContext.wrightstone.runtimeObserved">游戏运行时 · {{ selectedWeaponContext.wrightstone.stableReads }} 次稳定读取</em>
-                <em v-else>存档候选 · 写入或重载后需游戏复核</em>
-              </div>
-              <article v-for="trait in selectedWeaponContext.wrightstone.traits" :key="`${trait.index}-${trait.hash}`">
-                <span><b>{{ trait.name || '未收录词条' }}</b><small>{{ trait.hash }}</small></span>
-                <strong>结晶 Lv{{ trait.level }}</strong>
-                <template v-if="mergedTraitBonus(trait)">
-                  <em>全来源合并 Lv{{ mergedTraitBonus(trait).rawLevel }}</em>
-                  <p>{{ mergedTraitBonus(trait).effect }}</p>
-                </template>
-              </article>
-            </div>
-            <small v-else-if="selectedWeaponContext" class="hint">当前武器没有可验证的武炼结晶；不会凭武器类型补假数据。</small>
-            <div v-if="weaponSkills.length" class="weapon-skill-list">
-              <article v-for="skill in weaponSkills" :key="`${skill.slot}-${skill.traitHash}`">
-                <span><b>{{ skill.name || '未收录武器技能' }}</b><em>{{ formatWeaponSkillLevel(skill) }}</em></span>
-                <p class="weapon-skill-effect">{{ skill.effect || '暂无可验证效果说明' }}</p>
-                <small v-if="skill.runtimeObserved">有效等级 · 游戏运行时 {{ skill.stableReads }} 次稳定读取；静态表 Lv{{ skill.staticLevel }}</small>
-                <small v-if="skill.unlockCondition">解锁阶段 · {{ skill.unlockCondition }}</small>
-                <small>来源 · {{ skill.sourceWeapon || '未收录武器' }}</small>
-              </article>
-            </div>
-            <small v-else class="hint">当前武器没有可解析的武器技能。</small>
-          </div>
-        </section>
-
-        <section class="result-card bonus-summary-card ui-card ui-panel is-compact">
-          <header><strong>总计加成</strong><span>{{ simulating ? '计算中…' : displayTotals.length + ' 类' }}</span></header>
-          <p class="calculation-scope-note">人物属性以存档中的角色基础值、命运篇章与角色强化为固定基准；加成明细默认只汇总可随时更换的武器（含武器技能）、因子、专精、角色上限突破与召唤石，不含任务、队伍、临时状态及战斗内条件加成。</p>
+        <section class="result-card dynamic-skill-card ui-card ui-panel is-compact">
+          <header><strong>动态技能等级</strong><span>{{ simulating ? '计算中…' : `${dynamicSkillLedger.length} 项 · 按合并等级排序` }}</span></header>
+          <p class="calculation-scope-note">因子技能、武器技能、武器祝福与召唤石技能按同名效果合并；展开任一技能可查看当前有效等级的实际加成与全部来源。</p>
           <div v-if="bonuses.length" class="trait-level-ledger">
             <span><small>有效</small><b>{{ traitLevelSummary.effective }}</b></span>
             <span><small>投入</small><b>{{ traitLevelSummary.invested }}</b></span>
             <span v-if="traitLevelSummary.overflow > 0" class="overflow"><small>溢出</small><b>+{{ traitLevelSummary.overflow }}</b><em>{{ traitLevelSummary.cappedCount }} 项</em></span>
           </div>
-          <div v-if="displayTotals.length" class="effect-total-list">
-            <div v-for="total in displayTotals" :key="total.key" class="effect-total-row" :class="catClass(total.catLabel)">
-              <span><b>{{ total.label }}</b><small>{{ total.sources.join(' · ') }}</small></span>
+          <div v-if="dynamicSkillLedger.length" class="dynamic-skill-list">
+            <details v-for="bonus in dynamicSkillLedger" :key="bonus.traitId" class="dynamic-skill-entry" :class="catClass(bonus.catLabel)">
+              <summary>
+                <span class="dynamic-skill-icon"><img v-if="traitIcon(bonus.name, '', bonus.traitId)" :src="traitIcon(bonus.name, '', bonus.traitId)" alt="" /><i v-else>◆</i></span>
+                <span class="dynamic-skill-title"><b>{{ bonus.name }}</b><small>{{ bonus.catLabel }} · {{ bonus.sources?.length || 0 }} 个来源</small></span>
+                <span class="dynamic-skill-level"><b>Lv{{ bonus.level }}</b><small v-if="bonus.rawLevel !== bonus.level">投入 {{ bonus.rawLevel }}</small><small v-else>有效等级</small></span>
+              </summary>
+              <div class="dynamic-skill-body">
+                <p class="dynamic-skill-effect">{{ bonus.effect || '当前等级暂无可验证的数值说明' }}</p>
+                <div v-if="bonus.sources?.length" class="dynamic-source-list" aria-label="技能来源">
+                  <span v-for="source in bonus.sources" :key="source">{{ source }}</span>
+                </div>
+                <small v-if="bonus.warning" class="dynamic-skill-warning">{{ bonus.warning }}</small>
+                <small v-if="bonus.capped" class="dynamic-skill-cap">已按技能上限 Lv{{ bonus.maxLevel }} 计算，超出的投入等级不再增加效果。</small>
+              </div>
+            </details>
+          </div>
+          <small v-else-if="!simulating" class="hint">当前配置没有可计算的动态技能。</small>
+        </section>
+
+        <section class="result-card dynamic-total-card ui-card ui-panel is-compact">
+          <header><strong>动态加成汇总</strong><span>{{ simulating ? '计算中…' : displayDynamicTotals.length + ' 类' }}</span></header>
+          <p class="calculation-scope-note">只汇总会随当前配装变化的武器数值、因子、武器技能、祝福、专精与召唤石效果。角色任务、角色强化、命运篇章和上限突破等固定基础成长保留在左侧，不在这里重复计算。</p>
+          <div v-if="displayDynamicTotals.length" class="effect-total-list">
+            <div v-for="total in displayDynamicTotals" :key="total.key" class="effect-total-row" :class="catClass(total.catLabel)">
+              <span class="effect-total-copy">
+                <b>{{ total.label }}</b>
+                <small class="effect-total-sources"><i>关联</i><span v-for="source in total.sources" :key="source">{{ source }}</span></small>
+              </span>
               <strong class="effect-total-values">
                 <span v-for="part in total.parts" :key="part.unit">
                   <small v-if="total.parts.length > 1">{{ effectUnitLabel(part.unit) }}</small>
@@ -1768,48 +1771,6 @@ async function apply() {
             </div>
           </div>
           <small v-else-if="!simulating" class="hint">当前配置没有可合并的数值加成。</small>
-          <details v-if="bonuses.length" class="trait-detail-disclosure ui-disclosure">
-            <summary>查看词条等级与完整效果（{{ bonuses.length }}）</summary>
-            <div class="sim-list">
-              <div v-for="b in bonuses" :key="b.traitId" class="sim-row" :class="catClass(b.catLabel)">
-                <span class="sim-name">{{ b.name }}<i v-if="b.capped" class="sim-cap" title="已达词条上限">封顶</i></span>
-                <span class="sim-lv">Lv{{ b.level }}<small v-if="b.rawLevel !== b.level">/{{ b.rawLevel }}</small></span>
-                <span class="sim-eff">{{ b.effect }}</span>
-              </div>
-            </div>
-          </details>
-        </section>
-
-        <section class="result-card mastery-summary-card ui-card ui-panel is-compact">
-          <header><strong>专精解锁内估算</strong><span>{{ summarizingMastery ? '解析中…' : (masterySummary?.primaryLabel || '未形成2阶主方向') }}</span></header>
-          <div v-if="masterySummary" class="mastery-result">
-            <article v-for="rank in masterySummary.ranks" :key="rank.rank" class="mastery-result-rank">
-              <div class="rank-line"><b>{{ rank.label }}</b><em>{{ rank.count }}/{{ masteryUnlockedRankCap(rank.rank) }}</em></div>
-              <template v-if="rank.rank !== 'EX'">
-                <div v-for="cat in rank.categories" :key="cat.cat" class="mastery-result-cat" :class="{ active: cat.active }">
-                  <span>{{ cat.specialization || cat.label }}</span>
-                  <b>{{ cat.count }}/{{ cat.threshold }}</b>
-                  <i>{{ cat.active ? '生效' : cat.reason }}</i>
-                  <p v-if="cat.effect">{{ cat.effect }}</p>
-                </div>
-              </template>
-              <div v-else class="ex-result">
-                EX阶专精技能 {{ rank.count }}/{{ masteryUnlockedRankCap(rank.rank) }} · 按三方向归类，不构成第四专精
-              </div>
-            </article>
-          </div>
-          <small v-else class="hint">当前没有可解析的专精节点。</small>
-          <details v-if="selectedMasteryDetails.length" class="mastery-detail-disclosure ui-disclosure">
-            <summary>查看已选专精子词条（{{ selectedMasteryDetails.length }}）</summary>
-            <div class="mastery-effect-list">
-              <div v-for="node in selectedMasteryDetails" :key="node.hash" class="mastery-effect">
-                <span>{{ node.rankLabel }} · {{ node.catLabel }}</span>
-                <b v-if="node.name">{{ node.name }}</b>
-                <p>{{ node.desc }}</p>
-                <small v-if="node.rawDesc">解包原始文本：{{ node.rawDesc }} · 显示尺度 ×{{ node.displayScale }} · {{ node.evidence }}</small>
-              </div>
-            </div>
-          </details>
         </section>
 
       </aside>
@@ -1822,7 +1783,7 @@ async function apply() {
 
 <style scoped>
 .loadout-editor { width:100%; min-width:0; height:100%; min-height:0; --editor-scale:1; color:var(--text-secondary); font-family:var(--font-ui,"Microsoft YaHei UI","Microsoft YaHei",sans-serif); font-size:var(--fs-base); font-weight:var(--fw-normal); line-height:var(--lh-normal); container:loadout-editor / inline-size; }
-.editor-layout { width:100%; height:100%; min-height:0; display:grid; grid-template-columns:clamp(250px,20vw,360px) minmax(540px,1fr) clamp(280px,22vw,400px); justify-content:stretch; gap:var(--space-4); align-items:stretch; }
+.editor-layout { width:100%; height:100%; min-height:0; display:grid; grid-template-columns:clamp(240px,17vw,310px) minmax(500px,1fr) clamp(380px,30vw,520px); justify-content:stretch; gap:var(--space-4); align-items:stretch; }
 .editor-column { min-width:0; min-height:0; overflow:auto; scrollbar-gutter:stable; padding:0; border:1px solid var(--line); border-radius:10px; background:rgba(255,253,247,.94); box-shadow:0 4px 14px rgba(61,47,29,.06); }
 .setup-column, .build-column { display:flex; flex-direction:column; gap:0; }
 .setup-column > * + *,
@@ -1845,6 +1806,7 @@ async function apply() {
 .runtime-read-row small { min-width:0; color:var(--text-muted); font-size:calc(12px * var(--editor-scale)); line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
 .runtime-read-row button { min-height:26px; padding:2px 7px; border:1px solid var(--line-gold); border-radius:5px; background:rgba(255,255,255,.64); color:#765126; font-size:calc(12px * var(--editor-scale)); cursor:pointer; white-space:nowrap; }
 .runtime-read-row button:disabled { opacity:.5; cursor:wait; }
+.runtime-read-row button.active { background:#5f8067; border-color:#5f8067; color:#fff; }
 .runtime-read-error { display:block; margin:-1px 0 6px; color:var(--red); font-size:calc(12px * var(--editor-scale)); line-height:1.4; overflow-wrap:anywhere; }
 .profile-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin:0; }
 .profile-stat { min-width:0; display:flex; flex-direction:column; padding:5px 7px; border-left:2px solid #b5925b; background:rgba(139,103,55,.06); }
@@ -1892,7 +1854,7 @@ async function apply() {
 .panel-base-grid > .baseline-total { border-color:rgba(143,97,39,.34); background:rgba(220,188,122,.14); }
 .panel-base-grid small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
 .panel-base-grid b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
-.cap-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin-top:4px; }
+.cap-detail-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; margin-top:4px; }
 .cap-detail-grid > span { min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:2px; padding:5px 4px; border:1px solid rgba(162,63,101,.16); border-radius:5px; background:rgba(162,63,101,.045); text-align:center; }
 .cap-detail-grid small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.3; }
 .cap-detail-grid b { color:#a23f65; font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -2037,111 +1999,71 @@ async function apply() {
 .apply-btn { min-height:34px; padding:0 18px; border:1px solid #765126; border-radius:6px; background:#8b6737; color:#fff9e9; font-size:.8rem; font-weight:700; cursor:pointer; }
 .apply-btn:hover:not(:disabled) { background:#76552d; }
 .apply-btn:disabled { opacity:.45; cursor:not-allowed; }
-/* 右侧角色总计：始终保留因子加成、技能与专精效果 */
-.result-sidebar { display:flex; flex-direction:column; gap:0; }
-.result-overview { order:0; }
-.skill-summary-card { order:1; }
-.bonus-summary-card { order:2; }
-.mastery-summary-card { order:3; }
+/* 右栏只展示会随配装变化的技能等级与数值汇总。 */
+.result-sidebar { display:flex; flex-direction:column; gap:0; overflow-x:hidden; }
 .result-card { min-width:0; padding:14px; border:0; border-radius:0; background:transparent; box-shadow:none; }
-.result-card + .result-card { border-top:1px solid var(--line-soft); }
+.result-card + .result-card { border-top:1px solid rgba(118,81,38,.24); }
 .result-card > header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
-.result-card > header strong { font-size:var(--fs-sm); color:var(--text-primary); }
-.result-card > header span { font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); text-align:right; }
-.result-overview { background:rgba(139,103,55,.055); }
-.result-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
-.result-metrics div { display:flex; align-items:baseline; justify-content:center; gap:2px; padding:7px 4px; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); }
-.result-metrics b { font-size:1rem; color:var(--gold); font-variant-numeric:tabular-nums; }
-.result-metrics span { font-size:var(--fs-xs); color:var(--text-muted); }
+.result-card > header strong { color:#3f3020; font-size:var(--fs-sm); }
+.result-card > header span { color:#79674f; font-size:calc(11px * var(--editor-scale)); text-align:right; }
+.dynamic-skill-card { background:linear-gradient(180deg,rgba(139,103,55,.09),rgba(255,255,255,0) 150px); }
 .trait-level-ledger { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin:0 0 8px; }
-.trait-level-ledger > span { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; gap:4px; padding:5px 7px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.42); }
-.trait-level-ledger small { color:var(--text-muted); font-size:var(--fs-xs); }
+.trait-level-ledger > span { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; gap:4px; padding:5px 7px; border:1px solid rgba(118,81,38,.2); border-radius:5px; background:rgba(255,253,247,.78); }
+.trait-level-ledger small { color:#79674f; font-size:var(--fs-xs); }
 .trait-level-ledger b { color:#765126; font-size:calc(12px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
 .trait-level-ledger .overflow { grid-template-columns:minmax(0,1fr) auto; border-color:rgba(174,94,58,.25); background:rgba(174,94,58,.055); }
 .trait-level-ledger .overflow b { color:#a45735; }
 .trait-level-ledger .overflow em { grid-column:1/-1; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; line-height:1.25; }
+.dynamic-skill-list { width:100%; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.dynamic-skill-entry { width:100%; max-width:100%; min-width:0; overflow:hidden; border:1px solid rgba(118,81,38,.2); border-left:3px solid #9c8566; border-radius:7px; background:rgba(255,253,247,.8); }
+.dynamic-skill-entry.atk { border-left-color:var(--danger); }
+.dynamic-skill-entry.base { border-left-color:var(--accent); }
+.dynamic-skill-entry.def { border-left-color:var(--info); }
+.dynamic-skill-entry.sup { border-left-color:var(--success); }
+.dynamic-skill-entry summary { width:100%; max-width:100%; min-width:0; display:grid; grid-template-columns:30px minmax(0,1fr) minmax(44px,auto) 14px; gap:6px; align-items:center; padding:7px 7px; color:#3f3020; cursor:pointer; list-style:none; overflow:hidden; }
+.dynamic-skill-entry summary > * { min-width:0; }
+.dynamic-skill-entry summary::-webkit-details-marker { display:none; }
+.dynamic-skill-entry summary::after { content:'＋'; grid-column:4; grid-row:1; align-self:center; justify-self:center; color:#8b6737; font-size:calc(11px * var(--editor-scale)); }
+.dynamic-skill-entry[open] summary::after { content:'－'; }
+.dynamic-skill-icon { width:30px; height:30px; display:grid; place-items:center; overflow:hidden; border:1px solid rgba(118,81,38,.25); border-radius:6px; background:#f4ead6; color:#8b6737; }
+.dynamic-skill-icon img { width:100%; height:100%; object-fit:cover; }
+.dynamic-skill-icon i { font-style:normal; }
+.dynamic-skill-title { min-width:0; display:flex; flex-direction:column; gap:1px; padding-right:6px; }
+.dynamic-skill-title b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#3f3020; font-size:calc(12px * var(--editor-scale)); }
+.dynamic-skill-title small { color:#79674f; }
+.dynamic-skill-level { grid-column:3; min-width:44px; max-width:62px; display:flex; flex-direction:column; align-items:flex-end; overflow:hidden; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dynamic-skill-level b { color:#765126; font-size:calc(13px * var(--editor-scale)); }
+.dynamic-skill-level small { color:#8a7962; }
+.dynamic-skill-body { display:flex; flex-direction:column; gap:6px; padding:8px 9px 9px 47px; border-top:1px dashed rgba(118,81,38,.22); background:rgba(246,238,220,.66); }
+.dynamic-skill-effect { margin:0; color:#443729; font-size:calc(12px * var(--editor-scale)); line-height:1.5; white-space:pre-line; overflow-wrap:anywhere; }
+.dynamic-source-list { display:flex; flex-wrap:wrap; gap:4px; }
+.dynamic-source-list span { padding:2px 6px; border:1px solid rgba(118,81,38,.22); border-radius:9px; background:rgba(255,255,255,.65); color:#68553e; font-size:calc(11px * var(--editor-scale)); }
+.dynamic-skill-warning { color:var(--warning-ink); line-height:1.4; }
+.dynamic-skill-cap { color:#9d4d31; font-weight:600; }
 .effect-total-list { display:flex; flex-direction:column; gap:5px; }
-.effect-total-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:center; padding:7px 8px; border:1px solid var(--border-soft); border-left:3px solid var(--border-soft); border-radius:6px; background:var(--surface-card-pop); }
+.effect-total-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:center; padding:8px 9px; border:1px solid rgba(118,81,38,.19); border-left:3px solid var(--border-soft); border-radius:6px; background:rgba(255,253,247,.82); }
 .effect-total-row.atk { border-left-color:var(--danger); }
 .effect-total-row.base { border-left-color:var(--accent); }
 .effect-total-row.def { border-left-color:var(--info); }
 .effect-total-row.sup { border-left-color:var(--success); }
-.effect-total-row > span { min-width:0; display:flex; flex-direction:column; gap:1px; }
-.effect-total-row > span b { white-space:normal; overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
-.effect-total-row > span small { white-space:normal; overflow-wrap:anywhere; color:var(--text-muted); line-height:1.4; }
+.effect-total-copy { min-width:0; display:flex; flex-direction:column; gap:5px; }
+.effect-total-copy > b { white-space:normal; overflow-wrap:anywhere; color:#3f3020; font-size:calc(12px * var(--editor-scale)); }
+.effect-total-sources { min-width:0; display:flex; flex-wrap:wrap; gap:4px; align-items:center; color:#79674f; line-height:1.35; }
+.effect-total-sources > i { color:#8b6737; font-style:normal; font-weight:700; }
+.effect-total-sources > span { max-width:100%; padding:1px 5px; border:1px solid rgba(118,81,38,.18); border-radius:8px; background:rgba(139,103,55,.055); overflow-wrap:anywhere; }
 .effect-total-values { display:flex; flex-direction:column; align-items:flex-end; gap:2px; color:#765126; font-size:calc(15px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .effect-total-values > span { display:flex; align-items:baseline; justify-content:flex-end; gap:5px; }
 .effect-total-values small { color:var(--text-muted); font-size:var(--fs-xs); font-weight:500; }
 .effect-total-values b { color:#765126; font-size:inherit; }
-.trait-detail-disclosure { margin-top:8px; border-top:1px solid var(--line-soft); padding-top:7px; }
-.trait-detail-disclosure summary { color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
-.trait-detail-disclosure[open] summary { margin-bottom:7px; }
-.sim-list { display:flex; flex-direction:column; gap:2px; border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-card-pop); padding:4px; }
-.sim-row { display:grid; grid-template-columns:minmax(5.5em,.8fr) 3.5em minmax(0,1.5fr); gap:7px; align-items:baseline; padding:4px 7px; border-radius:var(--radius-sm); font-size:calc(12px * var(--editor-scale)); border-left:3px solid var(--border-soft); }
-.sim-row.atk { border-left-color:var(--danger); }
-.sim-row.base { border-left-color:var(--accent); }
-.sim-row.def { border-left-color:var(--info); }
-.sim-row.sup { border-left-color:var(--success); }
-.sim-row:nth-child(even) { background:var(--surface-row); }
-.sim-name { min-width:0; font-weight:600; color:var(--text-primary); white-space:normal; overflow-wrap:anywhere; }
-.sim-cap { font-style:normal; margin-left:4px; font-size:var(--fs-xs); color:var(--warning-ink); }
-.sim-lv { color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
-.sim-lv small { color:var(--text-muted); }
-.sim-eff { color:var(--text-secondary); white-space:pre-line; line-height:1.4; }
-.skill-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
-.skill-chips span { padding:3px 8px; border:1px solid var(--line-gold); border-radius:12px; background:rgba(139,103,55,.1); color:var(--text-primary); font-size:var(--fs-xs); }
-.skill-chips i { font-style:normal; color:var(--text-muted); font-size:var(--fs-xs); }
-.weapon-skill-block { display:flex; flex-direction:column; gap:6px; padding-top:8px; border-top:1px solid var(--line-soft); }
-.weapon-skill-title { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
-.weapon-skill-title b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
-.weapon-skill-title span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:var(--fs-xs); }
-.weapon-skill-list { display:flex; flex-direction:column; gap:5px; }
-.weapon-skill-list article { padding:7px 8px; border:1px solid var(--line-soft); border-left:3px solid #8b6737; border-radius:6px; background:rgba(139,103,55,.045); }
-.weapon-skill-list article > span { display:flex; align-items:baseline; justify-content:space-between; gap:7px; }
-.weapon-skill-list article b { min-width:0; overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); }
-.weapon-skill-list article em { color:#765126; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; white-space:nowrap; }
-.weapon-skill-list article p { margin:3px 0 0; color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.45; white-space:pre-line; }
-.weapon-skill-list article small { display:block; margin-top:3px; color:var(--text-muted); font-size:var(--fs-xs); }
-.wrightstone-audit { display:flex; flex-direction:column; gap:4px; padding:7px; border:1px solid rgba(100,68,137,.22); border-radius:7px; background:rgba(100,68,137,.045); }
-.wrightstone-audit-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; padding-bottom:4px; border-bottom:1px solid rgba(100,68,137,.14); }
-.wrightstone-audit-head > span { min-width:0; display:flex; flex-direction:column; }
-.wrightstone-audit-head b { color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); overflow-wrap:anywhere; }
-.wrightstone-audit-head small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-family:ui-monospace,monospace; }
-.wrightstone-audit-head em { color:#684489; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; }
-.wrightstone-audit article { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:2px 7px; align-items:center; padding:5px 6px; border-left:3px solid #8061a0; border-radius:5px; background:rgba(255,255,255,.52); }
-.wrightstone-audit article > span { min-width:0; display:flex; flex-direction:column; }
-.wrightstone-audit article b { overflow-wrap:anywhere; color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
-.wrightstone-audit article small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-family:ui-monospace,monospace; }
-.wrightstone-audit article strong, .wrightstone-audit article em { white-space:nowrap; color:#684489; font-size:calc(11px * var(--editor-scale)); font-style:normal; }
-.wrightstone-audit article p { grid-column:1/-1; margin:2px 0 0; color:var(--text-secondary); font-size:calc(11px * var(--editor-scale)); line-height:1.4; white-space:pre-line; }
-.calculation-scope-note { margin:0 0 9px; padding:8px 9px; border:1px solid rgba(139,103,55,.18); border-radius:6px; background:rgba(139,103,55,.05); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.55; }
-.mastery-effect-list { display:flex; flex-direction:column; gap:4px; padding-right:2px; }
-.mastery-effect { padding:6px 7px; border-left:3px solid var(--line-gold); border-radius:4px; background:var(--surface-row); }
-.mastery-effect > span { display:block; font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
-.mastery-effect > b { display:block; margin-top:2px; font-size:var(--fs-xs); color:var(--gold); }
-.mastery-effect > p { margin:2px 0 0; font-size:var(--fs-xs); line-height:1.4; color:var(--text-secondary); }
-.mastery-effect > small { display:block; margin-top:3px; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); line-height:1.4; }
-.mastery-result { display:flex; flex-direction:column; gap:7px; }
-.mastery-result-rank { padding-top:6px; border-top:1px dashed var(--line-soft); }
-.mastery-result-rank:first-child { padding-top:0; border-top:0; }
-.rank-line { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
-.rank-line b { font-size:calc(12px * var(--editor-scale)); color:var(--text-primary); }
-.rank-line em { font-style:normal; font-size:calc(11px * var(--editor-scale)); color:var(--gold); font-variant-numeric:tabular-nums; }
-.mastery-result-cat { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1px 7px; padding:3px 5px; border-radius:4px; opacity:.68; }
-.mastery-result-cat.active { opacity:1; background:rgba(63,125,92,.1); }
-.mastery-result-cat span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-xs); color:var(--text-secondary); }
-.mastery-result-cat b { font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
-.mastery-result-cat i { grid-column:1/-1; font-style:normal; font-size:calc(11px * var(--editor-scale)); color:var(--text-muted); }
-.mastery-result-cat.active i { color:#3f7d5c; font-weight:600; }
-.ex-result { padding:5px 6px; border-radius:4px; background:rgba(139,103,55,.09); font-size:calc(11px * var(--editor-scale)); line-height:1.45; color:var(--text-secondary); }
-.mastery-detail-disclosure { margin-top:8px; border-top:1px solid var(--line-soft); padding-top:7px; }
-.mastery-detail-disclosure summary { color:#765126; font-size:calc(12px * var(--editor-scale)); font-weight:600; cursor:pointer; }
-.mastery-detail-disclosure[open] summary { margin-bottom:7px; }
+.calculation-scope-note { margin:0 0 9px; padding:8px 9px; border:1px solid rgba(118,81,38,.2); border-radius:6px; background:rgba(139,103,55,.065); color:#685a48; font-size:var(--fs-xs); line-height:1.55; }
 /* 专精自由配置 */
-.rank-tabs { display:flex; flex-wrap:wrap; gap:6px; }
-.rank-tab { min-height:28px; padding:0 12px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-card-pop); color:var(--text-secondary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
-.rank-tab.on { background:var(--selected-bg); border-color:var(--selected-border); color:var(--selected-fg); }
-.rank-tab i { font-style:normal; margin-left:5px; font-size:var(--fs-xs); opacity:.8; }
+.rank-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.rank-tab { min-height:44px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1px 7px; align-items:center; padding:5px 9px; border:1px solid rgba(118,81,38,.28); border-radius:6px; background:#fffdf7; color:#594937; text-align:left; cursor:pointer; user-select:none; }
+.rank-tab.on { background:linear-gradient(145deg,#8f6b3d,#765126); border-color:#67451f; color:#fff9e9; box-shadow:0 2px 7px rgba(77,48,20,.16); }
+.rank-tab b { color:inherit; font-size:calc(12px * var(--editor-scale)); }
+.rank-tab i { justify-self:end; color:inherit; font-size:calc(11px * var(--editor-scale)); font-style:normal; opacity:.9; }
+.rank-tab small { grid-column:1/-1; color:#83705a; font-size:calc(11px * var(--editor-scale)); }
+.rank-tab.on small { color:#f2dfbf; }
 .rank-tab i.full { color:var(--success); font-weight:600; }
 .rank-tab.on i.full { color:#bfe6cd; }
 .mastery-unlock-warning { display:block; margin:6px 10px; padding:7px 9px; border-left:3px solid var(--warning); border-radius:var(--radius-sm); background:var(--warning-bg); color:var(--warning-ink); font-weight:var(--fw-bold); line-height:var(--lh-normal); overflow-wrap:anywhere; }
@@ -2193,10 +2115,7 @@ async function apply() {
 .loadout-editor .source-badge,
 .loadout-editor .owner,
 .loadout-editor .result-card > header span,
-.loadout-editor .trait-line,
-.loadout-editor .sim-row,
-.loadout-editor .mastery-result-cat span,
-.loadout-editor .mastery-effect > p { font-size:calc(12px * var(--editor-scale)); }
+.loadout-editor .trait-line { font-size:calc(12px * var(--editor-scale)); }
 .loadout-editor button:focus-visible,
 .loadout-editor input:focus-visible,
 .loadout-editor select:focus-visible { outline:2px solid #a66b20; outline-offset:2px; }
@@ -2275,39 +2194,57 @@ async function apply() {
 .constructor-preview > button { min-height:34px; padding:0 13px; border:1px solid #765126; border-radius:6px; background:#8b6737; color:#fff9e9; cursor:pointer; }
 .constructor-preview > button:disabled { opacity:.48; cursor:not-allowed; }
 
-.mastery-field { padding:0; overflow:hidden; }
-.mastery-toggle { width:100%; min-height:54px; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:9px; align-items:center; padding:9px 11px; border:0; background:rgba(139,103,55,.1); color:var(--text-primary); text-align:left; cursor:pointer; }
-.mastery-direction-map { margin:0 10px 10px; }
-.mastery-toggle > span { display:flex; flex-direction:column; }
-.mastery-toggle small { color:var(--text-muted); font-weight:400; }
-.mastery-toggle em { font-style:normal; color:var(--gold); font-weight:700; font-variant-numeric:tabular-nums; }
-.mastery-toggle i { min-width:42px; font-style:normal; color:#765126; text-align:right; }
+.mastery-field { padding:0; overflow:hidden; border-color:rgba(118,81,38,.34); background:linear-gradient(180deg,#fbf2df,#f7ead2); }
+.mastery-toggle { width:100%; min-height:58px; display:grid; grid-template-columns:minmax(150px,1fr) auto auto auto; gap:10px; align-items:center; padding:8px 11px; border:0; border-bottom:1px solid rgba(118,81,38,.16); background:linear-gradient(110deg,rgba(118,81,38,.17),rgba(255,255,255,.2)); color:#3f3020; text-align:left; cursor:pointer; }
+.mastery-toggle > span:first-child { display:flex; flex-direction:column; }
+.mastery-toggle small { color:#79674f; font-weight:400; }
+.mastery-level-badge { min-width:68px; display:flex; flex-direction:column; align-items:center; padding:4px 7px; border:1px solid rgba(118,81,38,.28); border-radius:6px; background:rgba(255,253,247,.7); }
+.mastery-level-badge b { color:#765126; font-size:calc(12px * var(--editor-scale)) !important; white-space:nowrap; }
+.mastery-level-badge small { min-height:1em; color:#a66b20; font-size:calc(11px * var(--editor-scale)); letter-spacing:1px; }
+.mastery-toggle em { color:#765126; font-style:normal; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mastery-toggle i { min-width:38px; color:#67451f; font-style:normal; font-weight:600; text-align:right; }
 .mastery-panel { display:flex; flex-direction:column; gap:9px; padding:10px; border-top:1px solid var(--line-soft); }
 .mastery-panel .op-row { flex:0 0 auto; }
-.mastery-direction-map { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-.direction-card { min-width:0; padding:8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-solid); }
-.direction-card.is-primary-direction { border-color:#3f7d5c; box-shadow:inset 0 0 0 1px rgba(63,125,92,.14); }
-.direction-card > header { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px; align-items:center; margin-bottom:6px; }
-.direction-card .cat-mark { width:22px; height:22px; display:grid; place-items:center; border-radius:5px; color:#fff; font-weight:700; }
-.direction-card.cat-攻 .cat-mark { background:var(--danger); }
-.direction-card.cat-防 .cat-mark { background:var(--info); }
-.direction-card.cat-界 .cat-mark { background:var(--accent); }
-.direction-card > header div { min-width:0; display:flex; flex-direction:column; }
-.direction-card > header small { color:var(--text-muted); }
-.direction-card > header b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); }
-.direction-card > header em { grid-column:1/-1; padding:2px 5px; border-radius:4px; background:rgba(63,125,92,.1); color:#3f7d5c; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:600; }
-.direction-stage { display:grid; grid-template-columns:auto auto; gap:1px 5px; padding:4px 0; border-top:1px dashed var(--line-soft); opacity:.72; }
-.direction-stage.active { opacity:1; }
-.direction-stage > b { color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); }
-.direction-stage > span { margin-left:auto; color:var(--gold); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; }
-.direction-stage > small { grid-column:1/-1; min-height:2.8em; color:var(--text-muted); line-height:1.35; }
-.direction-stage.active > small { color:#3f7d5c; font-weight:600; }
-.direction-effect { grid-column:1/-1; margin:2px 0 0; padding-top:4px; border-top:1px dotted var(--line-soft); color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.45; overflow-wrap:anywhere; }
-.mastery-result-cat p { grid-column:1/-1; margin:2px 0 0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.45; overflow-wrap:anywhere; }
-
-.loadout-editor .skill-chips span { display:flex; align-items:center; gap:5px; padding:4px 7px; }
-.loadout-editor .skill-chips span b { width:16px; height:16px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:white; font-size:var(--fs-xs); }
-.loadout-editor .skill-chips img { width:24px; height:24px; border-radius:4px; object-fit:cover; }
+.mastery-effect-overview { display:flex; flex-direction:column; gap:7px; padding:9px; border:1px solid rgba(118,81,38,.24); border-radius:8px; background:linear-gradient(135deg,rgba(255,253,247,.92),rgba(244,232,207,.56)); }
+.mastery-effect-overview > header { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.mastery-effect-overview > header > span { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.mastery-effect-overview > header b { color:#3f3020; }
+.mastery-effect-overview > header small { color:#79674f; line-height:1.45; }
+.mastery-effect-overview > header > em { flex:0 0 auto; color:#3f7d5c; font-style:normal; font-weight:700; }
+.mastery-effect-directions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.mastery-effect-direction { min-width:0; overflow:hidden; border:1px solid rgba(118,81,38,.18); border-top:3px solid #9c8566; border-radius:7px; background:rgba(255,253,247,.84); }
+.mastery-effect-direction.cat-攻 { border-top-color:var(--danger); }
+.mastery-effect-direction.cat-防 { border-top-color:var(--info); }
+.mastery-effect-direction.cat-界 { border-top-color:var(--accent); }
+.mastery-effect-direction.is-primary-direction { box-shadow:0 0 0 2px rgba(63,125,92,.16); }
+.mastery-effect-direction h4 { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:6px; align-items:center; margin:0; padding:7px; border-bottom:1px solid rgba(118,81,38,.14); }
+.mastery-effect-direction h4 > span:nth-child(2) { min-width:0; display:flex; flex-direction:column; }
+.mastery-effect-direction h4 small { color:#79674f; font-weight:400; }
+.mastery-effect-direction h4 b { overflow:hidden; color:#3f3020; text-overflow:ellipsis; white-space:nowrap; }
+.mastery-effect-direction h4 em { color:#765126; font-style:normal; white-space:nowrap; }
+.mastery-stage-effect-list { display:flex; flex-direction:column; }
+.mastery-stage-effect { padding:7px; border-top:1px dashed rgba(118,81,38,.13); opacity:.68; }
+.mastery-stage-effect:first-child { border-top:0; }
+.mastery-stage-effect.active { opacity:1; background:rgba(63,125,92,.06); }
+.mastery-stage-effect > span { display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:5px; align-items:center; }
+.mastery-stage-effect > span b { color:#523c24; }
+.mastery-stage-effect > span small { color:#8a7962; }
+.mastery-stage-effect > span em { overflow:hidden; color:#9a5b43; font-style:normal; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
+.mastery-stage-effect.active > span em { color:#2f7653; font-weight:700; }
+.mastery-stage-effect p { margin:4px 0 0; color:#554632; line-height:1.5; white-space:pre-line; }
+.mastery-direction-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:7px 10px 9px; }
+.mastery-direction-pill { min-width:0; display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:6px; align-items:center; padding:6px 7px; border:1px solid rgba(118,81,38,.2); border-radius:6px; background:rgba(255,253,247,.76); }
+.mastery-direction-pill.is-primary-direction { border-color:#3f7d5c; background:rgba(63,125,92,.09); box-shadow:inset 0 0 0 1px rgba(63,125,92,.12); }
+.mastery-direction-pill .cat-mark { width:24px; height:24px; display:grid; place-items:center; border-radius:5px; color:#fff; font-weight:700; }
+.mastery-direction-pill.cat-攻 .cat-mark { background:var(--danger); }
+.mastery-direction-pill.cat-防 .cat-mark { background:var(--info); }
+.mastery-direction-pill.cat-界 .cat-mark { background:var(--accent); }
+.mastery-direction-pill > span:nth-child(2) { min-width:0; display:flex; flex-direction:column; }
+.mastery-direction-pill small { color:#79674f; }
+.mastery-direction-pill b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#3f3020; font-size:calc(11px * var(--editor-scale)); }
+.mastery-direction-pill em { color:#765126; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:700; white-space:nowrap; }
+.mastery-direction-pill i { grid-column:2/-1; margin-top:-3px; color:#3f7d5c; font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:600; }
+.mastery-capacity-note { display:block; padding:7px 8px; border-left:3px solid #8b6737; border-radius:4px; background:rgba(139,103,55,.08); color:#5c4a35 !important; line-height:1.5; }
 
 @container loadout-editor (max-width:1199px) {
   .loadout-editor, .editor-layout { height:auto; min-height:100%; }
@@ -2323,7 +2260,11 @@ async function apply() {
   .mastery-groups, .result-sidebar { grid-template-columns:1fr; }
   .bag-filter-row { grid-template-columns:1fr; }
   .weapon-skill-edit-row { grid-template-columns:1fr; }
-  .factor-slot-grid, .mastery-direction-map, .constructor-grid { grid-template-columns:1fr; }
+  .factor-slot-grid, .mastery-direction-strip, .mastery-effect-directions, .constructor-grid, .rank-tabs { grid-template-columns:1fr; }
+  .mastery-effect-overview > header { align-items:flex-start; flex-direction:column; }
+  .mastery-toggle { grid-template-columns:minmax(0,1fr) auto; }
+  .mastery-toggle > em { grid-column:1/-1; grid-row:2; }
+  .mastery-toggle > i { grid-column:2; grid-row:2; }
   .constructor-wide, .constructor-search { grid-column:auto; }
   .source-badge { width:100%; margin-left:0; }
   .ed-head { grid-template-columns:minmax(0,1fr); }

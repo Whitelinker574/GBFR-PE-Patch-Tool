@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestDeriveMasterGrowthUsesAuditedThresholdsAndClampsUnlocksAt50(t *testing.T) {
+func TestDeriveMasterGrowthUsesAuditedThresholdsAndKeepsPost50Stars(t *testing.T) {
 	at20 := deriveMasterGrowth(136500)
 	if at20.ProgressIndex != 20 || at20.MasterLevel != 20 || at20.HP != 2400 || at20.ATK != 1200 || at20.DamageCap != 29 {
 		t.Fatalf("MSP 136500 growth = %+v, want MLv20/+2400 HP/+1200 ATK/+29%% cap", at20)
@@ -16,8 +16,8 @@ func TestDeriveMasterGrowthUsesAuditedThresholdsAndClampsUnlocksAt50(t *testing.
 	if post50.ProgressIndex != 55 {
 		t.Fatalf("MSP 3309499 progress index = %d, want 55", post50.ProgressIndex)
 	}
-	if post50.MasterLevel != 50 || post50.HP != 6000 || post50.ATK != 3000 || post50.DamageCap != 100 {
-		t.Fatalf("post-50 unlock growth = %+v, want MLv50 clamp/+6000 HP/+3000 ATK/+100%% cap", post50)
+	if post50.MasterLevel != 55 || post50.HP != 6000 || post50.ATK != 3000 || post50.DamageCap != 100 {
+		t.Fatalf("post-50 unlock growth = %+v, want MLv55 with MLv50 stat cap/+6000 HP/+3000 ATK/+100%% cap", post50)
 	}
 }
 
@@ -81,7 +81,7 @@ func TestLoadoutStatContextReadsRealIoPermanentBaseline(t *testing.T) {
 	if growth.FateEpisodeMask != 0x7FF || growth.FateEpisodeCount != 11 || growth.FateHP != 640 || growth.FateATK != 165 {
 		t.Fatalf("real Io Fate growth = %+v", growth)
 	}
-	if growth.MasterTotalMSP != 3309499 || growth.MasterProgressIndex != 55 || growth.MasterLevel != 50 ||
+	if growth.MasterTotalMSP != 3309499 || growth.MasterProgressIndex != 55 || growth.MasterLevel != 55 ||
 		growth.MasterHP != 6000 || growth.MasterATK != 3000 || growth.MasterDamageCap != 100 {
 		t.Fatalf("real Io Master growth = %+v", growth)
 	}
@@ -130,7 +130,7 @@ func TestIsolatedRealSaveExposesCharacterMasteryRankCaps(t *testing.T) {
 	}{
 		{unitID: 10002, totalMSP: 0, level: 1, wantCaps: map[string]int{"R1": 1, "R2": 0, "R3": 0, "EX": 0}},
 		{unitID: 10001, totalMSP: 136500, level: 20, wantCaps: map[string]int{"R1": 10, "R2": 10, "R3": 0, "EX": 0}},
-		{unitID: 10004, totalMSP: 3309499, level: 50, wantCaps: map[string]int{"R1": 10, "R2": 10, "R3": 10, "EX": 20}},
+		{unitID: 10004, totalMSP: 3309499, level: 55, wantCaps: map[string]int{"R1": 10, "R2": 10, "R3": 10, "EX": 20}},
 	}
 	app := &App{}
 	for _, test := range tests {
