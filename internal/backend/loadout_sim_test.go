@@ -189,6 +189,70 @@ func TestGutsUsesLethalSurvivalAndLevelValue3Cooldown(t *testing.T) {
 	}
 }
 
+func TestAutoreviveUsesLevelValue3Cooldown(t *testing.T) {
+	const hash = uint32(0x95F3FA86)
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	trait := catalog.LookupTraitByHash(hash)
+	if trait == nil || trait.InternalID != "SKILL_068_00" {
+		t.Fatalf("Autorevive hash mapping = %+v", trait)
+	}
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{{hash: hash, level: 15}}, traitHashMapWithRawKeys(catalog))
+	if len(bonuses) != 1 {
+		t.Fatalf("Autorevive produced %d bonuses", len(bonuses))
+	}
+	bonus := bonuses[0]
+	if bonus.Name != "自动复活" || !strings.Contains(bonus.Effect, "HP归零时自动复活") || !strings.Contains(bonus.Effect, "160秒") {
+		t.Fatalf("Autorevive Lv15 mapping is wrong: %+v", bonus)
+	}
+	if strings.Contains(bonus.Effect, "等待2秒") {
+		t.Fatalf("Autorevive still exposes the LevelValue2 trigger flag: %+v", bonus)
+	}
+}
+
+func TestFactorBoosterDisplaysItsActualLevelBonus(t *testing.T) {
+	definition := loadTraitValues()["SKILL_113_00"]
+	if definition == nil {
+		t.Fatal("missing Factor Booster definition")
+	}
+	for level, want := range map[int]string{1: "技能等级+1", 2: "技能等级+2"} {
+		effect, components := renderTraitEffect(definition, level)
+		if effect != want {
+			t.Fatalf("Factor Booster Lv%d effect=%q, want %q", level, effect, want)
+		}
+		if len(components) != 1 || components[0].Value != float64(level) || components[0].Additive {
+			t.Fatalf("Factor Booster Lv%d components=%+v; display-only level bonus must not enter attribute totals", level, components)
+		}
+	}
+}
+
+func TestUnverifiedTraitEffectReturnsDiagnosticInsteadOfBlankOrGarbledText(t *testing.T) {
+	const hash = uint32(0x1DE14C65)
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{{hash: hash, level: 15}}, traitHashMapWithRawKeys(catalog))
+	if len(bonuses) != 1 {
+		t.Fatalf("unverified DLC trait produced %d bonuses", len(bonuses))
+	}
+	bonus := bonuses[0]
+	if bonus.Name != "狼王的激昂" || bonus.Effect != "" || bonus.Warning == "" || !strings.Contains(bonus.Warning, "尚未闭环") {
+		t.Fatalf("unverified DLC trait must remain visible with an explicit diagnostic: %+v", bonus)
+	}
+	if strings.Contains(bonus.Warning, "亚亚") {
+		t.Fatalf("corrupt source text leaked into the diagnostic: %+v", bonus)
+	}
+}
+
 func TestAggregateTraitEffectsMergesEquivalentAdditiveComponents(t *testing.T) {
 	globalCap := &traitValueDef{Format: "伤害上限+{0}%", Placeholders: []traitPlaceholder{{Ph: 0, Unit: "pct", Values: []float64{30}}}}
 	attackCap := &traitValueDef{Format: "攻击和攻击的伤害上限+{0}%\n能力的伤害上限+{1}%，奥义的伤害上限+{2}%\n冷却时间-{3:.1f}%", Placeholders: []traitPlaceholder{

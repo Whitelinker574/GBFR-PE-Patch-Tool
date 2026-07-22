@@ -136,6 +136,22 @@ func loadTraitValues() map[string]*traitValueDef {
 				Values: []float64{230, 225, 220, 215, 210, 205, 200, 195, 190, 185, 180, 175, 170, 165, 160, 155, 150, 140, 130, 120},
 			}}
 		}
+		if autorevive := traitValuesByID["SKILL_068_00"]; autorevive != nil {
+			autorevive.Name = "自动复活"
+			autorevive.Format = "HP归零时自动复活\n再次触发等待{2}秒"
+			autorevive.Placeholders = []traitPlaceholder{{
+				Ph: 2, Col: 3, Unit: "flat",
+				Values: []float64{230, 225, 220, 215, 210, 205, 200, 195, 190, 185, 180, 175, 170, 165, 160, 155, 150, 140, 130, 120},
+			}}
+		}
+		if factorBooster := traitValuesByID["SKILL_113_00"]; factorBooster != nil {
+			factorBooster.Name = "因子强化"
+			factorBooster.AggregationPolicy = traitAggregationDetailOnly
+			factorBooster.Format = "技能等级+{0}"
+			factorBooster.Placeholders = []traitPlaceholder{{
+				Ph: 0, Col: 1, Unit: "flat", Values: []float64{1, 2},
+			}}
+		}
 	})
 	return traitValuesByID
 }
@@ -265,6 +281,11 @@ func simulateTraits(pairs []struct {
 			out = append(out, b)
 			continue
 		}
+		if unverifiedTraitFormat(def.Format) {
+			b.Warning = fmt.Sprintf("%s（0x%08X）的效果定义尚未闭环：缺少本地 2.0.2 文本表证据，暂不计入模拟。", name, hash)
+			out = append(out, b)
+			continue
+		}
 		b.Effect, b.Components = renderTraitEffect(def, lv)
 		if id == "SKILL_143_10" {
 			for _, placeholder := range def.Placeholders {
@@ -284,6 +305,11 @@ func simulateTraits(pairs []struct {
 		return out[i].Level > out[j].Level
 	})
 	return out
+}
+
+func unverifiedTraitFormat(format string) bool {
+	format = strings.TrimSpace(format)
+	return format == "" || strings.Contains(format, "亚亚亚亚")
 }
 
 func resolveTraitValueID(hash uint32, hashToID map[uint32]string) string {
