@@ -181,6 +181,43 @@ func TestEncodeSummonMemoryRecordWritesOneRecordAndPreservesSlot(t *testing.T) {
 	}
 }
 
+func TestSummonMemoryCommitOffsetsIncludeChangedTypeAndExcludeStableSlot(t *testing.T) {
+	original := make([]byte, summonRecordSize)
+	desired := make([]byte, summonRecordSize)
+	for offset := 0; offset < summonRecordSize; offset += 4 {
+		binary.LittleEndian.PutUint32(original[offset:offset+4], uint32(offset+1))
+		binary.LittleEndian.PutUint32(desired[offset:offset+4], uint32(offset+1))
+	}
+	binary.LittleEndian.PutUint32(desired[0x00:0x04], 0xF2BE819E)
+	binary.LittleEndian.PutUint32(desired[0x04:0x08], 0xDEADBEEF)
+	binary.LittleEndian.PutUint32(desired[0x0C:0x10], 0xA66241C9)
+	binary.LittleEndian.PutUint32(desired[0x18:0x1C], 3)
+
+	offsets, err := summonMemoryCommitOffsets(original, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []uintptr{0x00, 0x0C, 0x18}
+	if len(offsets) != len(want) {
+		t.Fatalf("commit offsets = %v, want %v", offsets, want)
+	}
+	for index := range want {
+		if offsets[index] != want[index] {
+			t.Fatalf("commit offsets = %v, want %v", offsets, want)
+		}
+	}
+}
+
+func TestSummonMemoryCommitOffsetsRejectMalformedRecords(t *testing.T) {
+	valid := make([]byte, summonRecordSize)
+	if _, err := summonMemoryCommitOffsets(valid[:summonRecordSize-1], valid); err == nil {
+		t.Fatal("short original record was accepted")
+	}
+	if _, err := summonMemoryCommitOffsets(valid, valid[:summonRecordSize-1]); err == nil {
+		t.Fatal("short desired record was accepted")
+	}
+}
+
 func TestValidateSummonMemorySnapshotRejectsStaleRootTypeAndRecord(t *testing.T) {
 	const inventory = uintptr(0x12345000)
 	const typeHash = uint32(0xF2BE819E)

@@ -248,6 +248,24 @@ func encodeSummonMemoryRecord(original []byte, item SummonUpdate) ([]byte, error
 	return encoded, nil
 }
 
+func summonMemoryCommitOffsets(original, desired []byte) ([]uintptr, error) {
+	if len(original) != summonRecordSize || len(desired) != summonRecordSize {
+		return nil, fmt.Errorf("召唤石提交记录长度异常: %d/%d", len(original), len(desired))
+	}
+	// +0x04 is the inventory Slot ID. It identifies the owned instance and is
+	// deliberately preserved by encodeSummonMemoryRecord, so it must never be
+	// sent through the field-save function as part of an editor update.
+	persisted := [...]uintptr{0x00, 0x08, 0x0C, 0x10, 0x14, 0x18}
+	offsets := make([]uintptr, 0, len(persisted))
+	for _, offset := range persisted {
+		start := int(offset)
+		if !bytes.Equal(original[start:start+4], desired[start:start+4]) {
+			offsets = append(offsets, offset)
+		}
+	}
+	return offsets, nil
+}
+
 func decodeSummonMemoryRecord(index int, address uintptr, record []byte) (SummonInfo, error) {
 	if len(record) != summonRecordSize {
 		return SummonInfo{}, fmt.Errorf("召唤石记录长度 %d，预期 %d", len(record), summonRecordSize)
@@ -463,6 +481,10 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err != nil {
 		return SummonInfo{}, err
 	}
+	commitOffsets, err := summonMemoryCommitOffsets(original, desired)
+	if err != nil {
+		return SummonInfo{}, err
+	}
 	if err := snapshotBeforeLiveSaveChange("召唤石写入前自动备份"); err != nil {
 		return SummonInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 	}
@@ -492,7 +514,7 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 		return a.readSummonRecord(address)
 	}
 	committer := func() error {
-		for _, offset := range []uintptr{0x08, 0x0C, 0x10, 0x14, 0x18} {
+		for _, offset := range commitOffsets {
 			if err := a.callRemoteOneArg(saveFn, address+offset); err != nil {
 				return fmt.Errorf("保存召唤石字段 +0x%02X 失败: %w", offset, err)
 			}

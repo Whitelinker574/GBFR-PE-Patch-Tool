@@ -26,6 +26,22 @@ type LoadoutPanelBonus struct {
 	Source       string  `json:"source"`
 }
 
+type LoadoutDefenseZone struct {
+	Key       string  `json:"key"`
+	Label     string  `json:"label"`
+	Reduction float64 `json:"reduction"`
+	Included  bool    `json:"included"`
+	Condition string  `json:"condition,omitempty"`
+	Evidence  string  `json:"evidence"`
+}
+
+type LoadoutDefenseModel struct {
+	AssumedHPPercent float64              `json:"assumedHpPercent"`
+	IncomingRate     float64              `json:"incomingRate"`
+	Formula          string               `json:"formula"`
+	Zones            []LoadoutDefenseZone `json:"zones"`
+}
+
 // LoadoutFinalStats mirrors the values shown by the in-game-style panel and
 // exposes the separately audited, loadout-only defense percentage. GBFR does
 // not expose an absolute defense number on that panel, so DefenseBonus must
@@ -33,20 +49,91 @@ type LoadoutPanelBonus struct {
 // The three damage-cap fields remain available so the single compact value can
 // use the conservative common increase while the detailed totals stay honest.
 type LoadoutFinalStats struct {
-	HP                int      `json:"hp"`
-	Attack            int      `json:"attack"`
-	CritRate          float64  `json:"critRate"`
-	StunPower         float64  `json:"stunPower"`
-	DefenseBonus      float64  `json:"defenseBonus"`
-	DamageTakenRate   float64  `json:"damageTakenRate"`
-	DamageCap         float64  `json:"damageCap"`
-	NormalDamageCap   float64  `json:"normalDamageCap"`
-	AbilityDamageCap  float64  `json:"abilityDamageCap"`
-	SkyboundDamageCap float64  `json:"skyboundDamageCap"`
-	Mode              string   `json:"mode"`
-	Scope             string   `json:"scope"`
-	FormulaVerified   bool     `json:"formulaVerified"`
-	Warnings          []string `json:"warnings,omitempty"`
+	HP                int                  `json:"hp"`
+	Attack            int                  `json:"attack"`
+	CritRate          float64              `json:"critRate"`
+	StunPower         float64              `json:"stunPower"`
+	DefenseBonus      float64              `json:"defenseBonus"`
+	DamageTakenRate   float64              `json:"damageTakenRate"`
+	DefenseModel      *LoadoutDefenseModel `json:"defenseModel,omitempty"`
+	DamageCap         float64              `json:"damageCap"`
+	NormalDamageCap   float64              `json:"normalDamageCap"`
+	AbilityDamageCap  float64              `json:"abilityDamageCap"`
+	SkyboundDamageCap float64              `json:"skyboundDamageCap"`
+	Mode              string               `json:"mode"`
+	Scope             string               `json:"scope"`
+	FormulaVerified   bool                 `json:"formulaVerified"`
+	Warnings          []string             `json:"warnings,omitempty"`
+}
+
+func defenseTraitComponent(bonus TraitBonus, match func(BonusComponent) bool) float64 {
+	for _, component := range bonus.Components {
+		if match(component) {
+			return math.Abs(component.Value)
+		}
+	}
+	return 0
+}
+
+func calculateLoadoutDefenseModel(bonuses []TraitBonus, unconditionalDefense float64) (*LoadoutDefenseModel, bool) {
+	common := unconditionalDefense
+	stoutHeart := float64(0)
+	stronghold := float64(0)
+	hasGarrison := false
+	hasReferenceZone := false
+	for _, bonus := range bonuses {
+		switch bonus.TraitID {
+		case "SKILL_096_00": // 坚持：受到的伤害-X%
+			common += defenseTraitComponent(bonus, func(component BonusComponent) bool {
+				return component.Unit == "pct" && strings.Contains(component.Label, "受到的伤害")
+			})
+		case "SKILL_141_00": // 钳蟹的报恩：无标签的百分比是减伤，最大HP另行计算
+			common += defenseTraitComponent(bonus, func(component BonusComponent) bool {
+				return component.Unit == "pct" && component.Label == ""
+			})
+		case "SKILL_044_00":
+			// skill_status only records the persistent stout-heart state. The 25%
+			// reduction comes from the supplied repeated-hit reference and remains
+			// explicitly labelled as a candidate until a local A/B/A/B closes it.
+			stoutHeart = 25
+			hasReferenceZone = true
+		case "SKILL_144_00": // 刚健：满血取表中的“效果最大时防御力”
+			stronghold = defenseTraitComponent(bonus, func(component BonusComponent) bool {
+				return component.Unit == "pct" && strings.Contains(component.Label, "效果最大")
+			})
+			hasReferenceZone = hasReferenceZone || stronghold > 0
+		case "SKILL_036_00":
+			hasGarrison = true
+			hasReferenceZone = true
+		}
+	}
+
+	zones := []LoadoutDefenseZone{
+		{Key: "common", Label: "通用加算区", Reduction: common, Included: common != 0, Condition: "无条件防御、坚持与钳蟹减伤同区相加", Evidence: "2.0.2-table + Io runtime +5%"},
+		{Key: "stout-heart", Label: "霸体乘区", Reduction: stoutHeart, Included: stoutHeart != 0, Condition: "装备霸体时", Evidence: "reference-candidate"},
+		{Key: "stronghold", Label: "刚健乘区", Reduction: stronghold, Included: stronghold != 0, Condition: "静态草稿按 HP 100%", Evidence: "2.0.2-table + reference-zone"},
+		{Key: "garrison", Label: "坚守乘区", Reduction: 0, Included: false, Condition: "随失去 HP 变化；满血静态草稿不计", Evidence: "2.0.2-table; runtime-curve-open"},
+		{Key: "attack-down", Label: "攻击 DOWN 乘区", Reduction: 0, Included: false, Condition: "取决于受击敌人的当前弱化", Evidence: "battle-state-unavailable"},
+		{Key: "independent", Label: "独立减伤区", Reduction: 0, Included: false, Condition: "伤害减免 Buff、祝福等需战斗状态", Evidence: "battle-state-unavailable"},
+		{Key: "defense-up", Label: "防御 UP 乘区", Reduction: 0, Included: false, Condition: "当前 Buff 未由离线配装提供", Evidence: "battle-state-unavailable"},
+	}
+	if hasGarrison {
+		zones[3].Condition = "已装备坚守；曲线未闭环，满血参考值暂不计入"
+	}
+	incomingRate := float64(1)
+	for _, zone := range zones {
+		if !zone.Included {
+			continue
+		}
+		reduction := math.Max(0, math.Min(100, zone.Reduction))
+		incomingRate *= 1 - reduction/100
+	}
+	return &LoadoutDefenseModel{
+		AssumedHPPercent: 100,
+		IncomingRate:     incomingRate * 100,
+		Formula:          "同区相加，跨区相乘",
+		Zones:            zones,
+	}, hasReferenceZone
 }
 
 type loadoutPanelInputs struct {
@@ -457,6 +544,10 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 			warnings = append(warnings, warning)
 		}
 	}
+	defenseModel, defenseReferenceCandidate := calculateLoadoutDefenseModel(input.Bonuses, defenseBonus)
+	if defenseReferenceCandidate {
+		warnings = append(warnings, "防御分区按同区相加、跨区相乘生成满血参考值；霸体 25% 与刚健/坚守乘区仍需本机重复受击样本闭环。")
+	}
 	warnings = append(warnings, loadoutFinalStatsFormulaWarning)
 	return LoadoutFinalStats{
 		HP:                finalHP,
@@ -464,7 +555,8 @@ func calculateLoadoutFinalStats(input loadoutPanelInputs) LoadoutFinalStats {
 		CritRate:          crit,
 		StunPower:         stun,
 		DefenseBonus:      defenseBonus,
-		DamageTakenRate:   math.Max(0, 100-defenseBonus),
+		DamageTakenRate:   defenseModel.IncomingRate,
+		DefenseModel:      defenseModel,
 		DamageCap:         commonCap,
 		NormalDamageCap:   normalCap,
 		AbilityDamageCap:  abilityCap,

@@ -254,7 +254,7 @@ async function save() {
     const index = summons.value.findIndex((item) => item.index === updated.index)
     if (index >= 0) summons.value.splice(index, 1, updated)
     select(updated, true)
-    emit('status', '召唤石已写入并保存', 'success')
+    emit('status', '召唤石已写入游戏保存系统；更换种类时请重新载入存档确认登记状态', 'success')
   } catch (err) {
     if (!disposed && epoch === lifecycleEpoch) emit('status', String(err), 'error')
   } finally {
@@ -277,7 +277,7 @@ onBeforeUnmount(() => {
       <header class="ui-split">
         <div class="intro-copy">
           <h2 class="ui-section-title">召唤石编辑</h2>
-          <p class="ui-section-copy">打开游戏内召唤石背包后读取；种类只读，主因子与副词条可以修改。</p>
+          <p class="ui-section-copy">打开游戏内召唤石背包后读取；种类、主因子、副词条和等级均可修改。</p>
         </div>
         <span v-if="connected" class="pid ui-tag is-info">PID {{ pid }}</span>
       </header>
@@ -391,7 +391,7 @@ onBeforeUnmount(() => {
           </section>
 
           <div class="save-row ui-toolbar">
-            <small class="ui-hint">天然词池、等级与种类对应关系只作提醒；所选可编码值会直接写入。</small>
+            <small class="ui-hint">天然词池、等级与种类对应关系只作提醒；所选可编码值会直接写入，种类字段也会提交到游戏保存系统。</small>
             <LegalityIndicator :status="legality.status" :message="legality.message" />
             <button type="button" class="ui-btn is-primary" @click="save" :disabled="loading || saving || !legality.writable">
               {{ saving ? '写入中...' : '写入召唤石' }}

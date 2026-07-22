@@ -198,6 +198,71 @@ func TestLoadoutMasteryPanelBonusesIncludeRealUnconditionalDefenseNode(t *testin
 	}
 }
 
+func TestCalculateLoadoutFinalStatsSeparatesDefenseMultiplicativeZones(t *testing.T) {
+	got := calculateLoadoutFinalStats(loadoutPanelInputs{
+		Bonuses: []TraitBonus{
+			{TraitID: "SKILL_096_00", Name: "坚持", Components: []BonusComponent{{Label: "受到的伤害", Unit: "pct", Value: -15, Additive: true}}},
+			{TraitID: "SKILL_044_00", Name: "霸体"},
+			{TraitID: "SKILL_144_00", Name: "刚健", Components: []BonusComponent{
+				{Label: "效果最大时防御力", Unit: "pct", Value: 23.5, Additive: true},
+				{Label: "效果最小时防御力", Unit: "pct", Value: 3.5, Additive: true},
+			}},
+			{TraitID: "SKILL_141_00", Name: "钳蟹的报恩", Components: []BonusComponent{
+				{Label: "最大HP", Unit: "pct", Value: 20, Additive: true},
+				{Label: "", Unit: "pct", Value: 10},
+			}},
+		},
+		Mastery: []LoadoutPanelBonus{{Label: "防御力", Unit: "pct", Value: 5, Source: "专精"}},
+	})
+	if got.DefenseModel == nil {
+		t.Fatal("defense model was not returned")
+	}
+	zones := map[string]LoadoutDefenseZone{}
+	for _, zone := range got.DefenseModel.Zones {
+		zones[zone.Key] = zone
+	}
+	if zones["common"].Reduction != 30 || zones["stout-heart"].Reduction != 25 || zones["stronghold"].Reduction != 23.5 {
+		t.Fatalf("defense zones were merged incorrectly: %+v", got.DefenseModel)
+	}
+	want := (1 - 0.30) * (1 - 0.25) * (1 - 0.235) * 100
+	if math.Abs(got.DefenseModel.IncomingRate-want) > 1e-9 || math.Abs(got.DamageTakenRate-want) > 1e-9 {
+		t.Fatalf("multiplicative defense rate=%g/%g, want %g: %+v", got.DefenseModel.IncomingRate, got.DamageTakenRate, want, got.DefenseModel)
+	}
+	if zones["garrison"].Included || zones["garrison"].Evidence == "" {
+		t.Fatalf("full-HP garrison must remain an explicit unevaluated zone: %+v", zones["garrison"])
+	}
+}
+
+func TestDefenseZonesUseReal202TraitRows(t *testing.T) {
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{
+		{0x1470F860, 15}, // 坚持 15%
+		{0xA1A8E39D, 15}, // 霸体
+		{0x74AA75D6, 17}, // 刚健满血 23.5%
+		{0x1B0D9897, 15}, // 钳蟹的报恩 10%
+		{0xE6CDBA9C, 17}, // 坚守：仅显示，满血静态参考不计
+	}, map[uint32]string{
+		0x1470F860: "SKILL_096_00",
+		0xA1A8E39D: "SKILL_044_00",
+		0x74AA75D6: "SKILL_144_00",
+		0x1B0D9897: "SKILL_141_00",
+		0xE6CDBA9C: "SKILL_036_00",
+	})
+	got := calculateLoadoutFinalStats(loadoutPanelInputs{Bonuses: bonuses})
+	zones := map[string]LoadoutDefenseZone{}
+	for _, zone := range got.DefenseModel.Zones {
+		zones[zone.Key] = zone
+	}
+	if zones["common"].Reduction != 25 || zones["stronghold"].Reduction != 23.5 || zones["stout-heart"].Reduction != 25 {
+		t.Fatalf("real 2.0.2 trait rows did not feed defense zones: bonuses=%+v zones=%+v", bonuses, zones)
+	}
+	if zones["garrison"].Included || !strings.Contains(zones["garrison"].Condition, "已装备坚守") {
+		t.Fatalf("garrison must stay visible without inventing a full-HP value: %+v", zones["garrison"])
+	}
+}
+
 func TestEffectiveMasteryHexesRespectCurrentRankUnlocksWithoutDeletingDraft(t *testing.T) {
 	draft := []string{"12AA6898", "1F55589B", "1AD4D530", "1F52146F"}
 	effective, ignored, err := effectiveMasteryHexesForRankCaps("PL0400", draft, map[string]int{

@@ -406,6 +406,15 @@ function formatComparisonDelta(value, unit = '') {
   if (Math.abs(numeric) < 0.0001) return '一致'
   return `草稿${numeric > 0 ? '+' : '−'}${formatFinalStat(Math.abs(numeric), unit)}`
 }
+function defenseEvidenceLabel(value) {
+  return ({
+    '2.0.2-table + Io runtime +5%': '解包表 + 伊欧受击实测',
+    'reference-candidate': '参考候选 · 待本机复测',
+    '2.0.2-table + reference-zone': '2.0.2 解包表 + 分区参考',
+    '2.0.2-table; runtime-curve-open': '2.0.2 解包表 · 曲线未闭环',
+    'battle-state-unavailable': '需要战斗状态',
+  })[value] || value
+}
 function mergedTraitBonus(trait) {
   const id = String(trait?.traitId || '').toUpperCase()
   const hash = normalizedHash(trait?.hash)
@@ -1191,7 +1200,18 @@ async function apply() {
             <span><small>能力伤害上限</small><b>{{ formatFinalStat(finalStats?.abilityDamageCap, 'signedPct') }}</b></span>
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
           </div>
-          <p class="defense-scope-note"><b>配装防御加成</b>无条件防御力按百分比降低受击伤害；伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。条件防御、格挡、独立减伤和无敌仍保留在效果明细中，不混入该倍率。</p>
+          <section v-if="finalStats?.defenseModel?.zones" class="defense-model" aria-label="防御分区计算">
+            <header><b>防御分区</b><span>{{ finalStats.defenseModel.formula }} · 满血静态参考</span></header>
+            <div class="defense-zone-grid">
+              <article v-for="zone in finalStats.defenseModel.zones" :key="zone.key" :class="{ included: zone.included }">
+                <b>{{ zone.label }}</b>
+                <strong>{{ zone.included ? `−${formatFinalStat(zone.reduction, 'pct')}` : '未计入' }}</strong>
+                <small>{{ zone.condition }}</small>
+                <em>{{ defenseEvidenceLabel(zone.evidence) }}</em>
+              </article>
+            </div>
+          </section>
+          <p class="defense-scope-note"><b>配装防御加成</b>伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。当前满血参考按“同区相加，跨区相乘”展示；攻击 DOWN、战斗 Buff、坚守低血曲线、格挡和无敌没有当前状态时不强行计入。</p>
           <div class="formula-audit-row" :class="{ verified: calculationFormulaVerified }">
             <b>{{ calculationFormulaVerified ? '草稿公式证据已闭环' : '草稿公式未完全验证' }}</b>
             <span>带“≈”的离线值只用于草稿比较；只有游戏运行时回读不带近似标记。</span>
@@ -1787,6 +1807,16 @@ async function apply() {
 .cap-detail-grid b { color:#a23f65; font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .defense-scope-note { margin:5px 0 0; padding:5px 7px; border-left:2px solid #5f8067; background:rgba(95,128,103,.06); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
 .defense-scope-note b { margin-right:.4em; color:#466a51; font-weight:700; }
+.defense-model { display:grid; gap:5px; margin-top:6px; }
+.defense-model > header { display:flex; justify-content:space-between; gap:8px; align-items:baseline; color:#466a51; font-size:var(--fs-xs); }
+.defense-model > header span { color:var(--text-muted); text-align:right; }
+.defense-zone-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:4px; }
+.defense-zone-grid article { min-width:0; display:grid; grid-template-columns:1fr auto; gap:2px 6px; padding:5px 6px; border:1px solid var(--line-soft); border-radius:5px; background:var(--surface-soft); }
+.defense-zone-grid article.included { border-color:rgba(70,106,81,.38); background:rgba(95,128,103,.07); }
+.defense-zone-grid b,.defense-zone-grid strong { font-size:var(--fs-xs); }
+.defense-zone-grid strong { color:#466a51; font-variant-numeric:tabular-nums; }
+.defense-zone-grid small,.defense-zone-grid em { grid-column:1/-1; color:var(--text-muted); font-size:var(--fs-xs); line-height:1.3; overflow-wrap:anywhere; }
+.defense-zone-grid em { color:#786a52; font-style:normal; }
 .formula-audit-row { display:grid; gap:2px; margin-top:6px; padding:6px 8px; border:1px solid var(--warning); border-radius:var(--radius-sm); background:var(--warning-bg); color:var(--warning-ink); font-size:var(--fs-xs); line-height:1.4; }
 .formula-audit-row.verified { border-color:var(--success); background:var(--success-bg); color:var(--success-ink); }
 .formula-audit-row span { color:inherit; }

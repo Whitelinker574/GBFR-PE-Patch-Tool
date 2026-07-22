@@ -159,6 +159,10 @@ test('summon editor exposes all encodable values and keeps natural rules advisor
   assert.match(source, /allowedMainHashes/)
   assert.match(source, /naturalSubLevels/)
   assert.match(source, /天然词池、等级与种类对应关系只作提醒/)
+  assert.match(source, /种类字段也会提交到游戏保存系统/)
+  assert.doesNotMatch(source, /种类只读/)
+  assert.match(uiTranslations['召唤石已写入游戏保存系统；更换种类时请重新载入存档确认登记状态'], /game save system/)
+  assert.match(uiTranslations['打开游戏内召唤石背包后读取；种类、主因子、副词条和等级均可修改。'], /Type, main trait/)
   assert.doesNotMatch(source, /forceWrite/)
 })
 
