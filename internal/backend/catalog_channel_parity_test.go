@@ -166,7 +166,14 @@ func TestRealSaveProvesSummonRankIsIndependentFromRarityTierWhenRequested(t *tes
 			matrix[[2]uint32{uint32(rule.TierIndex), record.State.Rank}]++
 		}
 	}
-	if len(matrix) < 4 {
+	independent := false
+	for pair := range matrix {
+		if pair[0] != pair[1] {
+			independent = true
+			break
+		}
+	}
+	if !independent {
 		t.Fatalf("real save did not prove rank/tier independence: %v", matrix)
 	}
 	t.Logf("tier-index/live-rank matrix: %v", matrix)

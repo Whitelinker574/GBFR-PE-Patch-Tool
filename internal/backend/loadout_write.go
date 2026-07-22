@@ -12,7 +12,8 @@ import (
 // 安全优先的预设槽写入：把用户从「该存档已有资源」里拼出的一套配装原地写入
 // 指定预设槽（UnitID 20000..20614）。构造模式会在同一次事务中生成并绑定目标
 // 因子；目录与天然生成规则只作提示，不会替用户否决可编码的选择。资源归属、
-// 目标快照、容器边界和事务完整性仍严格验证；绝不生成专精、绝不跨角色搬运。
+// 目标快照、容器边界和事务完整性仍严格验证；普通编辑不会生成角色成长，
+// v3 单套导入则会显式携带并回读角色成长与同角色武器收集状态。
 //
 // 字段填充语义（实测，务必区分）：
 //   3002 名称  Byte 表，64 字节，UTF-8 + NUL 填充（走 SetBytes，绝不能按 uint32 步长写）
@@ -54,14 +55,15 @@ type LoadoutConstructedSigil struct {
 
 // LoadoutApplyResult 汇报写入结果。
 type LoadoutApplyResult struct {
-	OutputPath     string   `json:"outputPath"`
-	BackupPath     string   `json:"backupPath"`
-	SlotsWritten   int      `json:"slotsWritten"`
-	SlotsCleared   int      `json:"slotsCleared"`
-	VerifiedFields int      `json:"verifiedFields"` // 回读后逐字段命中的数量
-	CreatedCount   int      `json:"createdCount"`
-	VerifiedCount  int      `json:"verifiedCount"`
-	SlotIDs        []uint32 `json:"slotIds,omitempty"`
+	OutputPath         string   `json:"outputPath"`
+	BackupPath         string   `json:"backupPath"`
+	SlotsWritten       int      `json:"slotsWritten"`
+	SlotsCleared       int      `json:"slotsCleared"`
+	VerifiedFields     int      `json:"verifiedFields"` // 回读后逐字段命中的数量
+	CreatedCount       int      `json:"createdCount"`
+	CreatedSummonCount int      `json:"createdSummonCount"`
+	VerifiedCount      int      `json:"verifiedCount"`
+	SlotIDs            []uint32 `json:"slotIds,omitempty"`
 }
 
 // ── 只读编辑上下文：给前端一份「该角色可安全引用的资源池」──────────────
@@ -1232,10 +1234,6 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("没有要写入的配装")
 	}
-	summonSlotIDs, err := sharedLoadoutSummonSlotIDs(changes)
-	if err != nil {
-		return nil, err
-	}
 	if outputPath == "" {
 		outputPath = inputPath
 	}
@@ -1252,6 +1250,21 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		return nil, err
 	}
 	save, err := LoadSave(inputPath)
+	if err != nil {
+		return nil, err
+	}
+	if request.ImportPayload != nil && (len(request.WeaponEdits) > 0 || len(request.SummonEdits) > 0) {
+		return nil, fmt.Errorf("导入完整配装时不能同时提交手动武器/召唤石实例编辑")
+	}
+	preparedImport, err := prepareLoadoutImport(save, changes, request.ImportPayload)
+	if err != nil {
+		return nil, err
+	}
+	createdSummons, err := materializeLoadoutImportSummons(save, changes, request.ImportPayload)
+	if err != nil {
+		return nil, err
+	}
+	summonSlotIDs, err := sharedLoadoutSummonSlotIDs(changes)
 	if err != nil {
 		return nil, err
 	}
@@ -1323,7 +1336,7 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 
 	// 第三段：在同一个 SaveData 缓冲里先创建因子，再把新 SlotID 放入
 	// 对应 1403 位置，最后只做一次校验和修复和磁盘写入。
-	result := &LoadoutApplyResult{}
+	result := &LoadoutApplyResult{CreatedSummonCount: len(createdSummons)}
 	if len(constructed) > 0 {
 		if err := save.SetMaxSlotID(oldMaxSlotID + len(constructed)); err != nil {
 			return nil, err
@@ -1358,6 +1371,10 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 	}
 	if err := applyPreparedLoadoutInlineResources(save, inlineResources); err != nil {
 		return nil, fmt.Errorf("apply inline loadout resources: %w", err)
+	}
+	_, err = applyPreparedLoadoutImport(save, preparedImport)
+	if err != nil {
+		return nil, fmt.Errorf("写入导入的角色/武器状态失败: %w", err)
 	}
 	if err := save.FixChecksums(); err != nil {
 		return nil, fmt.Errorf("修复存档校验失败: %w", err)
@@ -1394,6 +1411,16 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		return nil, fmt.Errorf("loadout was written but inline resource readback failed: %v; restore from backup", err)
 	}
 	result.VerifiedFields += inlineVerified
+	verifiedImport, err := verifyPreparedLoadoutImport(verify, preparedImport)
+	if err != nil {
+		return nil, fmt.Errorf("配装已写入，但角色/武器状态回读失败（%v）；请用备份恢复", err)
+	}
+	result.VerifiedFields += verifiedImport
+	for index, record := range createdSummons {
+		if err := verify.VerifySummonRecord(record); err != nil {
+			return nil, fmt.Errorf("配装已写入，但第 %d 个新召唤石回读失败: %w；请用备份恢复", index+1, err)
+		}
+	}
 	if len(constructed) > 0 {
 		gotMaxSlotID, err := verify.GetMaxSlotID()
 		if err != nil {

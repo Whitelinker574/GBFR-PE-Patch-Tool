@@ -305,3 +305,246 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 	}
 	t.Logf("verified isolated save integration: %s; backup=%s", fmt.Sprintf("new factor SlotID %d", first.SlotID), result.BackupPath)
 }
+
+func TestIsolatedRealSaveImportCreatesIndependentCompleteFactorSet(t *testing.T) {
+	fixture := requireIsolatedSaveQA(t)
+	payload, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(t.TempDir(), "SaveData2.dat")
+	if err := os.WriteFile(work, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata"))
+
+	app := &App{}
+	group, source := isolatedIoLoadout(t, work)
+	var target LoadoutEntry
+	for _, candidate := range group.Loadouts {
+		if !candidate.IsParty && candidate.UnitID != source.UnitID {
+			target = candidate
+			break
+		}
+	}
+	if target.UnitID == 0 {
+		t.Fatal("isolated real save has no second character loadout slot")
+	}
+	share, err := buildLoadoutShare(work, source.UnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := resolveLoadoutShare(work, group.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.Missing) != 0 || len(draft.ConstructedSigils) != loadoutMaxSigils {
+		t.Fatalf("import draft is incomplete: missing=%v factors=%d", draft.Missing, len(draft.ConstructedSigils))
+	}
+	sourceSlots, _, _ := loadoutVectors(source)
+	result, err := app.LoadoutApply(work, work, []LoadoutWrite{{
+		UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
+		WeaponSlotID: draft.WeaponSlotID, SigilSlotIDs: draft.SigilSlotIDs,
+		ConstructedSigils: draft.ConstructedSigils, SkillHashes: draft.SkillHashes,
+		MasteryHashes: draft.MasteryHashes, SummonSlotIDs: draft.SummonSlotIDs,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SlotsWritten != 1 || result.CreatedCount != loadoutMaxSigils || len(result.SlotIDs) != loadoutMaxSigils {
+		t.Fatalf("complete import did not create twelve factors: %+v", result)
+	}
+
+	afterGroups, err := app.LoadoutList(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var afterSource, afterTarget LoadoutEntry
+	for _, afterGroup := range afterGroups {
+		if !strings.EqualFold(afterGroup.CharaHash, group.CharaHash) {
+			continue
+		}
+		for _, loadout := range afterGroup.Loadouts {
+			switch loadout.UnitID {
+			case source.UnitID:
+				afterSource = loadout
+			case target.UnitID:
+				afterTarget = loadout
+			}
+		}
+	}
+	afterSourceSlots, _, _ := loadoutVectors(afterSource)
+	if !reflect.DeepEqual(afterSourceSlots, sourceSlots) {
+		t.Fatalf("import reused or changed source factor instances: before=%v after=%v", sourceSlots, afterSourceSlots)
+	}
+	afterTargetSlots, _, _ := loadoutVectors(afterTarget)
+	sourceSet := make(map[uint32]bool, len(sourceSlots))
+	for _, slotID := range sourceSlots {
+		sourceSet[slotID] = true
+	}
+	seen := make(map[uint32]bool, len(afterTargetSlots))
+	for index, slotID := range afterTargetSlots {
+		if slotID == 0 || sourceSet[slotID] || seen[slotID] {
+			t.Fatalf("imported factor slot %d is not an independent instance: %d", index+1, slotID)
+		}
+		seen[slotID] = true
+	}
+}
+
+func TestIsolatedRealSaveImportRestoresProgressionWeaponAndMissingSummon(t *testing.T) {
+	fixture := requireIsolatedSaveQA(t)
+	payload, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(t.TempDir(), "SaveData2.dat")
+	if err := os.WriteFile(work, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata"))
+
+	group, source := isolatedIoLoadout(t, work)
+	share, err := buildLoadoutShare(work, source.UnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.Character == nil || share.Weapon == nil || share.Weapon.Wrightstone == nil || len(share.Summons) != 4 {
+		t.Fatalf("v3 source is incomplete: %+v", share)
+	}
+	stats, err := (&App{}).LoadoutStatContext(work, group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := save.patchInt(1323, stats.CharaUnitID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.patchUint(1321, stats.CharaUnitID, 0); err != nil {
+		t.Fatal(err)
+	}
+	weaponUnitID, err := exactWeaponUnitForSlot(save, source.WeaponSlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []uint32{weaponXPIDType, weaponUncapIDType, weaponMirageIDType, weaponAwakeIDType, weaponTranscendenceIDType} {
+		if field == weaponXPIDType {
+			if err := save.patchUint(field, weaponUnitID, 0); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := save.patchInt(field, weaponUnitID, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := save.patchUint(weaponStoneIDType, weaponUnitID, EmptyHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.patchUint(weaponStoneSubType, weaponUnitID, EmptyHash); err != nil {
+		t.Fatal(err)
+	}
+	missingCollectionWeapon := ""
+	for _, weapon := range progressionInventory(save, work).Weapons {
+		if weapon.OwnerCode == stats.OwnerCode && weapon.UnitID != weaponUnitID && weapon.InternalID != "" {
+			missingCollectionWeapon = weapon.InternalID
+			if err := save.patchUint(weaponIDType, weapon.UnitID, EmptyHash); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	if missingCollectionWeapon == "" {
+		t.Fatal("真实存档没有可用于武器收集补建测试的第二把角色武器")
+	}
+	traitBase := weaponTraitBase + (int(weaponUnitID)-weaponSlotBase)*weaponTraitStride
+	for index := 0; index < 3; index++ {
+		if err := save.patchUint(TraitHashIDType, uint32(traitBase+index), EmptyHash); err != nil {
+			t.Fatal(err)
+		}
+		if err := save.patchInt(TraitLevelIDType, uint32(traitBase+index), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstSummon := stats.EquippedSummons[0]
+	if err := save.patchUint(SummonSlotIDType, firstSummon.UnitID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.writeSummonSaveState(firstSummon.UnitID, SummonTraitState{
+		TypeHash: EmptyHash, MainTraitHash: EmptyHash, SubParamHash: EmptyHash,
+		MainTraitLevel: ^uint32(0), SubParamLevel: ^uint32(0), Rank: 0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.FixChecksums(); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.Write(work); err != nil {
+		t.Fatal(err)
+	}
+
+	draft, err := resolveLoadoutShare(work, group.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.ApplyPayload == nil || draft.ApplyPayload.Character == nil || draft.ApplyPayload.Weapon == nil || len(draft.ApplyPayload.ConstructedSummons) != 1 {
+		t.Fatalf("import payload did not capture missing state: %+v", draft.ApplyPayload)
+	}
+	var target LoadoutEntry
+	for _, candidate := range group.Loadouts {
+		if !candidate.IsParty && candidate.UnitID != source.UnitID {
+			target = candidate
+			break
+		}
+	}
+	if target.UnitID == 0 {
+		t.Fatal("no target preset")
+	}
+	result, err := (&App{}).LoadoutApplyWithResources(work, work, LoadoutApplyRequest{
+		Changes: []LoadoutWrite{{
+			UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
+			WeaponSlotID: draft.WeaponSlotID, SigilSlotIDs: draft.SigilSlotIDs, ConstructedSigils: draft.ConstructedSigils,
+			SkillHashes: draft.SkillHashes, MasteryHashes: draft.MasteryHashes, SummonSlotIDs: draft.SummonSlotIDs,
+		}},
+		ImportPayload: draft.ApplyPayload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CreatedSummonCount != 1 {
+		t.Fatalf("missing summon was not generated: %+v", result)
+	}
+	afterStats, err := (&App{}).LoadoutStatContext(work, group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterStats.PermanentGrowth.MasterTotalMSP != share.Character.MasterTotalMSP || afterStats.PermanentGrowth.LegacyProgress != share.Character.LegacyProgress {
+		t.Fatalf("character progression mismatch: got %+v want %+v", afterStats.PermanentGrowth, share.Character)
+	}
+	afterSave, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterWeapon, err := readLoadoutWeaponContext(afterSave, draft.WeaponSlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterWeapon.XP != share.Weapon.XP || afterWeapon.Uncap != share.Weapon.Uncap || afterWeapon.Mirage != share.Weapon.Mirage ||
+		afterWeapon.Awakening != share.Weapon.Awakening || afterWeapon.Transcendence != share.Weapon.Transcendence ||
+		afterWeapon.Wrightstone == nil || !strings.EqualFold(afterWeapon.Wrightstone.Hash, share.Weapon.Wrightstone.Hash) {
+		t.Fatalf("weapon state mismatch: got %+v want %+v", afterWeapon, share.Weapon)
+	}
+	foundCollectionWeapon := false
+	for _, weapon := range progressionInventory(afterSave, work).Weapons {
+		if weapon.InternalID == missingCollectionWeapon {
+			foundCollectionWeapon = true
+			break
+		}
+	}
+	if !foundCollectionWeapon {
+		t.Fatalf("角色强化武器收集缺少自动补建的 %s", missingCollectionWeapon)
+	}
+	if len(afterStats.EquippedSummons) != 4 || !strings.EqualFold(afterStats.EquippedSummons[0].TypeHash, share.Summons[0].TypeHash) {
+		t.Fatalf("missing summon was not rebuilt into the equipped set: %+v", afterStats.EquippedSummons)
+	}
+}

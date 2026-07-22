@@ -5,7 +5,7 @@
 | Family | Offline save path | Runtime memory path | Result |
 | --- | --- | --- | --- |
 | Summon types, main traits, sub parameters | `SummonSaveGen.GetOptions` | `App.SummonGetOptions` | Exact: both call the same function (189 / 82 / 22) |
-| Summon natural pools and random levels | `validateSummonTraitChange` | `validateSummonTraitChange` | Exact: both use the same 189-rule validator |
+| Summon natural pools and levels | `validateSummonTraitChange` | `validateSummonTraitChange` | Exact: both use the same 189-rule validator |
 | Wrightstone traits and levels | `WrightstoneGen.GetTraitList` | `App.WrightstoneMemoryGetOptions` | Exact: same catalog and level resolver |
 | Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same 184 table-backed items, primary traits, secondary pools and natural level sets |
 
@@ -48,22 +48,21 @@ preserve or write a raw encodable value without presenting it as natural.
 
 ## Summon rule evidence
 
-- The local summon type catalog and the referenced probability dataset contain
-  the same 189 unique type hashes.
+- The local summon type catalog and unpacked `summon.tbl` contain the same 189
+  unique type hashes.
 - All 82 referenced main-trait names map to local hashes. Nine rows require
   translation aliases only; no hash is inferred from a translated name.
 - All 22 sub-parameter names/hashes match directly.
-- 151 random templates have allowed main/sub pools and level sets.
-- 38 fixed templates prove their fixed main/sub hashes but the referenced page
-  omits their fixed level values. The editor permits creation or changes while
-  labelling them non-natural/unverified.
-- The saved `Rank` field is not rarity. A 102-record real-save read produced the
-  tier-index/rank matrix `0→2:11, 1→2:47, 2→0:3, 2→2:41`, so the tool does not
-  derive Rank from tier.
+- All 189 templates have main/sub pools and level sets joined through unpacked
+  `summon.tbl → summon_lot.tbl → summon_curve.tbl`; this includes the 38 fixed
+  trait templates whose level evidence was previously missing.
+- The saved `Rank` field is not rarity. A 103-record real-save read produced the
+  tier-index/rank matrix `0→2:11, 1→2:47, 2→2:45`, so the tool does not derive
+  Rank from tier.
 
 The checked-in normalized evidence is `internal/backend/data/summon_natural_rules_202.json`.
-Its source role is secondary cross-check; local game-table hashes remain the
-primary identity evidence.
+Its pools and levels are normalized from the local unpacked game tables; names
+and hashes are cross-checked against the embedded catalogs.
 
 ## Evidence boundary
 

@@ -138,7 +138,11 @@ async function write() {
   const confirmed = await confirmDialog.value?.ask({
     title: operationLabel,
     message: `将${inPlace.value ? '覆盖当前存档（自动备份）' : '写入新存档'}。`,
-    detail: '种类、主加护、副词条、等级和原始状态字段会作为一条完整记录写入；天然规则只作提醒，写后逐字段回读。',
+    detail: mode.value === 'create'
+      ? '种类、主加护、副词条、等级和原始状态字段会作为一条新记录写入；天然规则只作提醒，写后逐字段回读。'
+      : (form.typeHash >>> 0) === (selected.value.state.typeHash >>> 0)
+        ? '保持原召唤石种类，写入主加护、副词条、等级和原始状态字段；写后逐字段回读。'
+        : '更换种类会以新 SlotID 原子重建该实例，并同步替换已装备引用；写后重新打开存档逐字段验证。',
     confirmLabel: '确认写入', tone: 'warning',
   })
   if (!confirmed) return
@@ -203,9 +207,9 @@ onMounted(async () => {
       </aside>
 
       <section class="ui-card ui-panel editor">
-        <div class="ui-split"><div><small>{{ mode === 'create' ? 'CREATE' : `UNIT ${selected?.unitId}` }}</small><h3 class="ui-section-title">{{ mode === 'create' ? '新增一颗召唤石' : `修改 SlotID ${selected?.slotId || '—'}` }}</h3></div><span class="ui-tag" :class="fixedRule ? 'is-warning' : 'is-success'">{{ fixedRule ? '固定词条已证 · 等级待证' : '天然词池与等级已校验' }}</span></div>
+        <div class="ui-split"><div><small>{{ mode === 'create' ? 'CREATE' : `UNIT ${selected?.unitId}` }}</small><h3 class="ui-section-title">{{ mode === 'create' ? '新增一颗召唤石' : `修改 SlotID ${selected?.slotId || '—'}` }}</h3></div><span class="ui-tag is-success">{{ fixedRule ? '固定词条与等级已校验' : '天然词池与等级已校验' }}</span></div>
         <div class="ui-form-grid">
-          <label class="ui-field wide"><span class="ui-field-label">召唤石种类</span><select v-model.number="form.typeHash" class="ui-select" @change="onTypeChanged"><option v-for="item in options.types" :key="item.hash" :value="item.hash">{{ optionLabel(item) }} · {{ item.tier }} · 消耗{{ item.equipCost }} · {{ item.mode }}</option></select></label>
+          <label class="ui-field wide"><span class="ui-field-label">召唤石种类</span><select v-model.number="form.typeHash" class="ui-select" @change="onTypeChanged"><option v-for="item in options.types" :key="item.hash" :value="item.hash">{{ optionLabel(item) }} · {{ item.tier }} · 消耗{{ item.equipCost }} · {{ item.mode }}</option></select><small v-if="mode === 'update' && selected && (form.typeHash >>> 0) !== (selected.state.typeHash >>> 0)">换种类时会生成新的物品 SlotID，已装备的四槽引用会一并迁移。</small></label>
           <label class="ui-field wide"><span class="ui-field-label">主加护</span><span class="select-with-icon"><img v-if="mainIcon(form.mainTraitHash)" :src="mainIcon(form.mainTraitHash)" alt="" /><select v-model.number="form.mainTraitHash" class="ui-select"><option v-for="item in mainChoices" :key="item.hash" :value="item.hash">{{ optionLabel(item) }}</option></select></span></label>
           <label class="ui-field"><span class="ui-field-label">主加护等级</span><input v-model.number="form.mainTraitLevel" class="ui-input" type="number" min="0" max="4294967295" /></label>
           <label class="ui-field wide"><span class="ui-field-label">副词条</span><select v-model.number="form.subParamHash" class="ui-select"><option v-for="item in subChoices" :key="item.hash" :value="item.hash">{{ optionLabel(item) }}</option></select><small>{{ subName(form.subParamHash) }}</small></label>

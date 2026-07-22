@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.5</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.6</strong></a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
 </p>
@@ -158,6 +158,7 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 ## Data and accuracy
 
 - Save, live, and loadout editors share the DLC 2.0.2 sigil, wrightstone, and summon catalogs. Catalog parity does not mean that the game accepts every combination.
+- A single-loadout file copies the weapon and its progression, awakening/transcendence and wrightstone, 12 independent sigils, skills, mastery selections and Master Level progress, permanent character-enhancement progress, and the global summon selection. Missing summons are created automatically. System unlock state and character Over Mastery stay unchanged in the target save; a missing matching weapon blocks a partial write.
 - The loadout page separates verifiable progression, weapon, sigil, mastery, Over Mastery, and summon contributions.
 - Values without sufficient field evidence remain labelled estimate, candidate, negative observation, or open—not final formulas.
 - Read-only exports remove PIDs, module bases, absolute addresses, user names, and local paths. They do not export full process memory.

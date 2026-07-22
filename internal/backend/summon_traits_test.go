@@ -122,3 +122,24 @@ func TestValidateSummonTraitChangeRejectsCrossPoolCombination(t *testing.T) {
 		t.Fatalf("cross-pool main trait was not rejected: %v", err)
 	}
 }
+
+func TestFixedSummonRulesCarryUnpackedLevelEvidence(t *testing.T) {
+	rules, err := loadSummonNaturalRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roland *SummonNaturalRule
+	for index := range rules {
+		rule := &rules[index]
+		if rule.Mode == "固定" && (len(rule.MainTraitLevels) == 0 || len(rule.SubParamLevels) == 0) {
+			t.Fatalf("固定模板 %s (%s) 缺少解包等级证据", rule.Name, rule.TypeHash)
+		}
+		if rule.TypeHash == "0x81ECEC7F" {
+			roland = rule
+		}
+	}
+	if roland == nil || len(roland.MainTraitLevels) != 1 || roland.MainTraitLevels[0] != 11 ||
+		len(roland.SubParamLevels) != 1 || roland.SubParamLevels[0] != 5 {
+		t.Fatalf("罗兰固定模板等级与 2.0.2 解包表不一致: %+v", roland)
+	}
+}

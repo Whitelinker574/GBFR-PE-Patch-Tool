@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "gameVersion": "2.0.2",
-  "sourceRole": "secondary cross-check normalized from summon_lot.tbl and summon_curve.tbl; checked against local hashes",
-  "generatedAt": "2026-07-21",
+  "sourceRole": "normalized from unpacked DLC 2.0.2 summon.tbl, summon_lot.tbl and summon_curve.tbl; names cross-checked against local hashes",
+  "generatedAt": "2026-07-22",
   "rows": [
     {
       "typeHash": "0xBDD84E9A",
@@ -60,8 +60,12 @@
       "subParamHashes": [
         "0x664E8E32"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0xA34BDECB",
@@ -122,8 +126,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0x65E658D9",
@@ -469,8 +477,12 @@
       "subParamHashes": [
         "0xBC4E92CB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0xB960D2BB",
@@ -694,8 +706,12 @@
       "subParamHashes": [
         "0xA074A967"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        5
+      ]
     },
     {
       "typeHash": "0x1B5DAEBD",
@@ -831,8 +847,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0x847CF372",
@@ -1131,8 +1151,12 @@
       "subParamHashes": [
         "0xA8900C80"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0x4FD78AF8",
@@ -1190,8 +1214,12 @@
       "subParamHashes": [
         "0x2FFB509F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0x3BAD1134",
@@ -1412,8 +1440,12 @@
       "subParamHashes": [
         "0x5A39D81B"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0xA6BB6299",
@@ -1514,8 +1546,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0x1B6A4024",
@@ -1616,8 +1652,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0x99CF3E05",
@@ -1716,8 +1756,12 @@
       "subParamHashes": [
         "0x2270BC40"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        5
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xB79312A7",
@@ -2052,8 +2096,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        13
+      ],
+      "subParamLevels": [
+        7
+      ]
     },
     {
       "typeHash": "0xB3C2F3A4",
@@ -2187,8 +2235,12 @@
       "subParamHashes": [
         "0xA66241C9"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        5
+      ],
+      "subParamLevels": [
+        0
+      ]
     },
     {
       "typeHash": "0x67A73702",
@@ -2408,8 +2460,12 @@
       "subParamHashes": [
         "0x2270BC40"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xF32AA7A7",
@@ -2544,8 +2600,12 @@
       "subParamHashes": [
         "0xBC4E92CB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xCE8E0B79",
@@ -2964,8 +3024,12 @@
       "subParamHashes": [
         "0xA8900C80"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0x0EE2670A",
@@ -3181,8 +3245,12 @@
       "subParamHashes": [
         "0xA66241C9"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        1
+      ],
+      "subParamLevels": [
+        9
+      ]
     },
     {
       "typeHash": "0x01B80951",
@@ -3594,8 +3662,12 @@
       "subParamHashes": [
         "0xA66241C9"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0xF2BE819E",
@@ -3656,8 +3728,12 @@
       "subParamHashes": [
         "0xBC4E92CB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        15
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0x391C7857",
@@ -4076,8 +4152,12 @@
       "subParamHashes": [
         "0xA66241C9"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        13
+      ],
+      "subParamLevels": [
+        7
+      ]
     },
     {
       "typeHash": "0x5E29E993",
@@ -4134,8 +4214,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        5
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xD5536AE8",
@@ -4317,8 +4401,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        0
+      ]
     },
     {
       "typeHash": "0x514CF53B",
@@ -4656,8 +4744,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0x7E853E16",
@@ -4751,8 +4843,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        7
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xD7555B1F",
@@ -4769,8 +4865,12 @@
       "subParamHashes": [
         "0x664E8E32"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        3
+      ]
     },
     {
       "typeHash": "0x47E2AE71",
@@ -4829,8 +4929,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0x52E21E37",
@@ -4890,8 +4994,12 @@
       "subParamHashes": [
         "0x5A39D81B"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        2
+      ]
     },
     {
       "typeHash": "0x0F986ED9",
@@ -4953,8 +5061,12 @@
       "subParamHashes": [
         "0x9245DFA4"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        5
+      ]
     },
     {
       "typeHash": "0xEBEB3DC0",
@@ -5167,8 +5279,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0xE51CE5B0",
@@ -5434,8 +5550,12 @@
       "subParamHashes": [
         "0xCE70C58A"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        5
+      ]
     },
     {
       "typeHash": "0xE6EBB6FA",
@@ -5493,8 +5613,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        1
+      ]
     },
     {
       "typeHash": "0x2EACD79C",
@@ -5673,8 +5797,12 @@
       "subParamHashes": [
         "0xF7B0316F"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        2
+      ]
     },
     {
       "typeHash": "0x1BE16847",
@@ -5730,8 +5858,12 @@
       "subParamHashes": [
         "0x00D171E0"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        4
+      ],
+      "subParamLevels": [
+        0
+      ]
     },
     {
       "typeHash": "0xEF554891",
@@ -5910,8 +6042,12 @@
       "subParamHashes": [
         "0x5A1D2C89"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        5
+      ]
     },
     {
       "typeHash": "0x38348E1E",
@@ -5969,8 +6105,12 @@
       "subParamHashes": [
         "0xA3539FBB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        10
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0xCE0039D4",
@@ -6316,8 +6456,12 @@
       "subParamHashes": [
         "0xBC4E92CB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        4
+      ]
     },
     {
       "typeHash": "0x634A379D",
@@ -6823,8 +6967,12 @@
       "subParamHashes": [
         "0xA3539FBB"
       ],
-      "mainTraitLevels": [],
-      "subParamLevels": []
+      "mainTraitLevels": [
+        11
+      ],
+      "subParamLevels": [
+        7
+      ]
     }
   ]
 }

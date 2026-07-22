@@ -10,8 +10,8 @@ This page separates implemented behavior from open calibration work. “Implemen
 | Offline transaction safety | Backup, checksum repair, temporary output, atomic replacement and readback are implemented. |
 | Sigil catalogs | Save, live-memory and loadout constructors share the same 2.0.2 catalog; DLC entries remain searchable. |
 | Wrightstones | Offline and live editors share catalog choices; tier index and the independent stored state/rank field are labelled separately. |
-| Summons | Offline creation/update, live editing and loadout editing share catalog options. Natural/legality rules are advisory; encodable values remain writable. |
-| Loadout workspace | Weapons, twelve sigils, four active skills, mastery, permanent growth, Over Mastery and summons are editable; single-loadout import/export stays in the persistent action bar. |
+| Summons | Offline creation/update, live editing and loadout editing share catalog options. Type replacement creates a fresh SlotID, migrates equipped references and survives disk reopen; unpacked fixed-template levels are included. Natural rules remain advisory. |
+| Loadout workspace | Weapons, twelve sigils, four active skills, mastery, permanent growth, Over Mastery and summons are editable. v3 single-loadout import creates twelve independent sigils, creates missing summons, and copies Master Level progress, permanent character enhancement, weapon progression, awakening/transcendence and the equipped wrightstone in one verified transaction. A missing matching weapon still blocks a partial write. |
 | Pre-DLC saves | Editors remain usable when mastery/summon records are absent and do not claim that writing a record unlocks the DLC system. |
 | Persistent patch pages | Combat, character and quest tabs share one owned connection; navigation does not unmount or silently restore enabled patches. |
 | Automatic perfect guard | The two-site combo-continuation patch has its own original-byte guards and was re-verified in the DLC 2.0.2 field session. |

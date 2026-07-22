@@ -9,9 +9,10 @@ import (
 // LoadoutApplyRequest keeps edits to global owned resource instances in the
 // same save transaction as the preset references that selected them.
 type LoadoutApplyRequest struct {
-	Changes     []LoadoutWrite            `json:"changes"`
-	WeaponEdits []LoadoutWeaponInlineEdit `json:"weaponEdits,omitempty"`
-	SummonEdits []LoadoutSummonInlineEdit `json:"summonEdits,omitempty"`
+	Changes       []LoadoutWrite             `json:"changes"`
+	WeaponEdits   []LoadoutWeaponInlineEdit  `json:"weaponEdits,omitempty"`
+	SummonEdits   []LoadoutSummonInlineEdit  `json:"summonEdits,omitempty"`
+	ImportPayload *LoadoutImportApplyPayload `json:"importPayload,omitempty"`
 }
 
 // LoadoutWeaponInlineEdit carries a full five-slot stale snapshot. Individual

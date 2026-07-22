@@ -25,6 +25,8 @@ const ctx = ref(null)
 const loading = ref(false)
 const applying = ref(false)
 const sharing = ref(false)
+const importMissing = ref([])
+const importApplyPayload = ref(null)
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -181,9 +183,20 @@ function normalizedHash(value) { return String(value || '').replace(/^0x/i, '').
 const characterAvatar = computed(() => characterAssetIcon(props.charaHash))
 const selectedWeaponPick = computed(() => ctx.value?.weapons?.find(item => Number(item.slotId) === Number(form.value.weaponSlotId)) || null)
 const selectedWeaponIcon = computed(() => weaponAssetIcon(selectedWeaponContext.value || selectedWeaponPick.value || {}))
-const selectedSummons = computed(() => summonSlotIds.value.map(slotId =>
-  statContext.value.summons.find(item => item.slotId === slotId) || null
-))
+const importedSummonsByIndex = computed(() => new Map((importApplyPayload.value?.constructedSummons || [])
+  .map(item => [Number(item.index), item])))
+const selectedSummons = computed(() => summonSlotIds.value.map((slotId, index) => {
+  const existing = statContext.value.summons.find(item => item.slotId === slotId)
+  if (existing) return existing
+  const pending = importedSummonsByIndex.value.get(index)
+  if (!pending) return null
+  return {
+    slotId: 0, unitId: 0, typeHash: hashHex(pending.state?.typeHash), name: pending.name || '导入召唤石（将自动生成）',
+    mainTraitHash: hashHex(pending.state?.mainTraitHash), mainTraitName: '导入主加护', mainTraitLevel: Number(pending.state?.mainTraitLevel || 0),
+    subParamHash: hashHex(pending.state?.subParamHash), subParamName: '导入副参数', subParamLevel: Number(pending.state?.subParamLevel || 0),
+    subParamValue: 0, subParamUnit: '', rank: Number(pending.state?.rank || 0), pendingImport: true,
+  }
+}))
 const runtimeWeaponPick = computed(() => ctx.value?.weapons?.find(item => Number(item.slotId) === Number(runtimePanelStats.value?.currentWeaponSlotId)) || null)
 function factorIdentity(factor) {
   const identityHash = value => {
@@ -259,7 +272,10 @@ const editableWeaponSkillSlots = computed(() => (selectedWeaponContext.value?.sk
 const weaponInlineAvailable = computed(() => editableWeaponSkillSlots.value.length > 0)
 const summonSelectionValid = computed(() => {
   const ids = summonSlotIds.value.map(Number)
-  return ids.length === 4 && ids.every(id => id > 0 && statContext.value.summons.some(item => item.slotId === id)) && new Set(ids).size === 4
+  if (ids.length !== 4) return false
+  const existing = ids.filter(id => id > 0)
+  if (new Set(existing).size !== existing.length) return false
+  return ids.every((id, index) => (id > 0 && statContext.value.summons.some(item => item.slotId === id)) || importedSummonsByIndex.value.has(index))
 })
 function summonUsedElsewhere(slotId, currentIndex) {
   return summonSlotIds.value.some((value, index) => index !== currentIndex && Number(value) === Number(slotId))
@@ -720,6 +736,8 @@ function setMasteryHashes(hashes) {
 }
 
 function hydrateFromTarget() {
+  importMissing.value = []
+  importApplyPayload.value = null
   const loadout = selectedLoadout.value
   pendingSkillHash.value = ''
   form.value = {
@@ -764,6 +782,7 @@ async function loadCtx() {
     summonSlotIds.value = [...(statContext.value.equippedSummonSlotIds || [])].slice(0, 4)
     while (summonSlotIds.value.length < 4) summonSlotIds.value.push(0)
     writeGlobalSummons.value = false
+    importApplyPayload.value = null
     summonInlineEnabled.value = false
     await loadMasteryPool()
     // 默认打开该角色内容最完整的一套，真实存档可直接看到 12 因子、4 技能与 50 专精。
@@ -922,6 +941,7 @@ const writeInvalid = computed(() => {
   if (op.value === 'clone') return !cloneFrom.value || cloneFrom.value === targetSlot.value
   return !form.value.name.trim()
     || nameTooLong.value
+    || importMissing.value.length > 0
     || (writeGlobalSummons.value && !summonSelectionValid.value)
 })
 
@@ -957,11 +977,25 @@ async function importLoadout() {
   try {
     const draft = await LoadoutImport(props.savePath, props.charaHash)
     if (!draft) return
+    importApplyPayload.value = draft.applyPayload || null
     form.value.name = draft.name || form.value.name
     form.value.weaponSlotId = draft.weaponSlotId || 0
     factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
+    for (const constructed of draft.constructedSigils || []) {
+      const item = constructed?.item || {}
+      factorSlots.value = putConstructedFactor(factorSlots.value, Number(constructed.index), item, {
+        name: item.sigilName || '导入因子',
+        level: Number(item.level || 0),
+        primaryTraitName: item.primaryTraitName || '',
+        primaryTraitLevel: Number(item.primaryLevel || 0),
+        secondaryTraitName: item.secondaryTraitName || '',
+        secondaryTraitLevel: Number(item.secondaryLevel || 0),
+      })
+    }
     if (Array.isArray(draft.summonSlotIds) && draft.summonSlotIds.length === 4) {
       summonSlotIds.value = [...draft.summonSlotIds]
+      const generated = new Set((draft.applyPayload?.constructedSummons || []).map(item => Number(item.index)))
+      writeGlobalSummons.value = draft.summonSlotIds.every((slotId, index) => Number(slotId) > 0 || generated.has(index))
     }
     activeFactorIndex.value = 0
     form.value.skillHashes = [...(draft.skillHashes || [])]
@@ -969,10 +1003,13 @@ async function importLoadout() {
     masteryMode.value = 'free'
     setMasteryHashes(draft.masteryHashes || [])
     masteryRankTab.value = 'EX'
-    if (draft.missing?.length) {
-      emit('status', `已载入草稿，但当前存档缺少 ${draft.missing.length} 项资源：${draft.missing.join('；')}`, 'error')
+    importMissing.value = [...(draft.missing || [])]
+    if (importMissing.value.length) {
+      emit('status', `已载入草稿，但当前存档缺少 ${importMissing.value.length} 项不能自动生成的资源：${importMissing.value.join('；')}；为避免部分配装落盘，已禁止保存。补齐资源后请重新导入`, 'error')
     } else {
-      emit('status', '单套配装已完整映射到当前存档；请核对右侧总计后选择目标槽写入', 'success')
+      const count = draft.constructedSigils?.length || 0
+      const summonCount = draft.applyPayload?.constructedSummons?.length || 0
+      emit('status', `单套配装已完整载入；保存时将生成 ${count} 枚独立因子${summonCount ? `、补建 ${summonCount} 个缺失召唤石` : ''}，并同步专精等级、角色强化及武器强化/祝福`, 'success')
     }
   } catch (err) {
     emit('status', String(err), 'error')
@@ -1019,8 +1056,9 @@ async function apply() {
       changes: [w],
       weaponEdits,
       summonEdits,
+      importPayload: importApplyPayload.value,
     })
-    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，同时生成 ${res.createdCount} 个因子` : ''}`, 'success')
+    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，生成 ${res.createdCount} 个独立因子` : ''}${res.createdSummonCount ? `，补建 ${res.createdSummonCount} 个召唤石` : ''}`, 'success')
     emit('reload')
   } catch (err) {
     emit('status', String(err), 'error')
@@ -1253,8 +1291,8 @@ async function apply() {
               <small>关闭时仅参与右侧数值预览；背包可选 {{ statContext.summons.length }} 个</small>
             </span>
           </label>
-          <label class="summon-write-toggle ui-check" :class="{ disabled: !summonSelectionValid }">
-            <input v-model="summonInlineEnabled" type="checkbox" :disabled="!summonSelectionValid" />
+          <label class="summon-write-toggle ui-check" :class="{ disabled: !summonSelectionValid || !!importApplyPayload }">
+            <input v-model="summonInlineEnabled" type="checkbox" :disabled="!summonSelectionValid || !!importApplyPayload" />
             <span>
               <b>同时编辑当前四个召唤石实例</b>
               <small>启用后会一并选定并写入这四个全局槽；实例属性与配装在同一事务回读验证</small>
@@ -1266,6 +1304,7 @@ async function apply() {
               <span class="summon-slot-index">{{ String(index).padStart(2, '0') }}</span>
               <select v-model.number="summonSlotIds[index - 1]" class="ed-select ui-select">
                 <option :value="0" disabled>— 选择召唤石 —</option>
+                <option v-if="importedSummonsByIndex.has(index - 1)" :value="0">{{ importedSummonsByIndex.get(index - 1).name || '导入召唤石' }} · 保存时自动生成</option>
                 <option v-for="summon in statContext.summons" :key="summon.slotId" :value="summon.slotId"
                   :disabled="summonUsedElsewhere(summon.slotId, index - 1)">
                   {{ summonOptionLabel(summon) }}
@@ -1338,6 +1377,8 @@ async function apply() {
           </button>
         </div>
       </div>
+      <p class="single-loadout-scope">单套文件会复制武器及其强化、觉醒/超凡与祝福，12 个独立因子、4 个技能、专精选择与等级、角色强化进度及全局召唤石；目标存档缺少的召唤石会自动补建。系统开放状态和角色上限突破保持目标存档原值，缺少对应武器时不做部分写入。</p>
+      <p v-if="op === 'write' && importMissing.length" class="import-blocker" role="alert">导入草稿缺少资源，为避免只写入部分配装，保存已锁定：{{ importMissing.join('；') }}。补齐后请重新导入。</p>
       <template v-if="op === 'write'">
 
         <div class="ed-field factor-field">
@@ -1780,6 +1821,8 @@ async function apply() {
 .editor-persistent-actions .ui-btn { min-height:34px; }
 .single-loadout-label { padding:0 3px 0 1px; color:var(--text-muted); font-size:var(--fs-xs); font-weight:700; white-space:nowrap; }
 .single-loadout-action { border-color:var(--line-gold); background:rgba(255,255,255,.5); color:#765126; }
+.single-loadout-scope { margin:0; padding:7px 12px; border-bottom:1px solid var(--line-soft); background:rgba(255,255,255,.38); color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.import-blocker { position:sticky; z-index:11; top:48px; margin:0; padding:8px 12px; border-bottom:1px solid var(--danger); background:var(--danger-bg); color:var(--danger); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .editor-save-button { flex:0 0 auto; min-width:142px; }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }

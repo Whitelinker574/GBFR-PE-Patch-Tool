@@ -145,39 +145,37 @@ func (s *SaveData) InspectSummonInventory() (SummonSaveInventory, error) {
 	}
 	sort.Slice(result.Records, func(i, j int) bool { return result.Records[i].SlotID < result.Records[j].SlotID })
 	result.Occupied = len(result.Records)
-	if !unlocked && (result.Occupied != 0 || result.MaxSlotID != 0) {
-		return SummonSaveInventory{}, fmt.Errorf("召唤系统未开放，但存档已有 %d 条记录 / MaxSlotID %d", result.Occupied, result.MaxSlotID)
-	}
-	if unlocked && result.MaxSlotID < uint32(result.Occupied) {
+	if result.MaxSlotID < uint32(result.Occupied) {
 		return SummonSaveInventory{}, fmt.Errorf("召唤石 1454=%d 小于已占记录数 %d", result.MaxSlotID, result.Occupied)
 	}
 	return result, nil
 }
 
-func (s *SaveData) summonRegistrationFlag(typeHash uint32) (*unitEntry, error) {
-	var catalogUnitID uint32
-	found := false
+func (s *SaveData) summonRegistrationFlags(typeHash uint32) ([]*unitEntry, error) {
+	flags := make([]*unitEntry, 0, 1)
 	for _, entry := range s.findAllUnitsByType(SummonCatalogIDType) {
 		if entry.ValueCnt != 1 || entry.Uint32() != typeHash {
 			continue
 		}
-		if found {
-			return nil, fmt.Errorf("召唤石类型 0x%08X 在 1452 登记表中重复", typeHash)
+		flag, err := s.requireStrictSummonUnit(SummonRegisteredIDType, entry.UnitID, 1)
+		if err != nil {
+			return nil, err
 		}
-		catalogUnitID = entry.UnitID
-		found = true
+		if flag.Uint32() > 1 {
+			return nil, fmt.Errorf("召唤石类型 0x%08X 的 1453 标记=%d，不是 0/1", typeHash, flag.Uint32())
+		}
+		flags = append(flags, flag)
 	}
-	if !found {
+	if len(flags) == 0 {
 		return nil, fmt.Errorf("召唤石类型 0x%08X 不在存档 1452 登记表中", typeHash)
 	}
-	flag, err := s.requireStrictSummonUnit(SummonRegisteredIDType, catalogUnitID, 1)
-	if err != nil {
-		return nil, err
+	return flags, nil
+}
+
+func registerSummonType(flags []*unitEntry) {
+	for _, flag := range flags {
+		flag.SetUint32(1)
 	}
-	if flag.Uint32() > 1 {
-		return nil, fmt.Errorf("召唤石类型 0x%08X 的 1453 标记=%d，不是 0/1", typeHash, flag.Uint32())
-	}
-	return flag, nil
 }
 
 func validateSummonSaveDraft(draft, existing SummonTraitState) error {
@@ -235,7 +233,7 @@ func (s *SaveData) CreateSummonRecordWithPolicy(draft SummonTraitState, enforceN
 			return SummonSaveRecord{}, err
 		}
 	}
-	registration, err := s.summonRegistrationFlag(draft.TypeHash)
+	registration, err := s.summonRegistrationFlags(draft.TypeHash)
 	if err != nil {
 		return SummonSaveRecord{}, err
 	}
@@ -266,7 +264,7 @@ func (s *SaveData) CreateSummonRecordWithPolicy(draft SummonTraitState, enforceN
 	}
 	slotEntry.SetUint32(newSlotID)
 	maxEntry.SetUint32(newSlotID)
-	registration.SetUint32(1)
+	registerSummonType(registration)
 	return SummonSaveRecord{UnitID: target.UnitID, SlotID: newSlotID, State: draft}, nil
 }
 
@@ -292,20 +290,96 @@ func (s *SaveData) UpdateSummonRecordWithPolicy(expected SummonSaveRecord, draft
 	if current != expected {
 		return SummonSaveRecord{}, fmt.Errorf("召唤石记录已变化，请重新加载存档")
 	}
+	if draft.TypeHash != current.State.TypeHash {
+		return s.replaceSummonRecordType(current, draft, enforceNaturalRules)
+	}
 	if enforceNaturalRules {
 		if err := validateSummonSaveDraft(draft, current.State); err != nil {
 			return SummonSaveRecord{}, err
 		}
 	}
-	registration, err := s.summonRegistrationFlag(draft.TypeHash)
+	registration, err := s.summonRegistrationFlags(draft.TypeHash)
 	if err != nil {
 		return SummonSaveRecord{}, err
 	}
 	if err := s.writeSummonSaveState(expected.UnitID, draft); err != nil {
 		return SummonSaveRecord{}, err
 	}
-	registration.SetUint32(1)
+	registerSummonType(registration)
 	return SummonSaveRecord{UnitID: expected.UnitID, SlotID: expected.SlotID, State: draft}, nil
+}
+
+// 换种类按物品新增语义重建 SlotID，并在同一事务迁移四槽装备引用。
+func (s *SaveData) replaceSummonRecordType(current SummonSaveRecord, draft SummonTraitState, enforceNaturalRules bool) (SummonSaveRecord, error) {
+	inventory, err := s.InspectSummonInventory()
+	if err != nil {
+		return SummonSaveRecord{}, err
+	}
+	foundCurrent := false
+	for _, record := range inventory.Records {
+		if record == current {
+			foundCurrent = true
+			break
+		}
+	}
+	if !foundCurrent {
+		return SummonSaveRecord{}, fmt.Errorf("召唤石目标记录不在完整背包快照中")
+	}
+	if enforceNaturalRules {
+		if err := validateSummonSaveDraft(draft, current.State); err != nil {
+			return SummonSaveRecord{}, err
+		}
+	}
+	registration, err := s.summonRegistrationFlags(draft.TypeHash)
+	if err != nil {
+		return SummonSaveRecord{}, err
+	}
+	maxEntry, err := s.requireStrictSummonUnit(SummonMaxSlotIDType, 0, 1)
+	if err != nil {
+		return SummonSaveRecord{}, err
+	}
+	if maxEntry.Uint32() != inventory.MaxSlotID {
+		return SummonSaveRecord{}, fmt.Errorf("召唤石 MaxSlotID 在写入前已变化，请重新加载存档")
+	}
+	if inventory.MaxSlotID == ^uint32(0) {
+		return SummonSaveRecord{}, fmt.Errorf("召唤石 MaxSlotID 已溢出")
+	}
+	slotEntry, err := s.requireStrictSummonUnit(SummonSlotIDType, current.UnitID, 1)
+	if err != nil {
+		return SummonSaveRecord{}, err
+	}
+	equipped, err := s.requireStrictSummonUnit(SummonEquippedIDType, 0, 4)
+	if err != nil {
+		return SummonSaveRecord{}, err
+	}
+	newSlotID := inventory.MaxSlotID + 1
+	for _, record := range inventory.Records {
+		if record.SlotID == newSlotID {
+			return SummonSaveRecord{}, fmt.Errorf("召唤石新 SlotID %d 已被 UnitID %d 占用", newSlotID, record.UnitID)
+		}
+	}
+	equippedIndexes := make([]int, 0, equipped.ValueCnt)
+	for index := 0; index < equipped.ValueCnt; index++ {
+		value, readErr := equipped.Uint32At(index)
+		if readErr != nil {
+			return SummonSaveRecord{}, readErr
+		}
+		if value == current.SlotID {
+			equippedIndexes = append(equippedIndexes, index)
+		}
+	}
+	if err := s.writeSummonSaveState(current.UnitID, draft); err != nil {
+		return SummonSaveRecord{}, err
+	}
+	slotEntry.SetUint32(newSlotID)
+	maxEntry.SetUint32(newSlotID)
+	registerSummonType(registration)
+	for _, index := range equippedIndexes {
+		if err := equipped.SetUint32At(index, newSlotID); err != nil {
+			return SummonSaveRecord{}, err
+		}
+	}
+	return SummonSaveRecord{UnitID: current.UnitID, SlotID: newSlotID, State: draft}, nil
 }
 
 func (s *SaveData) VerifySummonRecord(expected SummonSaveRecord) error {
@@ -316,12 +390,14 @@ func (s *SaveData) VerifySummonRecord(expected SummonSaveRecord) error {
 	if actual != expected {
 		return fmt.Errorf("召唤石回读不一致: got=%+v want=%+v", actual, expected)
 	}
-	flag, err := s.summonRegistrationFlag(expected.State.TypeHash)
+	flags, err := s.summonRegistrationFlags(expected.State.TypeHash)
 	if err != nil {
 		return err
 	}
-	if flag.Uint32() != 1 {
-		return fmt.Errorf("召唤石类型 0x%08X 写入后未登记", expected.State.TypeHash)
+	for _, flag := range flags {
+		if flag.Uint32() != 1 {
+			return fmt.Errorf("召唤石类型 0x%08X 写入后未完整登记", expected.State.TypeHash)
+		}
 	}
 	return nil
 }

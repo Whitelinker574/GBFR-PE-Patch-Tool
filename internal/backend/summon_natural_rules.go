@@ -9,10 +9,7 @@ import (
 //go:embed data/summon_natural_rules_202.json
 var summonNaturalRulesJSON []byte
 
-// SummonNaturalRule describes one summon type's naturally generated pool.
-// The type/main/sub hashes are cross-checked against the embedded game-table
-// catalogs. Empty level lists deliberately mean that the secondary source only
-// proves the fixed traits, not their fixed level values.
+// SummonNaturalRule 记录 2.0.2 解包表中每种召唤石的天然词条与等级池。
 type SummonNaturalRule struct {
 	TypeHash        string   `json:"typeHash"`
 	Name            string   `json:"name"`
@@ -99,7 +96,7 @@ func validateSummonNaturalChange(draft, existing SummonTraitState) error {
 	subUnchanged := sameType && draft.SubParamHash == existing.SubParamHash && draft.SubParamLevel == existing.SubParamLevel
 	legacyUnchanged := mainUnchanged && subUnchanged
 	if legacyUnchanged {
-		// Rank is a separate saved field. A real 102-record save proves it does
+		// Rank is a separate saved field. A real 103-record save proves it does
 		// not equal the summon rarity tier, so changing Rank must not be checked
 		// against Tier/TierIndex.
 		return nil
@@ -109,17 +106,6 @@ func validateSummonNaturalChange(draft, existing SummonTraitState) error {
 	}
 	if !subUnchanged && !containsSummonRuleHash(rule.SubParamHashes, draft.SubParamHash) {
 		return fmt.Errorf("副词条 0x%08X 不在召唤石 0x%08X 的天然词池", draft.SubParamHash, draft.TypeHash)
-	}
-	if rule.Mode == "固定" {
-		// The referenced probability page proves the fixed hashes but explicitly
-		// omits fixed-template levels. Do not invent those levels for a new item.
-		if creating || draft.TypeHash != existing.TypeHash {
-			return fmt.Errorf("固定模板 %s 的词条已验证，但固定等级尚无表内证据；暂不允许新增/换入", rule.Name)
-		}
-		if draft.MainTraitLevel != existing.MainTraitLevel || draft.SubParamLevel != existing.SubParamLevel {
-			return fmt.Errorf("固定模板 %s 的等级尚无表内证据，只能保留原值", rule.Name)
-		}
-		return nil
 	}
 	if !mainUnchanged && !containsSummonRuleLevel(rule.MainTraitLevels, draft.MainTraitLevel) {
 		return fmt.Errorf("主加护等级 %d 不在召唤石 0x%08X 的天然等级集合", draft.MainTraitLevel, draft.TypeHash)

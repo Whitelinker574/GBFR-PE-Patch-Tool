@@ -293,6 +293,19 @@ test('summon selectors are explicit global equipment and only write after opt-in
   assert.match(source, /v-model="writeGlobalSummons"/)
   assert.match(source, /if \(writeGlobalSummons\.value\) w\.summonSlotIds = \[\.\.\.summonSlotIds\.value\]/)
   assert.match(source, /writeGlobalSummons\.value[\s\S]*全局四槽/)
+  assert.match(source, /writeGlobalSummons\.value = draft\.summonSlotIds\.every\(\(slotId, index\) => Number\(slotId\) > 0 \|\| generated\.has\(index\)\)/)
+})
+
+test('single-loadout import constructs independent factors and blocks partial writes', () => {
+  assert.match(source, /for \(const constructed of draft\.constructedSigils \|\| \[\]\)/)
+  assert.match(source, /putConstructedFactor\(/)
+  assert.match(source, /importMissing\.value\.length > 0/)
+  assert.match(source, /op === 'write' && importMissing\.length/)
+  assert.match(source, /为避免只写入部分配装，保存已锁定/)
+  assert.match(source, /补齐后请重新导入/)
+  assert.match(source, /12 个独立因子/)
+  assert.match(source, /同步专精等级、角色强化及武器强化\/祝福/)
+  assert.match(source, /系统开放状态和角色上限突破保持目标存档原值/)
 })
 
 test('merged total names and source ledgers wrap instead of being ellipsized', () => {

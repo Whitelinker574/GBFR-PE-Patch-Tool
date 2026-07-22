@@ -128,8 +128,8 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	if len(draft.Missing) != 0 {
 		t.Fatalf("同一真实存档导入不应缺资源: %v", draft.Missing)
 	}
-	if len(draft.SigilSlotIDs) != 12 || len(draft.SkillHashes) != 4 || len(draft.MasteryHashes) != 50 {
-		t.Fatalf("导入解析丢字段: 因子%d 技能%d 专精%d", len(draft.SigilSlotIDs), len(draft.SkillHashes), len(draft.MasteryHashes))
+	if len(draft.SigilSlotIDs) != 12 || len(draft.ConstructedSigils) != 12 || len(draft.SkillHashes) != 4 || len(draft.MasteryHashes) != 50 {
+		t.Fatalf("导入解析丢字段: 因子槽%d 构造%d 技能%d 专精%d", len(draft.SigilSlotIDs), len(draft.ConstructedSigils), len(draft.SkillHashes), len(draft.MasteryHashes))
 	}
 	ctx, err := app.LoadoutEditContext(path, source.CharaHash)
 	if err != nil {
@@ -138,21 +138,22 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	if len(ctx.Skills) < 8 {
 		t.Fatalf("伊欧技能池不完整：得到 %d，至少应有 8 个", len(ctx.Skills))
 	}
-	selected := map[uint32]bool{}
 	for _, slotID := range draft.SigilSlotIDs {
-		selected[slotID] = true
+		if slotID != 0 {
+			t.Fatalf("单套导入不应复用旧因子 SlotID: %v", draft.SigilSlotIDs)
+		}
 	}
-	for _, sigil := range ctx.Sigils {
-		if selected[sigil.SlotID] && sigil.PrimaryTraitName == "" {
-			t.Fatalf("真实因子 %s(%d) 未显示主词条", sigil.Name, sigil.SlotID)
+	for index, constructed := range draft.ConstructedSigils {
+		if constructed.Index != index || constructed.Item.SigilID == "" || constructed.Item.PrimaryTraitID == "" {
+			t.Fatalf("第 %d 格没有完整构造草稿: %+v", index+1, constructed)
 		}
 	}
 }
 
-func TestLoadoutShareV2PreservesSparseSigilIndices(t *testing.T) {
+func TestLoadoutShareV3PreservesSparseSigilIndices(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
-	if share.Version != 2 {
-		t.Fatalf("新导出格式版本=%d，期望 2", share.Version)
+	if share.Version != loadoutShareVersion {
+		t.Fatalf("新导出格式版本=%d，期望 %d", share.Version, loadoutShareVersion)
 	}
 	first, fourth := share.Sigils[0], share.Sigils[3]
 	zero, three := 0, 3
@@ -166,17 +167,17 @@ func TestLoadoutShareV2PreservesSparseSigilIndices(t *testing.T) {
 	if len(draft.SigilSlotIDs) != loadoutMaxSigils {
 		t.Fatalf("v2 导入因子向量长度=%d，期望固定 %d", len(draft.SigilSlotIDs), loadoutMaxSigils)
 	}
-	if draft.SigilSlotIDs[0] == 0 || draft.SigilSlotIDs[3] == 0 {
-		t.Fatalf("稀疏因子没有回到原始 0/3 槽: %v", draft.SigilSlotIDs)
+	if len(draft.ConstructedSigils) != 2 || draft.ConstructedSigils[0].Index != 0 || draft.ConstructedSigils[1].Index != 3 {
+		t.Fatalf("稀疏因子没有回到原始 0/3 槽: %+v", draft.ConstructedSigils)
 	}
 	for i, slotID := range draft.SigilSlotIDs {
-		if i != 0 && i != 3 && slotID != 0 {
-			t.Fatalf("稀疏导入把因子写到了第 %d 槽: %v", i, draft.SigilSlotIDs)
+		if slotID != 0 {
+			t.Fatalf("稀疏导入复用了第 %d 格的旧 SlotID: %v", i, draft.SigilSlotIDs)
 		}
 	}
 }
 
-func TestLoadoutShareV2KeepsMissingSigilPositionEmpty(t *testing.T) {
+func TestLoadoutShareV2RebuildsGeneratedCombinationHashAtOriginalPosition(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
 	first, fourth := share.Sigils[0], share.Sigils[3]
 	zero, three := 0, 3
@@ -188,11 +189,11 @@ func TestLoadoutShareV2KeepsMissingSigilPositionEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if draft.SigilSlotIDs[0] == 0 || draft.SigilSlotIDs[3] != 0 {
-		t.Fatalf("缺失因子没有在原第 4 格留下空位: %v", draft.SigilSlotIDs)
+	if len(draft.ConstructedSigils) != 2 || draft.ConstructedSigils[1].Index != 3 {
+		t.Fatalf("组合哈希因子没有按指纹回建到第 4 格: %+v", draft.ConstructedSigils)
 	}
-	if len(draft.Missing) != 1 {
-		t.Fatalf("缺失项=%v，期望恰好 1 项", draft.Missing)
+	if len(draft.Missing) != 0 {
+		t.Fatalf("可以用主副词条指纹回建的因子不应报缺失: %v", draft.Missing)
 	}
 }
 
@@ -232,14 +233,14 @@ func TestLoadoutShareReadsLegacyV1DenseSigils(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(draft.SigilSlotIDs) != 2 || draft.SigilSlotIDs[0] == 0 || draft.SigilSlotIDs[1] == 0 {
-		t.Fatalf("旧 v1 dense 因子没有按顺序兼容导入: %v", draft.SigilSlotIDs)
+	if len(draft.SigilSlotIDs) != 2 || len(draft.ConstructedSigils) != 2 || draft.ConstructedSigils[0].Index != 0 || draft.ConstructedSigils[1].Index != 1 {
+		t.Fatalf("旧 v1 dense 因子没有按顺序转为构造草稿: slots=%v constructed=%+v", draft.SigilSlotIDs, draft.ConstructedSigils)
 	}
 }
 
-func TestLoadoutShareV1AndV2WithoutSummonsRemainCompatible(t *testing.T) {
+func TestLoadoutShareV1V2AndV3WithoutSummonsRemainCompatible(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
-	for _, version := range []int{loadoutShareLegacyVersion, loadoutShareVersion} {
+	for _, version := range []int{loadoutShareLegacyVersion, 2, loadoutShareVersion} {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			legacy := *share
 			legacy.Version = version
@@ -353,7 +354,7 @@ func TestLoadoutShareV2ResolvesSummonFingerprintsToRealSlotsInOrder(t *testing.T
 	}
 }
 
-func TestLoadoutShareV2KeepsMissingSummonPositionAndReportsIt(t *testing.T) {
+func TestLoadoutShareV3KeepsMissingSummonPositionAndBuildsIt(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
 	share.Summons = append([]LoadoutShareSummon(nil), share.Summons...)
 	share.Summons[0].TypeHash = "DEADBEEF"
@@ -371,9 +372,12 @@ func TestLoadoutShareV2KeepsMissingSummonPositionAndReportsIt(t *testing.T) {
 			t.Fatalf("存在的第%d槽召唤石被错误清空: %v", index+1, draft.SummonSlotIDs)
 		}
 	}
-	if len(draft.Missing) != 1 || !strings.Contains(draft.Missing[0], "召唤石") ||
-		!strings.Contains(draft.Missing[0], "不存在的测试召唤石") {
-		t.Fatalf("缺失召唤石没有加入 Missing: %v", draft.Missing)
+	if draft.ApplyPayload == nil || len(draft.ApplyPayload.ConstructedSummons) != 1 ||
+		draft.ApplyPayload.ConstructedSummons[0].Index != 0 || draft.ApplyPayload.ConstructedSummons[0].Name != "不存在的测试召唤石" {
+		t.Fatalf("缺失召唤石没有生成原始第1槽构造草稿: %+v", draft.ApplyPayload)
+	}
+	if len(draft.Missing) != 0 {
+		t.Fatalf("可自动生成的召唤石不应锁定写入: %v", draft.Missing)
 	}
 }
 
@@ -479,7 +483,7 @@ func shareTestLoadoutUnitID(t *testing.T, path string, share *LoadoutShare) uint
 	return 0
 }
 
-func TestLoadoutShareV2ReportsAmbiguousSummonFingerprintInsteadOfPickingOne(t *testing.T) {
+func TestLoadoutShareV3PicksOneEquivalentDuplicateSummon(t *testing.T) {
 	_, share := actualLoadoutShareFixture(t)
 	path := copyStatsSave(t)
 	ctx, err := (&App{}).LoadoutStatContext(path, share.CharaHash)
@@ -499,17 +503,11 @@ func TestLoadoutShareV2ReportsAmbiguousSummonFingerprintInsteadOfPickingOne(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(draft.SummonSlotIDs) != 4 || draft.SummonSlotIDs[0] != 0 {
-		t.Fatalf("歧义指纹不应擅自选择一个真实实例: %v", draft.SummonSlotIDs)
+	if len(draft.SummonSlotIDs) != 4 || draft.SummonSlotIDs[0] == 0 {
+		t.Fatalf("等价重复实例应稳定选择一个已有 SlotID: %v", draft.SummonSlotIDs)
 	}
-	foundAmbiguous := false
-	for _, item := range draft.Missing {
-		if strings.Contains(item, "召唤石") && strings.Contains(item, "歧义") {
-			foundAmbiguous = true
-		}
-	}
-	if !foundAmbiguous {
-		t.Fatalf("歧义召唤石没有加入 Missing 并说明原因: %v", draft.Missing)
+	if len(draft.Missing) != 0 {
+		t.Fatalf("字段完全相同的重复实例不应阻止导入: %v", draft.Missing)
 	}
 }
 

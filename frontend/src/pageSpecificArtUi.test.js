@@ -69,7 +69,7 @@ test('character mechanics keeps its dedicated Vaseraga production assets and gui
 test('function portrait speakers stay aligned with their assigned character identity', () => {
   assert.match(shell, /loadoutPresets:\s*\{[\s\S]*?speaker:\s*'古兰'[\s\S]*?note:\s*'先备份，再确认角色和目标槽；已有配装会被覆盖。'/)
   assert.match(shell, /wrightstoneMemory:\s*\{[\s\S]*?speaker:\s*'玛琪拉菲菈'[\s\S]*?note:\s*'写入后旧记录会失效。回到游戏里重新选中目标，再继续。'/)
-  assert.match(shell, /summonSave:\s*\{[\s\S]*?speaker:\s*'圣德芬'[\s\S]*?note:\s*'系统没开放就先停手；种类、加护和副词条核对一致，再写入。'/)
+  assert.match(shell, /summonSave:\s*\{[\s\S]*?speaker:\s*'圣德芬'[\s\S]*?note:\s*'系统未开放只会提示；种类、加护和副词条核对一致，再写入。'/)
 })
 
 test('offline summon save owns Sandalphon art instead of repeating the runtime summon guide', () => {

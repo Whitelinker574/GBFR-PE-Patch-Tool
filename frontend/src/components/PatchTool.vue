@@ -173,10 +173,10 @@ const toolMeta = {
   },
   summonSave: {
     group: 'save', title: '召唤石添加 / 修改（存档）', eyebrow: '离线存档', status: '新增', tone: 'stable',
-    description: '在已由游戏开放召唤系统的存档中新增或完整修改召唤石，并在写后重新打开存档验证。',
+    description: '在存档中新增召唤石，或原子修改已有记录的种类、主加护、副词条、等级和状态字段，写后重新打开存档验证。',
     usage: ['完全退出游戏并加载存档', '选择修改已有或新增', '核对目录、等级与输出路径后写入'],
-    caution: '不会替未进入 DLC 的存档强开召唤系统；改变天然种类/主加护搭配仍属未闭环组合。',
-    speaker: '圣德芬', note: '系统没开放就先停手；种类、加护和副词条核对一致，再写入。',
+    caution: '不会替未进入 DLC 的存档强开召唤系统；更换种类时会重建物品 SlotID 并迁移已装备引用。',
+    speaker: '圣德芬', note: '系统未开放只会提示；种类、加护和副词条核对一致，再写入。',
   },
   wrightstoneMemory: {
     group: 'memory', title: '祝福石即时编辑', eyebrow: '游戏内祝福石', status: '实时', tone: 'live',
