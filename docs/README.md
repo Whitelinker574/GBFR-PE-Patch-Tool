@@ -7,7 +7,6 @@
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 运行结构、代码域、写入边界与测试布局 |
 | [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) | 当前功能的已实现、现场验证和仍未闭环清单 |
 | [`FORMULAS_2.0.2.md`](FORMULAS_2.0.2.md) | 配装数值来源、证据等级与已知边界 |
-| [`community-update-v1.91.5-v1.91.12.md`](community-update-v1.91.5-v1.91.12.md) | 面向社区的 v1.91.5-v1.91.12 更新公告 |
 | [`角色公式采样操作说明.md`](角色公式采样操作说明.md) | 严格只读运行时公式采样操作 |
 | [`evidence/save-memory-table-parity.md`](evidence/save-memory-table-parity.md) | 因子、祝福和召唤石在存档/内存/配装入口的目录一致性与写入策略 |
 | [`evidence/sigil-table-audit-202.json`](evidence/sigil-table-audit-202.json) | 2.0.2 因子表的脱敏、机器可读审计摘要；由回归测试读取 |
