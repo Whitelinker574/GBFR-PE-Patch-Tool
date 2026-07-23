@@ -65,6 +65,9 @@ func TestUncataloguedLoadoutSigilNameUsesItsStoredTraits(t *testing.T) {
 	if got := loadoutTraitDisplayName(cat, 0xDEADBEEF); got != "未收录词条" {
 		t.Fatalf("未知词条名=%q，不应显示八位 hash", got)
 	}
+	if got := sigilDisplayNameOr(0xDEADBEEF); got != "未收录因子" {
+		t.Fatalf("未知因子回退名=%q，不应显示八位 hash", got)
+	}
 }
 
 func TestValidateLoadoutWeaponDefinitionRejectsUnknownHiddenAndWrongOwner(t *testing.T) {

@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.91.10",
+  "version": "1.91.14",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "base32768": "^5.0.1",
     "opencc-js": "^1.4.1",
     "pinyin-pro": "^3.27.0",
     "vue": "^3.2.37"

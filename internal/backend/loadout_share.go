@@ -14,7 +14,7 @@ import (
 const (
 	loadoutShareFormat        = "gbfr-loadout"
 	loadoutShareLegacyVersion = 1
-	loadoutShareVersion       = 8
+	loadoutShareVersion       = 9
 	loadoutShareMaxSize       = 1024 * 1024
 )
 
@@ -46,6 +46,11 @@ type LoadoutShareSummon struct {
 
 type LoadoutShareCharacterProgression struct {
 	CharacterLevel             int                             `json:"characterLevel,omitempty"`
+	BaseHP                     int                             `json:"baseHp,omitempty"`
+	BaseATK                    int                             `json:"baseAtk,omitempty"`
+	BaseStunBits               uint32                          `json:"baseStunBits,omitempty"`
+	BaseCritRate               int                             `json:"baseCritRate,omitempty"`
+	CharacterBaseCaptured      bool                            `json:"characterBaseCaptured,omitempty"`
 	MasterTotalMSP             int                             `json:"masterTotalMsp"`
 	LegacyProgress             int                             `json:"legacyProgress"`
 	EnhancementPanel           []int                           `json:"enhancementPanel,omitempty"`
@@ -102,11 +107,13 @@ type LoadoutConstructedSummon struct {
 type LoadoutImportApplyPayload struct {
 	Character                        *LoadoutShareCharacterProgression `json:"character,omitempty"`
 	Weapon                           *LoadoutShareWeaponState          `json:"weapon,omitempty"`
+	ConstructedWeapon                *LoadoutShareProgressionWeapon    `json:"constructedWeapon,omitempty"`
 	ConstructedSummons               []LoadoutConstructedSummon        `json:"constructedSummons,omitempty"`
 	OverLimit                        []LoadoutShareOverLimit           `json:"overLimit,omitempty"`
 	ApplyMasteryConfiguration        bool                              `json:"applyMasteryConfiguration,omitempty"`
 	ApplyMasterProgress              bool                              `json:"applyMasterProgress,omitempty"`
 	MasterProgressIndex              int                               `json:"masterProgressIndex,omitempty"`
+	ApplyCharacterLevel              bool                              `json:"applyCharacterLevel,omitempty"`
 	ApplyCharacterGrowth             bool                              `json:"applyCharacterGrowth,omitempty"`
 	ApplyCharacterWeaponCollection   bool                              `json:"applyCharacterWeaponCollection,omitempty"`
 	ApplyCharacterWeaponWrightstones bool                              `json:"applyCharacterWeaponWrightstones,omitempty"`
@@ -135,14 +142,17 @@ type LoadoutShare struct {
 }
 
 type LoadoutImportCapabilities struct {
-	TargetCharacterLevel      int  `json:"targetCharacterLevel"`
-	TargetMasterProgressIndex int  `json:"targetMasterProgressIndex"`
-	TargetMasterLevel         int  `json:"targetMasterLevel"`
-	TargetMasterSystem        bool `json:"targetMasterSystem"`
-	TargetSummonSystem        bool `json:"targetSummonSystem"`
-	SourceCharacterLevel      int  `json:"sourceCharacterLevel"`
-	SourceMasterProgressIndex int  `json:"sourceMasterProgressIndex"`
-	SourceMasterLevel         int  `json:"sourceMasterLevel"`
+	TargetCharacterLevel        int  `json:"targetCharacterLevel"`
+	TargetFateDataAvailable     bool `json:"targetFateDataAvailable"`
+	TargetFateEpisodeCount      int  `json:"targetFateEpisodeCount"`
+	TargetMasterProgressIndex   int  `json:"targetMasterProgressIndex"`
+	TargetMasterLevel           int  `json:"targetMasterLevel"`
+	TargetMasterSystem          bool `json:"targetMasterSystem"`
+	TargetSummonSystem          bool `json:"targetSummonSystem"`
+	SourceCharacterLevel        int  `json:"sourceCharacterLevel"`
+	SourceCharacterBaseCaptured bool `json:"sourceCharacterBaseCaptured"`
+	SourceMasterProgressIndex   int  `json:"sourceMasterProgressIndex"`
+	SourceMasterLevel           int  `json:"sourceMasterLevel"`
 }
 
 // LoadoutImportDraft 是导入文件在当前存档中解析后的“草稿”，不会自动写档。
@@ -167,6 +177,61 @@ func (draft *LoadoutImportDraft) addMissing(scope, message string) {
 		draft.MissingByScope = make(map[string][]string)
 	}
 	draft.MissingByScope[scope] = append(draft.MissingByScope[scope], message)
+}
+
+func loadoutShareEquippedWeaponConstruction(share *LoadoutShare) (*LoadoutShareProgressionWeapon, error) {
+	if share == nil || strings.TrimSpace(share.WeaponHash) == "" || share.Weapon == nil {
+		return nil, fmt.Errorf("分享文件没有完整的装备武器快照")
+	}
+	wantHash, err := ParseHashHex(share.WeaponHash)
+	if err != nil || wantHash == 0 || wantHash == EmptyHash {
+		return nil, fmt.Errorf("分享文件的装备武器哈希无效")
+	}
+	if share.Character != nil {
+		for _, weapon := range share.Character.Weapons {
+			hash, parseErr := ParseHashHex(weapon.Hash)
+			if parseErr != nil || hash != wantHash {
+				continue
+			}
+			copyValue := weapon
+			return &copyValue, nil
+		}
+	}
+	definition, known := progressionWeaponDefForLoadout(wantHash)
+	if !known || strings.TrimSpace(definition.InternalID) == "" {
+		return nil, fmt.Errorf("装备武器 %08X 不在当前 2.0.2 武器目录", wantHash)
+	}
+	baseHash := strings.TrimSpace(definition.Hash)
+	if strings.TrimSpace(definition.AliasOf) != "" {
+		baseHash = strings.TrimSpace(definition.AliasOf)
+	}
+	return &LoadoutShareProgressionWeapon{
+		Hash: share.WeaponHash, BaseHash: baseHash, InternalID: definition.InternalID,
+		Level: weaponLevelForXP(share.Weapon.XP), Uncap: share.Weapon.Uncap, Mirage: share.Weapon.Mirage,
+		Awakening: share.Weapon.Awakening, Transcendence: share.Weapon.Transcendence,
+		Wrightstone: share.Weapon.Wrightstone,
+	}, nil
+}
+
+func sameSharedWeaponIdentity(currentHash, wantedHash string) bool {
+	current, currentErr := ParseHashHex(currentHash)
+	wanted, wantedErr := ParseHashHex(wantedHash)
+	if currentErr != nil || wantedErr != nil || current == 0 || wanted == 0 || current == EmptyHash || wanted == EmptyHash {
+		return false
+	}
+	return weaponBaseHash(current) == weaponBaseHash(wanted)
+}
+
+func isOpaqueLoadoutShareName(name string, expectedHash uint32) bool {
+	text := strings.TrimSpace(name)
+	for _, prefix := range []string{"因子 ", "Sigil "} {
+		if strings.HasPrefix(text, prefix) {
+			text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			break
+		}
+	}
+	value, err := ParseHashHex(text)
+	return err == nil && value == expectedHash
 }
 
 func shareHex(value uint32) string {
@@ -283,6 +348,30 @@ func buildLoadoutShare(path string, unitID uint32) (*LoadoutShare, error) {
 	if characterErr != nil {
 		return nil, characterErr
 	}
+	characterBaseFields := []struct {
+		idType uint32
+		name   string
+	}{
+		{1308, "角色等级"},
+		{1309, "基础 HP"},
+		{1310, "基础攻击"},
+		{1312, "基础昏厥"},
+		{1313, "基础暴击"},
+	}
+	characterBase := make(map[uint32]uint32, len(characterBaseFields))
+	for _, field := range characterBaseFields {
+		entry, ok := save.findUnitExact(field.idType, characterUnitID)
+		if !ok || entry.ValueCnt != 1 {
+			return nil, fmt.Errorf("角色缺少完整的%s字段", field.name)
+		}
+		characterBase[field.idType] = entry.Uint32()
+	}
+	share.Character.CharacterLevel = int(int32(characterBase[1308]))
+	share.Character.BaseHP = int(int32(characterBase[1309]))
+	share.Character.BaseATK = int(int32(characterBase[1310]))
+	share.Character.BaseStunBits = characterBase[1312]
+	share.Character.BaseCritRate = int(int32(characterBase[1313]))
+	share.Character.CharacterBaseCaptured = true
 	if panel, ok := save.findUnitExact(1503, characterUnitID); ok && panel.ValueCnt == 2 {
 		share.Character.EnhancementPanel = make([]int, 0, 2)
 		for index := 0; index < 2; index++ {
@@ -386,48 +475,48 @@ func loadoutShareConstructedSigil(cat *Catalog, want LoadoutShareSigil, index in
 	if err != nil {
 		return LoadoutConstructedSigil{}, fmt.Errorf("因子 %q 的哈希无效: %w", want.Name, err)
 	}
+	if sigilHash == 0 || sigilHash == EmptyHash {
+		return LoadoutConstructedSigil{}, fmt.Errorf("因子 %q 的哈希不能为空", want.Name)
+	}
 	primaryHash, err := ParseHashHex(want.PrimaryTraitHash)
 	if err != nil {
 		return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s 的主词条哈希无效: %w", want.Name, err)
+	}
+	if primaryHash == 0 || primaryHash == EmptyHash {
+		return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s 的主词条哈希不能为空", want.Name)
 	}
 	primary := cat.LookupTraitByHash(primaryHash)
 	if primary == nil {
 		return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s 的主词条 0x%08X 不在当前游戏目录中", want.Name, primaryHash)
 	}
 	sigil := cat.LookupSigilByHash(sigilHash)
-	if sigil == nil {
-		// 组合因子可能使用 gem.tbl 中没有的实例哈希；按主词条、等级和加号槽形态还原目录本体。
-		var matches []*SigilDef
-		wantsSecondary := strings.TrimSpace(want.SecondaryTraitHash) != ""
-		for candidateIndex := range cat.Sigils {
-			candidate := &cat.Sigils[candidateIndex]
-			candidatePrimary, requireErr := cat.RequireTrait(candidate.PrimaryTraitID)
-			if requireErr != nil {
-				continue
-			}
-			candidatePrimaryHash, parseErr := ParseHashHex(candidatePrimary.Hash)
-			if parseErr != nil || candidatePrimaryHash != primaryHash || supportsGeneratedPlusSigil(candidate) != wantsSecondary {
-				continue
-			}
-			if len(candidate.AllowedSigilLevels) > 0 && !containsNaturalLevel(candidate.AllowedSigilLevels, want.Level) {
-				continue
-			}
-			matches = append(matches, candidate)
+	sigilID := fmt.Sprintf("HASH_%08X", sigilHash)
+	sigilName := strings.TrimSpace(want.Name)
+	opaqueName := isOpaqueLoadoutShareName(sigilName, sigilHash)
+	if verifiedName := strings.TrimSpace(sigilDisplayName(sigilHash)); verifiedName != "" {
+		sigilName = verifiedName
+		opaqueName = false
+	}
+	if sigil != nil {
+		sigilID = sigil.InternalID
+		if sigilName == "" || opaqueName {
+			sigilName = displaySigilName(sigil)
+			opaqueName = false
 		}
-		if len(matches) != 1 {
-			return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s（0x%08X）不在独立目录中，且按主词条 0x%08X / Lv%d 解析到 %d 个候选", want.Name, sigilHash, primaryHash, want.Level, len(matches))
-		}
-		sigil = matches[0]
 	}
 	item := QueueItem{
-		SigilID: sigil.InternalID, SigilName: displaySigilName(sigil), Level: want.Level,
+		SigilID: sigilID, SigilName: sigilName, Level: want.Level,
 		PrimaryTraitID: primary.InternalID, PrimaryTraitName: cnTrait(primary.DisplayName), PrimaryLevel: want.PrimaryTraitLevel,
 		Quantity: 1,
 	}
+	exactSecondaryHash := ""
 	if strings.TrimSpace(want.SecondaryTraitHash) != "" {
 		secondaryHash, parseErr := ParseHashHex(want.SecondaryTraitHash)
 		if parseErr != nil {
 			return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s 的副词条哈希无效: %w", want.Name, parseErr)
+		}
+		if secondaryHash == 0 || secondaryHash == EmptyHash {
+			return LoadoutConstructedSigil{}, fmt.Errorf("因子 %s 的副词条哈希不能为空", want.Name)
 		}
 		secondary := cat.LookupTraitByHash(secondaryHash)
 		if secondary == nil {
@@ -436,8 +525,16 @@ func loadoutShareConstructedSigil(cat *Catalog, want LoadoutShareSigil, index in
 		item.SecondaryTraitID = secondary.InternalID
 		item.SecondaryTraitName = cnTrait(secondary.DisplayName)
 		item.SecondaryLevel = want.SecondaryTraitLevel
+		exactSecondaryHash = hashText(secondaryHash)
 	}
-	draft := LoadoutConstructedSigil{Index: index, Item: item}
+	if item.SigilName == "" || opaqueName {
+		item.SigilName = loadoutSigilDisplayNameFromTraits(sigilHash, item.PrimaryTraitName, item.SecondaryTraitName)
+	}
+	draft := LoadoutConstructedSigil{
+		Index: index, Item: item,
+		ExactSigilHash: hashText(sigilHash), ExactPrimaryTraitHash: hashText(primaryHash),
+		ExactSecondaryTraitHash: exactSecondaryHash,
+	}
 	if _, err := prepareLoadoutSigil(cat, draft); err != nil {
 		return LoadoutConstructedSigil{}, fmt.Errorf("因子第 %d 格无法构造: %w", index+1, err)
 	}
@@ -493,6 +590,9 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	if share.Version >= 8 && (share.Character == nil || !share.Character.WeaponWrightstonesCaptured) {
 		return nil, fmt.Errorf("v%d 配装缺少整组武器祝福快照", share.Version)
 	}
+	if share.Version >= 9 && (share.Character == nil || !share.Character.CharacterBaseCaptured) {
+		return nil, fmt.Errorf("v%d 配装缺少角色等级基础快照", share.Version)
+	}
 	if share.Version >= 4 {
 		seen := make(map[int]bool, 4)
 		for _, slot := range share.OverLimit {
@@ -546,7 +646,8 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 		Name:              share.Name,
 		WeaponSkillHashes: append([]string(nil), share.WeaponSkillHashes...),
 		Capabilities: LoadoutImportCapabilities{
-			TargetCharacterLevel: statContext.Level, TargetMasterProgressIndex: statContext.PermanentGrowth.MasterProgressIndex,
+			TargetCharacterLevel: statContext.Level, TargetFateDataAvailable: statContext.PermanentGrowth.FateDataAvailable,
+			TargetFateEpisodeCount: statContext.PermanentGrowth.FateEpisodeCount, TargetMasterProgressIndex: statContext.PermanentGrowth.MasterProgressIndex,
 			TargetMasterLevel: statContext.PermanentGrowth.MasterLevel, TargetMasterSystem: statContext.PermanentGrowth.MasterSystemAvailable,
 			TargetSummonSystem: statContext.SummonSystemAvailable, SourceMasterProgressIndex: sourceMaster.ProgressIndex,
 			SourceMasterLevel: sourceMaster.MasterLevel,
@@ -558,6 +659,7 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	}
 	if share.Character != nil {
 		draft.Capabilities.SourceCharacterLevel = share.Character.CharacterLevel
+		draft.Capabilities.SourceCharacterBaseCaptured = share.Character.CharacterBaseCaptured
 	}
 	if share.Version >= 3 {
 		draft.ApplyPayload = &LoadoutImportApplyPayload{Character: share.Character, Weapon: share.Weapon}
@@ -614,13 +716,18 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	}
 	if share.WeaponHash != "" {
 		for _, weapon := range ctx.Weapons {
-			if strings.EqualFold(weapon.Hash, share.WeaponHash) {
+			if sameSharedWeaponIdentity(weapon.Hash, share.WeaponHash) {
 				draft.WeaponSlotID = weapon.SlotID
 				break
 			}
 		}
 		if draft.WeaponSlotID == 0 {
-			draft.addMissing("weapon", "武器："+share.WeaponName)
+			constructed, constructErr := loadoutShareEquippedWeaponConstruction(share)
+			if constructErr != nil || draft.ApplyPayload == nil {
+				draft.addMissing("weapon", "武器："+share.WeaponName)
+			} else {
+				draft.ApplyPayload.ConstructedWeapon = constructed
+			}
 		}
 	}
 

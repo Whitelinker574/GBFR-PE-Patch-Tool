@@ -24,6 +24,23 @@ type LoadoutComplianceReport struct {
 	Items    []LoadoutComplianceItem `json:"items"`
 }
 
+func classifyPreparedLoadoutSigilCompliance(cat *Catalog, draft LoadoutConstructedSigil, prepared *preparedLoadoutSigil) (string, bool, string) {
+	if _, exactTransport := exactLoadoutTransportHashID(prepared.item.SigilID); exactTransport {
+		return LegalityForced, true, "精确复刻现有因子组合；哈希、词条与等级已通过写入校验，但该记录不在普通天然因子目录中"
+	}
+	_, legality, legalityErr := (&SigilGen{catalog: cat}).normalizeQueueItem(prepared.item)
+	if legalityErr != nil {
+		return LegalityUnknown, true, legalityErr.Error()
+	}
+	if legality.Status != LegalityLegal {
+		return legality.Status, legality.Writable, legality.Message
+	}
+	if _, naturalErr := prepareLoadoutSigilNatural(cat, draft); naturalErr != nil {
+		return LegalityForced, true, fmt.Sprintf("偏离自然生成目录：%s", naturalErr)
+	}
+	return LegalityLegal, true, "主副词条与等级符合本地 DLC 2.0.2 自然生成目录"
+}
+
 // LoadoutCheckCompliance is the read-only form of the write preflight. The
 // final Writable bit comes from validateLoadoutWrite itself; per-factor rows
 // additionally distinguish locally proven construction from an existing save
@@ -62,15 +79,7 @@ func (a *App) LoadoutCheckCompliance(path string, write LoadoutWrite) (*LoadoutC
 			item.SigilName = prepared.item.SigilName
 			item.PrimaryTrait = prepared.item.PrimaryTraitName
 			item.SecondaryTrait = prepared.item.SecondaryTraitName
-			_, legality, legalityErr := (&SigilGen{catalog: catalog}).normalizeQueueItem(prepared.item)
-			if legalityErr != nil {
-				item.Status, item.Writable, item.Message = LegalityUnknown, true, legalityErr.Error()
-			} else if legality.Status != LegalityLegal {
-				item.Status, item.Writable, item.Message = legality.Status, legality.Writable, legality.Message
-			} else if _, naturalErr := prepareLoadoutSigilNatural(catalog, draft); naturalErr != nil {
-				item.Status, item.Writable = LegalityForced, true
-				item.Message = fmt.Sprintf("偏离自然生成目录：%s", naturalErr)
-			}
+			item.Status, item.Writable, item.Message = classifyPreparedLoadoutSigilCompliance(catalog, draft, prepared)
 		}
 		constructed[draft.Index] = draft
 		report.Items = append(report.Items, item)

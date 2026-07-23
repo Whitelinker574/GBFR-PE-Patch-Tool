@@ -30,10 +30,17 @@ export function putBagFactor(slots, index, slotId) {
   return next
 }
 
-export function putConstructedFactor(slots, index, item, preview = {}) {
+export function putConstructedFactor(slots, index, item, preview = {}, exact = {}) {
   const next = normalizeSlots(slots)
   if (index < 0 || index >= FACTOR_SLOT_COUNT || !item?.sigilId) return next
-  next[index] = { kind: 'construct', item: { ...item }, preview: { ...preview } }
+  next[index] = {
+    kind: 'construct',
+    item: { ...item },
+    preview: { ...preview },
+    exactSigilHash: exact.exactSigilHash || '',
+    exactPrimaryTraitHash: exact.exactPrimaryTraitHash || '',
+    exactSecondaryTraitHash: exact.exactSecondaryTraitHash || '',
+  }
   return next
 }
 
@@ -53,6 +60,9 @@ export function buildFactorWritePayload(slots = []) {
       return [{
         index,
         ...(templateSlotId > 0 ? { templateSlotId } : {}),
+        ...(entry.exactSigilHash ? { exactSigilHash: entry.exactSigilHash } : {}),
+        ...(entry.exactPrimaryTraitHash ? { exactPrimaryTraitHash: entry.exactPrimaryTraitHash } : {}),
+        ...(entry.exactSecondaryTraitHash ? { exactSecondaryTraitHash: entry.exactSecondaryTraitHash } : {}),
         item: Object.fromEntries(Object.entries(entry.item).filter(([key]) => key !== 'templateSlotId')),
       }]
     }),

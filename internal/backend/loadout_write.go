@@ -50,9 +50,12 @@ type LoadoutWrite struct {
 // LoadoutConstructedSigil describes one factor draft that must be created and
 // bound as part of the same LoadoutApply transaction. Index is 0 based.
 type LoadoutConstructedSigil struct {
-	Index          int       `json:"index"`
-	TemplateSlotID uint32    `json:"templateSlotId,omitempty"`
-	Item           QueueItem `json:"item"`
+	Index                   int       `json:"index"`
+	TemplateSlotID          uint32    `json:"templateSlotId,omitempty"`
+	ExactSigilHash          string    `json:"exactSigilHash,omitempty"`
+	ExactPrimaryTraitHash   string    `json:"exactPrimaryTraitHash,omitempty"`
+	ExactSecondaryTraitHash string    `json:"exactSecondaryTraitHash,omitempty"`
+	Item                    QueueItem `json:"item"`
 }
 
 // LoadoutApplyResult 汇报写入结果。
@@ -63,6 +66,7 @@ type LoadoutApplyResult struct {
 	SlotsCleared       int      `json:"slotsCleared"`
 	VerifiedFields     int      `json:"verifiedFields"` // 回读后逐字段命中的数量
 	CreatedCount       int      `json:"createdCount"`
+	CreatedWeaponCount int      `json:"createdWeaponCount"`
 	CreatedSummonCount int      `json:"createdSummonCount"`
 	VerifiedCount      int      `json:"verifiedCount"`
 	SlotIDs            []uint32 `json:"slotIds,omitempty"`
@@ -397,7 +401,140 @@ func containsNaturalLevel(levels []int, selected int) bool {
 	return false
 }
 
+func hasExactLoadoutSigilSource(draft LoadoutConstructedSigil) bool {
+	return strings.TrimSpace(draft.ExactSigilHash) != "" ||
+		strings.TrimSpace(draft.ExactPrimaryTraitHash) != "" ||
+		strings.TrimSpace(draft.ExactSecondaryTraitHash) != ""
+}
+
+func parseExactLoadoutHash(value, field string) (uint32, error) {
+	hash, err := ParseHashHex(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s无效: %w", field, err)
+	}
+	if hash == 0 || hash == EmptyHash {
+		return 0, fmt.Errorf("%s不能是空值", field)
+	}
+	return hash, nil
+}
+
+func exactLoadoutTransportHashID(value string) (string, bool) {
+	sigilID := strings.TrimSpace(value)
+	if len(sigilID) != 13 || !strings.EqualFold(sigilID[:5], "HASH_") {
+		return "", false
+	}
+	for _, char := range sigilID[5:] {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return "", false
+		}
+	}
+	return strings.ToUpper(sigilID[5:]), true
+}
+
+func recoverTransportExactLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (LoadoutConstructedSigil, bool, error) {
+	sigilID := strings.TrimSpace(draft.Item.SigilID)
+	if len(sigilID) < 5 || !strings.EqualFold(sigilID[:5], "HASH_") {
+		return draft, false, nil
+	}
+	sigilHash, valid := exactLoadoutTransportHashID(sigilID)
+	if !valid {
+		return draft, false, fmt.Errorf("精确因子 ID 格式无效: %s", sigilID)
+	}
+
+	item := draft.Item
+	item.SigilID = sigilID
+	item.PrimaryTraitID = strings.TrimSpace(item.PrimaryTraitID)
+	item.SecondaryTraitID = strings.TrimSpace(item.SecondaryTraitID)
+	primary, err := cat.RequireTrait(item.PrimaryTraitID)
+	if err != nil {
+		return draft, false, fmt.Errorf("恢复精确因子 %s 的主词条失败: %w", sigilID, err)
+	}
+	primaryHash, err := ParseHashHex(primary.Hash)
+	if err != nil {
+		return draft, false, fmt.Errorf("恢复精确因子 %s 的主词条哈希失败: %w", sigilID, err)
+	}
+
+	draft.Item = item
+	draft.ExactSigilHash = sigilHash
+	draft.ExactPrimaryTraitHash = fmt.Sprintf("%08X", primaryHash)
+	if item.SecondaryTraitID == "" {
+		return draft, true, nil
+	}
+	secondary, err := cat.RequireTrait(item.SecondaryTraitID)
+	if err != nil {
+		return draft, false, fmt.Errorf("恢复精确因子 %s 的副词条失败: %w", sigilID, err)
+	}
+	secondaryHash, err := ParseHashHex(secondary.Hash)
+	if err != nil {
+		return draft, false, fmt.Errorf("恢复精确因子 %s 的副词条哈希失败: %w", sigilID, err)
+	}
+	draft.ExactSecondaryTraitHash = fmt.Sprintf("%08X", secondaryHash)
+	return draft, true, nil
+}
+
+func prepareExactLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if draft.Index < 0 || draft.Index >= loadoutMaxSigils {
+		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
+	}
+	sigilHash, err := parseExactLoadoutHash(draft.ExactSigilHash, "精确因子哈希")
+	if err != nil {
+		return nil, err
+	}
+	primaryHash, err := parseExactLoadoutHash(draft.ExactPrimaryTraitHash, "精确主词条哈希")
+	if err != nil {
+		return nil, err
+	}
+	item := draft.Item
+	item.Quantity = 1
+	if item.Level <= 0 || item.PrimaryLevel <= 0 {
+		return nil, fmt.Errorf("精确因子和主词条等级必须大于 0")
+	}
+	if item.SigilID == "" {
+		item.SigilID = fmt.Sprintf("HASH_%08X", sigilHash)
+	}
+	if item.SigilName == "" {
+		item.SigilName = sigilDisplayNameOr(sigilHash)
+	}
+	flags := uint32(NormalSigilFlags)
+	if sigil := cat.LookupSigilByHash(sigilHash); sigil != nil && strings.EqualFold(sigil.InternalID, "GEEN_142_02") {
+		flags = 22
+	}
+	prepared := &preparedLoadoutSigil{
+		index: draft.Index, item: item, sigilHash: sigilHash,
+		primaryHash: primaryHash, secondaryHash: EmptyHash, flags: flags,
+	}
+	secondaryText := strings.TrimSpace(draft.ExactSecondaryTraitHash)
+	if secondaryText == "" {
+		if item.SecondaryLevel != 0 {
+			return nil, fmt.Errorf("精确副词条为空时副词条等级必须为 0")
+		}
+		prepared.item.SecondaryLevel = 0
+		return prepared, nil
+	}
+	secondaryHash, err := parseExactLoadoutHash(secondaryText, "精确副词条哈希")
+	if err != nil {
+		return nil, err
+	}
+	if item.SecondaryLevel <= 0 {
+		return nil, fmt.Errorf("精确副词条等级必须大于 0")
+	}
+	prepared.secondaryHash = secondaryHash
+	prepared.secondaryLevel = item.SecondaryLevel
+	prepared.hasSecondary = true
+	return prepared, nil
+}
+
 func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if hasExactLoadoutSigilSource(draft) {
+		return prepareExactLoadoutSigil(cat, draft)
+	}
+	recovered, ok, err := recoverTransportExactLoadoutSigil(cat, draft)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return prepareExactLoadoutSigil(cat, recovered)
+	}
 	if draft.Index < 0 || draft.Index >= loadoutMaxSigils {
 		return nil, fmt.Errorf("构造因子槽位索引 %d 越界（应为 0..%d）", draft.Index, loadoutMaxSigils-1)
 	}
@@ -576,6 +713,16 @@ func prepareLoadoutSigilNatural(cat *Catalog, draft LoadoutConstructedSigil) (*p
 }
 
 func prepareLoadoutSigilForSave(save *SaveData, ix *loadoutIndex, cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
+	if hasExactLoadoutSigilSource(draft) {
+		return prepareExactLoadoutSigil(cat, draft)
+	}
+	recovered, ok, err := recoverTransportExactLoadoutSigil(cat, draft)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return prepareExactLoadoutSigil(cat, recovered)
+	}
 	if draft.TemplateSlotID == 0 {
 		return prepareLoadoutSigil(cat, draft)
 	}
@@ -981,7 +1128,10 @@ func sigilDisplayNameOr(hash uint32) string {
 	if n := sigilDisplayName(hash); n != "" {
 		return n
 	}
-	return fmt.Sprintf("%08X", hash)
+	if useChinese() {
+		return "未收录因子"
+	}
+	return "Uncatalogued Sigil"
 }
 
 // applyResolvedWrite 把一条已校验的写入落到缓冲区（内存态）。
@@ -1308,6 +1458,10 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 	if request.ImportPayload != nil && (len(request.WeaponEdits) > 0 || len(request.SummonEdits) > 0) {
 		return nil, fmt.Errorf("导入完整配装时不能同时提交手动武器/召唤石实例编辑")
 	}
+	createdWeapon, err := materializeLoadoutImportWeapon(save, changes, request.ImportPayload)
+	if err != nil {
+		return nil, err
+	}
 	preparedImport, err := prepareLoadoutImport(save, changes, request.ImportPayload)
 	if err != nil {
 		return nil, err
@@ -1394,6 +1548,9 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 	// 第三段：在同一个 SaveData 缓冲里先创建因子，再把新 SlotID 放入
 	// 对应 1403 位置，最后只做一次校验和修复和磁盘写入。
 	result := &LoadoutApplyResult{CreatedSummonCount: len(createdSummons)}
+	if createdWeapon {
+		result.CreatedWeaponCount = 1
+	}
 	if len(constructed) > 0 {
 		if err := save.SetMaxSlotID(oldMaxSlotID + len(constructed)); err != nil {
 			return nil, err

@@ -10,6 +10,10 @@
 /frontend/dist/
 /frontend/package.json.md5
 
+# Share-code service dependencies and local Wrangler state
+/services/*/node_modules/
+/services/*/.wrangler/
+
 # Wails generated bindings
 /frontend/wailsjs/
 

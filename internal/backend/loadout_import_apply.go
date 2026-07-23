@@ -2,11 +2,21 @@ package backend
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
+type preparedCharacterBase struct {
+	level        int
+	baseHP       int
+	baseATK      int
+	baseStunBits uint32
+	baseCritRate int
+}
+
 type preparedLoadoutImport struct {
 	characterUnitID                    uint32
+	characterBase                      *preparedCharacterBase
 	masterTotalMSP                     *int
 	legacyProgress                     *int
 	enhancementPanel                   []int
@@ -142,8 +152,12 @@ func validateImportedMasteryCapacity(save *SaveData, prepared *preparedLoadoutIm
 	if !ok || level.ValueCnt != 1 {
 		return fmt.Errorf("目标角色缺少等级字段，无法导入专精")
 	}
-	if level.Int32() < 100 {
-		return fmt.Errorf("目标角色等级为 %d；达到 Lv100 后才能导入专精配置", level.Int32())
+	effectiveLevel := int(level.Int32())
+	if prepared.characterBase != nil {
+		effectiveLevel = prepared.characterBase.level
+	}
+	if effectiveLevel < 100 {
+		return fmt.Errorf("导入后的角色等级为 %d；达到 Lv100 后才能导入专精配置", effectiveLevel)
 	}
 	totalMSPEntry, ok := save.findUnitExact(1323, prepared.characterUnitID)
 	if !ok || totalMSPEntry.ValueCnt != 1 {
@@ -196,6 +210,58 @@ func loadoutCharacterUnitForHash(save *SaveData, charaHash uint32) (uint32, erro
 	return result, nil
 }
 
+func materializeLoadoutImportWeapon(save *SaveData, changes []LoadoutWrite, payload *LoadoutImportApplyPayload) (bool, error) {
+	if payload == nil || payload.ConstructedWeapon == nil {
+		return false, nil
+	}
+	if len(changes) != 1 || changes[0].Op != "write" {
+		return false, fmt.Errorf("缺失装备武器只能随一套配装原子补建")
+	}
+	if changes[0].WeaponSlotID != 0 {
+		return false, fmt.Errorf("待补建装备武器与目标存档现有武器冲突")
+	}
+	if payload.Weapon == nil {
+		return false, fmt.Errorf("缺失装备武器没有完整的源武器状态")
+	}
+	source := payload.ConstructedWeapon
+	if source.InternalID == "" || source.Level < 1 || source.Level > 150 ||
+		source.Uncap < 0 || source.Uncap > 6 || source.Mirage < 0 || source.Mirage > 99 ||
+		source.Awakening < 0 || source.Awakening > 10 || source.Transcendence < 0 || source.Transcendence > 7 {
+		return false, fmt.Errorf("待补建装备武器的目录或强化字段无效")
+	}
+	baseHashText := strings.TrimSpace(source.BaseHash)
+	if baseHashText == "" {
+		baseHashText = strings.TrimSpace(source.Hash)
+	}
+	baseHash, err := ParseHashHex(baseHashText)
+	if err != nil {
+		return false, fmt.Errorf("待补建装备武器哈希无效: %w", err)
+	}
+	definition, known := progressionWeaponDefForHash(baseHash)
+	if !known || definition.InternalID != source.InternalID {
+		return false, fmt.Errorf("待补建装备武器 %s 不在当前 2.0.2 目录", source.InternalID)
+	}
+	added, expected, err := applyProgressionWeaponChange(save, ProgressionWeaponChange{
+		Action: "add", Hash: baseHashText, Level: source.Level, Uncap: source.Uncap, Mirage: source.Mirage,
+		Awakening: source.Awakening, Transcendence: source.Transcendence, TranscendenceSkill: source.TranscendenceSkill,
+	})
+	if err != nil {
+		return false, fmt.Errorf("补建装备武器失败: %w", err)
+	}
+	if !added || expected.UnitID == 0 {
+		return false, fmt.Errorf("补建装备武器没有生成新实例")
+	}
+	slot, ok := save.findUnitExact(weaponSlotIDType, expected.UnitID)
+	if !ok || slot.ValueCnt != 1 || slot.Uint32() == 0 || slot.Uint32() == EmptyHash {
+		return false, fmt.Errorf("补建装备武器没有生成有效 SlotID")
+	}
+	changes[0].WeaponSlotID = slot.Uint32()
+	// 新实例没有可保留的目标强化状态；用分享文件的精确 2813/2815/2818
+	// 快照完成初始化，并由统一的武器回读验证覆盖。
+	payload.ApplyWeaponEnhancement = true
+	return true, nil
+}
+
 func prepareLoadoutImport(save *SaveData, changes []LoadoutWrite, payload *LoadoutImportApplyPayload) (*preparedLoadoutImport, error) {
 	type requiredField struct {
 		id   uint32
@@ -215,7 +281,7 @@ func prepareLoadoutImport(save *SaveData, changes []LoadoutWrite, payload *Loado
 		return nil, fmt.Errorf("导入目标角色无效: %w", err)
 	}
 	prepared := &preparedLoadoutImport{}
-	needsCharacter := payload.ApplyMasteryConfiguration || payload.ApplyMasterProgress || payload.ApplyCharacterGrowth || payload.ApplyCharacterWeaponCollection || payload.ApplyCharacterWeaponWrightstones || payload.ApplyOverLimit
+	needsCharacter := payload.ApplyCharacterLevel || payload.ApplyMasteryConfiguration || payload.ApplyMasterProgress || payload.ApplyCharacterGrowth || payload.ApplyCharacterWeaponCollection || payload.ApplyCharacterWeaponWrightstones || payload.ApplyOverLimit
 	if (payload.ApplyMasterProgress || payload.ApplyCharacterGrowth || payload.ApplyCharacterWeaponCollection || payload.ApplyCharacterWeaponWrightstones) && payload.Character == nil {
 		return nil, fmt.Errorf("所选导入范围缺少角色养成源数据")
 	}
@@ -231,7 +297,43 @@ func prepareLoadoutImport(save *SaveData, changes []LoadoutWrite, payload *Loado
 		if unitErr != nil {
 			return nil, unitErr
 		}
-		fields := make([]requiredField, 0, 2)
+		currentLevelEntry, levelExists := save.findUnitExact(1308, unitID)
+		if !levelExists || currentLevelEntry.ValueCnt != 1 {
+			return nil, fmt.Errorf("目标角色缺少等级字段")
+		}
+		requiresLevel100 := payload.ApplyMasteryConfiguration || payload.ApplyMasterProgress || payload.ApplyCharacterGrowth
+		applyCharacterLevel := payload.ApplyCharacterLevel || (requiresLevel100 && currentLevelEntry.Int32() < 100)
+		if applyCharacterLevel {
+			if payload.Character == nil || !payload.Character.CharacterBaseCaptured {
+				return nil, fmt.Errorf("配装没有角色等级基础快照，请用新版从源存档重新导出")
+			}
+			if requiresLevel100 && payload.Character.CharacterLevel != 100 {
+				return nil, fmt.Errorf("专精或角色强化需要 Lv100 来源快照，当前来源为 Lv%d", payload.Character.CharacterLevel)
+			}
+			stun := math.Float32frombits(payload.Character.BaseStunBits)
+			if payload.Character.CharacterLevel < 1 || payload.Character.CharacterLevel > 100 ||
+				payload.Character.BaseHP < 0 || payload.Character.BaseHP > 10_000_000 ||
+				payload.Character.BaseATK < 0 || payload.Character.BaseATK > 10_000_000 ||
+				math.IsNaN(float64(stun)) || math.IsInf(float64(stun), 0) || stun < 0 || stun > 1_000_000 ||
+				payload.Character.BaseCritRate < 0 || payload.Character.BaseCritRate > 10_000 {
+				return nil, fmt.Errorf("角色等级基础快照超出存档字段范围")
+			}
+			prepared.characterBase = &preparedCharacterBase{
+				level: payload.Character.CharacterLevel, baseHP: payload.Character.BaseHP,
+				baseATK: payload.Character.BaseATK, baseStunBits: payload.Character.BaseStunBits,
+				baseCritRate: payload.Character.BaseCritRate,
+			}
+		}
+		fields := make([]requiredField, 0, 7)
+		if applyCharacterLevel {
+			fields = append(fields,
+				requiredField{1308, "角色等级"},
+				requiredField{1309, "基础 HP"},
+				requiredField{1310, "基础攻击"},
+				requiredField{1312, "基础昏厥"},
+				requiredField{1313, "基础暴击"},
+			)
+		}
 		if payload.ApplyMasterProgress {
 			fields = append(fields, requiredField{1323, "专精总 MSP"})
 		}
@@ -505,6 +607,23 @@ func applyPreparedLoadoutImport(save *SaveData, prepared *preparedLoadoutImport)
 		return 0, nil
 	}
 	verified := 0
+	if prepared.characterBase != nil {
+		for _, field := range []struct {
+			idType uint32
+			value  uint32
+		}{
+			{1308, uint32(int32(prepared.characterBase.level))},
+			{1309, uint32(int32(prepared.characterBase.baseHP))},
+			{1310, uint32(int32(prepared.characterBase.baseATK))},
+			{1312, prepared.characterBase.baseStunBits},
+			{1313, uint32(int32(prepared.characterBase.baseCritRate))},
+		} {
+			if err := save.patchUintExact(field.idType, prepared.characterUnitID, field.value); err != nil {
+				return verified, err
+			}
+		}
+		verified++
+	}
 	for index, change := range prepared.characterWeaponChanges {
 		_, expected, err := applyProgressionWeaponChange(save, change)
 		if err != nil {
@@ -629,6 +748,25 @@ func verifyPreparedLoadoutImport(save *SaveData, prepared *preparedLoadoutImport
 		return 0, nil
 	}
 	verified := 0
+	if prepared.characterBase != nil {
+		for _, field := range []struct {
+			idType uint32
+			name   string
+			value  uint32
+		}{
+			{1308, "角色等级", uint32(int32(prepared.characterBase.level))},
+			{1309, "基础 HP", uint32(int32(prepared.characterBase.baseHP))},
+			{1310, "基础攻击", uint32(int32(prepared.characterBase.baseATK))},
+			{1312, "基础昏厥", prepared.characterBase.baseStunBits},
+			{1313, "基础暴击", uint32(int32(prepared.characterBase.baseCritRate))},
+		} {
+			entry, ok := save.findUnitExact(field.idType, prepared.characterUnitID)
+			if !ok || entry.ValueCnt != 1 || entry.Uint32() != field.value {
+				return verified, fmt.Errorf("%s回读不一致", field.name)
+			}
+		}
+		verified++
+	}
 	if len(prepared.characterWeaponExpected) > 0 {
 		n, err := verifyProgressionChanges(save, nil, nil, prepared.characterWeaponExpected)
 		if err != nil {
@@ -689,6 +827,9 @@ func verifyPreparedLoadoutImport(save *SaveData, prepared *preparedLoadoutImport
 		}())
 		if err != nil {
 			return verified, err
+		}
+		if prepared.applyWeaponEnhancement && !strings.EqualFold(context.StoredHash, prepared.weapon.StoredHash) {
+			return verified, fmt.Errorf("武器本体哈希回读不一致")
 		}
 		if prepared.applyWeaponEnhancement && (context.XP != prepared.weapon.XP || context.Uncap != prepared.weapon.Uncap || context.Mirage != prepared.weapon.Mirage ||
 			context.Awakening != prepared.weapon.Awakening || context.Transcendence != prepared.weapon.Transcendence) {

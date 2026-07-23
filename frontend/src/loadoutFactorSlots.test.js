@@ -56,6 +56,21 @@ test('a real-save template clone keeps its source slot in the atomic constructed
   assert.equal(payload.constructedSigils[0].item.templateSlotId, undefined)
 })
 
+test('an imported combination preserves its exact hashes in the write payload', () => {
+  const item = {
+    sigilId: 'HASH_80C94A24', sigilName: '怒发冲冠 + 伤害上限',
+    level: 15, primaryLevel: 15, secondaryLevel: 15,
+  }
+  const exact = {
+    exactSigilHash: '80C94A24',
+    exactPrimaryTraitHash: '7EDD69D0',
+    exactSecondaryTraitHash: 'DC584F60',
+  }
+  const slots = putConstructedFactor([], 0, item, {}, exact)
+  const payload = buildFactorWritePayload(slots)
+  assert.deepEqual(payload.constructedSigils[0], { index: 0, ...exact, item })
+})
+
 test('choosing an already equipped bag factor swaps slots instead of duplicating it', () => {
   const slots = createFactorSlots([{ slotId: 11 }, { slotId: 22 }])
   const next = putBagFactor(slots, 0, 22)

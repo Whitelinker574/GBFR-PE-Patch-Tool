@@ -15,7 +15,8 @@ import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLe
 
 const emit = defineEmits(['status'])
 const FORMAT = 'gbfr-sigil-loadout'
-const VERSION = 1
+const VERSION = 2
+const LEGACY_VERSION = 1
 const MAX_ENTRIES = 12
 const EMPTY_HASH = 0x887AE0B0
 const POLL_DELAY = 120
@@ -62,14 +63,21 @@ function signature(item) {
   return [item.sigilHash, item.sigilLevel, item.primaryTraitHash, item.primaryTraitLevel,
     item.secondaryTraitHash, item.secondaryTraitLevel].map(uint).join(':')
 }
+function recordedName(value) {
+  const name = typeof value === 'string' ? value.trim() : ''
+  return /^(?:0x)?[0-9a-f]{8}$/i.test(name) ? '' : name.slice(0, 160)
+}
 function normalizeEntry(item) {
   return {
     sigilHash: uint(item.sigilHash),
     sigilLevel: uint(item.sigilLevel),
+    sigilName: recordedName(item.sigilName),
     primaryTraitHash: uint(item.primaryTraitHash),
     primaryTraitLevel: uint(item.primaryTraitLevel),
+    primaryTraitName: recordedName(item.primaryTraitName),
     secondaryTraitHash: uint(item.secondaryTraitHash),
     secondaryTraitLevel: uint(item.secondaryTraitLevel),
+    secondaryTraitName: recordedName(item.secondaryTraitName),
   }
 }
 function validEntry(item) {
@@ -90,11 +98,18 @@ function resetSelectionTracker(selectedAddr = 0) {
   if (selectedAddr) takeSelectionAddress(selectionTracker, selectedAddr)
 }
 function formatHash(value) { return `0x${uint(value).toString(16).toUpperCase().padStart(8, '0')}` }
-function sigilName(entry) { return sigilNames.value.get(uint(entry.sigilHash)) || formatHash(entry.sigilHash) }
-function traitName(hash) {
+function traitName(hash, savedName = '') {
   const value = uint(hash)
   if (!value || value === EMPTY_HASH) return '无副词条'
-  return traitNames.value.get(value) || formatHash(value)
+  return recordedName(savedName) || traitNames.value.get(value) || '未收录词条'
+}
+function sigilName(entry) {
+  const exact = recordedName(entry.sigilName) || sigilNames.value.get(uint(entry.sigilHash))
+  if (exact) return exact
+  const primary = traitName(entry.primaryTraitHash, entry.primaryTraitName)
+  const secondary = traitName(entry.secondaryTraitHash, entry.secondaryTraitName)
+  if (primary === '未收录词条') return '未收录因子'
+  return secondary === '无副词条' || secondary === '未收录词条' ? primary : `${primary} + ${secondary}`
 }
 function traitIcon(hash) {
   const value = uint(hash)
@@ -335,7 +350,8 @@ async function importLoadout(event) {
   if (!file || isActive.value) return
   try {
     const payload = JSON.parse(await file.text())
-    if (payload?.format !== FORMAT || Number(payload?.version) !== VERSION) throw new Error('不是受支持的 GBFR 因子配装文件')
+    const version = Number(payload?.version)
+    if (payload?.format !== FORMAT || version < LEGACY_VERSION || version > VERSION) throw new Error('不是受支持的 GBFR 因子配装文件')
     if (!Array.isArray(payload.entries) || payload.entries.length < 1 || payload.entries.length > MAX_ENTRIES) {
       throw new Error(`配装必须包含 1 到 ${MAX_ENTRIES} 个因子`)
     }
@@ -415,8 +431,8 @@ onBeforeUnmount(() => {
             <div class="entry-main">
               <strong>{{ sigilName(entry) }} <span class="ui-tag">Lv {{ entry.sigilLevel }}</span></strong>
               <div class="trait-summary">
-                <span><b>主</b>{{ traitName(entry.primaryTraitHash) }} · Lv {{ entry.primaryTraitLevel }}</span>
-                <span><img v-if="traitIcon(entry.secondaryTraitHash)" :src="traitIcon(entry.secondaryTraitHash)" alt="" /><b>副</b>{{ traitName(entry.secondaryTraitHash) }}<template v-if="entry.secondaryTraitHash && entry.secondaryTraitHash !== EMPTY_HASH"> · Lv {{ entry.secondaryTraitLevel }}</template></span>
+                <span><b>主</b>{{ traitName(entry.primaryTraitHash, entry.primaryTraitName) }} · Lv {{ entry.primaryTraitLevel }}</span>
+                <span><img v-if="traitIcon(entry.secondaryTraitHash)" :src="traitIcon(entry.secondaryTraitHash)" alt="" /><b>副</b>{{ traitName(entry.secondaryTraitHash, entry.secondaryTraitName) }}<template v-if="entry.secondaryTraitHash && entry.secondaryTraitHash !== EMPTY_HASH"> · Lv {{ entry.secondaryTraitLevel }}</template></span>
               </div>
             </div>
           </div>

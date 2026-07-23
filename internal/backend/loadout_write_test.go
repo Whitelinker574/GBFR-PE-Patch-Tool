@@ -810,6 +810,228 @@ func TestPrepareLoadoutSigilAcceptsWritableFreeformTraitsAndLevels(t *testing.T)
 	}
 }
 
+func TestPrepareLoadoutSigilPreservesExactCombinationHashes(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := LoadoutConstructedSigil{
+		Index:                   0,
+		ExactSigilHash:          "80C94A24",
+		ExactPrimaryTraitHash:   "7EDD69D0",
+		ExactSecondaryTraitHash: "DC584F60",
+		Item: QueueItem{
+			SigilID: "HASH_80C94A24", SigilName: "怒发冲冠 + 伤害上限",
+			Level: 15, PrimaryLevel: 15, SecondaryLevel: 15, Quantity: 1,
+		},
+	}
+	prepared, err := prepareLoadoutSigil(cat, draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.sigilHash != 0x80C94A24 || prepared.primaryHash != 0x7EDD69D0 ||
+		prepared.secondaryHash != 0xDC584F60 || !prepared.hasSecondary {
+		t.Fatalf("精确组合哈希发生变化: %+v", prepared)
+	}
+	if prepared.item.Level != 15 || prepared.item.PrimaryLevel != 15 || prepared.secondaryLevel != 15 {
+		t.Fatalf("精确组合等级发生变化: %+v", prepared)
+	}
+}
+
+func TestPrepareLoadoutSigilRecoversExactHashIDWhenTransportOmitsExactFields(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := cat.LookupTraitByHash(0x7EDD69D0)
+	secondary := cat.LookupTraitByHash(0xDC584F60)
+	if primary == nil || secondary == nil {
+		t.Fatal("exact recovery fixture traits are missing")
+	}
+	prepared, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{
+		Index: 0,
+		Item: QueueItem{
+			SigilID: "HASH_80C94A24", SigilName: "怒发冲冠 + 伤害上限",
+			Level: 15, PrimaryTraitID: primary.InternalID, PrimaryLevel: 15,
+			SecondaryTraitID: secondary.InternalID, SecondaryLevel: 15,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.sigilHash != 0x80C94A24 || prepared.primaryHash != 0x7EDD69D0 ||
+		prepared.secondaryHash != 0xDC584F60 || !prepared.hasSecondary {
+		t.Fatalf("HASH_ transport recovery changed exact identity: %+v", prepared)
+	}
+}
+
+func TestPrepareLoadoutSigilRejectsInvalidRecoveredHashSource(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := cat.LookupTraitByHash(0x7EDD69D0)
+	if primary == nil {
+		t.Fatal("exact recovery fixture primary trait is missing")
+	}
+	base := QueueItem{
+		SigilID: "HASH_80C94A24", Level: 15,
+		PrimaryTraitID: primary.InternalID, PrimaryLevel: 15,
+	}
+	cases := []QueueItem{
+		func() QueueItem { item := base; item.SigilID = "HASH_80C94A2"; return item }(),
+		func() QueueItem { item := base; item.SigilID = "HASH_80C94A2Z"; return item }(),
+		func() QueueItem { item := base; item.PrimaryTraitID = ""; return item }(),
+		func() QueueItem { item := base; item.PrimaryTraitID = "SKILL_NOT_A_REAL_TRAIT"; return item }(),
+		func() QueueItem { item := base; item.SecondaryLevel = 15; return item }(),
+		func() QueueItem {
+			item := base
+			item.SecondaryTraitID = "SKILL_NOT_A_REAL_TRAIT"
+			item.SecondaryLevel = 15
+			return item
+		}(),
+	}
+	for _, item := range cases {
+		if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item}); err == nil {
+			t.Fatalf("损坏的 HASH_ 恢复来源应被拒绝: %+v", item)
+		}
+	}
+}
+
+func TestExactHashTransportComplianceRemainsWritable(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := cat.LookupTraitByHash(0xCEB700EE)
+	if primary == nil {
+		t.Fatal("stun power trait is missing")
+	}
+	draft := LoadoutConstructedSigil{
+		Index: 0,
+		Item: QueueItem{
+			SigilID: "HASH_39BEA99B", SigilName: "昏厥V+",
+			Level: 15, PrimaryTraitID: primary.InternalID, PrimaryTraitName: cnTrait(primary.DisplayName),
+			PrimaryLevel: 15, Quantity: 1,
+		},
+	}
+	prepared, err := prepareLoadoutSigil(cat, draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, writable, message := classifyPreparedLoadoutSigilCompliance(cat, draft, prepared)
+	if status != LegalityForced || !writable || !strings.Contains(message, "精确") {
+		t.Fatalf("exact HASH_ transport compliance = %s/%t/%q", status, writable, message)
+	}
+}
+
+func TestPrepareLoadoutSigilRejectsInvalidExactSource(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []LoadoutConstructedSigil{
+		{Index: -1, ExactSigilHash: "80C94A24", ExactPrimaryTraitHash: "7EDD69D0"},
+		{Index: loadoutMaxSigils, ExactSigilHash: "80C94A24", ExactPrimaryTraitHash: "7EDD69D0"},
+		{Index: 0, ExactSigilHash: "not-a-hash", ExactPrimaryTraitHash: "7EDD69D0"},
+		{Index: 0, ExactSigilHash: "00000000", ExactPrimaryTraitHash: "7EDD69D0"},
+		{Index: 0, ExactSigilHash: "80C94A24", ExactPrimaryTraitHash: "887AE0B0"},
+		{Index: 0, ExactSigilHash: "80C94A24", ExactPrimaryTraitHash: "7EDD69D0", ExactSecondaryTraitHash: "00000000"},
+	}
+	for _, draft := range cases {
+		if _, err := prepareLoadoutSigil(cat, draft); err == nil {
+			t.Fatalf("损坏的精确因子来源应被拒绝: %+v", draft)
+		}
+	}
+}
+
+func TestLoadoutApplyWritesExactCombinationToSaveCopy(t *testing.T) {
+	if !haveSave(testLoadoutSave) {
+		t.Skipf("测试存档不存在: %s", testLoadoutSave)
+	}
+	app := &App{}
+	groups, err := app.LoadoutList(testLoadoutSave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source *LoadoutEntry
+	for groupIndex := range groups {
+		if groups[groupIndex].CharaName != "菲迪埃尔" {
+			continue
+		}
+		for loadoutIndex := range groups[groupIndex].Loadouts {
+			if !groups[groupIndex].Loadouts[loadoutIndex].IsParty {
+				source = &groups[groupIndex].Loadouts[loadoutIndex]
+				break
+			}
+		}
+	}
+	if source == nil {
+		t.Skip("测试存档里没有菲迪埃尔的已保存配装")
+	}
+	sigilSlotIDs := make([]uint32, loadoutMaxSigils)
+	for _, sigil := range source.Sigils {
+		if sigil.Index >= 0 && sigil.Index < len(sigilSlotIDs) {
+			sigilSlotIDs[sigil.Index] = sigil.SlotID
+		}
+	}
+	const exactIndex = 7
+	sigilSlotIDs[exactIndex] = 0
+	skillHashes := make([]string, 0, len(source.Skills))
+	for _, skill := range source.Skills {
+		skillHashes = append(skillHashes, skill.Hash)
+	}
+	masteryHashes := make([]string, 0, len(source.Mastery))
+	for _, node := range source.Mastery {
+		masteryHashes = append(masteryHashes, node.Hash)
+	}
+	change := LoadoutWrite{
+		UnitID: source.UnitID, ExpectCharaHash: source.CharaHash, Op: "write", Name: source.Name,
+		WeaponSlotID: source.WeaponSlotID, SigilSlotIDs: sigilSlotIDs,
+		SkillHashes: skillHashes, WeaponSkillHashes: append([]string(nil), source.WeaponSkillHashes...),
+		MasteryHashes: masteryHashes,
+		ConstructedSigils: []LoadoutConstructedSigil{{
+			Index: exactIndex, ExactSigilHash: "80C94A24",
+			ExactPrimaryTraitHash: "7EDD69D0", ExactSecondaryTraitHash: "DC584F60",
+			Item: QueueItem{
+				SigilID: "HASH_80C94A24", SigilName: "怒发冲冠 + 伤害上限",
+				Level: 15, PrimaryLevel: 15, SecondaryLevel: 15,
+			},
+		}},
+	}
+	output := filepath.Join(t.TempDir(), "exact-combination.dat")
+	result, err := app.LoadoutApply(testLoadoutSave, output, []LoadoutWrite{change})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CreatedCount != 1 || len(result.SlotIDs) != 1 {
+		t.Fatalf("精确组合因子创建结果异常: %+v", result)
+	}
+	after, err := LoadSave(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadoutSigils, ok := after.findUnitExact(loadoutSigilsIDType, source.UnitID)
+	if !ok {
+		t.Fatal("回读找不到目标配装因子向量")
+	}
+	slotID, err := loadoutSigils.Uint32At(exactIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := buildLoadoutIndex(after)
+	gemUnitID, ok := index.gemBySlotID[slotID]
+	if !ok {
+		t.Fatalf("回读找不到新因子 SlotID %d", slotID)
+	}
+	if err := after.VerifySigilWithFlags(
+		int(gemUnitID), slotID, 0x80C94A24, 15,
+		0x7EDD69D0, 15, 0xDC584F60, 15, true, NormalSigilFlags,
+	); err != nil {
+		t.Fatalf("精确组合因子回读不符: %v", err)
+	}
+}
+
 func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *testing.T) {
 	path := badgeTestSaveCopy(t)
 	before, err := os.ReadFile(path)
@@ -863,6 +1085,18 @@ func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *test
 	}
 	if !strings.Contains(report.Message, "自然") || !strings.Contains(report.Items[0].Message, "自然") {
 		t.Fatalf("compliance warning must explain the non-natural value: %+v", report)
+	}
+
+	exactTransport := valid
+	exactTransport.ConstructedSigils = append([]LoadoutConstructedSigil(nil), valid.ConstructedSigils...)
+	exactTransport.ConstructedSigils[0].Item.SigilID = "HASH_39BEA99B"
+	exactTransport.ConstructedSigils[0].Item.SigilName = "昏厥V+"
+	report, err = app.LoadoutCheckCompliance(path, exactTransport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Writable || report.Status != LegalityForced || len(report.Items) != 1 || report.Items[0].Status != LegalityForced {
+		t.Fatalf("exact HASH_ transport draft must remain writable with an advisory warning: %+v", report)
 	}
 
 	after, err := os.ReadFile(path)

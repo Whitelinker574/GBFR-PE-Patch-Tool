@@ -10,12 +10,15 @@ This repository was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://
 
 | Module | Version | License |
 | --- | --- | --- |
+| `github.com/andybalholm/brotli` | v1.2.2 | MIT |
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
 | `github.com/leaanthony/go-ansi-parser` | v1.6.1 | MIT |
 | `github.com/leaanthony/slicer` | v1.6.0 | MIT |
 | `github.com/leaanthony/u` | v1.1.1 | MIT |
 | `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
 | `github.com/rivo/uniseg` | v0.4.7 | MIT |
+| `github.com/vmihailenco/msgpack/v5` | v5.4.1 | BSD-2-Clause |
+| `github.com/vmihailenco/tagparser/v2` | v2.0.0 | BSD-2-Clause |
 | `github.com/wailsapp/go-webview2` | v1.0.22 | MIT |
 | `github.com/wailsapp/wails/v2` | v2.13.0 | MIT |
 | `golang.org/x/sys` | v0.44.0 | BSD-3-Clause |
@@ -26,6 +29,7 @@ The table is derived from `go list -deps ./...`; build-only and test-only module
 
 | Packages | Version | License |
 | --- | --- | --- |
+| `base32768` | 5.0.1 | MIT |
 | `vue`, `@vue/compiler-core`, `@vue/compiler-dom`, `@vue/compiler-sfc`, `@vue/compiler-ssr`, `@vue/reactivity`, `@vue/runtime-core`, `@vue/runtime-dom`, `@vue/server-renderer`, `@vue/shared` | 3.5.40 | MIT |
 | `@babel/helper-string-parser`, `@babel/helper-validator-identifier`, `@babel/parser`, `@babel/types` | 7.29.7 | MIT |
 | `@jridgewell/sourcemap-codec` | 1.5.5 | MIT |

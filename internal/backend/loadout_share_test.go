@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestSharedWeaponIdentityIgnoresAwakeningStorageVariant(t *testing.T) {
+	var variant, base uint32
+	for candidate, canonical := range awakeningWeaponAliases {
+		variant, base = candidate, canonical
+		break
+	}
+	if variant == 0 || base == 0 {
+		t.Fatal("awakening weapon alias table is empty")
+	}
+	if !sameSharedWeaponIdentity(hashText(variant), hashText(base)) {
+		t.Fatalf("awakening variant %08X did not match base weapon %08X", variant, base)
+	}
+	if sameSharedWeaponIdentity(hashText(variant), "DEADBEEF") {
+		t.Fatal("unrelated weapon hash matched an awakening variant")
+	}
+}
+
 func actualLoadoutShareFixture(t *testing.T) (string, *LoadoutShare) {
 	t.Helper()
 	path := strings.TrimSpace(os.Getenv("GBFR_TEST_SHARE_SAVE"))
@@ -205,6 +222,47 @@ func TestLoadoutShareV2RebuildsGeneratedCombinationHashAtOriginalPosition(t *tes
 	}
 }
 
+func TestLoadoutShareBuildsExactDraftForCombinationAbsentFromCatalog(t *testing.T) {
+	path, share := actualLoadoutShareFixture(t)
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var damageCap *TraitDef
+	for index := range catalog.Traits {
+		if cnTrait(catalog.Traits[index].DisplayName) == "伤害上限" {
+			damageCap = &catalog.Traits[index]
+			break
+		}
+	}
+	if damageCap == nil {
+		t.Fatal("目录中没有伤害上限词条")
+	}
+	slot := 0
+	share.Sigils = []LoadoutShareSigil{{
+		Index: &slot, Hash: "80C94A24", Name: "怒发冲冠 + 伤害上限", Level: 15,
+		PrimaryTraitHash: "7EDD69D0", PrimaryTraitLevel: 15,
+		SecondaryTraitHash: damageCap.Hash, SecondaryTraitLevel: 15,
+	}}
+
+	draft, err := resolveLoadoutShare(path, share.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.ConstructedSigils) != 1 {
+		t.Fatalf("精确组合因子草稿数量=%d，期望 1", len(draft.ConstructedSigils))
+	}
+	got := draft.ConstructedSigils[0]
+	if got.ExactSigilHash != "80C94A24" ||
+		got.ExactPrimaryTraitHash != "7EDD69D0" ||
+		!strings.EqualFold(got.ExactSecondaryTraitHash, damageCap.Hash) {
+		t.Fatalf("精确组合因子哈希未保留: %+v", got)
+	}
+	if got.Item.Level != 15 || got.Item.PrimaryLevel != 15 || got.Item.SecondaryLevel != 15 {
+		t.Fatalf("精确组合因子等级未保留: %+v", got.Item)
+	}
+}
+
 func TestLoadoutShareV2RejectsInvalidSigilIndices(t *testing.T) {
 	path, share := actualLoadoutShareFixture(t)
 	for _, tc := range []struct {
@@ -243,6 +301,101 @@ func TestLoadoutShareReadsLegacyV1DenseSigils(t *testing.T) {
 	}
 	if len(draft.SigilSlotIDs) != 2 || len(draft.ConstructedSigils) != 2 || draft.ConstructedSigils[0].Index != 0 || draft.ConstructedSigils[1].Index != 1 {
 		t.Fatalf("旧 v1 dense 因子没有按顺序转为构造草稿: slots=%v constructed=%+v", draft.SigilSlotIDs, draft.ConstructedSigils)
+	}
+}
+
+func TestSingleTraitShareImportReplacesOpaqueSigilNameAndKeepsSecondaryEmpty(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		sigilHash   = uint32(0x42BB0C1C) // GEEN_151_04, local 2.0.2 gem.tbl
+		primaryHash = uint32(0x57AB5B10) // SKILL_151_00
+	)
+	draft, err := loadoutShareConstructedSigil(catalog, LoadoutShareSigil{
+		Hash: hashText(sigilHash), Name: "0x42BB0C1C", Level: 15,
+		PrimaryTraitHash: hashText(primaryHash), PrimaryTraitLevel: 15,
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantName := sigilDisplayName(sigilHash)
+	if wantName == "" || draft.Item.SigilName != wantName || strings.Contains(strings.ToLower(draft.Item.SigilName), "0x42bb0c1c") {
+		t.Fatalf("opaque single-trait name was not replaced: got=%q want=%q", draft.Item.SigilName, wantName)
+	}
+	if draft.Item.SecondaryTraitID != "" || draft.Item.SecondaryTraitName != "" ||
+		draft.Item.SecondaryLevel != 0 || draft.ExactSecondaryTraitHash != "" {
+		t.Fatalf("single-trait import fabricated a secondary trait: %+v", draft)
+	}
+	prepared, err := prepareExactLoadoutSigil(catalog, draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.hasSecondary || prepared.secondaryHash != EmptyHash || prepared.secondaryLevel != 0 {
+		t.Fatalf("single-trait write was not prepared as an empty secondary slot: %+v", prepared)
+	}
+}
+
+func TestCombinationShareImportDerivesNameFromTraitsInsteadOfKeepingOpaqueHash(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		sigilHash   = uint32(0x80C94A24)
+		primaryHash = uint32(0x7EDD69D0)
+	)
+	var secondary *TraitDef
+	for index := range catalog.Traits {
+		if catalog.Traits[index].InternalID == "SKILL_000_00" {
+			secondary = &catalog.Traits[index]
+			break
+		}
+	}
+	if secondary == nil {
+		t.Fatal("catalog lacks the ATK secondary trait fixture")
+	}
+	draft, err := loadoutShareConstructedSigil(catalog, LoadoutShareSigil{
+		Hash: hashText(sigilHash), Name: hashText(sigilHash), Level: 15,
+		PrimaryTraitHash: hashText(primaryHash), PrimaryTraitLevel: 15,
+		SecondaryTraitHash: secondary.Hash, SecondaryTraitLevel: 15,
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantName := draft.Item.PrimaryTraitName + " + " + draft.Item.SecondaryTraitName
+	if draft.Item.SigilName != wantName || isOpaqueLoadoutShareName(draft.Item.SigilName, sigilHash) {
+		t.Fatalf("opaque combination name was not reconstructed: got=%q want=%q", draft.Item.SigilName, wantName)
+	}
+}
+
+func TestNamedLocalTableAliasesNeverFallBackToOpaqueHashes(t *testing.T) {
+	previous := getCurrentLanguage()
+	t.Cleanup(func() { setCurrentLanguage(previous) })
+	for _, locale := range []struct {
+		language string
+		names    map[uint32]string
+	}{
+		{language: "zh", names: map[uint32]string{
+			0x2D85102A: "属性克制转换+",
+			0x99E8B892: "狂战士+",
+			0x97CF485D: "万能药+",
+			0x4AE72C9E: "斯巴达+",
+		}},
+		{language: "en", names: map[uint32]string{
+			0x2D85102A: "War Elemental+",
+			0x99E8B892: "Berserker Echo+",
+			0x97CF485D: "Potent Greens+",
+			0x4AE72C9E: "Spartan Echo+",
+		}},
+	} {
+		setCurrentLanguage(locale.language)
+		for hash, want := range locale.names {
+			if got := sigilDisplayName(hash); got != want {
+				t.Errorf("%s factor %08X name=%q, want %q", locale.language, hash, got, want)
+			}
+		}
 	}
 }
 

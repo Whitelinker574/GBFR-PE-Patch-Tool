@@ -25,3 +25,14 @@ test('每一条复刻都提交当次轮询捕获的目标地址', () => {
 	const calls = [...source.matchAll(/SigilMemoryUpdateOwned\(ownerToken,\s*\{\s*\.\.\.target,\s*expectedSelectedAddr:\s*selectedAddr/g)]
 	assert.equal(calls.length, 2, 'poll write and immediate first write must both freeze selectedAddr')
 })
+
+test('录制文件保留可读名称并兼容旧版纯哈希文件', () => {
+  assert.match(source, /const VERSION = 2/)
+  assert.match(source, /const LEGACY_VERSION = 1/)
+  assert.match(source, /sigilName:\s*recordedName\(item\.sigilName\)/)
+  assert.match(source, /primaryTraitName:\s*recordedName\(item\.primaryTraitName\)/)
+  assert.match(source, /secondaryTraitName:\s*recordedName\(item\.secondaryTraitName\)/)
+  assert.match(source, /version < LEGACY_VERSION \|\| version > VERSION/)
+  assert.doesNotMatch(source, /function sigilName\(entry\)\s*\{[^}]*formatHash/)
+  assert.doesNotMatch(source, /return traitNames\.value\.get\(value\) \|\| formatHash\(value\)/)
+})

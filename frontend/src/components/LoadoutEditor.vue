@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutRuntimePanelStats, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, SummonGetOptions } from '../../wailsjs/go/backend/App'
+import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutImportCode, LoadoutImportShortCode, LoadoutRuntimePanelStats, LoadoutShareCode, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, PublishLoadoutShare, SummonGetOptions } from '../../wailsjs/go/backend/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/backend/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
@@ -8,10 +8,12 @@ import { formatFinalStat, groupEffectTotals, summarizeTraitLevels } from '../loa
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { buildConstructCatalog, collectBagTraitOptions, filterAndSortBagSigils, filterConstructCatalog, resolveConstructSelection } from '../loadoutCatalogFilters'
 import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
+import { compatibleLoadoutShareCode, isOfflineLoadoutShareCode } from '../loadoutShareCode'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import LoadoutImportDialog from './LoadoutImportDialog.vue'
+import LoadoutShareCodeDialog from './LoadoutShareCodeDialog.vue'
 
 const props = defineProps({
   savePath: { type: String, default: '' },
@@ -30,6 +32,11 @@ const importMissing = ref([])
 const importApplyPayload = ref(null)
 const importDraft = ref(null)
 const importSelection = ref(null)
+const shareCodeOpen = ref(false)
+const shareCodeResult = ref(null)
+const publishedShare = ref(null)
+const sharePublishing = ref(false)
+const shareCodeError = ref('')
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -1033,6 +1040,59 @@ async function importLoadout() {
   }
 }
 
+function openShareCodeDialog() {
+  shareCodeResult.value = null
+  publishedShare.value = null
+  shareCodeError.value = ''
+  shareCodeOpen.value = true
+}
+
+async function generateShareCode() {
+  if (!selectedLoadout.value || selectedLoadout.value.isParty || sharing.value) return
+  sharing.value = true
+  shareCodeError.value = ''
+  try {
+    shareCodeResult.value = await LoadoutShareCode(props.savePath, selectedLoadout.value.unitId)
+    publishedShare.value = null
+  } catch (err) {
+    shareCodeError.value = String(err)
+  } finally {
+    sharing.value = false
+  }
+}
+
+async function publishShareCode() {
+  if (!selectedLoadout.value || selectedLoadout.value.isParty || sharing.value || sharePublishing.value) return
+  sharePublishing.value = true
+  shareCodeError.value = ''
+  try {
+    publishedShare.value = await PublishLoadoutShare(props.savePath, selectedLoadout.value.unitId)
+  } catch (err) {
+    shareCodeError.value = String(err)
+  } finally {
+    sharePublishing.value = false
+  }
+}
+
+async function importShareCode(rawCode) {
+  if (sharing.value || sharePublishing.value) return
+  sharing.value = true
+  shareCodeError.value = ''
+  try {
+    const draft = isOfflineLoadoutShareCode(rawCode)
+      ? await LoadoutImportCode(props.savePath, props.charaHash, compatibleLoadoutShareCode(rawCode))
+      : await LoadoutImportShortCode(props.savePath, props.charaHash, rawCode)
+    if (!draft) return
+    importDraft.value = draft
+    shareCodeOpen.value = false
+    emit('status', '配装校验通过，请选择要导入的内容。', 'success')
+  } catch (err) {
+    shareCodeError.value = String(err)
+  } finally {
+    sharing.value = false
+  }
+}
+
 function stageImportedFactors(draft) {
   factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
   for (const constructed of draft.constructedSigils || []) {
@@ -1044,6 +1104,10 @@ function stageImportedFactors(draft) {
         primaryTraitLevel: Number(item.primaryLevel || 0),
         secondaryTraitName: item.secondaryTraitName || '',
         secondaryTraitLevel: Number(item.secondaryLevel || 0),
+      }, {
+        exactSigilHash: constructed.exactSigilHash || '',
+        exactPrimaryTraitHash: constructed.exactPrimaryTraitHash || '',
+        exactSecondaryTraitHash: constructed.exactSecondaryTraitHash || '',
       })
   }
   activeFactorIndex.value = 0
@@ -1054,7 +1118,7 @@ function applyImportChoices(choices) {
   if (!draft) return
   const sourcePayload = draft.applyPayload || {}
   form.value.name = draft.name || form.value.name
-  if (choices.weapon) form.value.weaponSlotId = draft.weaponSlotId || form.value.weaponSlotId
+  if (choices.weapon) form.value.weaponSlotId = sourcePayload.constructedWeapon ? 0 : Number(draft.weaponSlotId || 0)
   if (choices.weapon) importedWeaponSkillSnapshot.value = [...(draft.weaponSkillHashes || [])]
   if (choices.factors) stageImportedFactors(draft)
   if (choices.skills) {
@@ -1076,19 +1140,21 @@ function applyImportChoices(choices) {
   const payload = {
     character: sourcePayload.character || null,
     weapon: sourcePayload.weapon || null,
+    constructedWeapon: choices.weapon ? (sourcePayload.constructedWeapon || null) : null,
     constructedSummons: choices.summons ? [...(sourcePayload.constructedSummons || [])] : [],
     overLimit: choices.overLimit ? [...(sourcePayload.overLimit || [])] : [],
     applyMasteryConfiguration: !!choices.mastery,
     applyMasterProgress: !!choices.masterProgress,
     masterProgressIndex: Number(choices.masterProgressIndex || 1),
+    applyCharacterLevel: !!choices.characterLevel,
     applyCharacterGrowth: !!choices.characterGrowth,
     applyCharacterWeaponCollection: !!choices.characterWeaponCollection,
 		applyCharacterWeaponWrightstones: !!choices.characterWeaponWrightstones,
-    applyWeaponEnhancement: !!choices.weaponEnhancement,
+    applyWeaponEnhancement: !!choices.weaponEnhancement || (!!choices.weapon && !!sourcePayload.constructedWeapon),
     applyWeaponWrightstone: !!choices.wrightstone,
     applyOverLimit: !!choices.overLimit,
   }
-  const needsPayload = payload.constructedSummons.length || payload.applyMasteryConfiguration || payload.applyMasterProgress ||
+  const needsPayload = payload.constructedWeapon || payload.constructedSummons.length || payload.applyMasteryConfiguration || payload.applyMasterProgress || payload.applyCharacterLevel ||
     payload.applyCharacterGrowth || payload.applyCharacterWeaponCollection || payload.applyCharacterWeaponWrightstones || payload.applyWeaponEnhancement || payload.applyWeaponWrightstone || payload.applyOverLimit
   importApplyPayload.value = needsPayload ? payload : null
   importSelection.value = { ...choices }
@@ -1105,6 +1171,7 @@ function applyImportChoices(choices) {
   importDraft.value = null
 
   const labels = [
+    choices.characterLevel && `角色等级 Lv${draft.capabilities?.sourceCharacterLevel || 0}`,
     choices.factors && '因子', choices.skills && '技能', choices.mastery && '专精配置', choices.masterProgress && `专精进度 ${choices.masterProgressIndex}`,
     choices.weapon && '装备武器', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
     choices.overLimit && '上限突破', choices.characterGrowth && '角色强化进度', choices.characterWeaponCollection && '整组角色武器收藏',
@@ -1157,7 +1224,7 @@ async function apply() {
       summonEdits,
       importPayload: importApplyPayload.value,
     })
-    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，生成 ${res.createdCount} 个独立因子` : ''}${res.createdSummonCount ? `，补建 ${res.createdSummonCount} 个召唤石` : ''}`, 'success')
+    emit('status', `已${opLabel()}并验证 ${res.verifiedFields} 项${res.createdCount ? `，生成 ${res.createdCount} 个独立因子` : ''}${res.createdWeaponCount ? '，补建 1 把装备武器' : ''}${res.createdSummonCount ? `，补建 ${res.createdSummonCount} 个召唤石` : ''}`, 'success')
     emit('reload')
   } catch (err) {
     emit('status', String(err), 'error')
@@ -1485,6 +1552,7 @@ async function apply() {
         <span><b>{{ op === 'write' ? '配装草稿' : op === 'clone' ? '克隆操作' : '清空操作' }}</b><small>目标槽 {{ String(selectedSlot?.slot ?? 0).padStart(2, '0') }}</small></span>
         <div class="editor-persistent-actions" aria-label="配装保存与单套导入导出">
           <small class="single-loadout-label">单套配装</small>
+          <button class="ui-btn is-ghost single-loadout-action share-code-action" :disabled="sharing" title="生成或粘贴配装分享码" @click="openShareCodeDialog">分享码</button>
           <button class="ui-btn is-ghost single-loadout-action" :disabled="sharing || !selectedLoadout || selectedLoadout.isParty" title="导出当前单套配装，不包含存档" @click="exportCurrentLoadout">导出单套</button>
           <button class="ui-btn is-ghost single-loadout-action" :disabled="sharing" title="导入单套配装并载入为草稿" @click="importLoadout">导入单套</button>
           <button class="editor-save-button apply-btn ui-btn is-primary" :disabled="applying || writeInvalid" @click="apply">
@@ -1776,6 +1844,20 @@ async function apply() {
       </aside>
       </div>
     </template>
+    <LoadoutShareCodeDialog
+      :open="shareCodeOpen"
+      :result="shareCodeResult"
+      :published="publishedShare"
+      :busy="sharing"
+      :publishing="sharePublishing"
+      :error="shareCodeError"
+      :can-generate="!!selectedLoadout && !selectedLoadout.isParty"
+      :selected-name="selectedLoadout?.name || ''"
+      @close="shareCodeOpen = false"
+      @generate="generateShareCode"
+      @publish="publishShareCode"
+      @import="importShareCode"
+    />
     <LoadoutImportDialog :draft="importDraft" @cancel="importDraft = null" @apply="applyImportChoices" />
     <ConfirmDialog ref="confirmDialog" />
   </div>
@@ -1904,6 +1986,7 @@ async function apply() {
 .editor-persistent-actions .ui-btn { min-height:34px; }
 .single-loadout-label { padding:0 3px 0 1px; color:var(--text-muted); font-size:var(--fs-xs); font-weight:700; white-space:nowrap; }
 .single-loadout-action { border-color:var(--line-gold); background:rgba(255,255,255,.5); color:#765126; }
+.single-loadout-action.share-code-action { border-color:#6d8f73; color:#3d684a; background:rgba(92,137,103,.1); box-shadow:inset 0 -2px rgba(83,126,94,.16); }
 .single-loadout-scope { margin:0; padding:7px 12px; border-bottom:1px solid var(--line-soft); background:rgba(255,255,255,.38); color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .staged-import-bar { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:8px 12px; border-bottom:1px solid rgba(92,130,91,.3); background:rgba(92,130,91,.08); }
 .staged-import-bar > span { min-width:0; display:flex; flex-direction:column; }

@@ -11,12 +11,17 @@ const masteryProgress = ref(1)
 
 const source = computed(() => props.draft?.applyPayload || {})
 const caps = computed(() => props.draft?.capabilities || {})
+const constructsWeapon = computed(() => !!source.value.constructedWeapon)
+const targetFateLabel = computed(() => caps.value.targetFateDataAvailable
+  ? `${Number(caps.value.targetFateEpisodeCount || 0)}/11`
+  : '未建立')
 const has = computed(() => ({
+  characterLevel: !!source.value.character?.characterBaseCaptured,
   factors: (props.draft?.constructedSigils || []).length > 0,
   skills: (props.draft?.skillHashes || []).length > 0,
   mastery: (props.draft?.masteryHashes || []).length > 0,
   masterProgress: !!source.value.character,
-  weapon: Number(props.draft?.weaponSlotId || 0) > 0,
+  weapon: Number(props.draft?.weaponSlotId || 0) > 0 || !!source.value.constructedWeapon,
   weaponEnhancement: !!source.value.weapon,
   wrightstone: !!source.value.weapon?.wrightstone,
   summons: (props.draft?.summonSlotIds || []).length === 4,
@@ -26,11 +31,17 @@ const has = computed(() => ({
 	characterWeaponWrightstones: !!source.value.character?.weaponWrightstonesCaptured && (source.value.character?.weapons || []).length > 0,
 }))
 
-const categoryKeys = ['factors', 'skills', 'mastery', 'masterProgress', 'weapon', 'weaponEnhancement', 'wrightstone', 'summons', 'overLimit', 'characterGrowth', 'characterWeaponCollection', 'characterWeaponWrightstones']
-const masteryBlocked = computed(() => Number(caps.value.targetCharacterLevel || 0) < 100 || !caps.value.targetMasterSystem)
+const categoryKeys = ['characterLevel', 'factors', 'skills', 'mastery', 'masterProgress', 'weapon', 'weaponEnhancement', 'wrightstone', 'summons', 'overLimit', 'characterGrowth', 'characterWeaponCollection', 'characterWeaponWrightstones']
+const targetNeedsLevel100 = computed(() => Number(caps.value.targetCharacterLevel || 0) < 100)
+const needsLevel100Selection = computed(() => targetNeedsLevel100.value &&
+  !!(choices.value.mastery || choices.value.masterProgress || choices.value.characterGrowth))
+const levelPromotionUnavailable = computed(() => targetNeedsLevel100.value && !has.value.characterLevel)
+const masteryBlocked = computed(() => !caps.value.targetMasterSystem || levelPromotionUnavailable.value)
+const characterGrowthBlocked = computed(() => levelPromotionUnavailable.value)
 const summonBlocked = computed(() => has.value.summons && !caps.value.targetSummonSystem)
 const availableKeys = computed(() => categoryKeys.filter(key => has.value[key]
   && !(masteryBlocked.value && ['mastery', 'masterProgress'].includes(key))
+  && !(characterGrowthBlocked.value && key === 'characterGrowth')
   && !(summonBlocked.value && key === 'summons')))
 const allSelected = computed(() => availableKeys.value.length > 0 && availableKeys.value.every(key => choices.value[key]))
 const selectedCount = computed(() => availableKeys.value.filter(key => choices.value[key]).length)
@@ -47,16 +58,18 @@ const selectedMissing = computed(() => {
 })
 const cannotApply = computed(() => selectedCount.value === 0 || selectedMissing.value.length > 0 ||
   ((choices.value.mastery || choices.value.masterProgress) && masteryBlocked.value) ||
+  (choices.value.characterGrowth && characterGrowthBlocked.value) ||
   (choices.value.summons && summonBlocked.value))
 
 function reset() {
   const next = {
+    characterLevel: false,
     factors: has.value.factors,
     skills: has.value.skills,
     mastery: has.value.mastery && !masteryBlocked.value,
     masterProgress: has.value.masterProgress && !masteryBlocked.value,
     weapon: has.value.weapon,
-    weaponEnhancement: false,
+    weaponEnhancement: has.value.weaponEnhancement && constructsWeapon.value,
     wrightstone: has.value.wrightstone,
     summons: has.value.summons && !summonBlocked.value,
     overLimit: has.value.overLimit,
@@ -64,6 +77,7 @@ function reset() {
     characterWeaponCollection: false,
 		characterWeaponWrightstones: false,
   }
+  if (targetNeedsLevel100.value && (next.mastery || next.masterProgress || next.characterGrowth)) next.characterLevel = true
   choices.value = next
   masteryProgress.value = Math.min(55, Math.max(1, Number(caps.value.sourceMasterProgressIndex || 1)))
 }
@@ -78,18 +92,26 @@ function toggleAll() {
     next.mastery = false
     next.masterProgress = false
   }
+  if (characterGrowthBlocked.value) next.characterGrowth = false
+  if (targetNeedsLevel100.value && (next.mastery || next.masterProgress || next.characterGrowth)) next.characterLevel = true
   if (summonBlocked.value) next.summons = false
   choices.value = next
 }
 
 function toggle(key) {
+  if (key === 'weaponEnhancement' && constructsWeapon.value && choices.value.weapon) return
+  if (key === 'characterLevel' && needsLevel100Selection.value) return
   choices.value = { ...choices.value, [key]: !choices.value[key] }
+  if (targetNeedsLevel100.value && ['mastery', 'masterProgress', 'characterGrowth'].includes(key) && choices.value[key]) {
+    choices.value.characterLevel = true
+  }
   if (['weaponEnhancement', 'wrightstone'].includes(key) && choices.value[key]) choices.value.weapon = true
 	if (key === 'characterWeaponWrightstones' && choices.value[key]) choices.value.characterWeaponCollection = true
   if (key === 'weapon' && !choices.value.weapon) {
     choices.value.weaponEnhancement = false
     choices.value.wrightstone = false
   }
+  if (key === 'weapon' && choices.value.weapon && constructsWeapon.value) choices.value.weaponEnhancement = true
 	if (key === 'characterWeaponCollection' && !choices.value.characterWeaponCollection) choices.value.characterWeaponWrightstones = false
 }
 
@@ -108,17 +130,20 @@ function submit() {
     <div v-if="draft" class="import-backdrop" role="presentation" @click.self="emit('cancel')">
       <section class="import-dialog" role="dialog" aria-modal="true" aria-labelledby="loadout-import-title">
         <header class="import-hero">
-          <div><small>单套配装 · 分项导入</small><h2 id="loadout-import-title">选择要带入当前存档的内容</h2><p>默认保留目标角色强化、当前武器成长和整组武器收藏；只有你勾选的范围才会写入。</p></div>
+          <div><small>单套配装 · 分项导入</small><h2 id="loadout-import-title">选择要带入当前存档的内容</h2><p>每项只在勾选后写入；命运篇章始终保留目标存档。</p></div>
           <button class="dialog-close" type="button" aria-label="关闭" @click="emit('cancel')">×</button>
         </header>
 
         <div class="import-source-strip">
           <span><small>配装名称</small><b>{{ draft.name || '未命名配装' }}</b></span>
-          <span><small>目标角色</small><b>Lv{{ caps.targetCharacterLevel || 0 }} · 专精进度 {{ caps.targetMasterProgressIndex || 1 }}</b></span>
+          <span><small>来源 → 目标角色</small><b>Lv{{ caps.sourceCharacterLevel || 0 }} → Lv{{ caps.targetCharacterLevel || 0 }} · 命运篇章 {{ targetFateLabel }} · 专精进度 {{ caps.targetMasterProgressIndex || 1 }}</b></span>
           <button type="button" :class="{ on: allSelected }" @click="toggleAll">{{ allSelected ? '取消全选' : '全部导入' }}</button>
         </div>
 
         <div class="import-grid">
+          <button v-if="has.characterLevel" type="button" class="import-choice risk" :class="{ on: choices.characterLevel, locked: needsLevel100Selection }" @click="toggle('characterLevel')">
+            <i>LV</i><span><b>角色等级</b><small>同步到 Lv{{ caps.sourceCharacterLevel || 0 }}，并覆盖对应的基础 HP、攻击、昏厥与暴击快照</small></span><em>{{ needsLevel100Selection ? '联动升至 Lv100' : choices.characterLevel ? '将覆盖' : '默认不改' }}</em>
+          </button>
           <button v-if="has.factors" type="button" class="import-choice" :class="{ on: choices.factors }" @click="toggle('factors')">
             <i>01</i><span><b>因子配置</b><small>创建 {{ draft.constructedSigils.length }} 枚独立因子，不复用来源实例</small></span><em>{{ choices.factors ? '已选择' : '保留目标' }}</em>
           </button>
@@ -133,10 +158,10 @@ function submit() {
             <label v-if="choices.masterProgress && !masteryBlocked"><span>导入进度</span><input v-model.number="masteryProgress" type="range" min="1" max="55" /><strong>MLv{{ masteryProgress }} <i>{{ masteryStars(masteryProgress) }}</i></strong></label>
           </article>
           <button v-if="has.weapon" type="button" class="import-choice" :class="{ on: choices.weapon }" @click="toggle('weapon')">
-            <i>05</i><span><b>装备武器</b><small>只切换到目标存档已有的同类武器</small></span><em>{{ choices.weapon ? '已选择' : '保留目标' }}</em>
+            <i>05</i><span><b>装备武器</b><small v-if="source.constructedWeapon">目标存档缺少同款；导入时新增来源武器并绑定，不覆盖其他武器</small><small v-else>切换到目标存档已有的同类武器</small></span><em>{{ choices.weapon ? '已选择' : '保留目标' }}</em>
           </button>
           <button v-if="has.weaponEnhancement" type="button" class="import-choice risk" :class="{ on: choices.weaponEnhancement }" @click="toggle('weaponEnhancement')">
-            <i>06</i><span><b>同步武器强化</b><small>经验、等级、突破、幻晶、觉醒、超凡与五技能</small></span><em>{{ choices.weaponEnhancement ? '将覆盖' : '默认不改' }}</em>
+            <i>06</i><span><b>同步武器强化</b><small v-if="constructsWeapon">新实例按来源初始化经验、等级、突破、幻晶、觉醒、超凡与五技能</small><small v-else>经验、等级、突破、幻晶、觉醒、超凡与五技能</small></span><em>{{ constructsWeapon ? '随新武器同步' : choices.weaponEnhancement ? '将覆盖' : '默认不改' }}</em>
           </button>
           <button v-if="has.wrightstone" type="button" class="import-choice nested" :class="{ on: choices.wrightstone }" @click="toggle('wrightstone')">
             <i>↳</i><span><b>只导入武器祝福</b><small>写入目标武器实际生效的祝福类型与三条附加技能；不改变武器等级</small></span><em>{{ choices.wrightstone ? '已选择' : '保留目标' }}</em>
@@ -147,8 +172,8 @@ function submit() {
           <button v-if="has.overLimit" type="button" class="import-choice" :class="{ on: choices.overLimit }" @click="toggle('overLimit')">
             <i>08</i><span><b>上限突破</b><small>四槽属性与等级，可选择不覆盖</small></span><em>{{ choices.overLimit ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.characterGrowth" type="button" class="import-choice risk" :class="{ on: choices.characterGrowth }" @click="toggle('characterGrowth')">
-            <i>09</i><span><b>角色强化进度</b><small>攻击与 HP·抗性页进度；不改任何武器</small></span><em>{{ choices.characterGrowth ? '将覆盖' : '默认不改' }}</em>
+          <button v-if="has.characterGrowth" type="button" class="import-choice risk" :class="{ on: choices.characterGrowth, blocked: characterGrowthBlocked }" :disabled="characterGrowthBlocked" @click="toggle('characterGrowth')">
+            <i>09</i><span><b>角色强化进度</b><small>同步攻击与 HP·抗性强化页；目标未满级时联动升至 Lv100，不改命运篇章或任何武器</small></span><em>{{ characterGrowthBlocked ? '缺少等级快照' : choices.characterGrowth ? '将覆盖' : '默认不改' }}</em>
           </button>
           <button v-if="has.characterWeaponCollection" type="button" class="import-choice risk" :class="{ on: choices.characterWeaponCollection }" @click="toggle('characterWeaponCollection')">
             <i>10</i><span><b>整组角色武器收藏</b><small>同步该角色全部武器的等级、突破、幻晶、觉醒与超凡；会影响武器收集加成</small></span><em>{{ choices.characterWeaponCollection ? '将覆盖全部' : '默认不改' }}</em>
@@ -159,7 +184,9 @@ function submit() {
         </div>
 
         <div v-if="selectedMissing.length" class="import-alert danger"><b>所选范围缺少目标资源</b><span>{{ selectedMissing.join('；') }}</span></div>
-        <div v-else-if="masteryBlocked && (has.mastery || has.masterProgress)" class="import-alert"><b>专精暂不可导入</b><span v-if="!caps.targetMasterSystem">目标存档尚未建立该角色的专精字段；请先在游戏内开放专精系统，其他项目仍可单独导入。</span><span v-else>目标角色 Lv{{ caps.targetCharacterLevel || 0 }}，达到 Lv100 后才能写入专精配置或专精等级；其他项目仍可单独导入。</span></div>
+        <div v-else-if="needsLevel100Selection" class="import-alert"><b>将自动补足角色等级</b><span>目标角色为 Lv{{ caps.targetCharacterLevel || 0 }}；保存时会先写入来源的 Lv100 与四项基础快照，再导入所选专精或角色强化。命运篇章保持目标值。</span></div>
+        <div v-else-if="masteryBlocked && (has.mastery || has.masterProgress)" class="import-alert"><b>专精暂不可导入</b><span v-if="!caps.targetMasterSystem">目标存档尚未建立该角色的专精字段；请先在游戏内开放专精系统，其他项目仍可单独导入。</span><span v-else>旧版分享没有角色等级基础快照，无法把当前 Lv{{ caps.targetCharacterLevel || 0 }} 的目标安全提升到 Lv100；请用新版从源存档重新分享。</span></div>
+        <div v-if="characterGrowthBlocked && has.characterGrowth" class="import-alert"><b>角色强化暂不可导入</b><span>旧版分享没有 Lv100 基础快照，无法为未满级目标同步角色强化进度；其他项目仍可单独导入。</span></div>
         <div v-if="summonBlocked" class="import-alert"><b>召唤石系统未建立</b><span>目标存档需要先在游戏内开启对应 DLC 系统；本次可继续导入其他项目。</span></div>
 
         <footer><span>已选择 <b>{{ selectedCount }}</b> 项</span><button type="button" class="ui-btn" @click="emit('cancel')">取消</button><button type="button" class="ui-btn is-primary" :disabled="cannotApply" @click="submit">载入所选内容</button></footer>
