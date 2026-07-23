@@ -642,19 +642,59 @@ func readSigilTraits(save *SaveData, gemUnitID uint32) (primHash uint32, primLv 
 	}
 	primUnit := uint32(TraitSlotBase + gemIndex*100)
 	secUnit := primUnit + 1
-	if e, ok := save.findUnit(TraitHashIDType, primUnit); ok {
-		primHash = e.Uint32()
-	}
-	if e, ok := save.findUnit(TraitLevelIDType, primUnit); ok {
-		primLv = int(e.Int32())
-	}
-	if e, ok := save.findUnit(TraitHashIDType, secUnit); ok {
-		secHash = e.Uint32()
-	}
-	if e, ok := save.findUnit(TraitLevelIDType, secUnit); ok {
-		secLv = int(e.Int32())
-	}
+	primHash, primLv = readSigilTraitUnit(save, primUnit)
+	secHash, secLv = readSigilTraitUnit(save, secUnit)
 	return
+}
+
+// readSigilTraitUnit joins the hash and level records for one trait UnitID.
+// Some saves retain duplicate records after character/loadout migration; the
+// first matching record can be stale and may contain a negative sentinel level.
+// Prefer the last valid pair, which is the record written by the current save.
+func readSigilTraitUnit(save *SaveData, unitID uint32) (uint32, int) {
+	if save == nil {
+		return 0, 0
+	}
+	var hashes, levels []*unitEntry
+	for _, candidate := range save.findAllUnitsByType(TraitHashIDType) {
+		if candidate.UnitID != unitID || candidate.ValueCnt != 1 {
+			continue
+		}
+		hashes = append(hashes, candidate)
+	}
+	for _, levelEntry := range save.findAllUnitsByType(TraitLevelIDType) {
+		if levelEntry.UnitID != unitID || levelEntry.ValueCnt != 1 {
+			continue
+		}
+		levels = append(levels, levelEntry)
+	}
+	limit := len(hashes)
+	if len(levels) < limit {
+		limit = len(levels)
+	}
+	for index := limit - 1; index >= 0; index-- {
+		candidateHash := hashes[index].Uint32()
+		candidateLevel := int(levels[index].Int32())
+		if candidateHash == 0 || candidateLevel < 0 {
+			continue
+		}
+		return candidateHash, candidateLevel
+	}
+	// If an old save has unpaired duplicate records, retain the last valid
+	// hash/level independently rather than exposing the stale negative value.
+	var hash uint32
+	for index := len(hashes) - 1; index >= 0; index-- {
+		if candidateHash := hashes[index].Uint32(); candidateHash != 0 {
+			hash = candidateHash
+			break
+		}
+	}
+	for index := len(levels) - 1; index >= 0; index-- {
+		if candidateLevel := int(levels[index].Int32()); candidateLevel >= 0 && hash != 0 {
+			return hash, candidateLevel
+		}
+	}
+	return 0, 0
 }
 
 // LoadoutSimulate 对一组因子 SlotID 计算「词条加成总和」。

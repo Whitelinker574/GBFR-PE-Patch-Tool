@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	loadoutShareServiceURL         = "https://share.gbfr-loadout-share.workers.dev"
+	loadoutShareServiceURL         = "https://share.whitelinker.top"
 	loadoutShareOnlineMaxFrameSize = 8 * 1024
 )
 

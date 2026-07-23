@@ -978,24 +978,20 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 			es.SigilName = name
 		}
 
-		if lv, ok := sg.save.findUnit(GemLevelIDType, u.UnitID); ok {
+		if lv, ok := sg.save.findUnitExact(GemLevelIDType, u.UnitID); ok {
 			es.Level = int(lv.Int32())
 		}
 
-		if pt, ok := sg.save.findUnit(TraitHashIDType, primaryTraitUnit); ok {
-			ph := pt.Uint32()
+		if ph, primaryLevel := readSigilTraitUnit(sg.save, primaryTraitUnit); ph != 0 {
 			if trait := sg.catalog.LookupTraitByHash(ph); trait != nil {
 				es.PrimaryTraitName = cnTrait(trait.DisplayName)
 			} else if name := localizedRuntimeName(ph); name != "" {
 				es.PrimaryTraitName = name
 			}
-		}
-		if pl, ok := sg.save.findUnit(TraitLevelIDType, primaryTraitUnit); ok {
-			es.PrimaryLevel = int(pl.Int32())
+			es.PrimaryLevel = primaryLevel
 		}
 
-		if st, ok := sg.save.findUnit(TraitHashIDType, secondaryTraitUnit); ok {
-			sh := st.Uint32()
+		if sh, secondaryLevel := readSigilTraitUnit(sg.save, secondaryTraitUnit); sh != 0 {
 			if sh != EmptyHash {
 				if trait := sg.catalog.LookupTraitByHash(sh); trait != nil {
 					es.SecondaryTraitName = cnTrait(trait.DisplayName)
@@ -1004,9 +1000,7 @@ func (sg *SigilGen) GetExistingSigils() ([]ExistingSigil, error) {
 				} else {
 					es.SecondaryTraitName = fmt.Sprintf("0x%08X", sh)
 				}
-				if sl, ok := sg.save.findUnit(TraitLevelIDType, secondaryTraitUnit); ok {
-					es.SecondaryLevel = int(sl.Int32())
-				}
+				es.SecondaryLevel = secondaryLevel
 			}
 		}
 

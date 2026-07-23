@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -300,6 +301,37 @@ func TestAggregateTraitEffectsMergesEquivalentAdditiveComponents(t *testing.T) {
 	}
 	if _, exists := byLabel["基础攻击力高于"]; exists {
 		t.Fatal("threshold placeholders must not be presented as additive totals")
+	}
+}
+
+func TestReadSigilTraitsUsesExactUnitWhenDuplicateSaveRecordsExist(t *testing.T) {
+	// A few real saves contain stale duplicate units from an earlier character
+	// block.  The loose scanner can return that record first, which makes the
+	// same factor hash appear with a different (sometimes negative) level on
+	// only one character's export.
+	value := func(unitID uint32, raw uint32) *unitEntry {
+		data := make([]byte, 4)
+		binary.LittleEndian.PutUint32(data, raw)
+		return &unitEntry{IDType: TraitHashIDType, UnitID: unitID, ValueCnt: 1, data: data}
+	}
+	level := func(unitID uint32, raw int32) *unitEntry {
+		data := make([]byte, 4)
+		binary.LittleEndian.PutUint32(data, uint32(raw))
+		return &unitEntry{IDType: TraitLevelIDType, UnitID: unitID, ValueCnt: 1, data: data}
+	}
+	gemUnitID := uint32(GemSlotBaseID + 17)
+	primaryUnit := uint32(TraitSlotBase + 17*100)
+	secondaryUnit := primaryUnit + 1
+	stalePrimaryHash := uint32(0xEE85CD1F)
+	currentPrimaryHash := uint32(0x318D12E9)
+	save := &SaveData{unitsByType: map[uint32][]*unitEntry{
+		TraitHashIDType:  {value(primaryUnit, stalePrimaryHash), value(primaryUnit, currentPrimaryHash), value(secondaryUnit, 0x74AA75D6)},
+		TraitLevelIDType: {level(primaryUnit, -7), level(primaryUnit, 15), level(secondaryUnit, 10)},
+	}}
+
+	primaryHash, primaryLevel, secondaryHash, secondaryLevel := readSigilTraits(save, gemUnitID)
+	if primaryHash != currentPrimaryHash || primaryLevel != 15 || secondaryHash != 0x74AA75D6 || secondaryLevel != 10 {
+		t.Fatalf("readSigilTraits selected stale duplicate: %08X Lv%d / %08X Lv%d", primaryHash, primaryLevel, secondaryHash, secondaryLevel)
 	}
 }
 

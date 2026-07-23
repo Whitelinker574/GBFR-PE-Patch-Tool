@@ -122,7 +122,7 @@ func TestLoadoutShareOnlineLive(t *testing.T) {
 	if endpoint == "" {
 		t.Skip("set GBFR_TEST_SHARE_ENDPOINT to run the live R2 round trip")
 	}
-	_, source := actualLoadoutShareFixture(t)
+	source := loadoutShareCodeFixture()
 	frame := encodedShareFrame(t, source)
 	published, err := publishLoadoutShareFrame(nil, loadoutShareHTTPClient(), endpoint, frame)
 	if err != nil {
