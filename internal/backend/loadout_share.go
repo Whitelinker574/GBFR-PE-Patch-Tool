@@ -14,7 +14,7 @@ import (
 const (
 	loadoutShareFormat        = "gbfr-loadout"
 	loadoutShareLegacyVersion = 1
-	loadoutShareVersion       = 9
+	loadoutShareVersion       = 10
 	loadoutShareMaxSize       = 1024 * 1024
 )
 
@@ -55,8 +55,38 @@ type LoadoutShareCharacterProgression struct {
 	LegacyProgress             int                             `json:"legacyProgress"`
 	EnhancementPanel           []int                           `json:"enhancementPanel,omitempty"`
 	EnhancementNodes           []LoadoutShareEnhancementNode   `json:"enhancementNodes,omitempty"`
+	EnhancementNodeValues      []int                           `json:"enhancementNodeValues,omitempty"`
 	Weapons                    []LoadoutShareProgressionWeapon `json:"weapons,omitempty"`
 	WeaponWrightstonesCaptured bool                            `json:"weaponWrightstonesCaptured,omitempty"`
+}
+
+func compactEnhancementNodeValues(nodes []LoadoutShareEnhancementNode) ([]int, bool) {
+	if len(nodes) == 0 {
+		return nil, false
+	}
+	values := make([]int, len(nodes))
+	for index, node := range nodes {
+		if node.Index != index {
+			return nil, false
+		}
+		values[index] = node.Value
+	}
+	return values, true
+}
+
+func normalizeEnhancementNodeValues(character *LoadoutShareCharacterProgression) error {
+	if character == nil || len(character.EnhancementNodeValues) == 0 {
+		return nil
+	}
+	if len(character.EnhancementNodeValues) > 1000 {
+		return fmt.Errorf("enhancementNodeValues 超过 1000 个节点")
+	}
+	character.EnhancementNodes = make([]LoadoutShareEnhancementNode, len(character.EnhancementNodeValues))
+	for index, value := range character.EnhancementNodeValues {
+		character.EnhancementNodes[index] = LoadoutShareEnhancementNode{Index: index, Value: value}
+	}
+	character.EnhancementNodeValues = nil
+	return nil
 }
 
 type LoadoutShareEnhancementNode struct {
@@ -545,6 +575,9 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	if share == nil || share.Format != loadoutShareFormat || share.Version < loadoutShareLegacyVersion || share.Version > loadoutShareVersion {
 		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d..v%d）", loadoutShareFormat, loadoutShareLegacyVersion, loadoutShareVersion)
 	}
+	if err := normalizeEnhancementNodeValues(share.Character); err != nil {
+		return nil, err
+	}
 	if len(share.Summons) > 0 && len(share.Summons) != 4 {
 		return nil, fmt.Errorf("分享文件的召唤石指纹需要恰好 4 个，得到 %d 个", len(share.Summons))
 	}
@@ -785,6 +818,37 @@ func safeLoadoutFilename(name string) string {
 	return name
 }
 
+func marshalLoadoutShare(share *LoadoutShare) ([]byte, error) {
+	if share == nil {
+		return json.Marshal(share)
+	}
+	// Keep Wails/API JSON on the verbose in-memory shape. Only the file export
+	// uses the fixed-position array so the generated frontend model continues
+	// to receive enhancementNodes for the import apply round-trip.
+	copyValue := *share
+	if share.Character != nil {
+		character := *share.Character
+		character.EnhancementNodeValues = nil
+		if values, compact := compactEnhancementNodeValues(character.EnhancementNodes); compact {
+			character.EnhancementNodes = nil
+			character.EnhancementNodeValues = values
+		}
+		copyValue.Character = &character
+	}
+	return json.MarshalIndent(&copyValue, "", "  ")
+}
+
+func unmarshalLoadoutShare(payload []byte) (*LoadoutShare, error) {
+	var share LoadoutShare
+	if err := json.Unmarshal(payload, &share); err != nil {
+		return nil, err
+	}
+	if err := normalizeEnhancementNodeValues(share.Character); err != nil {
+		return nil, err
+	}
+	return &share, nil
+}
+
 // LoadoutExport 只导出当前角色的一个预设槽，绝不包含批量或整份存档数据。
 func (a *App) LoadoutExport(savePath string, unitID uint32) (string, error) {
 	if a.ctx == nil {
@@ -802,7 +866,7 @@ func (a *App) LoadoutExport(savePath string, unitID uint32) (string, error) {
 	if err != nil || outputPath == "" {
 		return outputPath, err
 	}
-	payload, err := json.MarshalIndent(share, "", "  ")
+	payload, err := marshalLoadoutShare(share)
 	if err != nil {
 		return "", err
 	}
@@ -835,9 +899,9 @@ func (a *App) LoadoutImport(savePath, expectCharaHash string) (*LoadoutImportDra
 	if err != nil {
 		return nil, err
 	}
-	var share LoadoutShare
-	if err := json.Unmarshal(payload, &share); err != nil {
+	share, err := unmarshalLoadoutShare(payload)
+	if err != nil {
 		return nil, fmt.Errorf("配装 JSON 无效: %w", err)
 	}
-	return resolveLoadoutShare(savePath, expectCharaHash, &share)
+	return resolveLoadoutShare(savePath, expectCharaHash, share)
 }

@@ -35,6 +35,7 @@ const weaponMirage = ref(99)
 const weaponAwakening = ref(0)
 const weaponTranscendence = ref(0)
 const weaponTranscendenceSkill = ref('BBD77C33')
+const weaponSkillDrafts = ref([])
 const allowWeaponUnlockRisk = ref(false)
 const resources = ref({ rupees: 0, mastery: 0, commendations: 0 })
 const weaponLevelOptions = Array.from({ length: 150 }, (_, i) => i + 1)
@@ -42,17 +43,12 @@ const weaponUncapOptions = [0, 1, 2, 3, 4, 5, 6]
 const weaponMirageOptions = Array.from({ length: 100 }, (_, i) => i)
 const weaponAwakeningOptions = Array.from({ length: 11 }, (_, i) => i)
 const weaponTranscendenceOptions = Array.from({ length: 8 }, (_, i) => i)
-const weaponTranscendenceSkills = [
-  { hash: 'BBD77C33', name: '超凡强击' },
-  { hash: '020DB733', name: '超凡技艺' },
-  { hash: '3F682593', name: '超凡奥秘' },
-  { hash: '79027FC8', name: '超凡破限' },
-]
 
 function itemIcon(item) { return itemAssetIcon(item) }
 function weaponIcon(weapon) { return weaponAssetIcon(weapon) }
 
 const collator = computed(() => new Intl.Collator(language.value === 'zh' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' }))
+const replacementSkillSlots = computed(() => selectedWeapon.value?.skillSlots || [])
 const ownerNames = {
   PL0000:'古兰', PL0100:'姬塔', PL0200:'卡塔莉娜', PL0300:'拉卡姆', PL0400:'伊欧', PL0500:'欧根',
   PL0600:'萝赛塔', PL0700:'菲莉', PL0800:'兰斯洛特', PL0900:'巴恩', PL1000:'珀西瓦尔', PL1100:'齐格飞',
@@ -214,6 +210,7 @@ function pickWeapon(weapon) {
   weaponMirage.value = isOwned ? (weapon.mirage ?? 0) : 0
   weaponAwakening.value = isOwned ? (weapon.awakening ?? 0) : 0
   weaponTranscendence.value = isOwned ? (weapon.transcendence ?? 0) : 0
+  weaponSkillDrafts.value = isOwned ? (weapon.skillSlots || []).map(slot => slot.currentHash || '') : []
   weaponTranscendenceSkill.value = isOwned && weapon.transcendenceSkill ? weapon.transcendenceSkill : 'BBD77C33'
   if (!weapon.canAwaken) weaponAwakening.value = 0
   allowWeaponUnlockRisk.value = false
@@ -284,6 +281,7 @@ function saveWeapon() {
     transcendence: Number(weaponTranscendence.value),
     transcendenceSkill: Number(weaponTranscendence.value) >= 7 ? weaponTranscendenceSkill.value : '',
   }
+  if (weaponSkillDrafts.value.length === 5) change.skillHashes = [...weaponSkillDrafts.value]
   apply([], [], [change], `${isOwned ? '修改' : '添加'}武器 ${selectedWeapon.value.displayName}`)
 }
 
@@ -396,7 +394,9 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
               <label class="field ui-field"><span class="ui-field-label">幻晶</span><select v-model.number="weaponMirage" class="ui-select"><option v-for="value in weaponMirageOptions" :key="value" :value="value">{{ value }}</option></select></label>
               <label class="field ui-field"><span class="ui-field-label">武器觉醒</span><select v-model.number="weaponAwakening" class="ui-select" :disabled="!selectedWeapon.canAwaken"><option v-for="value in weaponAwakeningOptions" :key="value" :value="value">{{ value }} / 10</option></select></label>
               <label class="field ui-field"><span class="ui-field-label">DLC 超凡突破</span><select v-model.number="weaponTranscendence" class="ui-select"><option v-for="value in weaponTranscendenceOptions" :key="value" :value="value">{{ value }} / 7</option></select></label>
-              <label v-if="weaponTranscendence >= 7" class="field ui-field"><span class="ui-field-label">第 7 阶超凡效果</span><select v-model="weaponTranscendenceSkill" class="ui-select"><option v-for="skill in weaponTranscendenceSkills" :key="skill.hash" :value="skill.hash">{{ skill.name }}</option></select></label>
+              <template v-if="replacementSkillSlots.length">
+                <label v-for="slot in replacementSkillSlots" :key="slot.index" class="field ui-field"><span class="ui-field-label">替换技能 {{ slot.label }}<small v-if="slot.currentLevel"> · Lv.{{ slot.currentLevel }}</small></span><select v-if="slot.editable" v-model="weaponSkillDrafts[slot.index]" class="ui-select"><option v-for="option in slot.options" :key="option.hash" :value="option.hash">{{ option.name }} · Lv.{{ option.level }}</option></select><span v-else class="current-skill">{{ slot.currentName || slot.currentHash }}<small v-if="slot.currentLevel"> · Lv.{{ slot.currentLevel }}</small></span></label>
+              </template>
             </div>
             <div class="weapon-actions"><button class="plain-btn subtle ui-btn is-subtle" @click="maxWeapon">等级与幻晶最大</button><button class="plain-btn subtle ui-btn is-subtle" @click="maxWeaponProgression">全部养成最大</button></div>
             <p class="current">“等级上限解锁 6”“武器觉醒 10”“DLC 超凡突破 7”是三个独立字段。觉醒跨阶段时会同步切换 2.0.2 对应武器 Hash；超凡 7 阶效果会写入独立效果槽。</p>

@@ -81,6 +81,10 @@ test('home scene owns a definite full-height chain and top-aligns before its hea
   assert.match(homeJournal, /@media \(max-height:920px\) and \(min-width:761px\)\s*\{[\s\S]*?\.journal-home\s*\{[^}]*height:auto;[^}]*min-height:100%;[^}]*\}[\s\S]*?\.illustrated-journal\s*\{[^}]*height:auto;[^}]*min-height:500px;[^}]*\}[\s\S]*?\.page-menu\s*\{[^}]*height:auto;[^}]*justify-content:flex-start;/is)
 })
 
+test('remembered directory collapse never narrows the hidden home or loadout shell', () => {
+  assert.match(patchTool, /\.app-body\.home-mode\.sidebar-collapsed,\s*\.app-body\.loadout-workspace\.sidebar-collapsed\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)/is)
+})
+
 test('the directory keeps its older layered paper treatment distinct from the workspace', () => {
   assert.match(patchTool, /\.sidebar\s*\{[^}]*border-right\s*:\s*1px solid rgba\(130,96,48,\.3\)[^}]*background\s*:\s*#f0e2c2[^}]*box-shadow\s*:\s*8px 0 28px rgba\(90,66,31,\.12\)/is)
 })
@@ -124,7 +128,7 @@ test('user-facing page titles omit historical source-version suffixes', () => {
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.12"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.13"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 

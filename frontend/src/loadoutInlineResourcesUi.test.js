@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const source = readFileSync(new URL('./components/LoadoutEditor.vue', import.meta.url), 'utf8')
+const progressionSource = readFileSync(new URL('./components/ProgressionEditor.vue', import.meta.url), 'utf8')
 
 test('loadout editor submits preset and owned-resource edits through one transaction', () => {
   assert.match(source, /LoadoutApplyWithResources/)
@@ -24,6 +25,15 @@ test('weapon inline editing uses the exact five-slot snapshot and per-weapon aud
   assert.match(source, /v-for="slot in editableWeaponSkillSlots"/)
   assert.match(source, /v-for="option in slot\.options"/)
   assert.doesNotMatch(source, /const weaponTranscendenceSkills =/)
+})
+
+test('offline weapon editor uses each weapon replacement-skill snapshot', () => {
+  assert.match(progressionSource, /replacementSkillSlots/)
+  assert.ok(progressionSource.includes('weaponSkillDrafts.value = isOwned ? (weapon.skillSlots || []).map'))
+  assert.ok(progressionSource.includes('change.skillHashes = [...weaponSkillDrafts.value]'))
+  assert.match(progressionSource, /v-for="slot in replacementSkillSlots"/)
+  assert.match(progressionSource, /v-for="option in slot.options"/)
+  assert.doesNotMatch(progressionSource, /const weaponTranscendenceSkills =/)
 })
 
 test('summon inline editing uses the save snapshot as a stale-write guard', () => {

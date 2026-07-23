@@ -287,6 +287,7 @@ const draftSourceSummary = computed(() => ({
   mastery: selectedMasteryHashes.value.length,
   summons: selectedSummons.value.filter(Boolean).length,
 }))
+const weaponSkillSlotsPresent = computed(() => (selectedWeaponContext.value?.skillSlots || []).length > 0)
 const editableWeaponSkillSlots = computed(() => (selectedWeaponContext.value?.skillSlots || []).filter(slot => slot.editable))
 const weaponInlineAvailable = computed(() => editableWeaponSkillSlots.value.length > 0)
 const summonSelectionValid = computed(() => {
@@ -1097,11 +1098,16 @@ function stageImportedFactors(draft) {
   factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
   for (const constructed of draft.constructedSigils || []) {
       const item = constructed?.item || {}
+      const localizedName = [item.primaryTraitName, item.secondaryTraitName].filter(Boolean).join(' + ')
       factorSlots.value = putConstructedFactor(factorSlots.value, Number(constructed.index), item, {
-        name: item.sigilName || '导入因子',
+        name: localizedName || item.sigilName || '导入因子',
         level: Number(item.level || 0),
+        primaryTraitId: item.primaryTraitId || '',
+        primaryTraitHash: constructed.exactPrimaryTraitHash || '',
         primaryTraitName: item.primaryTraitName || '',
         primaryTraitLevel: Number(item.primaryLevel || 0),
+        secondaryTraitId: item.secondaryTraitId || '',
+        secondaryTraitHash: constructed.exactSecondaryTraitHash || '',
         secondaryTraitName: item.secondaryTraitName || '',
         secondaryTraitLevel: Number(item.secondaryLevel || 0),
       }, {
@@ -1444,10 +1450,10 @@ async function apply() {
             <div><b>武器技能</b><span><i v-for="skill in selectedWeaponContext.skills" :key="`${skill.slot}-${skill.traitHash}`">{{ skill.name || '未收录' }} Lv{{ skill.level }}</i><i v-if="!selectedWeaponContext.skills?.length" class="dim">无</i></span></div>
             <div><b>武器祝福</b><span><i v-if="selectedWeaponContext.wrightstone">{{ selectedWeaponContext.wrightstone.name || '未收录祝福' }}</i><i v-for="trait in selectedWeaponContext.wrightstone?.traits || []" :key="`${trait.index}-${trait.hash}`">{{ trait.name || trait.hash }} Lv{{ trait.level }}</i><i v-if="!selectedWeaponContext.wrightstone" class="dim">无</i></span></div>
           </div>
-          <div v-if="weaponInlineAvailable" class="inline-resource-panel weapon-inline-panel">
+          <div v-if="weaponSkillSlotsPresent" class="inline-resource-panel weapon-inline-panel">
             <label class="inline-resource-toggle ui-check">
-              <input v-model="weaponInlineEnabled" type="checkbox" />
-              <span><b>同时编辑该武器实例</b><small>候选来自该武器五个技能槽的解包表；固定槽保持只读</small></span>
+              <input v-model="weaponInlineEnabled" type="checkbox" :disabled="!weaponInlineAvailable" />
+              <span><b>同时编辑该武器实例</b><small>当前武器有 5 个替换技能槽；候选按角色、武器和超凡阶段读取，固定槽保持只读。</small></span>
             </label>
             <div v-if="weaponInlineEnabled" class="weapon-skill-edit-list">
               <label v-for="slot in editableWeaponSkillSlots" :key="slot.index" class="weapon-skill-edit-row">
@@ -1457,9 +1463,10 @@ async function apply() {
                 </select>
               </label>
             </div>
+            <small v-if="!weaponInlineAvailable" class="hint">当前阶段的五个技能槽都是固定项，没有可切换候选。</small>
             <small>编辑的是背包中的武器与召唤石实例，会影响所有引用它们的配装；武器写入前会核对完整五槽快照。</small>
           </div>
-          <small v-else-if="selectedWeaponContext && Number(selectedWeaponContext.transcendence) > 0" class="hint">当前阶段的武器技能均为该武器固定项，没有可切换槽。</small>
+          <small v-else-if="selectedWeaponContext && Number(selectedWeaponContext.transcendence) > 0" class="hint">当前武器的五槽技能快照尚未读取，暂不显示可替换候选。</small>
         </div>
 
         <div class="ed-field summon-field">
@@ -1907,12 +1914,13 @@ async function apply() {
 .runtime-source-ledger > span { min-width:0; display:flex; flex-direction:column; gap:1px; padding:5px 6px; border:1px solid var(--line-soft); border-radius:5px; background:rgba(255,255,255,.38); }
 .runtime-source-ledger small,.runtime-source-ledger em { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-style:normal; font-weight:400; overflow-wrap:anywhere; }
 .runtime-source-ledger b { color:var(--text-primary); font-size:calc(11px * var(--editor-scale)); overflow-wrap:anywhere; }
-.runtime-comparison-row { display:grid; grid-template-columns:minmax(48px,.8fr) repeat(2,minmax(62px,1fr)) minmax(64px,auto); gap:5px; align-items:center; padding:4px 6px; border-left:2px solid #b36a55; background:rgba(179,106,85,.06); font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
+.runtime-comparison-row { display:grid; grid-template-columns:minmax(44px,.8fr) repeat(2,minmax(0,1fr)) minmax(0,1fr); gap:5px; align-items:center; padding:4px 6px; border-left:2px solid #b36a55; background:rgba(179,106,85,.06); font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; }
 .runtime-comparison-row.exact { border-left-color:#4f8061; background:rgba(79,128,97,.07); }
 .runtime-comparison-row.unrelated { border-left-color:#9a7a46; background:rgba(154,122,70,.07); }
-.runtime-comparison-row > span { display:flex; flex-direction:column; color:var(--text-primary); font-weight:600; }
+.runtime-comparison-row > b,
+.runtime-comparison-row > span { min-width:0; display:flex; flex-direction:column; color:var(--text-primary); font-weight:600; overflow-wrap:anywhere; }
 .runtime-comparison-row small { color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); font-weight:400; }
-.runtime-comparison-row em { justify-self:end; color:#9b4f42; font-style:normal; font-weight:700; white-space:nowrap; }
+.runtime-comparison-row em { min-width:0; justify-self:stretch; color:#9b4f42; font-style:normal; font-weight:700; line-height:1.25; text-align:right; overflow-wrap:anywhere; }
 .runtime-comparison-row.exact em { color:#3f7653; }
 .runtime-comparison-row.unrelated em { color:#765f35; }
 .legacy-mastery-audit { margin-top:8px; padding-top:8px; border-top:1px solid var(--line-soft); }

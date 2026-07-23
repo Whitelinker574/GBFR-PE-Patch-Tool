@@ -138,6 +138,13 @@ test('Endless Ragnarok trait IDs keep the exact per-character official emblem', 
   assert.equal(catalog.traits.byHash['40223C28'], 'cmn_icskill_02_00.png', 'Catastrophe authoritative hash mapping')
 })
 
+test('DLC factor hashes resolve official icons when the catalog stores them in byId', () => {
+  for (const hash of ['A7726190', '9232DC17', '73220725', 'D029FE08', 'BF78FBFC']) {
+    assert.match(catalog.traits.byId[hash], /^cmn_icskill_/)
+  }
+  assert.match(readFileSync(new URL('./gameAssetIcons.js', import.meta.url), 'utf8'), /mappedFile\('traits', 'byId', hash\)/)
+})
+
 test('records without an authoritative 2.0.2 join remain unmapped', () => {
   const missingTraitIDs = traits.filter(row => !catalog.traits.byId[row.internalId]).map(row => row.internalId)
   const missingWeaponHashes = weapons.filter(row => !catalog.weapons.byHash[normalizeHash(row.hash)]).map(row => normalizeHash(row.hash))

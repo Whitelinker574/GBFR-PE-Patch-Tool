@@ -365,6 +365,33 @@ test('preset cards and editor summary expose only weapon skills and complete wri
 	assert.doesNotMatch(summary, />已装因子</)
 })
 
+test('loadout import choices use visible semantic icons instead of bare numeric placeholders', () => {
+  assert.match(importDialog, /class="import-choice-icon"[^>]*>⚔</)
+  assert.match(importDialog, /class="import-choice-icon"[^>]*>↗</)
+  assert.match(importDialog, /class="import-choice-icon"[^>]*>✧</)
+  assert.match(importDialog, /\.import-choice-icon\s*\{[^}]*font-size\s*:\s*1rem/is)
+})
+
+test('imported factor drafts resolve official icons before the save is reread', () => {
+	assert.match(source, /function stageImportedFactors[\s\S]*primaryTraitId:\s*item\.primaryTraitId/)
+	assert.match(source, /function stageImportedFactors[\s\S]*primaryTraitHash:\s*constructed\.exactPrimaryTraitHash/)
+	assert.match(source, /localizedName\s*=\s*\[item\.primaryTraitName,\s*item\.secondaryTraitName\][\s\S]*name:\s*localizedName\s*\|\|\s*item\.sigilName/)
+	assert.match(source, /traitIcon\(card\.primaryTraitName, card\.primaryTraitHash, card\.primaryTraitId\)/)
+})
+
+test('fate progress distinguishes level unlock capacity from completed episodes', () => {
+	assert.match(importDialog, /可解锁 11\/11.*解锁上限待定/)
+	assert.match(importDialog, /已完成.*targetFateEpisodeCount.*\/11/)
+})
+
+test('loadout weapon editing keeps the five-slot replacement notice visible', () => {
+  assert.match(source, /const weaponSkillSlotsPresent = computed\(\(\) => \(selectedWeaponContext\.value\?\.skillSlots \|\| \[\]\)\.length > 0\)/)
+  assert.match(source, /v-if="weaponSkillSlotsPresent" class="inline-resource-panel weapon-inline-panel"/)
+  assert.match(source, /当前武器有 5 个替换技能槽/)
+  assert.match(source, /候选按角色、武器和超凡阶段读取/)
+  assert.match(source, /v-model="weaponInlineEnabled" type="checkbox" :disabled="!weaponInlineAvailable"/)
+})
+
 test('imported mastery keeps the source 3007 order until a manual node edit', () => {
 	assert.match(source, /const importedMasterySnapshot = ref\(\[\]\)/)
 	assert.match(source, /importedMasterySnapshot\.value = \[\.\.\.\(draft\.masteryHashes \|\| \[\]\)\]/)
@@ -441,4 +468,6 @@ test('narrow weapon skill editor uses a single shrinkable column', () => {
 	assert.match(source, /\.weapon-skill-edit-row\s+\.ui-select\s*\{[^}]*width\s*:\s*100%/is)
 	assert.match(source, /\.dynamic-skill-title\s*\{[^}]*min-width\s*:\s*0/is)
 	assert.match(source, /\.dynamic-skill-level\s*\{[^}]*white-space\s*:\s*nowrap/is)
+	assert.match(source, /\.runtime-comparison-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(44px,\.8fr\) repeat\(2,minmax\(0,1fr\)\) minmax\(0,1fr\)/is)
+	assert.match(source, /\.runtime-comparison-row em\s*\{[^}]*overflow-wrap\s*:\s*anywhere/is)
 })

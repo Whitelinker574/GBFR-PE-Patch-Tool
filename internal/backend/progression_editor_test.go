@@ -96,6 +96,80 @@ func TestProgressionCatalog202(t *testing.T) {
 	}
 }
 
+func TestProgressionInventoryExposesPerWeaponReplacementSkills(t *testing.T) {
+	requireStatsSave(t)
+	save, err := LoadSave(testStatsSave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory := progressionInventory(save, testStatsSave)
+	var weapon *OwnedProgressionWeapon
+	for index := range inventory.Weapons {
+		if inventory.Weapons[index].SlotID == 76 {
+			weapon = &inventory.Weapons[index]
+			break
+		}
+	}
+	if weapon == nil {
+		t.Fatal("test fixture weapon SlotID 76 is missing")
+	}
+	if len(weapon.SkillSlots) != 5 {
+		t.Fatalf("weapon replacement slots=%d, want five: %+v", len(weapon.SkillSlots), weapon)
+	}
+	want := []string{"8D78A19B", "C0979A17", "AEFEB1BC", "E69A4694", "020DB733"}
+	for index, hash := range want {
+		if weapon.SkillSlots[index].CurrentHash != hash {
+			t.Fatalf("weapon replacement slot %d=%s, want %s", index, weapon.SkillSlots[index].CurrentHash, hash)
+		}
+		if weapon.SkillSlots[index].Editable && len(weapon.SkillSlots[index].Options) == 0 {
+			t.Fatalf("editable replacement slot %d has no options: %+v", index, weapon.SkillSlots[index])
+		}
+	}
+}
+
+func TestProgressionWeaponChangeWritesAllReplacementSkills(t *testing.T) {
+	requireStatsSave(t)
+	save, err := LoadSave(testStatsSave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	context, err := readLoadoutWeaponContext(save, 76)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashes := make([]string, len(context.SkillSlots))
+	for index, slot := range context.SkillSlots {
+		hashes[index] = slot.CurrentHash
+	}
+	if len(context.SkillSlots) < 2 || len(context.SkillSlots[1].Options) < 2 {
+		t.Fatal("fixture does not expose an editable second replacement slot")
+	}
+	hashes[1] = context.SkillSlots[1].Options[1].Hash
+	_, _, err = applyProgressionWeaponChange(save, ProgressionWeaponChange{
+		Action: "update", UnitID: context.UnitID, Hash: context.StoredHash,
+		Level: context.Level, Uncap: context.Uncap, Mirage: context.Mirage,
+		Awakening: context.Awakening, Transcendence: context.Transcendence,
+		SkillHashes: hashes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra, ok := save.findUnitExact(weaponExtraIDType, context.UnitID)
+	if !ok {
+		t.Fatal("fixture weapon lost 2818 after replacement write")
+	}
+	for index, want := range hashes {
+		got, readErr := extra.Uint32At(index)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		parsed, parseErr := ParseHashHex(want)
+		if parseErr != nil || got != parsed {
+			t.Fatalf("replacement slot %d=%08X, want %s", index, got, want)
+		}
+	}
+}
+
 func TestAwakeningWeaponAliasesResolveToBaseDefinition(t *testing.T) {
 	if _, err := loadProgressionCatalog(); err != nil {
 		t.Fatal(err)

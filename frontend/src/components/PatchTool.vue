@@ -1202,6 +1202,11 @@ button,input,select { font:inherit; }
 .sidebar-foot a:hover { text-decoration:underline; }
 
 .app-body.sidebar-collapsed { grid-template-columns:70px minmax(0,1fr); }
+/* Home and the dedicated loadout workspace intentionally hide the sidebar.
+   Keep their content full-width even when the sidebar's collapsed state is
+   remembered from another page. */
+.app-body.home-mode.sidebar-collapsed,
+.app-body.loadout-workspace.sidebar-collapsed { grid-template-columns:minmax(0,1fr); }
 .sidebar-collapsed .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
 .sidebar-collapsed .sidebar-heading,
 .sidebar-collapsed .nav-copy,

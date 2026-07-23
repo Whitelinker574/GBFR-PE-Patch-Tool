@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,6 +24,57 @@ func TestSharedWeaponIdentityIgnoresAwakeningStorageVariant(t *testing.T) {
 	}
 	if sameSharedWeaponIdentity(hashText(variant), "DEADBEEF") {
 		t.Fatal("unrelated weapon hash matched an awakening variant")
+	}
+}
+
+func TestLoadoutShareExportUsesReadableCompactJSON(t *testing.T) {
+	nodes := make([]LoadoutShareEnhancementNode, 400)
+	for index := range nodes {
+		nodes[index] = LoadoutShareEnhancementNode{Index: index, Value: index % 4}
+	}
+	share := &LoadoutShare{
+		Format: loadoutShareFormat, Version: loadoutShareVersion, CharaHash: "4D0A60C3", CharaName: "伊欧",
+		MasteryHashes: []string{"1F52146F", "317E9A83"},
+		Character:     &LoadoutShareCharacterProgression{EnhancementNodes: nodes},
+	}
+	payload, err := marshalLoadoutShare(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), "\n  \"character\"") {
+		t.Fatalf("loadout export is not human-readable JSON: %q", payload)
+	}
+	if strings.Contains(string(payload), `"enhancementNodes"`) || !strings.Contains(string(payload), `"enhancementNodeValues"`) {
+		t.Fatalf("v10 export did not replace repeated node index/value objects: %s", payload)
+	}
+	if len(payload) >= 12000 {
+		t.Fatalf("v10 fixed-position node array is unexpectedly large: %d bytes", len(payload))
+	}
+	decoded, err := unmarshalLoadoutShare(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Format != share.Format || decoded.Version != share.Version || !reflect.DeepEqual(decoded.Character, share.Character) {
+		t.Fatalf("compact export changed the loadout payload: %+v", decoded)
+	}
+	apiPayload, err := json.Marshal(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(apiPayload), `"enhancementNodes"`) || strings.Contains(string(apiPayload), `"enhancementNodeValues"`) {
+		t.Fatalf("API/Wails JSON must keep enhancementNodes for the generated frontend model: %s", apiPayload)
+	}
+}
+
+func TestLoadoutShareStillReadsLegacyEnhancementNodeObjects(t *testing.T) {
+	payload := []byte(`{"format":"gbfr-loadout","version":9,"character":{"enhancementNodes":[{"index":1,"value":2},{"index":7,"value":3}]}}`)
+	var share LoadoutShare
+	if err := json.Unmarshal(payload, &share); err != nil {
+		t.Fatal(err)
+	}
+	want := []LoadoutShareEnhancementNode{{Index: 1, Value: 2}, {Index: 7, Value: 3}}
+	if share.Character == nil || !reflect.DeepEqual(share.Character.EnhancementNodes, want) {
+		t.Fatalf("legacy v9 enhancement nodes were not preserved: %+v", share.Character)
 	}
 }
 
@@ -134,6 +186,36 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	}
 	if share.Format != loadoutShareFormat || share.Version != loadoutShareVersion {
 		t.Fatalf("分享格式标识错误: %+v", share)
+	}
+	encoded, err := marshalLoadoutShare(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"enhancementNodes"`) || !strings.Contains(string(encoded), `"enhancementNodeValues"`) {
+		t.Fatalf("真实配装没有使用 v10 固定位置强化数组: %s", encoded)
+	}
+	t.Logf("真实配装 v10 JSON 大小=%d bytes", len(encoded))
+	filePath := filepath.Join(t.TempDir(), "real-v10.gbfr-loadout.json")
+	if err := os.WriteFile(filePath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diskPayload, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedShare, err := unmarshalLoadoutShare(diskPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(encodedShare.Character.EnhancementNodes, share.Character.EnhancementNodes) {
+		t.Fatal("v10 enhancementNodeValues did not restore the original node vector")
+	}
+	decodedDraft, err := resolveLoadoutShare(path, source.CharaHash, encodedShare)
+	if err != nil {
+		t.Fatalf("重新读取 v10 JSON 后导入解析失败: %v", err)
+	}
+	if len(decodedDraft.ConstructedSigils) != 12 || len(decodedDraft.MasteryHashes) != 50 {
+		t.Fatalf("重新读取 v10 JSON 后导入草稿不完整: factors=%d mastery=%d", len(decodedDraft.ConstructedSigils), len(decodedDraft.MasteryHashes))
 	}
 	if len(share.Sigils) != 12 || len(share.Skills) != 4 || len(share.MasteryHashes) != 50 {
 		t.Fatalf("导出丢字段: 因子%d 技能%d 专精%d", len(share.Sigils), len(share.Skills), len(share.MasteryHashes))

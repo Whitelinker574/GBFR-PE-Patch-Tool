@@ -183,23 +183,24 @@ type OwnedProgressionItem struct {
 }
 
 type OwnedProgressionWeapon struct {
-	UnitID                 uint32 `json:"unitId"`
-	SlotID                 uint32 `json:"slotId"`
-	Hash                   string `json:"hash"`
-	Name                   string `json:"name"`
-	Level                  int    `json:"level"`
-	XP                     uint32 `json:"xp"`
-	Uncap                  int    `json:"uncap"`
-	Mirage                 int    `json:"mirage"`
-	Awakening              int    `json:"awakening"`
-	WeaponType             string `json:"weaponType"`
-	CanAwaken              bool   `json:"canAwaken"`
-	BaseHash               string `json:"baseHash,omitempty"`
-	OwnerCode              string `json:"ownerCode,omitempty"`
-	InternalID             string `json:"internalId,omitempty"`
-	Transcendence          int    `json:"transcendence"`
-	TranscendenceSkill     string `json:"transcendenceSkill,omitempty"`
-	TranscendenceSkillName string `json:"transcendenceSkillName,omitempty"`
+	UnitID                 uint32                   `json:"unitId"`
+	SlotID                 uint32                   `json:"slotId"`
+	Hash                   string                   `json:"hash"`
+	Name                   string                   `json:"name"`
+	Level                  int                      `json:"level"`
+	XP                     uint32                   `json:"xp"`
+	Uncap                  int                      `json:"uncap"`
+	Mirage                 int                      `json:"mirage"`
+	Awakening              int                      `json:"awakening"`
+	WeaponType             string                   `json:"weaponType"`
+	CanAwaken              bool                     `json:"canAwaken"`
+	BaseHash               string                   `json:"baseHash,omitempty"`
+	OwnerCode              string                   `json:"ownerCode,omitempty"`
+	InternalID             string                   `json:"internalId,omitempty"`
+	Transcendence          int                      `json:"transcendence"`
+	TranscendenceSkill     string                   `json:"transcendenceSkill,omitempty"`
+	TranscendenceSkillName string                   `json:"transcendenceSkillName,omitempty"`
+	SkillSlots             []LoadoutWeaponSkillSlot `json:"skillSlots,omitempty"`
 }
 
 type ProgressionInventory struct {
@@ -221,15 +222,16 @@ type ProgressionItemChange struct {
 }
 
 type ProgressionWeaponChange struct {
-	Action             string `json:"action"` // add | update
-	UnitID             uint32 `json:"unitId"`
-	Hash               string `json:"hash"`
-	Level              int    `json:"level"`
-	Uncap              int    `json:"uncap"`
-	Mirage             int    `json:"mirage"`
-	Awakening          int    `json:"awakening"`
-	Transcendence      int    `json:"transcendence"`
-	TranscendenceSkill string `json:"transcendenceSkill"`
+	Action             string   `json:"action"` // add | update
+	UnitID             uint32   `json:"unitId"`
+	Hash               string   `json:"hash"`
+	Level              int      `json:"level"`
+	Uncap              int      `json:"uncap"`
+	Mirage             int      `json:"mirage"`
+	Awakening          int      `json:"awakening"`
+	Transcendence      int      `json:"transcendence"`
+	TranscendenceSkill string   `json:"transcendenceSkill"`
+	SkillHashes        []string `json:"skillHashes,omitempty"`
 }
 
 var weaponTranscendenceSkills = map[uint32]string{
@@ -524,6 +526,11 @@ func progressionInventory(save *SaveData, path string) *ProgressionInventory {
 		}
 		if e := weaponSlots[entry.UnitID]; e != nil {
 			owned.SlotID = e.Uint32()
+			if owned.SlotID != 0 && owned.SlotID != EmptyHash {
+				if context, contextErr := readLoadoutWeaponContext(save, owned.SlotID); contextErr == nil {
+					owned.SkillSlots = context.SkillSlots
+				}
+			}
 		}
 		if e := weaponXP[entry.UnitID]; e != nil {
 			owned.XP = e.Uint32()
@@ -597,6 +604,7 @@ type progressionWeaponExpected struct {
 	Awakening          int32
 	Transcendence      int32
 	TranscendenceSkill uint32
+	SkillHashes        []uint32
 }
 
 func (a *App) ProgressionApply(inputPath, outputPath string, resourceChanges []ProgressionResourceChange, itemChanges []ProgressionItemChange, weaponChanges []ProgressionWeaponChange) (*ProgressionApplyResult, error) {
@@ -890,12 +898,34 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 		return false, expected, err
 	}
 	transcendenceSkill := EmptyHash
+	var replacementSkills []uint32
 	extra, ok := save.findUnit(weaponExtraIDType, unitID)
 	if !ok || extra.ValueCnt < 5 {
 		return false, expected, fmt.Errorf("武器槽 %d 缺少超凡强化效果字段", unitID)
 	}
+	if len(change.SkillHashes) > 0 {
+		if len(change.SkillHashes) != 5 {
+			return false, expected, fmt.Errorf("武器替换技能必须提供完整的 5 个槽位")
+		}
+		replacementSkills = make([]uint32, 5)
+		for index, value := range change.SkillHashes {
+			hash, parseErr := ParseHashHex(strings.TrimSpace(value))
+			if parseErr != nil {
+				return false, expected, fmt.Errorf("武器替换技能槽 %d 的哈希无效: %w", index+1, parseErr)
+			}
+			replacementSkills[index] = hash
+		}
+		for index, hash := range replacementSkills {
+			if err := extra.SetUint32At(index, hash); err != nil {
+				return false, expected, err
+			}
+		}
+		transcendenceSkill = replacementSkills[4]
+	}
 	if change.Transcendence >= 7 {
-		if strings.TrimSpace(change.TranscendenceSkill) != "" {
+		if len(replacementSkills) > 0 {
+			transcendenceSkill = replacementSkills[4]
+		} else if strings.TrimSpace(change.TranscendenceSkill) != "" {
 			transcendenceSkill, err = parseWeaponTranscendenceSkill(change.TranscendenceSkill)
 			if err != nil {
 				return false, expected, fmt.Errorf("超凡强化效果 ID 无效: %w", err)
@@ -909,7 +939,7 @@ func applyProgressionWeaponChange(save *SaveData, change ProgressionWeaponChange
 	if err := extra.SetUint32At(4, transcendenceSkill); err != nil {
 		return false, expected, err
 	}
-	return added, progressionWeaponExpected{UnitID: unitID, Hash: weaponHash, XP: xp, Uncap: int32(change.Uncap), Mirage: int32(change.Mirage), Awakening: int32(change.Awakening), Transcendence: int32(change.Transcendence), TranscendenceSkill: transcendenceSkill}, nil
+	return added, progressionWeaponExpected{UnitID: unitID, Hash: weaponHash, XP: xp, Uncap: int32(change.Uncap), Mirage: int32(change.Mirage), Awakening: int32(change.Awakening), Transcendence: int32(change.Transcendence), TranscendenceSkill: transcendenceSkill, SkillHashes: replacementSkills}, nil
 }
 
 func verifyProgressionChanges(save *SaveData, resources map[uint32]int32, items []progressionItemExpected, weapons []progressionWeaponExpected) (int, error) {
@@ -943,6 +973,17 @@ func verifyProgressionChanges(save *SaveData, resources map[uint32]int32, items 
 		}
 		if !idOK || !xpOK || !uncapOK || !mirageOK || !awakeOK || !transcendenceOK || !extraOK || id.Uint32() != expected.Hash || xp.Uint32() != expected.XP || uncap.Int32() != expected.Uncap || mirage.Int32() != expected.Mirage || awake.Int32() != expected.Awakening || transcendence.Int32() != expected.Transcendence || storedSkill != expected.TranscendenceSkill {
 			return verified, fmt.Errorf("写入后验证武器槽 %d 失败", expected.UnitID)
+		}
+		if len(expected.SkillHashes) > 0 {
+			if extra.ValueCnt < len(expected.SkillHashes) {
+				return verified, fmt.Errorf("写入后验证武器槽 %d 的替换技能字段不完整", expected.UnitID)
+			}
+			for index, want := range expected.SkillHashes {
+				got, readErr := extra.Uint32At(index)
+				if readErr != nil || got != want {
+					return verified, fmt.Errorf("写入后验证武器槽 %d 的替换技能槽 %d 失败", expected.UnitID, index+1)
+				}
+			}
 		}
 		verified++
 	}
