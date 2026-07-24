@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,8 +16,10 @@ import (
 const (
 	loadoutShareFormat        = "gbfr-loadout"
 	loadoutShareLegacyVersion = 1
-	loadoutShareVersion       = 10
+	loadoutShareVersion       = 11
 	loadoutShareMaxSize       = 1024 * 1024
+	enhancementNodeEncoding   = "rle-bitpack-v1"
+	enhancementNodeLimit      = 1000
 )
 
 // LoadoutShareSigil 使用“因子本体 + 等级 + 主副词条 + 词条等级”指纹。
@@ -45,26 +49,159 @@ type LoadoutShareSummon struct {
 }
 
 type LoadoutShareCharacterProgression struct {
-	CharacterLevel             int                             `json:"characterLevel,omitempty"`
-	BaseHP                     int                             `json:"baseHp,omitempty"`
-	BaseATK                    int                             `json:"baseAtk,omitempty"`
-	BaseStunBits               uint32                          `json:"baseStunBits,omitempty"`
-	BaseCritRate               int                             `json:"baseCritRate,omitempty"`
-	CharacterBaseCaptured      bool                            `json:"characterBaseCaptured,omitempty"`
-	MasterTotalMSP             int                             `json:"masterTotalMsp"`
-	LegacyProgress             int                             `json:"legacyProgress"`
-	EnhancementPanel           []int                           `json:"enhancementPanel,omitempty"`
-	EnhancementNodes           []LoadoutShareEnhancementNode   `json:"enhancementNodes,omitempty"`
-	EnhancementNodeValues      []int                           `json:"enhancementNodeValues,omitempty"`
-	Weapons                    []LoadoutShareProgressionWeapon `json:"weapons,omitempty"`
-	WeaponWrightstonesCaptured bool                            `json:"weaponWrightstonesCaptured,omitempty"`
+	CharacterLevel             int                               `json:"characterLevel,omitempty"`
+	BaseHP                     int                               `json:"baseHp,omitempty"`
+	BaseATK                    int                               `json:"baseAtk,omitempty"`
+	BaseStunBits               uint32                            `json:"baseStunBits,omitempty"`
+	BaseCritRate               int                               `json:"baseCritRate,omitempty"`
+	CharacterBaseCaptured      bool                              `json:"characterBaseCaptured,omitempty"`
+	MasterTotalMSP             int                               `json:"masterTotalMsp"`
+	LegacyProgress             int                               `json:"legacyProgress"`
+	EnhancementPanel           []int                             `json:"enhancementPanel,omitempty"`
+	EnhancementNodes           []LoadoutShareEnhancementNode     `json:"enhancementNodes,omitempty"`
+	EnhancementNodeValues      LoadoutShareEnhancementNodeValues `json:"enhancementNodeValues,omitempty"`
+	Weapons                    []LoadoutShareProgressionWeapon   `json:"weapons,omitempty"`
+	WeaponWrightstonesCaptured bool                              `json:"weaponWrightstonesCaptured,omitempty"`
 }
 
-func compactEnhancementNodeValues(nodes []LoadoutShareEnhancementNode) ([]int, bool) {
+type LoadoutShareEnhancementNodeValues []int
+
+type packedEnhancementNodeValues struct {
+	Encoding  string `json:"encoding"`
+	Count     int    `json:"count"`
+	ValueBits int    `json:"valueBits"`
+	RunBits   int    `json:"runBits"`
+	Data      string `json:"data"`
+}
+
+func bitsRequired(value int) int {
+	bits := 1
+	for value >>= 1; value > 0; value >>= 1 {
+		bits++
+	}
+	return bits
+}
+
+func appendPackedBits(data []byte, bitOffset *int, value, width int) {
+	for bit := 0; bit < width; bit++ {
+		if value&(1<<bit) != 0 {
+			data[*bitOffset/8] |= 1 << (*bitOffset % 8)
+		}
+		*bitOffset++
+	}
+}
+
+func readPackedBits(data []byte, bitOffset *int, width int) (int, error) {
+	if width <= 0 || *bitOffset+width > len(data)*8 {
+		return 0, fmt.Errorf("enhancementNodeValues 位流长度不足")
+	}
+	value := 0
+	for bit := 0; bit < width; bit++ {
+		if data[*bitOffset/8]&(1<<(*bitOffset%8)) != 0 {
+			value |= 1 << bit
+		}
+		*bitOffset++
+	}
+	return value, nil
+}
+
+func (values LoadoutShareEnhancementNodeValues) MarshalJSON() ([]byte, error) {
+	if len(values) == 0 {
+		return []byte("null"), nil
+	}
+	maxValue, maxRun, runCount := 0, 0, 0
+	for start := 0; start < len(values); {
+		if values[start] < 0 {
+			return nil, fmt.Errorf("enhancementNodeValues[%d] 不能为负数", start)
+		}
+		end := start + 1
+		for end < len(values) && values[end] == values[start] {
+			end++
+		}
+		maxValue = max(maxValue, values[start])
+		maxRun = max(maxRun, end-start)
+		runCount++
+		start = end
+	}
+	valueBits, runBits := bitsRequired(maxValue), bitsRequired(maxRun-1)
+	data := make([]byte, (runCount*(valueBits+runBits)+7)/8)
+	bitOffset := 0
+	for start := 0; start < len(values); {
+		end := start + 1
+		for end < len(values) && values[end] == values[start] {
+			end++
+		}
+		appendPackedBits(data, &bitOffset, values[start], valueBits)
+		appendPackedBits(data, &bitOffset, end-start-1, runBits)
+		start = end
+	}
+	return json.Marshal(packedEnhancementNodeValues{
+		Encoding: enhancementNodeEncoding, Count: len(values), ValueBits: valueBits, RunBits: runBits,
+		Data: base64.RawStdEncoding.EncodeToString(data),
+	})
+}
+
+func (values *LoadoutShareEnhancementNodeValues) UnmarshalJSON(payload []byte) error {
+	payload = bytes.TrimSpace(payload)
+	if bytes.Equal(payload, []byte("null")) {
+		*values = nil
+		return nil
+	}
+	var legacy []int
+	if len(payload) > 0 && payload[0] == '[' {
+		if err := json.Unmarshal(payload, &legacy); err != nil {
+			return err
+		}
+		*values = legacy
+		return nil
+	}
+	var packed packedEnhancementNodeValues
+	if err := json.Unmarshal(payload, &packed); err != nil {
+		return err
+	}
+	if packed.Encoding != enhancementNodeEncoding || packed.Count <= 0 || packed.Count > enhancementNodeLimit ||
+		packed.ValueBits <= 0 || packed.ValueBits > 31 || packed.RunBits <= 0 || packed.RunBits > 10 {
+		return fmt.Errorf("enhancementNodeValues 压缩参数无效")
+	}
+	data, err := base64.RawStdEncoding.DecodeString(packed.Data)
+	if err != nil {
+		return fmt.Errorf("enhancementNodeValues data 无效: %w", err)
+	}
+	decoded := make([]int, 0, packed.Count)
+	bitOffset := 0
+	for len(decoded) < packed.Count {
+		value, readErr := readPackedBits(data, &bitOffset, packed.ValueBits)
+		if readErr != nil {
+			return readErr
+		}
+		runMinusOne, readErr := readPackedBits(data, &bitOffset, packed.RunBits)
+		if readErr != nil {
+			return readErr
+		}
+		run := runMinusOne + 1
+		if run > packed.Count-len(decoded) {
+			return fmt.Errorf("enhancementNodeValues RLE 长度超过声明节点数")
+		}
+		for range run {
+			decoded = append(decoded, value)
+		}
+	}
+	usedBytes := (bitOffset + 7) / 8
+	if len(data) != usedBytes {
+		return fmt.Errorf("enhancementNodeValues data 包含多余数据")
+	}
+	if paddingBits := usedBytes*8 - bitOffset; paddingBits > 0 && data[usedBytes-1]>>(8-paddingBits) != 0 {
+		return fmt.Errorf("enhancementNodeValues data 的填充位非零")
+	}
+	*values = decoded
+	return nil
+}
+
+func compactEnhancementNodeValues(nodes []LoadoutShareEnhancementNode) (LoadoutShareEnhancementNodeValues, bool) {
 	if len(nodes) == 0 {
 		return nil, false
 	}
-	values := make([]int, len(nodes))
+	values := make(LoadoutShareEnhancementNodeValues, len(nodes))
 	for index, node := range nodes {
 		if node.Index != index {
 			return nil, false
@@ -78,8 +215,8 @@ func normalizeEnhancementNodeValues(character *LoadoutShareCharacterProgression)
 	if character == nil || len(character.EnhancementNodeValues) == 0 {
 		return nil
 	}
-	if len(character.EnhancementNodeValues) > 1000 {
-		return fmt.Errorf("enhancementNodeValues 超过 1000 个节点")
+	if len(character.EnhancementNodeValues) > enhancementNodeLimit {
+		return fmt.Errorf("enhancementNodeValues 超过 %d 个节点", enhancementNodeLimit)
 	}
 	character.EnhancementNodes = make([]LoadoutShareEnhancementNode, len(character.EnhancementNodeValues))
 	for index, value := range character.EnhancementNodeValues {
