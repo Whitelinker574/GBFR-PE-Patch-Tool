@@ -182,6 +182,47 @@ func legacyLoadoutShareCodeFixture(t *testing.T, source *LoadoutShare) string {
 	return loadoutShareCodePrefix + base64.RawURLEncoding.EncodeToString(frame)
 }
 
+func shareCodeFrameFixture(t *testing.T, compact *loadoutShareCodePayload, frameVersion byte) string {
+	t.Helper()
+	packed, err := msgpack.Marshal(compact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compressed bytes.Buffer
+	writer := brotli.NewWriterLevel(&compressed, brotli.BestCompression)
+	if _, err := writer.Write(packed); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	frame := make([]byte, loadoutShareCodeHeaderSize, loadoutShareCodeHeaderSize+compressed.Len())
+	copy(frame[:4], loadoutShareCodeFrameMagic)
+	frame[4] = frameVersion
+	frame[5] = loadoutShareCodeCodec
+	binary.LittleEndian.PutUint32(frame[6:10], uint32(len(packed)))
+	binary.LittleEndian.PutUint32(frame[10:14], crc32.ChecksumIEEE(packed))
+	binary.LittleEndian.PutUint32(frame[14:18], uint32(compressed.Len()))
+	frame = append(frame, compressed.Bytes()...)
+	return loadoutShareCodePrefix + base64.RawURLEncoding.EncodeToString(frame)
+}
+
+func TestLoadoutShareCodeStillDecodesV10Frame(t *testing.T) {
+	source := loadoutShareCodeFixture()
+	compact, err := compactLoadoutShare(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact.ShareVersion = 10
+	decoded, err := decodeLoadoutShareCode(shareCodeFrameFixture(t, compact, loadoutShareCodeFrameVersion))
+	if err != nil {
+		t.Fatalf("decode v10 frame: %v", err)
+	}
+	if decoded.Version != 10 || decoded.Character == nil || !reflect.DeepEqual(decoded.Character.EnhancementNodes, source.Character.EnhancementNodes) {
+		t.Fatalf("v10 frame changed during decode: %+v", decoded)
+	}
+}
+
 func TestLoadoutShareCodeStillDecodesLegacyV8Frame(t *testing.T) {
 	source := loadoutShareCodeFixture()
 	decoded, err := decodeLoadoutShareCode(legacyLoadoutShareCodeFixture(t, source))

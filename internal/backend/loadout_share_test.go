@@ -44,11 +44,14 @@ func TestLoadoutShareExportUsesReadableCompactJSON(t *testing.T) {
 	if !strings.Contains(string(payload), "\n  \"character\"") {
 		t.Fatalf("loadout export is not human-readable JSON: %q", payload)
 	}
-	if strings.Contains(string(payload), `"enhancementNodes"`) || !strings.Contains(string(payload), `"enhancementNodeValues"`) {
-		t.Fatalf("v10 export did not replace repeated node index/value objects: %s", payload)
+	if strings.Contains(string(payload), `"enhancementNodes"`) || !strings.Contains(string(payload), `"enhancementNodeValues": {`) || !strings.Contains(string(payload), `"encoding": "rle-bitpack-v1"`) {
+		t.Fatalf("v11 export did not RLE/bit-pack enhancement node values: %s", payload)
 	}
-	if len(payload) >= 12000 {
-		t.Fatalf("v10 fixed-position node array is unexpectedly large: %d bytes", len(payload))
+	if strings.Contains(string(payload), `"enhancementNodeValues": [`) {
+		t.Fatalf("v11 export still contains the uncompressed node array: %s", payload)
+	}
+	if len(payload) >= 2000 {
+		t.Fatalf("v11 packed node data is unexpectedly large: %d bytes", len(payload))
 	}
 	decoded, err := unmarshalLoadoutShare(payload)
 	if err != nil {
@@ -63,6 +66,48 @@ func TestLoadoutShareExportUsesReadableCompactJSON(t *testing.T) {
 	}
 	if !strings.Contains(string(apiPayload), `"enhancementNodes"`) || strings.Contains(string(apiPayload), `"enhancementNodeValues"`) {
 		t.Fatalf("API/Wails JSON must keep enhancementNodes for the generated frontend model: %s", apiPayload)
+	}
+}
+
+func TestLoadoutShareStillReadsV10EnhancementNodeValues(t *testing.T) {
+	payload := []byte(`{"format":"gbfr-loadout","version":10,"character":{"enhancementNodeValues":[0,1,1,0,255]}}`)
+	share, err := unmarshalLoadoutShare(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []LoadoutShareEnhancementNode{{Index: 0, Value: 0}, {Index: 1, Value: 1}, {Index: 2, Value: 1}, {Index: 3, Value: 0}, {Index: 4, Value: 255}}
+	if share.Character == nil || !reflect.DeepEqual(share.Character.EnhancementNodes, want) {
+		t.Fatalf("v10 enhancementNodeValues were not restored: %+v", share.Character)
+	}
+}
+
+func TestLoadoutShareRejectsInvalidPackedEnhancementNodeValues(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{name: "未知编码", payload: `{"encoding":"unknown","count":4,"valueBits":1,"runBits":2,"data":"AA"}`},
+		{name: "位流截断", payload: `{"encoding":"rle-bitpack-v1","count":4,"valueBits":8,"runBits":3,"data":"AA"}`},
+		{name: "RLE越界", payload: `{"encoding":"rle-bitpack-v1","count":2,"valueBits":1,"runBits":3,"data":"DA"}`},
+		{name: "多余字节", payload: `{"encoding":"rle-bitpack-v1","count":1,"valueBits":1,"runBits":1,"data":"AAA"}`},
+		{name: "非零填充位", payload: `{"encoding":"rle-bitpack-v1","count":1,"valueBits":1,"runBits":1,"data":"BA"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := []byte(`{"format":"gbfr-loadout","version":11,"character":{"enhancementNodeValues":` + tc.payload + `}}`)
+			if _, err := unmarshalLoadoutShare(payload); err == nil {
+				t.Fatalf("invalid packed enhancementNodeValues was accepted: %s", tc.payload)
+			}
+		})
+	}
+}
+
+func TestLoadoutShareReadsNullEnhancementNodeValues(t *testing.T) {
+	share, err := unmarshalLoadoutShare([]byte(`{"format":"gbfr-loadout","version":10,"character":{"enhancementNodeValues": null}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.Character == nil || len(share.Character.EnhancementNodes) != 0 {
+		t.Fatalf("null enhancementNodeValues changed character data: %+v", share.Character)
 	}
 }
 

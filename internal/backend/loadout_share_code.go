@@ -653,7 +653,10 @@ func decodeLoadoutShareCode(code string) (*LoadoutShare, error) {
 		if err := msgpack.Unmarshal(packed, compact); err != nil {
 			return nil, fmt.Errorf("解析紧凑配装失败: %w", err)
 		}
-		if err := validateCompactLoadoutShare(compact, loadoutShareVersion, true); err != nil {
+		if compact.ShareVersion != 10 && compact.ShareVersion != loadoutShareVersion {
+			return nil, fmt.Errorf("分享码内的配装版本为 v%d，当前帧支持 v10..v%d", compact.ShareVersion, loadoutShareVersion)
+		}
+		if err := validateCompactLoadoutShare(compact, compact.ShareVersion, true); err != nil {
 			return nil, err
 		}
 	}
