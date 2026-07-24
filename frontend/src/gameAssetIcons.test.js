@@ -6,6 +6,7 @@ const catalog = JSON.parse(readFileSync(new URL('./gameAssetIcons.json', import.
 const traits = JSON.parse(readFileSync(new URL('../../internal/backend/data/traits.json', import.meta.url), 'utf8')).traits
 const weapons = JSON.parse(readFileSync(new URL('../../internal/backend/data/weapons.json', import.meta.url), 'utf8')).weapons
 const summons = JSON.parse(readFileSync(new URL('../../internal/backend/data/summons.json', import.meta.url), 'utf8')).summons
+const summonNaturalRules = JSON.parse(readFileSync(new URL('../../internal/backend/data/summon_natural_rules_202.json', import.meta.url), 'utf8')).rows
 const items = JSON.parse(readFileSync(new URL('../../internal/backend/data/items.json', import.meta.url), 'utf8')).items
 const iconSyncScript = readFileSync(new URL('../../tools/sync_reference_icons.ps1', import.meta.url), 'utf8')
 
@@ -91,7 +92,7 @@ test('coverage is derived from the current application catalogs', () => {
   assert.equal(catalog.schemaVersion, 1)
   assert.equal(catalog.source, 'GBFR UI Reference Library 2.0.2 / semantic catalog + unpacked 2.0.2 game tables')
   assert.deepEqual(expectedCoverage, {
-    traits: '183/184',
+    traits: '186/187',
     weapons: '159/163',
     summons: '189/189',
     items: '301/312',
@@ -186,4 +187,29 @@ test('the generator audits every application item through the exact item table h
   assert.match(iconSyncScript, /ToUInt32\(\$itemTableBytes,\s*\$offset\s*\+\s*32\)/)
   assert.match(iconSyncScript, /Read-FixedASCII \$itemTableBytes \(\$offset \+ 16\) 16/)
   assert.match(iconSyncScript, /Unexpected missing 2\.0\.2 item sprites/)
+})
+
+test('black dragon and lurker summon identities agree across catalogs', () => {
+  const normalizeHash = value => String(value || '').replace(/^0x/i, '').toUpperCase().padStart(8, '0')
+  const blackDragon = new Map([
+    ['7F8364E5', { cost: 3, tier: 'I' }],
+    ['2517C481', { cost: 4, tier: 'II' }],
+    ['0033943A', { cost: 5, tier: 'III' }],
+    ['8DB272E5', { cost: 5, tier: 'III' }],
+  ])
+  for (const [hash, expected] of blackDragon) {
+    const display = summons.find(row => normalizeHash(row.hash) === hash)
+    const natural = summonNaturalRules.find(row => normalizeHash(row.typeHash) === hash)
+    assert.equal(display?.baseName, '黑龙伊弗欧')
+    assert.equal(display?.code, '3f00')
+    assert.equal(display?.cost, expected.cost)
+    assert.equal(natural?.name, '黑龙伊弗欧')
+    assert.equal(natural?.tier, expected.tier)
+    assert.equal(catalog.summons.byHash[hash], 'cmn_icitmsmn02_3f00.png')
+  }
+  for (const hash of ['01B80951', '6D6CB496']) {
+    const display = summons.find(row => normalizeHash(row.hash) === hash)
+    assert.equal(display?.code, '4000')
+    assert.equal(catalog.summons.byHash[hash], 'cmn_icitmsmn02_4000.png')
+  }
 })

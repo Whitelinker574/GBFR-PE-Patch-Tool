@@ -18,7 +18,7 @@ test('version compatibility reports current pages and runtime evidence', () => {
 })
 
 test('version compatibility exposes exact icon coverage', () => {
-  for (const coverage of ['29 / 29', '261 / 262', '183 / 184', '159 / 163', '189 / 189', '301 / 312']) {
+  for (const coverage of ['29 / 29', '261 / 262', '186 / 187', '159 / 163', '189 / 189', '301 / 312']) {
     const [mapped, total] = coverage.split(' / ')
     assert.match(source, new RegExp(`${mapped}\\s*\\/\\s*${total}`))
   }

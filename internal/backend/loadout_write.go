@@ -1527,6 +1527,8 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		}
 	}
 	oldMaxSlotID := 0
+	newMaxSlotID := 0
+	firstNewSlotID := 0
 	if len(constructed) > 0 {
 		emptySlots, err := save.FindEmptyGemSlots(len(constructed))
 		if err != nil {
@@ -1536,9 +1538,13 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		if err != nil {
 			return nil, err
 		}
+		firstNewSlotID, newMaxSlotID, err = allocateSequentialSlotIDs(oldMaxSlotID, len(constructed))
+		if err != nil {
+			return nil, fmt.Errorf("无法为配装构造因子分配 SlotID: %w", err)
+		}
 		for i, prepared := range constructed {
 			prepared.gemUnitID = emptySlots[i]
-			prepared.newSlotID = uint32(oldMaxSlotID + i + 1)
+			prepared.newSlotID = uint32(firstNewSlotID + i)
 			if err := validateLoadoutSigilDestination(save, prepared); err != nil {
 				return nil, err
 			}
@@ -1552,7 +1558,7 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 		result.CreatedWeaponCount = 1
 	}
 	if len(constructed) > 0 {
-		if err := save.SetMaxSlotID(oldMaxSlotID + len(constructed)); err != nil {
+		if err := save.SetMaxSlotID(newMaxSlotID); err != nil {
 			return nil, err
 		}
 		for _, prepared := range constructed {

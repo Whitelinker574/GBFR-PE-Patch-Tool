@@ -54,6 +54,8 @@ const supportsSecondary = ref(false)
 const queue = ref([])
 const legality = reactive({ status: 'impossible', writable: false, message: '请先选择因子', reasons: [] })
 let legalityTicket = 0
+let sigilSelectionEpoch = 0
+let secondarySelectionEpoch = 0
 
 // 已有因子
 const existingSigils = ref([])
@@ -64,7 +66,7 @@ const loadingExisting = ref(false)
 
 const secondaryPickerOptions = computed(() => allTraits.value)
 const effectiveSupportsSecondary = computed(() => true)
-const editableLevelMax = computed(() => 0x7FFFFFFF)
+const editableLevelMax = 50
 
 function traitIconForOption(trait) {
   return traitAssetIcon({
@@ -90,13 +92,29 @@ function existingSigilIcon(sigil) {
 function queueItemIcon(item) {
   return traitAssetIcon({ internalId: item?.primaryTraitId, name: item?.primaryTraitName })
 }
-// The catalog may expose the full storable byte range (up to 50).  Natural
-// sigils cap both trait slots at 15; larger values are still force-writable.
-const primaryNaturalMax = computed(() => 15)
+const selectedSigil = computed(() => sigils.value.find(item => item.internalId === selectedSigilID.value) || null)
+function effectCurveMax(levels, fallback = 15) {
+  const known = (levels || []).filter(level => Number.isInteger(level) && level > 0)
+  return known.length ? Math.max(...known) : fallback
+}
+const sigilNaturalMax = computed(() => effectCurveMax(selectedSigil.value?.allowedSigilLevels))
+const primaryNaturalMax = computed(() => effectCurveMax(selectedSigil.value?.allowedFirstTraitLevels))
 const secondaryNaturalMax = computed(() => 15)
-const sigilWritableMax = 50
-const primaryWritableMax = computed(() => Math.max(15, ...primaryTraitLevels.value))
-const secondaryWritableMax = computed(() => Math.max(15, ...secondaryTraitLevels.value))
+const primaryWritableMax = computed(() => effectCurveMax(primaryTraitLevels.value))
+const secondaryWritableMax = computed(() => effectCurveMax(secondaryTraitLevels.value))
+
+function primaryDefaultLevel(trait, sigil = selectedSigil.value) {
+  if (!trait) return 0
+  const writableMax = effectCurveMax(
+    trait.allowedLevels?.length
+      ? trait.allowedLevels
+      : Array.from({ length: Math.max(0, Number(trait.maxLevel || 0)) }, (_, index) => index + 1),
+  )
+  const naturalMax = trait.internalId === sigil?.primaryTraitId
+    ? effectCurveMax(sigil?.allowedFirstTraitLevels)
+    : 15
+  return Math.min(naturalMax, writableMax)
+}
 
 function clampLevel(value, max) {
   const numeric = Number.isFinite(Number(value)) ? Number(value) : 0
@@ -241,6 +259,8 @@ async function deleteSelected() {
 
 // ── 因子选择变化 ──
 watch(selectedSigilID, async (id) => {
+  const epoch = ++sigilSelectionEpoch
+  ++secondarySelectionEpoch
   selectedPrimaryTrait.value = null
   primaryTraitName.value = ''
   selectedPrimaryTraitID.value = ''
@@ -252,9 +272,13 @@ watch(selectedSigilID, async (id) => {
 
   // 加载等级
   try {
-    sigilLevels.value = await GetAllowedLevels(id)
-    primaryTraitLevels.value = await GetPrimaryTraitLevels(id)
-  } catch (e) { showStatus(String(e), 'error'); return }
+    const levels = await GetAllowedLevels(id)
+    if (epoch !== sigilSelectionEpoch) return
+    const primaryLevels = await GetPrimaryTraitLevels(id)
+    if (epoch !== sigilSelectionEpoch) return
+    sigilLevels.value = levels
+    primaryTraitLevels.value = primaryLevels
+  } catch (e) { if (epoch === sigilSelectionEpoch) showStatus(String(e), 'error'); return }
 
   selectedPrimaryTraitID.value = sigil.primaryTraitId || ''
 
@@ -262,13 +286,12 @@ watch(selectedSigilID, async (id) => {
   if (supportsSecondary.value) {
     try {
       const allowed = await GetCompatibleSecondaryTraits(id)
+      if (epoch !== sigilSelectionEpoch) return
       allowedSecondaryIDs.value = new Set(allowed.map(t => t.internalId))
       secondaryTraits.value = allowed
-      // v1.8.0 supports intentionally leaving the secondary slot empty to
-      // generate a single-trait factor.  Do not silently restore a default
-      // trait when the user changes the primary factor.
       selectedSecondaryTraitID.value = ''
     } catch (e) {
+      if (epoch !== sigilSelectionEpoch) return
       secondaryTraits.value = []
       selectedSecondaryTraitID.value = ''
     }
@@ -281,8 +304,8 @@ watch(selectedSigilID, async (id) => {
   }
 
   // 默认等级
-  selectedLevel.value = 15
-  selectedPrimaryLevel.value = 15
+  selectedLevel.value = clampLevel(Number(sigil.defaultSigilLevel || sigilNaturalMax.value), editableLevelMax)
+  selectedPrimaryLevel.value = primaryDefaultLevel(selectedPrimaryTrait.value, sigil)
 })
 
 function buildCurrentItem() {
@@ -323,19 +346,23 @@ watch(selectedPrimaryTraitID, id => {
   primaryTraitLevels.value = trait?.allowedLevels?.length
     ? [...trait.allowedLevels]
     : Array.from({ length: Math.max(0, Number(trait?.maxLevel || 0)) }, (_, index) => index + 1)
-  selectedPrimaryLevel.value = trait ? Math.min(15, Math.max(...primaryTraitLevels.value, 15)) : 0
+  selectedPrimaryLevel.value = primaryDefaultLevel(trait)
 })
 
 watch(selectedSecondaryTraitID, async (id) => {
+  const epoch = ++secondarySelectionEpoch
+  const sigilID = selectedSigilID.value
   if (!id || !selectedSigilID.value) {
     secondaryTraitLevels.value = []
     selectedSecondaryLevel.value = 0
     return
   }
   try {
-    secondaryTraitLevels.value = await GetSecondaryTraitLevels(selectedSigilID.value, id)
-    selectedSecondaryLevel.value = 15
-  } catch (e) { secondaryTraitLevels.value = [] }
+    const levels = await GetSecondaryTraitLevels(sigilID, id)
+    if (epoch !== secondarySelectionEpoch || sigilID !== selectedSigilID.value || id !== selectedSecondaryTraitID.value) return
+    secondaryTraitLevels.value = levels
+    selectedSecondaryLevel.value = Math.min(15, effectCurveMax(levels))
+  } catch (e) { if (epoch === secondarySelectionEpoch) secondaryTraitLevels.value = [] }
 })
 
 // ── 队列操作 ──
@@ -480,7 +507,7 @@ async function removeAll() {
 
       <!-- 因子等级 -->
       <div class="field level-field ui-field">
-        <label class="ui-field-label">因子等级 <small>本地表自然上限 15</small></label>
+        <label class="ui-field-label">因子等级 <small>自然参考 {{ sigilNaturalMax }} / 修改上限 {{ editableLevelMax }}</small></label>
         <input v-model.number="selectedLevel" type="number" min="0" :max="editableLevelMax" class="text-input compact-number ui-input" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, editableLevelMax)" />
       </div>
       </div>
@@ -493,8 +520,8 @@ async function removeAll() {
       </div>
 
       <div class="field level-field ui-field">
-        <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `超过合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `合规上限 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
-        <input v-model.number="selectedPrimaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedPrimaryTraitID" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, 0x7FFFFFFF)" />
+        <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `高于自然参考 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `自然参考 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
+        <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number ui-input" :disabled="!selectedPrimaryTraitID" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
       </div>
       </div>
 
@@ -506,15 +533,15 @@ async function removeAll() {
           <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryPickerOptions.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
         </div>
         <div class="field level-field ui-field">
-          <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `超过合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `合规上限 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
-          <input v-model.number="selectedSecondaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedSecondaryTraitID" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, 0x7FFFFFFF)" />
+          <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `高于自然参考 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `自然参考 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
+          <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number ui-input" :disabled="!selectedSecondaryTraitID" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
         </div>
         </div>
       </template>
 
       <!-- 数量 + 添加 -->
       <div class="config-footer">
-        <small class="ui-hint">天然词池与等级只作提醒；所选可编码值不会被合规检测拦截。</small>
+        <small class="ui-hint">天然等级是默认值；最高可填到对应技能效果曲线的目录上限。</small>
         <LegalityIndicator v-if="selectedSigilID" class="config-legality" :status="legality.status" :message="legality.message" />
         <span v-else class="selection-note">选择因子后显示合法性结果</span>
         <div class="qty-add">

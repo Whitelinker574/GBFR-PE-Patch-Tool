@@ -66,3 +66,10 @@ test('offline generators do not repeat backup or output-safety notices beside th
     assert.doesNotMatch(source, /建议先备份|安全提示：只写入输出存档/)
   }
 })
+
+test('offline selectors and save loaders reject stale async responses', () => {
+  for (const source of [sigil, wrightstone, chara, save, progression]) {
+    assert.match(source, /Epoch|epoch/)
+    assert.match(source, /epoch !==|!== .*Epoch/)
+  }
+})

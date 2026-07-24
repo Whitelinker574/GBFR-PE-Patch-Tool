@@ -38,6 +38,10 @@ func isRemoteCallIndeterminate(err error) bool {
 }
 
 func classifyRemoteCallWait(wait uint32, waitErr error) error {
+	return classifyRemoteCallWaitWithTimeout(wait, waitErr, "等待 5 秒后仍未结束")
+}
+
+func classifyRemoteCallWaitWithTimeout(wait uint32, waitErr error, timeoutReason string) error {
 	if waitErr != nil {
 		return newRemoteCallIndeterminateError(fmt.Sprintf("等待失败（%v）", waitErr))
 	}
@@ -45,7 +49,7 @@ func classifyRemoteCallWait(wait uint32, waitErr error) error {
 	case uint32(windows.WAIT_OBJECT_0):
 		return nil
 	case uint32(windows.WAIT_TIMEOUT):
-		return newRemoteCallIndeterminateError("等待 5 秒后仍未结束")
+		return newRemoteCallIndeterminateError(timeoutReason)
 	default:
 		return newRemoteCallIndeterminateError(fmt.Sprintf("未知等待结果 0x%08X", wait))
 	}

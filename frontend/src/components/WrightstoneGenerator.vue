@@ -43,6 +43,7 @@ const quantity = ref(1)
 const queue = ref([])
 const legality = reactive({ status: 'impossible', writable: false, message: text('请先完成祝福配置', 'Complete the wrightstone configuration first.'), reasons: [] })
 let legalityTicket = 0
+let wrightstoneSelectionEpoch = 0
 
 const dataLoading = ref(true)
 const dataError = ref('')
@@ -60,7 +61,10 @@ function naturalTraitMax(slot) {
 }
 
 function writableTraitMax(slot) {
-	return 0x7FFFFFFF
+  const selected = traits.value.find(trait => trait.internalId === selectedTraits[slot].id)
+  const levels = Array.isArray(selectedTraits[slot].levels) ? selectedTraits[slot].levels : []
+  const maximum = Math.max(Number(selected?.maxLevel || 0), ...levels, 0)
+  return maximum > 0 ? maximum : naturalTraitMax(slot)
 }
 
 function clampLevel(value, max) {
@@ -145,17 +149,19 @@ async function loadSave() {
 }
 
 watch(selectedWrightstoneID, async (id) => {
+  const epoch = ++wrightstoneSelectionEpoch
   if (!id) return
   try {
     const def = await GetDefaultTrait(id)
+    if (epoch !== wrightstoneSelectionEpoch || id !== selectedWrightstoneID.value) return
     if (def) {
       selectedTraits[0].id = def.internalId
-      await loadTraitLevels(0)
+      await loadTraitLevels(0, epoch, id)
     }
-  } catch (e) { showStatus(isolatedError(e, 'Failed to load the wrightstone defaults.'), 'error') }
+  } catch (e) { if (epoch === wrightstoneSelectionEpoch) showStatus(isolatedError(e, 'Failed to load the wrightstone defaults.'), 'error') }
 })
 
-async function loadTraitLevels(slot) {
+async function loadTraitLevels(slot, selectionEpoch = null, wrightstoneID = '') {
   const traitID = selectedTraits[slot].id
   if (!traitID) {
     selectedTraits[slot].levels = []
@@ -164,9 +170,12 @@ async function loadTraitLevels(slot) {
   }
   try {
     const levels = await GetTraitLevels(traitID)
+    if (selectionEpoch !== null && (selectionEpoch !== wrightstoneSelectionEpoch || wrightstoneID !== selectedWrightstoneID.value)) return
+    if (traitID !== selectedTraits[slot].id) return
     selectedTraits[slot].levels = levels
-    selectedTraits[slot].level = naturalTraitMax(slot)
+    selectedTraits[slot].level = Math.min(naturalTraitMax(slot), writableTraitMax(slot))
   } catch (e) {
+    if (selectionEpoch !== null && selectionEpoch !== wrightstoneSelectionEpoch) return
     selectedTraits[slot].levels = []
     selectedTraits[slot].level = 0
     showStatus(isolatedError(e, 'Failed to load allowed trait levels.'), 'error')
@@ -332,15 +341,15 @@ async function applyQueueToSave() {
         </div>
         <div class="field level-field ui-field">
           <label class="ui-field-label">{{ text('等级', 'Level') }} <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ language === 'en'
-            ? `${selectedTraits[i].level > naturalTraitMax(i) ? 'Above legal cap' : 'Legal cap'} ${naturalTraitMax(i)} / editable cap ${writableTraitMax(i)}`
-            : `${selectedTraits[i].level > naturalTraitMax(i) ? '超过合规上限' : '合规上限'} ${naturalTraitMax(i)} / 修改上限 ${writableTraitMax(i)}` }}</small></label>
+            ? `${selectedTraits[i].level > naturalTraitMax(i) ? 'Above natural reference' : 'Natural reference'} ${naturalTraitMax(i)} / skill cap ${writableTraitMax(i)}`
+            : `${selectedTraits[i].level > naturalTraitMax(i) ? '高于自然参考' : '自然参考'} ${naturalTraitMax(i)} / 技能上限 ${writableTraitMax(i)}` }}</small></label>
           <input v-model.number="selectedTraits[i].level" type="number" min="0" :max="writableTraitMax(i)" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedTraits[i].level > naturalTraitMax(i) }" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, writableTraitMax(i))" />
         </div>
       </div>
       </div>
 
       <div class="config-footer">
-        <small class="ui-hint">{{ text('天然组合与等级只作提醒；所选可编码值不会被合规检测拦截。', 'Natural combinations and levels are advisory; encodable values are not blocked.') }}</small>
+        <small class="ui-hint">{{ text('天然等级是默认值；最高可填到对应技能效果曲线的目录上限。', 'Natural levels are defaults; the maximum follows the skill effect-curve cap.') }}</small>
         <LegalityIndicator v-if="currentSelectionValid" class="config-legality" :status="legality.status" :message="displayedLegalityMessage" />
         <span v-else class="selection-note">选完祝福与三项特性后显示合法性结果</span>
         <div class="qty-add">

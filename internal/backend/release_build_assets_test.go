@@ -78,11 +78,42 @@ func TestPatchCoreProjectPublishesStableResource(t *testing.T) {
 		t.Fatalf("read patch_core project: %v", err)
 	}
 	normalized := strings.ToLower(filepath.ToSlash(string(project)))
-	if !strings.Contains(normalized, `$(solutiondir)../internal/backend/resources/`) {
+	if !strings.Contains(normalized, `$(projectdir)../../internal/backend/resources/`) {
 		t.Fatal("patch_core Release x64 post-build output must publish to the stable resources directory")
 	}
-	if strings.Contains(normalized, `$(solutiondir)../build/bin/`) {
+	if strings.Contains(normalized, `$(solutiondir)`) || strings.Contains(normalized, `$(projectdir)../../build/bin/`) {
 		t.Fatal("patch_core project must not publish an embed input into Wails' disposable build/bin directory")
+	}
+	if !strings.Contains(normalized, `../thirdparty/libmem/lib/debug`) {
+		t.Fatal("patch_core Debug x64 must link the bundled debug libmem library")
+	}
+}
+
+func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
+	sourceBytes, err := os.ReadFile(filepath.Join("..", "..", "src_dll", "patch_core", "dllmain.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(sourceBytes)
+	for _, required := range []string{
+		`if (!g_damageMeter)`,
+		`strcmp(patchId, "all") == 0`,
+		`batch patch id is unsupported`,
+		`InstallPlayerPointerHook`,
+		`StampMonsterCave(cave, 96`,
+		`StampMonsterCave(cave, 192`,
+		`0x1FBDEB4`,
+		`0xB29128`,
+		`0x22CB316`,
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("patch_core source missing monster safety guard %q", required)
+		}
+	}
+	for _, removed := range []string{`PatchCrocodileDamageHook`, `0x23FD449`, `0xAA1539`, `0xA09ADF`, `0x1F7123F`} {
+		if strings.Contains(source, removed) {
+			t.Errorf("patch_core source still carries the retired monster implementation %q", removed)
+		}
 	}
 }
 

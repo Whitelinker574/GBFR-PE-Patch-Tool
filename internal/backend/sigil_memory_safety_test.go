@@ -54,16 +54,35 @@ func TestValidateSigilMemoryUpdateRejectsMismatchedPrimaryTrait(t *testing.T) {
 	}
 }
 
-func TestSigilMemoryWriteDefaultsToAdvisoryRulesButKeepsRequiredEncoding(t *testing.T) {
+func TestSigilMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
-	update.SigilHash = 0xDEADBEEF
-	update.PrimaryTraitHash = 0xCAFEBABE
-	update.SecondaryTraitHash = update.PrimaryTraitHash
-	update.SigilLevel = ^uint32(0)
-	update.PrimaryTraitLevel = ^uint32(0)
-	update.SecondaryTraitLevel = ^uint32(0)
+	var alternate *TraitDef
+	for index := range catalog.Traits {
+		candidate := &catalog.Traits[index]
+		hash, hashErr := ParseHashHex(candidate.Hash)
+		if hashErr == nil && hash != update.PrimaryTraitHash && isSelectableTrait(candidate) {
+			alternate = candidate
+			update.PrimaryTraitHash = hash
+			update.SecondaryTraitHash = hash
+			break
+		}
+	}
+	if alternate == nil {
+		t.Fatal("test catalog has no alternate trait")
+	}
+	levels, err := requireTraitLevels(alternate, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	curveMax := effectCurveMax(levels, 15)
+	update.PrimaryTraitLevel = uint32(curveMax)
+	update.SecondaryTraitLevel = uint32(curveMax)
 	if err := validateSigilMemoryWriteRequest(catalog, update); err != nil {
-		t.Fatalf("write request was blocked by advisory rules: %v", err)
+		t.Fatalf("known but non-natural combination should remain writable within the curve: %v", err)
+	}
+	update.PrimaryTraitLevel = uint32(curveMax + 1)
+	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("write request must reject a trait level above its effect curve")
 	}
 	update.SigilHash = 0
 	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
@@ -71,12 +90,15 @@ func TestSigilMemoryWriteDefaultsToAdvisoryRulesButKeepsRequiredEncoding(t *test
 	}
 }
 
-func TestValidateSigilMemoryUpdateUsesVerifiedDiscreteLevels(t *testing.T) {
+func TestValidateSigilMemoryUpdateAllowsCurveLevelsAndRejectsCurveOverflow(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
-	update.SigilLevel = 14 // Attack Power V+ is verified at item level 15 only.
-
-	if err := validateSigilMemoryUpdate(catalog, update); err == nil || !strings.Contains(err.Error(), "等级") {
-		t.Fatalf("expected non-catalog sigil level rejection, got %v", err)
+	update.SigilLevel = 50
+	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
+		t.Fatalf("factor level 50 should remain writable: %v", err)
+	}
+	update.SigilLevel = 51
+	if err := validateSigilMemoryUpdate(catalog, update); err == nil || !strings.Contains(err.Error(), "上限") {
+		t.Fatalf("factor level above 50 must be rejected, got %v", err)
 	}
 }
 

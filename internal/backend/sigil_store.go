@@ -4,8 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -150,7 +152,7 @@ func LoadSave(path string) (*SaveData, error) {
 
 	slotOff := int64(binary.LittleEndian.Uint64(data[0x1C:0x24]))
 	slotLen := int64(binary.LittleEndian.Uint64(data[0x2C:0x34]))
-	if slotOff < 0 || slotLen <= 0 || slotOff+slotLen > int64(len(data)) {
+	if slotLen <= 0 || !validInt64Span(slotOff, slotLen, int64(len(data))) {
 		return nil, fmt.Errorf("存档头 slot-data 偏移无效")
 	}
 
@@ -418,19 +420,58 @@ func (s *SaveData) PatchSigilWithFlags(gemUnitID, newSlotID int, sigilHash uint3
 
 // ClearSigil zeroes out a sigil slot.
 func (s *SaveData) ClearSigil(gemUnitID int) error {
+	if gemUnitID < GemSlotBaseID {
+		return fmt.Errorf("因子槽 UnitID 无效: %d", gemUnitID)
+	}
 	gemIndex := gemUnitID - GemSlotBaseID
 	primaryTraitUnit := TraitSlotBase + (gemIndex * 100)
 	secondaryTraitUnit := primaryTraitUnit + 1
 
-	must(s.patchUint(GemIDType, uint32(gemUnitID), EmptyHash))
-	must(s.patchInt(GemLevelIDType, uint32(gemUnitID), 0))
-	must(s.patchUint(GemWornByIDType, uint32(gemUnitID), EmptyHash))
-	must(s.patchUint(GemFlagsIDType, uint32(gemUnitID), 0))
-	must(s.patchUint(TraitHashIDType, uint32(primaryTraitUnit), EmptyHash))
-	must(s.patchInt(TraitLevelIDType, uint32(primaryTraitUnit), 0))
-	must(s.patchUint(TraitHashIDType, uint32(secondaryTraitUnit), EmptyHash))
-	must(s.patchInt(TraitLevelIDType, uint32(secondaryTraitUnit), 0))
+	type clearWrite struct {
+		idType uint32
+		unitID uint32
+		value  uint32
+		entry  *unitEntry
+	}
+	writes := []clearWrite{
+		{idType: GemIDType, unitID: uint32(gemUnitID), value: EmptyHash},
+		{idType: GemLevelIDType, unitID: uint32(gemUnitID)},
+		{idType: GemWornByIDType, unitID: uint32(gemUnitID), value: EmptyHash},
+		{idType: GemFlagsIDType, unitID: uint32(gemUnitID)},
+		{idType: TraitHashIDType, unitID: uint32(primaryTraitUnit), value: EmptyHash},
+		{idType: TraitLevelIDType, unitID: uint32(primaryTraitUnit)},
+		{idType: TraitHashIDType, unitID: uint32(secondaryTraitUnit), value: EmptyHash},
+		{idType: TraitLevelIDType, unitID: uint32(secondaryTraitUnit)},
+	}
+	for index := range writes {
+		entry, ok := s.findUnit(writes[index].idType, writes[index].unitID)
+		if !ok {
+			return fmt.Errorf("清空因子前置校验失败: 找不到 save unit: IDType=%d, UnitID=%d", writes[index].idType, writes[index].unitID)
+		}
+		writes[index].entry = entry
+	}
+	for _, write := range writes {
+		write.entry.SetUint32(write.value)
+	}
 	return nil
+}
+
+func allocateSequentialSlotIDs(currentMax, count int) (first, last int, err error) {
+	if currentMax < 0 {
+		return 0, 0, fmt.Errorf("当前最大 SlotID 无效: %d", currentMax)
+	}
+	if count <= 0 {
+		return 0, 0, fmt.Errorf("待分配 SlotID 数量无效: %d", count)
+	}
+	last64 := uint64(currentMax) + uint64(count)
+	if uint64(currentMax) > math.MaxUint32 || last64 > math.MaxUint32 {
+		return 0, 0, fmt.Errorf("SlotID 空间不足: 当前最大值 %d，新增 %d 个将超过 uint32", currentMax, count)
+	}
+	first64 := uint64(currentMax) + 1
+	if first64 <= uint64(EmptyHash) && last64 >= uint64(EmptyHash) {
+		return 0, 0, fmt.Errorf("SlotID 分配区间会占用保留空值 0x%08X", EmptyHash)
+	}
+	return int(first64), int(last64), nil
 }
 
 func (s *SaveData) patchUint(idType, unitID, value uint32) error {
@@ -452,6 +493,9 @@ func (s *SaveData) patchUintExact(idType, unitID, value uint32) error {
 }
 
 func (s *SaveData) patchInt(idType, unitID uint32, value int) error {
+	if int64(value) < math.MinInt32 || int64(value) > math.MaxInt32 {
+		return fmt.Errorf("save int32 值越界: %d", value)
+	}
 	entry, ok := s.findUnit(idType, unitID)
 	if !ok {
 		return fmt.Errorf("找不到 save unit: IDType=%d, UnitID=%d", idType, unitID)
@@ -520,6 +564,9 @@ func (s *SaveData) Write(path string) error {
 		if err := copyFile(s.path, backupPath); err != nil {
 			return fmt.Errorf("创建存档备份失败: %w", err)
 		}
+		if err := pruneTimestampedFileBackups(path, saveSnapshotRetention); err != nil {
+			return fmt.Errorf("清理旧存档备份失败: %w", err)
+		}
 		if s.lastBackupPath == "" {
 			s.lastBackupPath = backupPath
 		}
@@ -566,6 +613,29 @@ func replaceFileAtomic(source, destination string) error {
 }
 
 func (s *SaveData) LastBackupPath() string { return s.lastBackupPath }
+
+func pruneTimestampedFileBackups(path string, keep int) error {
+	if keep < 1 {
+		return fmt.Errorf("备份保留数量必须至少为 1")
+	}
+	matches, err := filepath.Glob(path + ".pre-edit-*.bak")
+	if err != nil {
+		return err
+	}
+	sort.Strings(matches)
+	if len(matches) <= keep {
+		return nil
+	}
+	for _, backup := range matches[:len(matches)-keep] {
+		if filepath.Dir(backup) != filepath.Dir(path) || !strings.HasPrefix(filepath.Base(backup), filepath.Base(path)+".pre-edit-") {
+			return fmt.Errorf("拒绝清理目标存档目录之外的备份")
+		}
+		if err := os.Remove(backup); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func copyFile(source, destination string) error {
 	in, err := os.Open(source)
@@ -660,12 +730,6 @@ func (s *SaveData) VerifySigilWithFlags(gemUnitID int, expectedSlotID, sigilHash
 	return nil
 }
 
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 // tryPatchUint attempts to write a uint value, returning nil if the entry is missing.
 func (s *SaveData) tryPatchUint(idType, unitID, value uint32) error {
 	entry, ok := s.findUnit(idType, unitID)
@@ -678,6 +742,9 @@ func (s *SaveData) tryPatchUint(idType, unitID, value uint32) error {
 
 // tryPatchInt attempts to write an int value, returning nil if the entry is missing.
 func (s *SaveData) tryPatchInt(idType, unitID uint32, value int) error {
+	if int64(value) < math.MinInt32 || int64(value) > math.MaxInt32 {
+		return fmt.Errorf("save int32 值越界: %d", value)
+	}
 	entry, ok := s.findUnit(idType, unitID)
 	if !ok {
 		return nil

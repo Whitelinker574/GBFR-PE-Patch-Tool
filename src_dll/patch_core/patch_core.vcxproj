@@ -119,6 +119,8 @@
       <PreprocessorDefinitions>_DEBUG;PATCHCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\thirdparty\libmem\include</AdditionalIncludeDirectories>
@@ -127,6 +129,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\thirdparty\libmem\lib\debug</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libmem.lib;ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -141,9 +145,10 @@
       <PreprocessorDefinitions>NDEBUG;PATCHCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\thirdparty\libmem\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>$(ProjectDir)..\thirdparty\libmem\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -157,8 +162,8 @@
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
     <PostBuildEvent>
-      <Command>if not exist "$(SolutionDir)..\internal\backend\resources" mkdir "$(SolutionDir)..\internal\backend\resources"
-xcopy /y "$(TargetPath)" "$(SolutionDir)..\internal\backend\resources\"</Command>
+      <Command>if not exist "$(ProjectDir)..\..\internal\backend\resources" mkdir "$(ProjectDir)..\..\internal\backend\resources"
+xcopy /y "$(TargetPath)" "$(ProjectDir)..\..\internal\backend\resources\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

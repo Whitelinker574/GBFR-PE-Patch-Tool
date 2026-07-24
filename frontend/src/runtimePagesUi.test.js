@@ -108,6 +108,14 @@ test('sigil memory has an explicit stop action and locks draft controls until a 
   assert.equal((source.match(/<input[^>]*class="ui-input"[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying"/g) || []).length, 3)
 })
 
+test('sigil memory uses natural defaults without exceeding trait curves', () => {
+  const source = sources['SigilMemoryGenerator.vue']
+  assert.match(source, /form\.sigilLevel = naturalSigilLevel\(opt\)/)
+  assert.match(source, /function naturalTraitLevel\(opt\) \{ return Math\.min\(15, curveMax\(opt\)\) \}/)
+  assert.match(source, /Math\.min\(15, primaryWritableMax\.value\)/)
+  assert.match(source, /Math\.min\(15, secondaryWritableMax\.value\)/)
+})
+
 test('the factor picker uses shared controls without nesting an interactive clear action', () => {
   assert.match(picker, /class="[^"]*picker-selected[^"]*ui-btn[^"]*|class="[^"]*ui-btn[^"]*picker-selected[^"]*"/)
   assert.match(picker, /class="[^"]*picker-search[\s\S]*class="ui-input"/)
@@ -229,4 +237,7 @@ test('monster safety copy is a full-width notice and raw patch bytes are disclos
   assert.equal((source.match(/v-if="result\.items\.length" class="[^"]*card-grid[^"]*ui-card-grid/g) || []).length, 1, 'monster page must render exactly one result grid')
   assert.match(source, /<details[^>]*class="[^"]*ui-disclosure[^"]*diagnostics/)
   assert.doesNotMatch(source, /custom-note-card/)
+  assert.match(source, /!item\.available/)
+  assert.match(source, /item\.unavailableReason/)
+  assert.match(source, /:disabled="loading \|\| !item\.available/)
 })

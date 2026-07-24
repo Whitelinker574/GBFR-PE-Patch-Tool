@@ -5,6 +5,10 @@ import test from 'node:test'
 const source = readFileSync(new URL('./components/MiscTools.vue', import.meta.url), 'utf8')
 const scopedStyle = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
 
+test('blank runtime values are rejected before numeric conversion', () => {
+  assert.equal((source.match(/trim\(\) === ''/g) || []).length, 2)
+})
+
 test('runtime tools consume shared page, panel, toolbar, tabs, controls and cards', () => {
   assert.match(source, /class="root ui-page is-wide ui-page-stack"/)
   assert.match(source, /class="section ui-card ui-panel"/)

@@ -116,10 +116,14 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		if err != nil {
 			return SigilMemoryOptions{}, fmt.Errorf("因子 %s 的等级范围无效: %w", sigil.DisplayName, err)
 		}
-		naturalSigilLevelSet := naturalSigilLevels(allowedSigilLevels)
-		naturalPrimaryLevels := naturalSigilLevels(allowedPrimaryLevels)
-		sigilMaxLevel := maxNaturalSigilLevel(naturalSigilLevelSet)
-		primaryMaxLevel := maxNaturalSigilLevel(naturalPrimaryLevels)
+		naturalSigilLevelSet := naturalSigilLevelsForDefinition(sigil, allowedSigilLevels)
+		naturalPrimaryLevels := naturalSigilLevelsForDefinition(sigil, allowedPrimaryLevels)
+		sigilMaxLevel := sigilWritableLevelMax
+		primaryCurve, err := requireTraitLevels(primaryTrait, "运行时主词条")
+		if err != nil {
+			return SigilMemoryOptions{}, err
+		}
+		primaryMaxLevel := effectCurveMax(primaryCurve, 15)
 		// Keep the memory editor's legality hints in sync with the save
 		// generator. The explicit IDs are the exact local gem/lot join; the
 		// shared resolver applies the same trait eligibility and duplicate-primary
@@ -159,10 +163,15 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 		if err != nil {
 			continue
 		}
+		curve, curveErr := requireTraitLevels(trait, "运行时词条")
+		if curveErr != nil {
+			return SigilMemoryOptions{}, curveErr
+		}
+		curveMax := effectCurveMax(curve, 15)
 		result.Traits = append(result.Traits, SigilMemoryOption{
 			Hash:          hash,
 			DisplayName:   cnTrait(trait.DisplayName),
-			MaxLevel:      trait.MaxLevel,
+			MaxLevel:      &curveMax,
 			AllowedLevels: trait.AllowedLevels,
 			Source:        "catalog",
 		})

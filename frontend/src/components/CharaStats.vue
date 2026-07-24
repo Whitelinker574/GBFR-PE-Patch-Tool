@@ -12,6 +12,7 @@ const sortDesc = ref(false)
 const selected = ref(new Set())
 const batchCount = ref(0)
 const error = ref('')
+let loadEpoch = 0
 
 const sorted = computed(() => sortDesc.value
   ? [...list.value].sort((a, b) => b.count - a.count)
@@ -27,16 +28,20 @@ function saveSlotLabel(slot) {
 }
 
 async function load(path) {
+  const epoch = ++loadEpoch
   loading.value = true
   savePath.value = path
   error.value = ''
   selected.value = new Set()
   try {
-    list.value = (await GetCharacterStats(path, false) || []).map(c => ({ ...c, count: Number(c.count) }))
+    const rows = await GetCharacterStats(path, false) || []
+    if (epoch !== loadEpoch || path !== savePath.value) return
+    list.value = rows.map(c => ({ ...c, count: Number(c.count) }))
   } catch (err) {
+    if (epoch !== loadEpoch) return
     list.value = []
     error.value = String(err)
-  } finally { loading.value = false }
+  } finally { if (epoch === loadEpoch) loading.value = false }
 }
 
 async function refresh() {
@@ -61,14 +66,15 @@ function applyBatch() {
 
 async function saveSelected() {
   if (!savePath.value || !selected.value.size) return
+  const path = savePath.value
   const changes = list.value
     .filter(c => selected.value.has(c.slot))
     .map(c => ({ slot: c.slot, count: Math.max(0, Math.min(99999999, Number(c.count) || 0)) }))
   saving.value = true
   try {
-    const result = await UpdateCharacterStats(savePath.value, changes)
+    const result = await UpdateCharacterStats(path, changes)
     emit('status', `已修改并验证 ${result.verified} 个角色，已自动备份`, 'success')
-    await load(savePath.value)
+    if (savePath.value === path) await load(path)
   } catch (err) {
     emit('status', String(err), 'error')
   } finally { saving.value = false }

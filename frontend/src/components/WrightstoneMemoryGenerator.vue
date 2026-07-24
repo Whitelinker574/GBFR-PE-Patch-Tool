@@ -84,13 +84,26 @@ function currentHash(slot) { return normaliseHash(status[slot.hashKey]) }
 function currentName(slot) { return status[slot.nameKey] || formatHex(currentHash(slot)) }
 function currentLevel(slot) { return Number(status[slot.levelKey] || 0) }
 function traitOption(hash) { return traits.value.find(item => normaliseHash(item.hash) === normaliseHash(hash)) }
+function traitWritableMax(slot) {
+  const option = traitOption(slot.hash)
+  const levels = Array.isArray(option?.allowedLevels) ? option.allowedLevels.filter(Number.isInteger) : []
+  const maximum = Math.max(Number(option?.maxLevel || 0), levels.length ? Math.max(...levels) : 0)
+  return maximum > 0 ? maximum : slot.maxLevel
+}
 function targetName(slot) { return traitOption(slot.hash)?.displayName || formatHex(slot.hash) }
 function traitIcon(hash, name = '') { return traitAssetIcon({ hash, name }) }
 function traitIconForOption(trait) { return traitAssetIcon({ internalId: trait?.internalId, hash: trait?.hash, name: trait?.displayName }) }
 function traitCatalogValue(slot) { return slot.hash ? String(normaliseHash(slot.hash)) : '' }
 function selectTrait(slot, value) {
+  const wasEmpty = !slot.hash
   slot.hash = normaliseHash(value)
-  normaliseLevel(slot)
+  if (!slot.hash) {
+    slot.level = 0
+  } else if (wasEmpty || !Number.isInteger(Number(slot.level)) || Number(slot.level) <= 0) {
+    slot.level = Math.min(slot.maxLevel, traitWritableMax(slot))
+  } else {
+    normaliseLevel(slot)
+  }
 }
 function syncDraftFromStatus() {
   for (const slot of traitSlots) {
@@ -158,8 +171,11 @@ const validationMessage = computed(() => {
   if (!status.selectedAddr) return text('请在游戏内祝福石列表重新选中目标记录。', 'Select the target again in the in-game wrightstone list.')
   if (!traitSlots[0].hash) return text('第一槽词条不能为空。', 'Slot One cannot be empty.')
   for (const slot of traitSlots) {
-    if (!Number.isInteger(Number(slot.level)) || Number(slot.level) < 0 || Number(slot.level) > 0xFFFFFFFF) {
-      return language.value === 'en' ? `${slotLabel(slot)} is not an encodable uint32 level.` : `${slotLabel(slot)}等级无法编码为 uint32。`
+    if (!slot.hash && Number(slot.level) !== 0) return text(`${slotLabel(slot)}为空时等级必须为 0。`, `${slotLabel(slot)} must use level 0 when empty.`)
+    if (!slot.hash) continue
+    const max = traitWritableMax(slot)
+    if (!Number.isInteger(Number(slot.level)) || Number(slot.level) < 1 || Number(slot.level) > max) {
+      return language.value === 'en' ? `${slotLabel(slot)} exceeds the skill curve cap (${max}).` : `${slotLabel(slot)}超过技能效果曲线上限 ${max}。`
     }
   }
   if (!changes.value.length) return text('目标值与当前记录相同。', 'Target values are identical to the current record.')
@@ -170,7 +186,7 @@ const canWrite = computed(() => !loading.value && !writing.value && !validationM
 function normaliseLevel(slot) {
   if (!slot.hash) { slot.level = 0; return }
   const numeric = Number(slot.level)
-  slot.level = Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, 0xFFFFFFFF) : 0
+  slot.level = Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, traitWritableMax(slot)) : 0
 }
 
 function stopPolling() {
@@ -416,7 +432,7 @@ onBeforeUnmount(() => {
               </label>
               <label class="ui-field trait-level-field">
                 <span class="ui-field-label">{{ text('目标等级', 'Target Level') }}</span>
-                <input v-model.number="slot.level" class="ui-input" type="number" min="0" max="4294967295" :disabled="!slot.hash || !status.selectedAddr || stale" />
+                <input v-model.number="slot.level" class="ui-input" type="number" min="0" :max="traitWritableMax(slot)" :disabled="!slot.hash || !status.selectedAddr || stale" />
               </label>
             </div>
           </article>
@@ -431,7 +447,7 @@ onBeforeUnmount(() => {
 
           <aside class="wrightstone-memory-actions ui-card ui-panel is-compact">
             <span><b>{{ statusLabel }}</b><small>{{ validationMessage || (language === 'en' ? `${changes.length} changes pending` : `${changes.length} 项待写入`) }}</small></span>
-            <small class="ui-hint">{{ text('天然组合与等级只作提醒；所选可编码值不会被拦截。', 'Natural combinations and levels are advisory; encodable values are not blocked.') }}</small>
+            <small class="ui-hint">{{ text('天然等级是默认参考；最高可填到对应技能效果曲线的目录上限。', 'Natural levels are defaults; the maximum follows each skill effect curve.') }}</small>
             <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">{{ text('还原当前值', 'Restore Current Values') }}</button>
             <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? text('写入中…', 'Writing…') : text('写入三槽', 'Write Three Slots') }}</button>
           </aside>

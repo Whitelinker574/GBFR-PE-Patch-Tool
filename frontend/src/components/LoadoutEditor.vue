@@ -204,6 +204,8 @@ const selectedWeaponPick = computed(() => ctx.value?.weapons?.find(item => Numbe
 const selectedWeaponIcon = computed(() => weaponAssetIcon(selectedWeaponContext.value || selectedWeaponPick.value || {}))
 const importedSummonsByIndex = computed(() => new Map((importApplyPayload.value?.constructedSummons || [])
   .map(item => [Number(item.index), item])))
+function pendingSummonSlotValue(index) { return -(Number(index) + 1) }
+function backendSummonSlotIDs() { return summonSlotIds.value.map(value => Number(value) > 0 ? Number(value) : 0) }
 const selectedSummons = computed(() => summonSlotIds.value.map((slotId, index) => {
   const existing = statContext.value.summons.find(item => item.slotId === slotId)
   if (existing) return existing
@@ -295,7 +297,7 @@ const summonSelectionValid = computed(() => {
   if (ids.length !== 4) return false
   const existing = ids.filter(id => id > 0)
   if (new Set(existing).size !== existing.length) return false
-  return ids.every((id, index) => (id > 0 && statContext.value.summons.some(item => item.slotId === id)) || importedSummonsByIndex.value.has(index))
+  return ids.every((id, index) => (id > 0 && statContext.value.summons.some(item => item.slotId === id)) || (id === pendingSummonSlotValue(index) && importedSummonsByIndex.value.has(index)))
 })
 function summonUsedElsewhere(slotId, currentIndex) {
   return summonSlotIds.value.some((value, index) => index !== currentIndex && Number(value) === Number(slotId))
@@ -481,8 +483,11 @@ const selectedConstructSecondary = computed(() => constructSecondaryOptions.valu
 function highestAllowed(levels, fallback = 0) {
   return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
 }
-function constructTraitWritableMax(trait) { return Math.min(50, Math.max(15, Number(trait?.maxLevel || 0))) }
-function constructLevelLimit() { return 0x7FFFFFFF }
+function constructTraitWritableMax(trait) {
+  const maximum = Number(trait?.maxLevel || 0)
+  return maximum > 0 ? maximum : 15
+}
+function constructLevelLimit(maximum = 50) { return Math.max(1, Math.trunc(Number(maximum) || 50)) }
 function clampConstructLevel(value, max = 50) {
   const number = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0
   return Math.min(max, Math.max(0, number))
@@ -726,7 +731,7 @@ function refreshSim() {
         payload.sigilSlotIds,
         payload.constructedSigils,
         selectedMasteryHashes.value.slice(),
-        [...summonSlotIds.value],
+        backendSummonSlotIDs(),
       )
       if (requestId !== simRequestId) return
       bonuses.value = result?.bonuses || []
@@ -969,7 +974,7 @@ function buildWriteRequest() {
     w.weaponSlotId = form.value.weaponSlotId || 0
     w.sigilSlotIds = factorPayload.sigilSlotIds
     w.constructedSigils = factorPayload.constructedSigils
-    if (writeGlobalSummons.value) w.summonSlotIds = [...summonSlotIds.value]
+    if (writeGlobalSummons.value) w.summonSlotIds = backendSummonSlotIDs()
     w.skillHashes = [...form.value.skillHashes]
     if (masteryMode.value === 'free') {
       w.masteryHashes = importedMasterySnapshot.value.length
@@ -1140,6 +1145,7 @@ function applyImportChoices(choices) {
   if (choices.summons && Array.isArray(draft.summonSlotIds) && draft.summonSlotIds.length === 4) {
     summonSlotIds.value = [...draft.summonSlotIds]
     const generated = new Set((sourcePayload.constructedSummons || []).map(item => Number(item.index)))
+    for (const index of generated) summonSlotIds.value[index] = pendingSummonSlotValue(index)
     writeGlobalSummons.value = draft.summonSlotIds.every((slotId, index) => Number(slotId) > 0 || generated.has(index))
   }
 
@@ -1493,7 +1499,7 @@ async function apply() {
               <span class="summon-slot-index">{{ String(index).padStart(2, '0') }}</span>
               <select v-model.number="summonSlotIds[index - 1]" class="ed-select ui-select">
                 <option :value="0" disabled>— 选择召唤石 —</option>
-                <option v-if="importedSummonsByIndex.has(index - 1)" :value="0">{{ importedSummonsByIndex.get(index - 1).name || '导入召唤石' }} · 保存时自动生成</option>
+                <option v-if="importedSummonsByIndex.has(index - 1)" :value="pendingSummonSlotValue(index - 1)">{{ importedSummonsByIndex.get(index - 1).name || '导入召唤石' }} · 保存时自动生成</option>
                 <option v-for="summon in statContext.summons" :key="summon.slotId" :value="summon.slotId"
                   :disabled="summonUsedElsewhere(summon.slotId, index - 1)">
                   {{ summonOptionLabel(summon) }}
@@ -1667,7 +1673,7 @@ async function apply() {
           </div>
 
           <div v-else class="constructor-shell">
-            <small class="ui-hint">天然因子组合与等级只作提醒；所选可编码值不会被拦截。</small>
+            <small class="ui-hint">天然等级是默认值；最高可填到对应技能效果曲线的目录上限。</small>
             <div class="constructor-note">
               <span class="constructor-mark">{{ String(activeFactorIndex + 1).padStart(2, '0') }}</span>
               <div><b>因子构造器</b><small>配置会先留在当前槽；点击整套写入时再生成真实因子并绑定。</small></div>
@@ -1681,13 +1687,13 @@ async function apply() {
                 <small v-if="constructSearch && !filteredConstructCatalog.length" class="catalog-empty">构造目录无匹配结果。</small>
               </label>
               <label><span>因子等级</span>
-                <input v-model.number="constructSigilLevel" type="number" min="0" :max="constructLevelLimit(highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15))" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, constructLevelLimit(highestAllowed(selectedConstructSigil?.allowedSigilLevels, 15)))" />
+                <input v-model.number="constructSigilLevel" type="number" min="0" :max="constructLevelLimit(50)" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, constructLevelLimit(50))" />
               </label>
               <label class="constructor-wide"><span>主词条</span>
                 <CatalogSelect v-model="constructPrimaryId" :options="constructTraits" :icon-resolver="traitIconForOption" placeholder="选择主词条" search-placeholder="搜索全部词条" />
               </label>
               <label><span>主词条等级</span>
-                <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructLevelLimit(selectedConstructSigil?.firstTraitMaxLevel || 15)" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructLevelLimit(selectedConstructSigil?.firstTraitMaxLevel || 15))" />
+                <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary))" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary)))" />
               </label>
               <label class="constructor-wide"><span>副词条 · 全部已知词条</span>
                 <CatalogSelect v-model="constructSecondaryId" :options="constructSecondaryOptions" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />

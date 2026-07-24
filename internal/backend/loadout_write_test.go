@@ -4,11 +4,52 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestAllocateSequentialSlotIDsRejectsOverflowAndReservedValue(t *testing.T) {
+	for _, test := range []struct {
+		current int
+		count   int
+		message string
+	}{
+		{int(math.MaxUint32), 1, "uint32"},
+		{int(math.MaxUint32) - 1, 2, "uint32"},
+		{int(EmptyHash) - 1, 1, "保留空值"},
+	} {
+		_, _, err := allocateSequentialSlotIDs(test.current, test.count)
+		if err == nil || !strings.Contains(err.Error(), test.message) {
+			t.Fatalf("allocation (%d, %d) error = %v; want %q", test.current, test.count, err, test.message)
+		}
+	}
+	first, last, err := allocateSequentialSlotIDs(41, 3)
+	if err != nil || first != 42 || last != 44 {
+		t.Fatalf("unexpected allocation: first=%d last=%d err=%v", first, last, err)
+	}
+}
+
+func TestClearSigilRejectsMalformedSaveWithoutPanicking(t *testing.T) {
+	save := &SaveData{}
+	deferred := false
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("ClearSigil panicked on a malformed save: %v", recovered)
+			}
+			deferred = true
+		}()
+		if err := save.ClearSigil(GemSlotBaseID); err == nil || !strings.Contains(err.Error(), "前置校验失败") {
+			t.Fatalf("ClearSigil error = %v; want a preflight validation failure", err)
+		}
+	}()
+	if !deferred {
+		t.Fatal("ClearSigil did not return normally")
+	}
+}
 
 var testLoadoutSave = strings.TrimSpace(os.Getenv("GBFR_TEST_LOADOUT_SAVE"))
 

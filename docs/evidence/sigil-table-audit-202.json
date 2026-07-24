@@ -4,7 +4,7 @@
   "database": "sigil-tables-202.sqlite",
   "databaseSha256": "0ADB7A294F51D008E1130237FDF725B50D01B61C599EEE1C3CFFC6F819DDA552",
   "catalog": "sigils.json",
-  "catalogSha256": "2AAC7D3C22E1DCFC347116E69F6C5672062FD6D9613A3F95000BDEFB9DFAB057",
+  "catalogSha256": "C1BEA63B5EFA47CC4D975A3C308A1DB0810532E3F087EEC8E4C6C1ACC31998A7",
   "tableCounts": {
     "gem": 1034,
     "skill_status": 6320,
@@ -12,7 +12,7 @@
     "skill_type_lot": 21
   },
   "summary": {
-    "verified": 184
+    "verified": 189
   },
   "rows": [
     {
@@ -15596,10 +15596,83 @@
         "SKILL_138_00",
         "SKILL_139_00"
       ]
+    },
+    {
+      "internalId": "49434696",
+      "hash": "0x49434696",
+      "displayName": "可怕的漆黑钳蟹因子",
+      "status": "verified",
+      "issues": [],
+      "catalogPrimaryTraitId": "BF78FBFC",
+      "gamePrimaryTraitId": "BF78FBFC",
+      "gameSecondaryMode": "none",
+      "gameSkillTypeLotId": -1,
+      "catalogSecondaryTraitIds": [],
+      "gameSecondaryTraitIds": []
+    },
+    {
+      "internalId": "65F0420A",
+      "hash": "0x65F0420A",
+      "displayName": "漆黑之谊",
+      "status": "verified",
+      "issues": [],
+      "catalogPrimaryTraitId": "46EE3116",
+      "gamePrimaryTraitId": "46EE3116",
+      "gameSecondaryMode": "none",
+      "gameSkillTypeLotId": -1,
+      "catalogSecondaryTraitIds": [],
+      "gameSecondaryTraitIds": []
+    },
+    {
+      "internalId": "B289A9AD",
+      "hash": "0xB289A9AD",
+      "displayName": "相扑斗力",
+      "status": "verified",
+      "issues": [],
+      "catalogPrimaryTraitId": "89C66ACB",
+      "gamePrimaryTraitId": "89C66ACB",
+      "gameSecondaryMode": "none",
+      "gameSkillTypeLotId": -1,
+      "catalogSecondaryTraitIds": [],
+      "gameSecondaryTraitIds": []
+    },
+    {
+      "internalId": "66CB28BA",
+      "hash": "0x66CB28BA",
+      "displayName": "可怕的漆黑钳蟹因子+",
+      "status": "verified",
+      "issues": [],
+      "catalogPrimaryTraitId": "BF78FBFC",
+      "gamePrimaryTraitId": "BF78FBFC",
+      "gameSecondaryMode": "fixed",
+      "gameSkillTypeLotId": -1,
+      "catalogSecondaryTraitIds": [
+        "SKILL_141_00"
+      ],
+      "gameSecondaryTraitIds": [
+        "SKILL_141_00"
+      ]
+    },
+    {
+      "internalId": "76786869",
+      "hash": "0x76786869",
+      "displayName": "漆黑之谊+",
+      "status": "verified",
+      "issues": [],
+      "catalogPrimaryTraitId": "46EE3116",
+      "gamePrimaryTraitId": "46EE3116",
+      "gameSecondaryMode": "fixed",
+      "gameSkillTypeLotId": -1,
+      "catalogSecondaryTraitIds": [
+        "SKILL_141_00"
+      ],
+      "gameSecondaryTraitIds": [
+        "SKILL_141_00"
+      ]
     }
   ],
   "traitSummary": {
-    "verified": 184,
+    "verified": 187,
     "mismatch": 0
   },
   "traitRows": [
@@ -17625,6 +17698,39 @@
       "catalogMaxLevel": 15,
       "gameEffectCurveMaxLevel": 15,
       "appearsAsPrimaryInGemTable": false,
+      "appearsAsSecondaryInGemLotTables": false
+    },
+    {
+      "internalId": "BF78FBFC",
+      "hash": "0xBF78FBFC",
+      "displayName": "可怕的漆黑钳蟹因子",
+      "status": "verified",
+      "issues": [],
+      "catalogMaxLevel": 20,
+      "gameEffectCurveMaxLevel": 20,
+      "appearsAsPrimaryInGemTable": true,
+      "appearsAsSecondaryInGemLotTables": false
+    },
+    {
+      "internalId": "46EE3116",
+      "hash": "0x46EE3116",
+      "displayName": "漆黑之谊",
+      "status": "verified",
+      "issues": [],
+      "catalogMaxLevel": 15,
+      "gameEffectCurveMaxLevel": 15,
+      "appearsAsPrimaryInGemTable": true,
+      "appearsAsSecondaryInGemLotTables": false
+    },
+    {
+      "internalId": "89C66ACB",
+      "hash": "0x89C66ACB",
+      "displayName": "相扑斗力",
+      "status": "verified",
+      "issues": [],
+      "catalogMaxLevel": 5,
+      "gameEffectCurveMaxLevel": 5,
+      "appearsAsPrimaryInGemTable": true,
       "appearsAsSecondaryInGemLotTables": false
     }
   ],

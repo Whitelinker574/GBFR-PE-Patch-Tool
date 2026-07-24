@@ -29,7 +29,7 @@ test('both wrightstone pages wait for language sync and render dynamic copy from
   assert.match(liveWrightstone, /isolatedError\(error, 'Failed to load the wrightstone catalog\.'/)
   assert.match(offlineWrightstone, /await backendLanguageReady[\s\S]*GetWrightstoneList\(\)/)
   assert.match(offlineWrightstone, /displayedLegalityMessage/)
-  assert.match(offlineWrightstone, /Above legal cap/)
+  assert.match(offlineWrightstone, /Above natural reference/)
 })
 
 test('the title-record shell has exact English copy instead of mixed substring translation', () => {

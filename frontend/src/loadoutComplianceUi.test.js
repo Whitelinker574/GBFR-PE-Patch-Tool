@@ -9,7 +9,7 @@ test('loadout editor removes the large compliance report from the editing surfac
   assert.doesNotMatch(source, /const complianceReport = ref\(null\)/)
   assert.doesNotMatch(source, /complianceReport\.items|scheduleCompliance|compliance-panel/)
   assert.doesNotMatch(source, /写入检查与提示/)
-  assert.match(source, /天然因子组合与等级只作提醒/)
+  assert.match(source, /天然等级是默认值；最高可填到对应技能效果曲线的目录上限/)
 })
 
 test('the final write repeats the same compliance check before opening confirmation', () => {

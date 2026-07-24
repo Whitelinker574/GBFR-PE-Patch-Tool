@@ -43,6 +43,7 @@ const weaponUncapOptions = [0, 1, 2, 3, 4, 5, 6]
 const weaponMirageOptions = Array.from({ length: 100 }, (_, i) => i)
 const weaponAwakeningOptions = Array.from({ length: 11 }, (_, i) => i)
 const weaponTranscendenceOptions = Array.from({ length: 8 }, (_, i) => i)
+let loadEpoch = 0
 
 function itemIcon(item) { return itemAssetIcon(item) }
 function weaponIcon(weapon) { return weaponAssetIcon(weapon) }
@@ -176,18 +177,22 @@ async function browse() {
 }
 
 async function load(path) {
+  const epoch = ++loadEpoch
   loading.value = true
   savePath.value = path
   try {
-    inventory.value = await ProgressionLoad(path)
+    const loaded = await ProgressionLoad(path)
+    if (epoch !== loadEpoch || path !== savePath.value) return
+    inventory.value = loaded
     resources.value = { rupees: inventory.value.rupees, mastery: inventory.value.mastery, commendations: inventory.value.commendations }
     selectedItem.value = null
     selectedWeapon.value = null
     emit('status', `已加载 ${inventory.value.items.length} 种物品、${inventory.value.weapons.length} 把武器`, 'success')
   } catch (err) {
+    if (epoch !== loadEpoch) return
     inventory.value = null
     emit('status', String(err), 'error')
-  } finally { loading.value = false }
+  } finally { if (epoch === loadEpoch) loading.value = false }
 }
 
 function pickItem(item) {
@@ -231,6 +236,7 @@ function clamp(value, min, max) { return Math.max(min, Math.min(max, Number(valu
 
 async function apply(resourceChanges, itemChanges, weaponChanges, message) {
   if (!savePath.value) return
+  const path = savePath.value
   const confirmed = await confirmDialog.value?.ask({
     title: '写入存档前确认',
     message,
@@ -241,9 +247,9 @@ async function apply(resourceChanges, itemChanges, weaponChanges, message) {
   if (!confirmed) return
   applying.value = true
   try {
-    const result = await ProgressionApply(savePath.value, '', resourceChanges, itemChanges, weaponChanges)
+    const result = await ProgressionApply(path, '', resourceChanges, itemChanges, weaponChanges)
     emit('status', `写入成功，已验证 ${result.verifiedChanges} 项并自动备份`, 'success')
-    await load(savePath.value)
+    if (savePath.value === path) await load(path)
   } catch (err) { emit('status', String(err), 'error') }
   finally { applying.value = false }
 }

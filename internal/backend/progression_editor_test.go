@@ -5,8 +5,39 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
+
+func TestLoadProgressionCatalogConcurrent(t *testing.T) {
+	const workers = 32
+	results := make(chan *ProgressionCatalog, workers)
+	errors := make(chan error, workers)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			catalog, err := loadProgressionCatalog()
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- catalog
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errors)
+	for err := range errors {
+		t.Fatal(err)
+	}
+	for catalog := range results {
+		if catalog == nil || catalog != progressionCatalogCache {
+			t.Fatal("concurrent catalog load did not return the single cached catalog")
+		}
+	}
+}
 
 func weaponUnit(unitID, value uint32) *unitEntry {
 	data := make([]byte, 4)

@@ -56,7 +56,7 @@ def main() -> None:
         for index in range(1, 7):
             lot = row[f"SkillLotId{index}"]
             chance = row[f"ChancePercent{index}"]
-            if lot and chance > 0:
+            if lot and (chance or 0) > 0:
                 pool.update(skill_lots.get(lot, set()))
         type_lots[row["Key"]] = pool
 
@@ -104,6 +104,8 @@ def main() -> None:
         )
 
     if args.fix_catalog:
+        task_item_max_levels = {"49434696": 20, "65F0420A": 15, "B289A9AD": 5}
+        task_primary_levels = {"66CB28BA": 20, "76786869": 15}
         fixed_sigils = []
         for sigil in payload["sigils"]:
             game = gems.get(sigil["internalId"])
@@ -112,16 +114,27 @@ def main() -> None:
             if game["SkillId2"]:
                 mode = "fixed"
                 pool = {game["SkillId2"]}
-            elif game["SkillTypeLotIdForRandom2ndSkill"] >= 0:
+            elif game["SkillTypeLotIdForRandom2ndSkill"] is not None and game["SkillTypeLotIdForRandom2ndSkill"] >= 0:
                 mode = "random"
-                pool = type_lots[game["SkillTypeLotIdForRandom2ndSkill"]]
+                pool = type_lots.get(game["SkillTypeLotIdForRandom2ndSkill"], set())
             else:
                 mode = "none"
                 pool = set()
             sigil["primaryTraitId"] = game["SkillId1"]
             sigil["supportsSecondaryTrait"] = bool(pool)
             sigil["allowedSecondaryTraitIds"] = sorted(pool)
-            if sigil["internalId"] != "GEEN_142_02":
+            if sigil["internalId"] in task_item_max_levels:
+                max_level = task_item_max_levels[sigil["internalId"]]
+                sigil["allowedSigilLevels"] = list(range(1, max_level + 1))
+                sigil["defaultSigilLevel"] = max_level
+                sigil["maxSigilLevel"] = max_level
+                sigil["allowedFirstTraitLevels"] = list(range(1, max_level + 1))
+            elif sigil["internalId"] in task_primary_levels:
+                sigil["allowedSigilLevels"] = [15]
+                sigil["defaultSigilLevel"] = 15
+                sigil["maxSigilLevel"] = 15
+                sigil["allowedFirstTraitLevels"] = [task_primary_levels[sigil["internalId"]]]
+            elif sigil["internalId"] != "GEEN_142_02":
                 sigil["allowedSigilLevels"] = [15]
                 sigil["defaultSigilLevel"] = 15
                 sigil["maxSigilLevel"] = 15
@@ -193,7 +206,8 @@ def main() -> None:
             trait["confidence"] = "high"
         traits_payload["description"] = (
             "GBFR 2.0.2 trait catalog audited against a fresh local data.i extraction. "
-            "maxLevel is the skill_status.tbl effect-curve cap; a single factor record remains limited separately to its natural 1..15 range."
+            "maxLevel is the skill_status.tbl effect-curve cap; natural single-factor levels are default/reference "
+            "metadata, and writes above the effect-curve cap are rejected."
         )
         traits_payload["sources"] = [
             {
@@ -225,7 +239,7 @@ def main() -> None:
             if game["SkillId2"]:
                 game_mode = "fixed"
                 game_pool = {game["SkillId2"]}
-            elif game["SkillTypeLotIdForRandom2ndSkill"] >= 0:
+            elif game["SkillTypeLotIdForRandom2ndSkill"] is not None and game["SkillTypeLotIdForRandom2ndSkill"] >= 0:
                 game_mode = "random"
                 lot_key = game["SkillTypeLotIdForRandom2ndSkill"]
                 if lot_key not in type_lots:

@@ -898,9 +898,9 @@
     },
     {
       "hash": "0x7F8364E5",
-      "displayName": "永暗藏匿者 · 稀有 · 伤害",
-      "baseName": "永暗藏匿者",
-      "code": "4000",
+      "displayName": "黑龙伊弗欧 · 稀有 · 伤害",
+      "baseName": "黑龙伊弗欧",
+      "code": "3f00",
       "cost": 3,
       "typeName": "伤害"
     },
@@ -914,9 +914,9 @@
     },
     {
       "hash": "0x2517C481",
-      "displayName": "永暗藏匿者 · 史诗 · 伤害",
-      "baseName": "永暗藏匿者",
-      "code": "4000",
+      "displayName": "黑龙伊弗欧 · 史诗 · 伤害",
+      "baseName": "黑龙伊弗欧",
+      "code": "3f00",
       "cost": 4,
       "typeName": "伤害"
     },
@@ -930,17 +930,17 @@
     },
     {
       "hash": "0x0033943A",
-      "displayName": "永暗藏匿者 · 传说 · 伤害",
-      "baseName": "永暗藏匿者",
-      "code": "4000",
+      "displayName": "黑龙伊弗欧 · 传说 · 伤害",
+      "baseName": "黑龙伊弗欧",
+      "code": "3f00",
       "cost": 5,
       "typeName": "伤害"
     },
     {
       "hash": "0x8DB272E5",
-      "displayName": "永暗藏匿者 · 传说 · 伤害",
-      "baseName": "永暗藏匿者",
-      "code": "4000",
+      "displayName": "黑龙伊弗欧 · 传说 · 伤害",
+      "baseName": "黑龙伊弗欧",
+      "code": "3f00",
       "cost": 5,
       "typeName": "伤害"
     },

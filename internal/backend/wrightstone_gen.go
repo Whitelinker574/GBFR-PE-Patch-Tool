@@ -359,6 +359,18 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	}
 	item.WrightstoneName = cnWrightstone(wrightstone.DisplayName)
 	reasons := make([]string, 0, 5)
+	for _, level := range []struct {
+		value int
+		label string
+	}{
+		{item.FirstLevel, "第一特性等级"},
+		{item.SecondLevel, "第二特性等级"},
+		{item.ThirdLevel, "第三特性等级"},
+	} {
+		if err := validateStoredLevel(level.value, level.label); err != nil {
+			return item, newLegalityReport(LegalityImpossible, false, err.Error()), nil
+		}
+	}
 
 	firstTrait, err := wg.catalog.RequireTrait(item.FirstTraitID)
 	if err != nil {
@@ -373,8 +385,9 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
-	if max := highestLevel(firstLevels, 20); item.FirstLevel > max {
-		reasons = append(reasons, fmt.Sprintf("第一特性 %s 的等级 %d 超过已验证修改上限 %d", item.FirstTraitName, item.FirstLevel, max))
+	firstWritableMax := effectCurveMax(firstLevels, 20)
+	if item.FirstLevel > firstWritableMax {
+		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.FirstTraitName, item.FirstLevel, firstWritableMax)), nil
 	}
 	if firstTrait.InternalID != wrightstone.DefaultTraitID {
 		reasons = append(reasons, "第一特性与该祝福的固有特性不一致")
@@ -393,8 +406,9 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
-	if max := highestLevel(secondLevels, 15); item.SecondLevel > max {
-		reasons = append(reasons, fmt.Sprintf("第二特性 %s 的等级 %d 超过已验证修改上限 %d", item.SecondTraitName, item.SecondLevel, max))
+	secondWritableMax := effectCurveMax(secondLevels, 15)
+	if item.SecondLevel > secondWritableMax {
+		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第二特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondTraitName, item.SecondLevel, secondWritableMax)), nil
 	}
 
 	thirdTrait, err := wg.catalog.RequireTrait(item.ThirdTraitID)
@@ -410,14 +424,11 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
-	if max := highestLevel(thirdLevels, 10); item.ThirdLevel > max {
-		reasons = append(reasons, fmt.Sprintf("第三特性 %s 的等级 %d 超过已验证修改上限 %d", item.ThirdTraitName, item.ThirdLevel, max))
+	thirdWritableMax := effectCurveMax(thirdLevels, 10)
+	if item.ThirdLevel > thirdWritableMax {
+		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第三特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.ThirdTraitName, item.ThirdLevel, thirdWritableMax)), nil
 	}
 
-	if item.FirstLevel < 0 || item.SecondLevel < 0 || item.ThirdLevel < 0 {
-		report := newLegalityReport(LegalityImpossible, false, "等级不能小于 0")
-		return item, report, nil
-	}
 	if item.FirstTraitID == item.SecondTraitID {
 		reasons = append(reasons, fmt.Sprintf("第一特性「%s」与第二特性「%s」重复冲突", item.FirstTraitName, item.SecondTraitName))
 	}
@@ -544,7 +555,10 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 	if err != nil {
 		return nil, err
 	}
-	firstNewSlotID := maxSlotID + 1
+	firstNewSlotID, newMaxSlotID, err := allocateSequentialSlotIDs(maxSlotID, len(expanded))
+	if err != nil {
+		return nil, fmt.Errorf("无法分配祝福 SlotID: %w", err)
+	}
 
 	for i := range expanded {
 		itemUnitID := emptySlots[i]
@@ -593,7 +607,6 @@ func (wg *WrightstoneGen) applyItemsLocked(items []WrightstoneQueueItem, outputP
 		}
 	}()
 
-	newMaxSlotID := firstNewSlotID + len(expanded) - 1
 	if err := wg.save.SetMaxWrightstoneSlotID(newMaxSlotID); err != nil {
 		return nil, err
 	}

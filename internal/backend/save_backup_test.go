@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,5 +176,82 @@ func TestFindSaveFilesUsesRealSlotNumbers(t *testing.T) {
 	slots := NewApp().FindSaveFiles()
 	if len(slots) != 2 || slots[0].Index != 2 || slots[1].Index != 3 {
 		t.Fatalf("unexpected save slots: %#v", slots)
+	}
+}
+
+func TestSaveSnapshotsKeepOnlyNewestManagedEntries(t *testing.T) {
+	saveDir, root := prepareBackupTestEnv(t)
+	writeTestSave(t, saveDir, 1, "one")
+	app := NewApp()
+	for index := 0; index < saveSnapshotRetention+3; index++ {
+		if _, err := app.CreateSaveSnapshot(fmt.Sprintf("snapshot-%02d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed, err := app.ListSaveSnapshots()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != saveSnapshotRetention {
+		t.Fatalf("retained %d snapshots, want %d", len(listed), saveSnapshotRetention)
+	}
+	unknown := filepath.Join(root, "unmanaged")
+	if err := os.MkdirAll(unknown, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := pruneSaveSnapshotsLocked(root, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(unknown); err != nil {
+		t.Fatalf("unmanaged directory was removed: %v", err)
+	}
+}
+
+func TestRestoreRechecksGameImmediatelyBeforeReplacement(t *testing.T) {
+	saveDir, _ := prepareBackupTestEnv(t)
+	slot1 := writeTestSave(t, saveDir, 1, "snapshot-value")
+	app := NewApp()
+	snapshot, err := app.CreateSaveSnapshot("before")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(slot1, []byte("current-value"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	saveRestoreFindProcessByName = func(string) (uint32, error) {
+		calls++
+		if calls == 1 {
+			return 0, fmt.Errorf("not running")
+		}
+		return 42, nil
+	}
+	_, err = app.RestoreSaveSnapshot(snapshot.ID)
+	if !errors.Is(err, errSaveRestoreGameRunning) {
+		t.Fatalf("expected final game-process rejection, got %v", err)
+	}
+	if got := readTestSave(t, slot1); got != "current-value" {
+		t.Fatalf("restore modified the save after final process check: %q", got)
+	}
+}
+
+func TestPruneTimestampedFileBackupsKeepsNewest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "SaveData1.dat")
+	for index := 0; index < 13; index++ {
+		name := fmt.Sprintf("%s.pre-edit-20260723-1200%02d.000.bak", path, index)
+		if err := os.WriteFile(name, []byte{byte(index)}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pruneTimestampedFileBackups(path, 10); err != nil {
+		t.Fatal(err)
+	}
+	matches, err := filepath.Glob(path + ".pre-edit-*.bak")
+	if err != nil || len(matches) != 10 {
+		t.Fatalf("retained backups = %d, err=%v", len(matches), err)
+	}
+	if filepath.Base(matches[0]) != "SaveData1.dat.pre-edit-20260723-120003.000.bak" {
+		t.Fatalf("oldest retained backup is %q", filepath.Base(matches[0]))
 	}
 }

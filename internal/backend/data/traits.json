@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "GBFR 2.0.2 trait catalog audited against a fresh local data.i extraction. maxLevel is the skill_status.tbl effect-curve cap; a single factor record remains limited separately to its natural 1..15 range.",
+  "description": "GBFR 2.0.2 trait catalog audited against a fresh local data.i extraction. maxLevel is the skill_status.tbl effect-curve cap; natural single-factor levels are default/reference metadata, and writes above the effect-curve cap are rejected.",
   "sources": [
     {
       "name": "Fresh local GBFR 2.0.2 skill and factor tables",
@@ -3014,6 +3014,51 @@
       "bannedAsSecondaryOnPlusSigils": false,
       "notes": "Fresh local 2.0.2 skill_status.tbl verifies the effect curve through level 15; gem.tbl and the joined lot tables verify factor-slot reachability.",
       "source": "fresh local 2.0.2 skill_status.tbl; local 2.0.2 gem.tbl; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
+      "confidence": "high"
+    },
+    {
+      "internalId": "BF78FBFC",
+      "hash": "0xBF78FBFC",
+      "displayName": "可怕的漆黑钳蟹因子",
+      "category": "special_trait",
+      "maxLevel": 20,
+      "allowedLevels": null,
+      "observedLevels": [20],
+      "canAppearAsPrimary": true,
+      "canAppearAsSecondary": false,
+      "bannedAsSecondaryOnPlusSigils": false,
+      "notes": "Fresh local 2.0.2 skill_status.tbl verifies levels 1 through 20; gem.tbl verifies base and fixed-secondary plus items.",
+      "source": "fresh local 2.0.2 skill_status.tbl; local 2.0.2 gem.tbl; read-only local save observation",
+      "confidence": "high"
+    },
+    {
+      "internalId": "46EE3116",
+      "hash": "0x46EE3116",
+      "displayName": "漆黑之谊",
+      "category": "special_trait",
+      "maxLevel": 15,
+      "allowedLevels": null,
+      "observedLevels": [15],
+      "canAppearAsPrimary": true,
+      "canAppearAsSecondary": false,
+      "bannedAsSecondaryOnPlusSigils": false,
+      "notes": "Fresh local 2.0.2 skill_status.tbl verifies levels 1 through 15; gem.tbl verifies base and fixed-secondary plus items.",
+      "source": "fresh local 2.0.2 skill_status.tbl; local 2.0.2 gem.tbl; read-only local save observation",
+      "confidence": "high"
+    },
+    {
+      "internalId": "89C66ACB",
+      "hash": "0x89C66ACB",
+      "displayName": "相扑斗力",
+      "category": "special_trait",
+      "maxLevel": 5,
+      "allowedLevels": null,
+      "observedLevels": [1, 5],
+      "canAppearAsPrimary": true,
+      "canAppearAsSecondary": false,
+      "bannedAsSecondaryOnPlusSigils": false,
+      "notes": "Fresh local 2.0.2 skill_status.tbl verifies levels 1 through 5; gem.tbl verifies the unique task item.",
+      "source": "fresh local 2.0.2 skill_status.tbl; local 2.0.2 gem.tbl; read-only local save observation",
       "confidence": "high"
     }
   ],

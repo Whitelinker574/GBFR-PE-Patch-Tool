@@ -78,30 +78,59 @@ func TestValidateWrightstoneMemoryUpdateRequiresFirstAndCouplesEmptyLevels(t *te
 	}
 }
 
-func TestValidateWrightstoneMemoryUpdateEnforcesPerSlotCaps(t *testing.T) {
+func TestValidateWrightstoneMemoryUpdateUsesSkillCurveCaps(t *testing.T) {
 	catalog, update := validWrightstoneMemoryUpdate(t)
-	for label, mutate := range map[string]func(*WrightstoneMemoryUpdate){
-		"first":  func(u *WrightstoneMemoryUpdate) { u.FirstLevel = 21 },
-		"second": func(u *WrightstoneMemoryUpdate) { u.SecondLevel = 16 },
-		"third":  func(u *WrightstoneMemoryUpdate) { u.ThirdLevel = 11 },
-	} {
-		candidate := update
-		mutate(&candidate)
-		if err := validateWrightstoneMemoryUpdate(catalog, candidate); err == nil {
-			t.Fatalf("%s slot above natural cap must be rejected", label)
-		}
+	trait, err := catalog.RequireTrait("SKILL_000_00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	levels, err := requireWrightstoneTraitLevels(trait)
+	if err != nil {
+		t.Fatal(err)
+	}
+	curveMax := effectCurveMax(levels, 20)
+	if curveMax <= 20 {
+		t.Skip("selected trait has no curve levels above the natural first-slot reference")
+	}
+	update.FirstLevel = 21
+	if err := validateWrightstoneMemoryUpdate(catalog, update); err != nil {
+		t.Fatalf("within-curve level above natural slot reference must be accepted: %v", err)
+	}
+	update.FirstLevel = uint32(curveMax + 1)
+	if err := validateWrightstoneMemoryUpdate(catalog, update); err == nil {
+		t.Fatal("level above the skill effect curve must be rejected")
 	}
 }
 
-func TestWrightstoneMemoryWriteDefaultsToAdvisoryRulesButKeepsFirstSlot(t *testing.T) {
+func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsHardCap(t *testing.T) {
+	catalog, err := LoadWrightstoneCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := wrightstoneMemoryTraitHash(t, catalog, "SKILL_142_00")
+	if err := validateWrightstoneMemorySlot(catalog, hash, 6, 1, 20, true); err != nil {
+		t.Fatalf("effect-curve level 6 should be accepted: %v", err)
+	}
+	if err := validateWrightstoneMemorySlot(catalog, hash, 7, 1, 20, true); err == nil {
+		t.Fatal("natural first-slot reference must not raise a six-level effect curve to 20")
+	}
+}
+
+func TestWrightstoneMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testing.T) {
 	catalog, update := validWrightstoneMemoryUpdate(t)
-	update.FirstLevel = ^uint32(0)
 	update.SecondHash = update.FirstHash
-	update.SecondLevel = ^uint32(0)
-	update.ThirdHash = 0xDEADBEEF
-	update.ThirdLevel = ^uint32(0)
+	update.SecondLevel = update.FirstLevel
 	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
-		t.Fatalf("write request was blocked by advisory rules: %v", err)
+		t.Fatalf("duplicate but curve-valid traits should remain force-writable: %v", err)
+	}
+	trait := catalog.LookupTraitByHash(update.FirstHash)
+	levels, err := requireWrightstoneTraitLevels(trait)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update.FirstLevel = uint32(effectCurveMax(levels, 20) + 1)
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("write must reject a level above the trait effect curve")
 	}
 	update.FirstHash = EmptyHash
 	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {

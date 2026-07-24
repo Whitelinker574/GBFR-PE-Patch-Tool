@@ -2,6 +2,7 @@ package backend
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 )
 
@@ -39,4 +40,57 @@ func TestParseFloatUnitsDecodesIEEE754Value(t *testing.T) {
 	if got := units[0].ValueData[0]; got != 8 {
 		t.Fatalf("0x41000000 decoded as %g, want IEEE754 value 8", got)
 	}
+}
+
+func TestReadVectorAtRejectsTruncatedAndHugeVectors(t *testing.T) {
+	data := make([]byte, 20)
+	binary.LittleEndian.PutUint32(data[4:8], 4)
+	binary.LittleEndian.PutUint32(data[8:12], 3)
+	r := &fbReader{data: data}
+	if count, start := r.readVectorAt(0, 4, 4); count != 0 || start != 0 {
+		t.Fatalf("truncated vector accepted: count=%d start=%d", count, start)
+	}
+
+	binary.LittleEndian.PutUint32(data[8:12], math.MaxUint32)
+	if count, start := r.readVectorAt(0, 4, 1); count != 0 || start != 0 {
+		t.Fatalf("huge vector accepted: count=%d start=%d", count, start)
+	}
+}
+
+func TestParseSaveDataRejectsOverflowingHeaderSpan(t *testing.T) {
+	data := make([]byte, 52)
+	binary.LittleEndian.PutUint64(data[20:28], uint64(math.MaxInt64-0x1000))
+	binary.LittleEndian.PutUint64(data[36:44], 0x2000)
+	if _, err := ParseSaveData(data); err == nil {
+		t.Fatal("overflowing binary1 span was accepted")
+	}
+}
+
+func TestLoadSaveRejectsOverflowingSlotSpan(t *testing.T) {
+	data := make([]byte, 52)
+	binary.LittleEndian.PutUint64(data[0x1C:0x24], uint64(math.MaxInt64-0x1000))
+	binary.LittleEndian.PutUint64(data[0x2C:0x34], 0x2000)
+	path := writeTestSave(t, t.TempDir(), 1, string(data))
+	if _, err := LoadSave(path); err == nil {
+		t.Fatal("overflowing slot span was accepted")
+	}
+}
+
+func FuzzParseSaveDataNeverPanics(f *testing.F) {
+	f.Add([]byte{})
+	overflow := make([]byte, 52)
+	binary.LittleEndian.PutUint64(overflow[20:28], uint64(math.MaxInt64-0x1000))
+	binary.LittleEndian.PutUint64(overflow[36:44], 0x2000)
+	f.Add(overflow)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = ParseSaveData(data)
+	})
+}
+
+func FuzzParseSaveDataBinaryNeverPanics(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{4, 0, 0, 0, 4, 0, 4, 0})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = parseSaveDataBinary(data)
+	})
 }

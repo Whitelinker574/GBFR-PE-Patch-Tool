@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -296,6 +297,8 @@ func progressionWeaponName(def ProgressionWeaponDef) string {
 }
 
 var (
+	progressionCatalogOnce  sync.Once
+	progressionCatalogErr   error
 	progressionCatalogCache *ProgressionCatalog
 	progressionItemByHash   map[uint32]ProgressionItemDef
 	progressionWeaponByHash map[uint32]ProgressionWeaponDef
@@ -354,9 +357,13 @@ func progressionWeaponVisibleInInventory(hash uint32) bool {
 }
 
 func loadProgressionCatalog() (*ProgressionCatalog, error) {
-	if progressionCatalogCache != nil {
-		return progressionCatalogCache, nil
-	}
+	progressionCatalogOnce.Do(func() {
+		progressionCatalogCache, progressionItemByHash, progressionWeaponByHash, progressionCatalogErr = buildProgressionCatalog()
+	})
+	return progressionCatalogCache, progressionCatalogErr
+}
+
+func buildProgressionCatalog() (*ProgressionCatalog, map[uint32]ProgressionItemDef, map[uint32]ProgressionWeaponDef, error) {
 	var items struct {
 		Version string               `json:"version"`
 		Items   []ProgressionItemDef `json:"items"`
@@ -366,38 +373,38 @@ func loadProgressionCatalog() (*ProgressionCatalog, error) {
 		Weapons []ProgressionWeaponDef `json:"weapons"`
 	}
 	if err := json.Unmarshal(progressionItemsJSON, &items); err != nil {
-		return nil, fmt.Errorf("解析物品目录失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("解析物品目录失败: %w", err)
 	}
 	if err := json.Unmarshal(progressionWeaponsJSON, &weapons); err != nil {
-		return nil, fmt.Errorf("解析武器目录失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("解析武器目录失败: %w", err)
 	}
 	if items.Version != "2.0.2" || weapons.Version != "2.0.2" {
-		return nil, fmt.Errorf("养成目录版本不一致")
+		return nil, nil, nil, fmt.Errorf("养成目录版本不一致")
 	}
 
-	progressionItemByHash = make(map[uint32]ProgressionItemDef, len(items.Items))
+	itemByHash := make(map[uint32]ProgressionItemDef, len(items.Items))
 	for _, item := range items.Items {
 		hash, err := ParseHashHex(item.Hash)
 		if err != nil {
-			return nil, fmt.Errorf("物品 %q 哈希无效: %w", item.NameCN, err)
+			return nil, nil, nil, fmt.Errorf("物品 %q 哈希无效: %w", item.NameCN, err)
 		}
-		if _, exists := progressionItemByHash[hash]; exists {
-			return nil, fmt.Errorf("物品目录存在重复哈希: %s", item.Hash)
+		if _, exists := itemByHash[hash]; exists {
+			return nil, nil, nil, fmt.Errorf("物品目录存在重复哈希: %s", item.Hash)
 		}
-		progressionItemByHash[hash] = item
+		itemByHash[hash] = item
 	}
-	progressionWeaponByHash = make(map[uint32]ProgressionWeaponDef, len(weapons.Weapons))
+	weaponByHash := make(map[uint32]ProgressionWeaponDef, len(weapons.Weapons))
 	for i, weapon := range weapons.Weapons {
 		hash, err := ParseHashHex(weapon.Hash)
 		if err != nil {
-			return nil, fmt.Errorf("武器 %q 哈希无效: %w", weapon.Name, err)
+			return nil, nil, nil, fmt.Errorf("武器 %q 哈希无效: %w", weapon.Name, err)
 		}
-		if _, exists := progressionWeaponByHash[hash]; exists {
-			return nil, fmt.Errorf("武器目录存在重复哈希: %s", weapon.Hash)
+		if _, exists := weaponByHash[hash]; exists {
+			return nil, nil, nil, fmt.Errorf("武器目录存在重复哈希: %s", weapon.Hash)
 		}
 		weapon = decorateProgressionWeaponDef(weapon, hash)
 		weapons.Weapons[i] = weapon
-		progressionWeaponByHash[hash] = weapon
+		weaponByHash[hash] = weapon
 	}
 	// The special awakening rows use three canonical hashes that are absent
 	// from weapons.json, while the same named/owned weapon is catalogued under
@@ -408,12 +415,12 @@ func loadProgressionCatalog() (*ProgressionCatalog, error) {
 		0xFA5F32D5: 0x73D34F1B,
 		0x4CBA06D8: 0xDA807CA2,
 	} {
-		source, ok := progressionWeaponByHash[sourceHash]
+		source, ok := weaponByHash[sourceHash]
 		if !ok {
-			return nil, fmt.Errorf("特殊觉醒武器来源 %08X 未收录", sourceHash)
+			return nil, nil, nil, fmt.Errorf("特殊觉醒武器来源 %08X 未收录", sourceHash)
 		}
 		source.Hash = fmt.Sprintf("%08X", specialHash)
-		progressionWeaponByHash[specialHash] = decorateProgressionWeaponDef(source, specialHash)
+		weaponByHash[specialHash] = decorateProgressionWeaponDef(source, specialHash)
 	}
 	// 2.0.2 keeps compatibility copies for a few base weapons. They are valid
 	// inventory records but must not be offered as separately addable weapons.
@@ -422,12 +429,12 @@ func loadProgressionCatalog() (*ProgressionCatalog, error) {
 	} {
 		hash, _ := ParseHashHex(alias.Hash)
 		alias = decorateProgressionWeaponDef(alias, hash)
-		progressionWeaponByHash[hash] = alias
+		weaponByHash[hash] = alias
 		weapons.Weapons = append(weapons.Weapons, alias)
 	}
 
-	progressionCatalogCache = &ProgressionCatalog{Version: "2.0.2", Items: items.Items, Weapons: weapons.Weapons}
-	return progressionCatalogCache, nil
+	catalog := &ProgressionCatalog{Version: "2.0.2", Items: items.Items, Weapons: weapons.Weapons}
+	return catalog, itemByHash, weaponByHash, nil
 }
 
 func (a *App) ProgressionGetCatalog() (*ProgressionCatalog, error) {

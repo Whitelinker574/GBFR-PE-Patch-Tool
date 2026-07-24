@@ -15,6 +15,7 @@ const search = ref('')
 const selected = ref(new Set())
 const batchCount = ref(0)
 const activeMode = ref('quests')
+let loadEpoch = 0
 
 const visibleQuests = computed(() => {
   const needle = search.value.trim().toLowerCase()
@@ -32,17 +33,20 @@ function saveSlotLabel(slot) {
 }
 
 async function load(path) {
+  const epoch = ++loadEpoch
   loading.value = true
   savePath.value = path
   selected.value = new Set()
   try {
     const [summary, rows] = await Promise.all([LoadSave(path), GetQuests(path)])
+    if (epoch !== loadEpoch || path !== savePath.value) return
     quests.value = (rows || []).map(q => ({ ...q, clears: Number(q.clears) }))
     total.value = summary?.questTotalClears || 0
   } catch (err) {
+    if (epoch !== loadEpoch) return
     quests.value = []
     emit('status', String(err), 'error')
-  } finally { loading.value = false }
+  } finally { if (epoch === loadEpoch) loading.value = false }
 }
 
 function toggle(index) {
@@ -65,6 +69,7 @@ function applyBatch() {
 
 async function saveSelected() {
   if (!savePath.value || !selected.value.size) return
+  const path = savePath.value
   const changes = quests.value.filter(q => selected.value.has(q.index)).map(q => ({
     index: q.index,
     questId: q.questId,
@@ -73,9 +78,9 @@ async function saveSelected() {
   }))
   saving.value = true
   try {
-    const result = await UpdateQuestCounts(savePath.value, changes)
+    const result = await UpdateQuestCounts(path, changes)
     emit('status', `已修改并验证 ${result.verified} 个任务，已自动备份`, 'success')
-    await load(savePath.value)
+    if (savePath.value === path) await load(path)
   } catch (err) {
     emit('status', String(err), 'error')
   } finally { saving.value = false }

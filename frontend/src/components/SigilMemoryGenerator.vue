@@ -265,48 +265,64 @@ async function write() { await performWrite() }
 async function oneClickMax() {
   if (loading.value || applying.value) return
   if (!status.hooked || !status.selectedAddr) { show('请先启用读取，并在游戏内选中一个因子', 'error'); return }
-  if (sigilMax.value != null) form.sigilLevel = sigilMax.value
-  if (primaryMax.value != null) form.primaryTraitLevel = primaryMax.value
-  if (secondaryMax.value != null) form.secondaryTraitLevel = secondaryMax.value
+  if (sigilWritableMax.value != null) form.sigilLevel = sigilWritableMax.value
+  if (primaryWritableMax.value != null) form.primaryTraitLevel = primaryWritableMax.value
+  if (secondaryWritableMax.value != null) form.secondaryTraitLevel = secondaryWritableMax.value
 }
 
 function onPickSigil(opt) {
-  if (opt && opt.maxLevel != null) form.sigilLevel = opt.maxLevel
+  if (opt) form.sigilLevel = naturalSigilLevel(opt)
   else if (!opt) form.sigilLevel = 0
   if (opt?.primaryTraitHash) {
     form.primaryTraitHash = Number(opt.primaryTraitHash) >>> 0
     const verifiedLevels = Array.isArray(opt.allowedPrimaryTraitLevels) ? opt.allowedPrimaryTraitLevels : []
-    const nextLevel = verifiedLevels.length ? Math.max(...verifiedLevels) : Number(opt.firstTraitMaxLevel || 0)
+    const primaryOption = traitByHash.value.get(form.primaryTraitHash)
+    const nextLevel = verifiedLevels.length
+      ? Math.max(...verifiedLevels)
+      : Math.min(15, curveMax(primaryOption))
     if (nextLevel > 0) form.primaryTraitLevel = nextLevel
   }
 }
-function preferredOptionLevel(opt) {
+function naturalSigilLevel(opt) {
   const levels = Array.isArray(opt?.allowedLevels) ? opt.allowedLevels.filter(Number.isInteger) : []
   if (levels.length) return Math.max(...levels)
-  return Number(opt?.maxLevel || 15)
+  return 15
 }
+function naturalTraitLevel(opt) { return Math.min(15, curveMax(opt)) }
 function onPickPrimary(opt) {
-  if (opt) form.primaryTraitLevel = preferredOptionLevel(opt)
+  if (opt) form.primaryTraitLevel = naturalTraitLevel(opt)
   else if (!opt) form.primaryTraitLevel = 0
 }
 function onPickSecondary(opt) {
-  if (opt) form.secondaryTraitLevel = preferredOptionLevel(opt)
+  if (opt) form.secondaryTraitLevel = naturalTraitLevel(opt)
   else if (!opt) form.secondaryTraitLevel = 0
 }
 
-const sigilMax = computed(() => sigilByHash.value.get(form.sigilHash)?.maxLevel ?? null)
+const sigilMax = computed(() => {
+  const option = sigilByHash.value.get(form.sigilHash >>> 0)
+  const levels = Array.isArray(option?.allowedLevels) ? option.allowedLevels.filter(Number.isInteger) : []
+  return option ? (levels.length ? Math.max(...levels) : 15) : null
+})
 // Primary/secondary max come from the same unified catalog used by save construction.
 const primaryMax = computed(() => {
   if (!form.primaryTraitHash) return null
   const sigil = sigilByHash.value.get(form.sigilHash)
   const verifiedLevels = Array.isArray(sigil?.allowedPrimaryTraitLevels) ? sigil.allowedPrimaryTraitLevels : []
   if (verifiedLevels.length) return Math.max(...verifiedLevels)
-  return sigil?.firstTraitMaxLevel ?? traitByHash.value.get(form.primaryTraitHash)?.maxLevel ?? null
+  return Math.min(15, primaryWritableMax.value)
 })
-const secondaryMax = computed(() => form.secondaryTraitHash ? 15 : null)
-const sigilWritableMax = computed(() => 0xFFFFFFFF)
-const primaryWritableMax = computed(() => 0xFFFFFFFF)
-const secondaryWritableMax = computed(() => 0xFFFFFFFF)
+const secondaryMax = computed(() => {
+  if (!form.secondaryTraitHash) return null
+  return Math.min(15, secondaryWritableMax.value)
+})
+const sigilWritableMax = computed(() => 50)
+function curveMax(option, fallback = 15) {
+  const levels = Array.isArray(option?.allowedLevels) ? option.allowedLevels.filter(Number.isInteger) : []
+  const maximum = Math.max(Number(option?.maxLevel || 0), levels.length ? Math.max(...levels) : 0)
+  return maximum > 0 ? maximum : fallback
+}
+const primaryWritableMax = computed(() => curveMax(traitByHash.value.get(form.primaryTraitHash >>> 0)))
+const secondaryWritableMax = computed(() => form.secondaryTraitHash ? curveMax(traitByHash.value.get(form.secondaryTraitHash >>> 0)) : null)
 
 function clampLevel(value, max) {
   if (max == null) return 0
@@ -314,18 +330,18 @@ function clampLevel(value, max) {
   return Math.min(max, Math.max(0, Math.trunc(numeric)))
 }
 
-const sigilAtMax = computed(() => sigilMax.value != null && form.sigilLevel === sigilMax.value)
-const primaryAtMax = computed(() => primaryMax.value != null && form.primaryTraitLevel === primaryMax.value)
-const secondaryAtMax = computed(() => secondaryMax.value != null && form.secondaryTraitLevel === secondaryMax.value)
+const sigilAtMax = computed(() => form.sigilLevel === sigilWritableMax.value)
+const primaryAtMax = computed(() => primaryWritableMax.value != null && form.primaryTraitLevel === primaryWritableMax.value)
+const secondaryAtMax = computed(() => secondaryWritableMax.value != null && form.secondaryTraitLevel === secondaryWritableMax.value)
 
-function maxSigil() { if (sigilMax.value != null) form.sigilLevel = sigilMax.value }
-function maxPrimary() { if (primaryMax.value != null) form.primaryTraitLevel = primaryMax.value }
-function maxSecondary() { if (secondaryMax.value != null) form.secondaryTraitLevel = secondaryMax.value }
+function maxSigil() { form.sigilLevel = sigilWritableMax.value }
+function maxPrimary() { if (primaryWritableMax.value != null) form.primaryTraitLevel = primaryWritableMax.value }
+function maxSecondary() { if (secondaryWritableMax.value != null) form.secondaryTraitLevel = secondaryWritableMax.value }
 
 const canOneClickMax = computed(() => !!status.selectedAddr && (
-  (sigilMax.value != null && !sigilAtMax.value) ||
-  (primaryMax.value != null && !primaryAtMax.value) ||
-  (secondaryMax.value != null && !!form.secondaryTraitHash && !secondaryAtMax.value)
+  !sigilAtMax.value ||
+  (primaryWritableMax.value != null && !primaryAtMax.value) ||
+  (secondaryWritableMax.value != null && !!form.secondaryTraitHash && !secondaryAtMax.value)
 ))
 
 const warnings = computed(() => {
@@ -557,7 +573,7 @@ onMounted(async () => {
               <input v-model.number="form.sigilLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="sigilWritableMax" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, sigilWritableMax)" />
               <small v-if="sigilMax != null" class="ui-hint">合规 {{ sigilMax }} / 可写 {{ sigilWritableMax }}</small>
             </label>
-            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || sigilMax == null || sigilAtMax" @click="maxSigil" :title="sigilMax != null ? `设为上限 ${sigilMax}` : '无等级元数据'">设为上限</button>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || sigilAtMax" @click="maxSigil" :title="`设为上限 ${sigilWritableMax}`">设为上限</button>
           </div>
         </div>
 
@@ -578,7 +594,7 @@ onMounted(async () => {
               <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
               <small v-if="primaryMax != null" class="ui-hint">合规 {{ primaryMax }} / 可写 {{ primaryWritableMax }}</small>
             </label>
-            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || primaryMax == null || primaryAtMax" @click="maxPrimary" :title="primaryMax != null ? `设为上限 ${primaryMax}` : '无等级元数据'">设为上限</button>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || primaryWritableMax == null || primaryAtMax" @click="maxPrimary" :title="`设为上限 ${primaryWritableMax}`">设为上限</button>
           </div>
         </div>
 
@@ -600,7 +616,7 @@ onMounted(async () => {
               <span v-else class="empty-level">未选择</span>
               <small v-if="secondaryMax != null" class="ui-hint">合规 {{ secondaryMax }} / 可写 {{ secondaryWritableMax }}</small>
             </label>
-            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || secondaryMax == null || secondaryAtMax" @click="maxSecondary" :title="secondaryMax != null ? `设为上限 ${secondaryMax}` : '请先选择副词条'">设为上限</button>
+            <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || secondaryWritableMax == null || secondaryAtMax" @click="maxSecondary" :title="secondaryWritableMax != null ? `设为上限 ${secondaryWritableMax}` : '请先选择副词条'">设为上限</button>
           </div>
         </div>
       </div>

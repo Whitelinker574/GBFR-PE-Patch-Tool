@@ -61,10 +61,10 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 			t.Errorf("%s SHA-256 = %s; want %s", name, got, want)
 		}
 	}
-	if len(evidence.Summary) != 1 || evidence.Summary["verified"] != 184 || len(evidence.Rows) != 184 {
+	if len(evidence.Summary) != 1 || evidence.Summary["verified"] != 189 || len(evidence.Rows) != 189 {
 		t.Fatalf("sigil table audit is not closed: summary=%v rows=%d", evidence.Summary, len(evidence.Rows))
 	}
-	if evidence.TraitSummary.Verified != 184 || evidence.TraitSummary.Mismatch != 0 || len(evidence.TraitRows) != 184 {
+	if evidence.TraitSummary.Verified != 187 || evidence.TraitSummary.Mismatch != 0 || len(evidence.TraitRows) != 187 {
 		t.Fatalf("trait table audit is not closed: summary=%+v rows=%d", evidence.TraitSummary, len(evidence.TraitRows))
 	}
 
@@ -83,8 +83,8 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 			supplemental++
 		}
 	}
-	if tableBacked != len(evidence.Rows) || supplemental != 35 || len(catalog.Sigils) != tableBacked+supplemental {
-		t.Fatalf("catalog rows=%d, table-backed=%d, DLC 2.0.2 runtime catalog supplemental=%d; want 219/184/35", len(catalog.Sigils), tableBacked, supplemental)
+	if tableBacked != len(evidence.Rows) || supplemental != 32 || len(catalog.Sigils) != tableBacked+supplemental {
+		t.Fatalf("catalog rows=%d, table-backed=%d, DLC 2.0.2 runtime catalog supplemental=%d; want 221/189/32", len(catalog.Sigils), tableBacked, supplemental)
 	}
 	for _, row := range evidence.Rows {
 		if row.Status != "verified" {

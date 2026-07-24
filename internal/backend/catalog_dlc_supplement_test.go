@@ -149,7 +149,7 @@ func TestDLCSupplementSupplementalFactorNamesStayLanguageIsolated(t *testing.T) 
 			t.Errorf("English supplemental factor contains Chinese text: %s=%q", item.InternalID, item.DisplayName)
 		}
 	}
-	if found != 35 {
-		t.Fatalf("English supplemental factor count=%d; want 35", found)
+	if found != 32 {
+		t.Fatalf("English supplemental factor count=%d; want 32 unique DLC 2.0.2 runtime catalog rows", found)
 	}
 }

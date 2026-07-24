@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +16,12 @@ import (
 	"time"
 )
 
-const saveSnapshotMetadata = "snapshot.json"
+const (
+	saveSnapshotMetadata  = "snapshot.json"
+	saveSnapshotRetention = 10
+)
+
+var errSaveRestoreGameRunning = errors.New("恢复存档前请先完全退出游戏")
 
 var saveSnapshotMu sync.Mutex
 
@@ -204,7 +210,53 @@ func createSaveSnapshotLocked(saveDir, reason string, allowEmpty bool) (SaveSnap
 		return SaveSnapshot{}, fmt.Errorf("提交备份失败: %w", err)
 	}
 	committed = true
+	if err := pruneSaveSnapshotsLocked(root, saveSnapshotRetention); err != nil {
+		return SaveSnapshot{}, fmt.Errorf("备份已创建，但清理旧备份失败: %w", err)
+	}
 	return snapshot, nil
+}
+
+func pruneSaveSnapshotsLocked(root string, keep int) error {
+	if keep < 1 {
+		return fmt.Errorf("备份保留数量必须至少为 1")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	type managedSnapshot struct {
+		id        string
+		createdAt string
+	}
+	managed := make([]managedSnapshot, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		snapshot, _, loadErr := loadSaveSnapshot(entry.Name())
+		if loadErr == nil {
+			managed = append(managed, managedSnapshot{id: entry.Name(), createdAt: snapshot.CreatedAt})
+		}
+	}
+	sort.Slice(managed, func(i, j int) bool {
+		if managed[i].createdAt == managed[j].createdAt {
+			return managed[i].id > managed[j].id
+		}
+		return managed[i].createdAt > managed[j].createdAt
+	})
+	if len(managed) <= keep {
+		return nil
+	}
+	for _, snapshot := range managed[keep:] {
+		target := filepath.Join(root, snapshot.id)
+		if filepath.Dir(target) != filepath.Clean(root) {
+			return fmt.Errorf("拒绝清理备份根目录之外的路径")
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadSaveSnapshot(id string) (SaveSnapshot, string, error) {
@@ -264,7 +316,7 @@ func hashFile(path string) (int64, string, error) {
 	return size, strings.ToUpper(hex.EncodeToString(hash.Sum(nil))), nil
 }
 
-func restoreSnapshotFilesLocked(snapshot SaveSnapshot, snapshotDir string) error {
+func restoreSnapshotFilesLocked(snapshot SaveSnapshot, snapshotDir string, beforeReplace ...func() error) error {
 	if err := os.MkdirAll(snapshot.SaveDir, 0o755); err != nil {
 		return fmt.Errorf("创建存档目录失败: %w", err)
 	}
@@ -299,6 +351,13 @@ func restoreSnapshotFilesLocked(snapshot SaveSnapshot, snapshotDir string) error
 			return fmt.Errorf("暂存%s失败", slot.FileName)
 		}
 		staged = append(staged, stagedFile{tmp: tmp.Name(), dest: filepath.Join(snapshot.SaveDir, slot.FileName)})
+	}
+	for _, check := range beforeReplace {
+		if check != nil {
+			if err := check(); err != nil {
+				return err
+			}
+		}
 	}
 	for _, file := range staged {
 		if err := replaceFileAtomic(file.tmp, file.dest); err != nil {
@@ -350,7 +409,7 @@ var saveRestoreFindProcessByName = findProcessByName
 
 func (a *App) RestoreSaveSnapshot(id string) (SaveRestoreResult, error) {
 	if _, err := saveRestoreFindProcessByName(charaProcessName); err == nil {
-		return SaveRestoreResult{}, fmt.Errorf("恢复存档前请先完全退出游戏")
+		return SaveRestoreResult{}, errSaveRestoreGameRunning
 	}
 	offlineSaveMutationMu.Lock()
 	defer offlineSaveMutationMu.Unlock()
@@ -367,8 +426,14 @@ func (a *App) RestoreSaveSnapshot(id string) (SaveRestoreResult, error) {
 	if err != nil {
 		return SaveRestoreResult{}, fmt.Errorf("恢复前安全备份失败: %w", err)
 	}
-	if err := restoreSnapshotFilesLocked(snapshot, snapshotDir); err != nil {
-		if safety.ID != "" {
+	recheckGame := func() error {
+		if _, findErr := saveRestoreFindProcessByName(charaProcessName); findErr == nil {
+			return errSaveRestoreGameRunning
+		}
+		return nil
+	}
+	if err := restoreSnapshotFilesLocked(snapshot, snapshotDir, recheckGame); err != nil {
+		if safety.ID != "" && !errors.Is(err, errSaveRestoreGameRunning) {
 			if rollback, rollbackDir, loadErr := loadSaveSnapshot(safety.ID); loadErr == nil {
 				_ = restoreSnapshotFilesLocked(rollback, rollbackDir)
 			}

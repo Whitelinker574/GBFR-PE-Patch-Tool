@@ -48,12 +48,13 @@ func sigilMemoryLevelAllowed(level uint32, allowed []int) bool {
 	if level == 0 {
 		return false
 	}
+	max := 0
 	for _, candidate := range allowed {
-		if candidate > 0 && uint32(candidate) == level {
-			return true
+		if candidate > max {
+			max = candidate
 		}
 	}
-	return false
+	return max > 0 && level <= uint32(max)
 }
 
 func validateSigilMemoryTraitLevel(catalog *Catalog, hash, level uint32, label string) error {
@@ -86,12 +87,8 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 		return fmt.Errorf("未知因子哈希 0x%08X；四个编辑入口只接受统一目录", update.SigilHash)
 	}
 
-	levels, err := catalog.RequireSigilLevels(sigil)
-	if err != nil {
-		return err
-	}
-	if !sigilMemoryLevelAllowed(update.SigilLevel, levels) {
-		return fmt.Errorf("因子等级 %d 不在已验证范围内", update.SigilLevel)
+	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
+		return fmt.Errorf("因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
 	}
 
 	primary, err := catalog.RequireTrait(sigil.PrimaryTraitID)
@@ -110,7 +107,7 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 		return err
 	}
 	if !sigilMemoryLevelAllowed(update.PrimaryTraitLevel, primaryLevels) {
-		return fmt.Errorf("主词条等级 %d 不在已验证范围内", update.PrimaryTraitLevel)
+		return fmt.Errorf("主词条等级 %d 超过技能效果曲线上限", update.PrimaryTraitLevel)
 	}
 	return validateSigilMemorySecondary(catalog, sigil, update)
 }
@@ -119,12 +116,33 @@ func validateSigilMemoryWriteRequest(catalog *Catalog, update SigilMemoryUpdate)
 	if update.SigilHash == 0 || update.PrimaryTraitHash == 0 {
 		return fmt.Errorf("因子和主词条 Hash 必须是可编码的非零值")
 	}
-	_ = catalog // catalog validation is advisory; the encoded hashes are authoritative for the write.
+	if catalog == nil || catalog.LookupSigilByHash(update.SigilHash) == nil {
+		return fmt.Errorf("未知因子哈希 0x%08X；运行时写入只接受统一目录", update.SigilHash)
+	}
+	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
+		return fmt.Errorf("因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
+	}
+	if err := validateSigilMemoryTraitLevel(catalog, update.PrimaryTraitHash, update.PrimaryTraitLevel, "主词条"); err != nil {
+		return err
+	}
+	if isEmptySigilMemoryTrait(update.SecondaryTraitHash) {
+		if update.SecondaryTraitLevel != 0 {
+			return fmt.Errorf("副词条为空时等级必须为 0")
+		}
+		return nil
+	}
+	if err := validateSigilMemoryTraitLevel(catalog, update.SecondaryTraitHash, update.SecondaryTraitLevel, "副词条"); err != nil {
+		return err
+	}
 	return nil
 }
 
+func isEmptySigilMemoryTrait(hash uint32) bool {
+	return hash == 0 || hash == EmptyHash
+}
+
 func validateSigilMemorySecondary(catalog *Catalog, sigil *SigilDef, update SigilMemoryUpdate) error {
-	empty := update.SecondaryTraitHash == 0 || update.SecondaryTraitHash == EmptyHash
+	empty := isEmptySigilMemoryTrait(update.SecondaryTraitHash)
 	if empty {
 		if requiresCharacterSigilSecondary(sigil) {
 			return fmt.Errorf("角色因子 %s 必须使用本地 2.0.2 gem/lot 白名单中的副词条，不能留空", displaySigilName(sigil))

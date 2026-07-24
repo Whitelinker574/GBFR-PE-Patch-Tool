@@ -361,14 +361,14 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
 const iconCoverageRows = computed(() => language.value === 'zh' ? [
   { scope: '角色图标', status: '29 / 29', tone: 'ok', detail: '当前角色目录全部精确映射' },
   { scope: '可玩主动技能', status: '261 / 262', tone: 'flow', detail: '缺 1 个可证明精确对应的官方 PNG' },
-  { scope: '因子图标', status: '183 / 184', tone: 'flow', detail: '缺口保持空缺，不使用近似图标' },
+  { scope: '因子图标', status: '186 / 187', tone: 'flow', detail: '缺口保持空缺，不使用近似图标' },
   { scope: '武器图标', status: '159 / 163', tone: 'flow', detail: '缺 4 个 DLC 武器的可证明精确资源' },
   { scope: '召唤石图标', status: '189 / 189', tone: 'ok', detail: '当前召唤石目录全部精确映射' },
   { scope: '物品图标', status: '301 / 312', tone: 'flow', detail: '11 个目录项尚无可证明精确 PNG' },
 ] : [
   { scope: 'Character icons', status: '29 / 29', tone: 'ok', detail: 'Every current character entry has an exact mapping' },
   { scope: 'Playable active skills', status: '261 / 262', tone: 'flow', detail: '1 exact official PNG is still missing' },
-  { scope: 'Sigil icons', status: '183 / 184', tone: 'flow', detail: 'The gap remains empty instead of using a look-alike icon' },
+  { scope: 'Sigil icons', status: '186 / 187', tone: 'flow', detail: 'The gap remains empty instead of using a look-alike icon' },
   { scope: 'Weapon icons', status: '159 / 163', tone: 'flow', detail: '4 DLC weapons still lack provably exact assets' },
   { scope: 'Summon icons', status: '189 / 189', tone: 'ok', detail: 'Every current summon entry has an exact mapping' },
   { scope: 'Item icons', status: '301 / 312', tone: 'flow', detail: '11 catalog entries still lack provably exact PNGs' },

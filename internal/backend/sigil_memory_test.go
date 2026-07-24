@@ -53,7 +53,7 @@ func TestSigilMemoryOptionsExposeFixedPrimaryTraitTruth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantLevels = naturalSigilLevels(wantLevels)
+		wantLevels = naturalSigilLevelsForDefinition(sigil, wantLevels)
 		if option.PrimaryTraitHash != wantHash || !reflect.DeepEqual(option.AllowedPrimaryTraitLevels, wantLevels) {
 			t.Fatalf("sigil %s primary truth = hash 0x%08X levels %v, want 0x%08X %v", sigil.InternalID, option.PrimaryTraitHash, option.AllowedPrimaryTraitLevels, wantHash, wantLevels)
 		}

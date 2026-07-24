@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -123,6 +124,19 @@ func highestLevel(levels []int, fallback int) int {
 	return max
 }
 
+func effectCurveMax(levels []int, fallback int) int {
+	max := 0
+	for _, level := range levels {
+		if level > max {
+			max = level
+		}
+	}
+	if max > 0 {
+		return max
+	}
+	return fallback
+}
+
 func NewSigilGen() *SigilGen {
 	return &SigilGen{loadSaveForVerification: LoadSave}
 }
@@ -163,8 +177,8 @@ func (sg *SigilGen) GetSigilList() ([]SigilInfo, error) {
 	for _, s := range sorted {
 		sigilLevels, _ := sg.catalog.RequireSigilLevels(s)
 		primaryLevels, _ := sg.catalog.RequirePrimaryTraitLevels(s)
-		naturalSigil := naturalSigilLevels(sigilLevels)
-		naturalPrimary := naturalSigilLevels(primaryLevels)
+		naturalSigil := naturalSigilLevelsForDefinition(s, sigilLevels)
+		naturalPrimary := naturalSigilLevelsForDefinition(s, primaryLevels)
 		defaultLevel := derefInt(s.DefaultSigilLevel)
 		if defaultLevel < 1 || defaultLevel > 15 {
 			defaultLevel = maxNaturalSigilLevel(naturalSigil)
@@ -500,8 +514,18 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		reasons = append(reasons, "Seven Net 使用特殊记录标记，将按已验证的 flags=22 写入")
 	}
 
-	if item.Level < 1 || item.Level > 15 {
-		reasons = append(reasons, fmt.Sprintf("因子等级 %d 超出自然范围 1 到 15", item.Level))
+	if err := validateStoredLevel(item.Level, "因子等级"); err != nil {
+		return item, newLegalityReport(LegalityImpossible, false, err.Error()), nil
+	}
+	sigilLevels, err := sg.catalog.RequireSigilLevels(sigil)
+	if err != nil {
+		return item, LegalityReport{}, err
+	}
+	if item.Level < 1 || item.Level > highestLevel(sigilLevels, 1) {
+		reasons = append(reasons, fmt.Sprintf("因子等级 %d 偏离目录自然范围 1 到 %d", item.Level, highestLevel(sigilLevels, 1)))
+	}
+	if item.Level > sigilWritableLevelMax {
+		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子等级 %d 超过修改上限 %d", item.Level, sigilWritableLevelMax)), nil
 	}
 
 	primaryID := item.PrimaryTraitID
@@ -514,23 +538,31 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	}
 	item.PrimaryTraitID = primaryTrait.InternalID
 	item.PrimaryTraitName = cnTrait(primaryTrait.DisplayName)
+	if _, err := requireTraitLevels(primaryTrait, "主特性"); err != nil {
+		return item, LegalityReport{}, err
+	}
+	if err := validateStoredLevel(item.PrimaryLevel, "主特性等级"); err != nil {
+		return item, newLegalityReport(LegalityImpossible, false, err.Error()), nil
+	}
 	primaryLevels, err := requireTraitLevels(primaryTrait, "主特性")
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
-	primaryWritableMax := highestLevel(primaryLevels, 15)
+	primaryWritableMax := effectCurveMax(primaryLevels, 15)
 	if item.PrimaryLevel > primaryWritableMax {
-		reasons = append(reasons, fmt.Sprintf("主特性 %s 的等级 %d 超过已验证修改上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax))
+		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax)), nil
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
 		reasons = append(reasons, fmt.Sprintf("主特性「%s」不是因子「%s」的自然主特性", item.PrimaryTraitName, item.SigilName))
 	}
-	if item.Level > sigilWritableLevelMax {
-		reasons = append(reasons, fmt.Sprintf("因子等级 %d 超过已验证修改上限 %d", item.Level, sigilWritableLevelMax))
+	primaryNaturalMax := 15
+	if primaryTrait.InternalID == sigil.PrimaryTraitID {
+		if levels, levelErr := sg.catalog.RequirePrimaryTraitLevels(sigil); levelErr == nil {
+			primaryNaturalMax = highestLevel(naturalSigilLevelsForDefinition(sigil, levels), primaryNaturalMax)
+		}
 	}
-
-	if item.PrimaryLevel < 1 || item.PrimaryLevel > 15 {
-		reasons = append(reasons, fmt.Sprintf("主特性等级 %d 超出自然范围 1 到 15", item.PrimaryLevel))
+	if item.PrimaryLevel < 1 || item.PrimaryLevel > primaryNaturalMax {
+		reasons = append(reasons, fmt.Sprintf("主特性等级 %d 偏离目录自然范围 1 到 %d", item.PrimaryLevel, primaryNaturalMax))
 	}
 
 	if item.SecondaryTraitID == "" {
@@ -546,13 +578,19 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			return item, report, nil
 		}
 		item.SecondaryTraitName = cnTrait(secondaryTrait.DisplayName)
+		if _, err := requireTraitLevels(secondaryTrait, "副特性"); err != nil {
+			return item, LegalityReport{}, err
+		}
+		if err := validateStoredLevel(item.SecondaryLevel, "副特性等级"); err != nil {
+			return item, newLegalityReport(LegalityImpossible, false, err.Error()), nil
+		}
 		secondaryLevels, err := requireTraitLevels(secondaryTrait, "副特性")
 		if err != nil {
 			return item, LegalityReport{}, err
 		}
-		secondaryWritableMax := highestLevel(secondaryLevels, 15)
+		secondaryWritableMax := effectCurveMax(secondaryLevels, 15)
 		if item.SecondaryLevel > secondaryWritableMax {
-			reasons = append(reasons, fmt.Sprintf("副特性 %s 的等级 %d 超过已验证修改上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax))
+			return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax)), nil
 		}
 		if !supportsGeneratedPlusSigil(sigil) {
 			reasons = append(reasons, fmt.Sprintf("因子「%s」自然记录不含副特性", item.SigilName))
@@ -572,14 +610,10 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			reasons = append(reasons, fmt.Sprintf("副特性「%s」不属于因子「%s」的自然组合", item.SecondaryTraitName, item.SigilName))
 		}
 		if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
-			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 超出自然范围 1 到 15", item.SecondaryLevel))
+			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 偏离目录自然范围 1 到 15", item.SecondaryLevel))
 		}
 	}
 
-	if item.Level < 0 || item.PrimaryLevel < 0 || item.SecondaryLevel < 0 {
-		report := newLegalityReport(LegalityImpossible, false, "等级不能小于 0")
-		return item, report, nil
-	}
 	status := LegalityLegal
 	if len(reasons) > 0 {
 		status = LegalityForced
@@ -589,6 +623,13 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	item.LegalityStatus = report.Status
 	item.LegalityMessage = report.Message
 	return item, report, nil
+}
+
+func validateStoredLevel(level int, label string) error {
+	if level < 0 || int64(level) > math.MaxInt32 {
+		return fmt.Errorf("%s必须在 0 到 %d 之间", label, math.MaxInt32)
+	}
+	return nil
 }
 
 func (sg *SigilGen) RemoveFromQueue(index int) error {
@@ -652,7 +693,10 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	firstNewSlotID := maxSlotID + 1
+	firstNewSlotID, newMaxSlotID, err := allocateSequentialSlotIDs(maxSlotID, len(expanded))
+	if err != nil {
+		return nil, fmt.Errorf("无法分配因子 SlotID: %w", err)
+	}
 
 	// 验证所有槽可写（需要找的 entry 必须存在）
 	for i, item := range expanded {
@@ -717,7 +761,6 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		}
 	}()
 
-	newMaxSlotID := firstNewSlotID + len(expanded) - 1
 	if err := sg.save.SetMaxSlotID(newMaxSlotID); err != nil {
 		return nil, err
 	}

@@ -31,6 +31,46 @@ func sigilInfoJSONByID(t *testing.T, id string) map[string]any {
 	return nil
 }
 
+func TestTaskRewardSigilsAreConstructibleFromVerified202Tables(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		itemID      string
+		traitID     string
+		maxLevel    int
+		secondaryID string
+	}{
+		{"49434696", "BF78FBFC", 20, ""},
+		{"65F0420A", "46EE3116", 15, ""},
+		{"B289A9AD", "89C66ACB", 5, ""},
+		{"66CB28BA", "BF78FBFC", 15, "SKILL_141_00"},
+		{"76786869", "46EE3116", 15, "SKILL_141_00"},
+	}
+	for _, test := range tests {
+		sigil, err := catalog.RequireSigil(test.itemID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sigil.PrimaryTraitID != test.traitID || derefInt(sigil.MaxSigilLevel) != test.maxLevel {
+			t.Errorf("%s metadata = primary %s max %v", test.itemID, sigil.PrimaryTraitID, sigil.MaxSigilLevel)
+		}
+		if test.secondaryID == "" {
+			if sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait {
+				t.Errorf("%s unexpectedly supports a secondary trait", test.itemID)
+			}
+		} else if derefStr(sigil.DefaultSecondaryTraitID) != test.secondaryID {
+			t.Errorf("%s fixed secondary = %s", test.itemID, derefStr(sigil.DefaultSecondaryTraitID))
+		}
+	}
+	for _, traitID := range []string{"BF78FBFC", "46EE3116", "89C66ACB"} {
+		if _, err := catalog.RequireTrait(traitID); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func intSliceField(t *testing.T, value map[string]any, key string) []int {
 	t.Helper()
 	raw, ok := value[key].([]any)
@@ -313,15 +353,19 @@ func TestConstructibleSigilMetadataUsesOnlyNaturalLevels(t *testing.T) {
 		if len(item.AllowedSigilLevels) == 0 || len(item.AllowedFirstTraitLevels) == 0 {
 			t.Fatalf("可构造因子 %s 必须公开明确的自然等级: %+v", item.InternalID, item)
 		}
+		maxNaturalLevel := 15
+		if item.Category == "special_sigil" && item.Verified {
+			maxNaturalLevel = item.FirstTraitMaxLevel
+		}
 		for _, levels := range [][]int{item.AllowedSigilLevels, item.AllowedFirstTraitLevels} {
 			for _, level := range levels {
-				if level < 1 || level > 15 {
+				if level < 1 || level > maxNaturalLevel {
 					t.Fatalf("可构造因子 %s 公开了非自然等级 %d", item.InternalID, level)
 				}
 			}
 		}
-		if item.FirstTraitMaxLevel < 1 || item.FirstTraitMaxLevel > 15 {
-			t.Fatalf("可构造因子 %s 的主词条自然上限=%d，期望 1..15", item.InternalID, item.FirstTraitMaxLevel)
+		if item.FirstTraitMaxLevel < 1 || item.FirstTraitMaxLevel > maxNaturalLevel {
+			t.Fatalf("可构造因子 %s 的主词条自然上限=%d，期望 1..%d", item.InternalID, item.FirstTraitMaxLevel, maxNaturalLevel)
 		}
 	}
 	if constructibleCount == 0 {

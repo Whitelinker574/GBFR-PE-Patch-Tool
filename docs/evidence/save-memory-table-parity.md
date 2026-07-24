@@ -7,7 +7,7 @@
 | Summon types, main traits, sub parameters | `SummonSaveGen.GetOptions` | `App.SummonGetOptions` | Exact: both call the same function (189 / 82 / 22) |
 | Summon natural pools and levels | `validateSummonTraitChange` | `validateSummonTraitChange` | Exact: both use the same 189-rule validator |
 | Wrightstone traits and levels | `WrightstoneGen.GetTraitList` | `App.WrightstoneMemoryGetOptions` | Exact: same catalog and level resolver |
-| Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same 184 table-backed items, primary traits, secondary pools and natural level sets |
+| Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same unified 221-item catalog (189 table-backed + 32 supplemental), primary traits, secondary pools and natural level sets |
 
 The parity contract is executable in `catalog_channel_parity_test.go`. Historical
 runtime-only hash names remain labelled when found in memory. The editors may
@@ -32,13 +32,15 @@ preserve or write a raw encodable value without presenting it as natural.
 - The four tables were freshly extracted from the installed 2.0.2 `data.i`:
   `gem.tbl` has 1,034 rows, `skill_status.tbl` 6,320,
   `skill_lot.tbl` 439, and `skill_type_lot.tbl` 21.
-- All 184 selectable catalog items now match `gem.tbl` for `SkillId1` and
+- All 189 table-backed catalog items now match `gem.tbl` for `SkillId1` and
   fixed/random/no-secondary mode. Random pools are exact joins through the two
-  lot tables; the old 137-trait fallback is gone.
-- All 184 catalog traits now match `skill_status.tbl` for their effect-curve
+  lot tables; the 32 supplemental definitions keep their separate evidence
+  labels and the old 137-trait fallback is gone.
+- All 187 catalog traits now match `skill_status.tbl` for their effect-curve
   cap. The editor keeps that aggregate cap separate from a single factor's
-  natural Lv1–15 write range, so two legal Lv15 records can reach a Lv30 curve
-  without permitting an impossible single Lv30 record.
+  natural Lv1–15 reference. Natural levels are defaults and legality hints;
+  forced writes remain available within the effect-curve cap, while values
+  above that cap are rejected.
 - `GEEN_100_04`, `GEEN_112_04`, and `GEEN_113_04` are absent from the 2.0.2
   `gem.tbl`. They remain read-only display aliases for old memory/save values,
   but cannot be selected for new construction.

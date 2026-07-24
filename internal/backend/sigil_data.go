@@ -293,6 +293,13 @@ func naturalSigilLevels(levels []int) []int {
 	return result
 }
 
+func naturalSigilLevelsForDefinition(sigil *SigilDef, levels []int) []int {
+	if sigil != nil && strings.EqualFold(derefStr(sigil.Category), "special_sigil") && isVerifiedSigilDefinition(sigil) {
+		return append([]int(nil), levels...)
+	}
+	return naturalSigilLevels(levels)
+}
+
 func maxNaturalSigilLevel(levels []int) int {
 	if len(levels) == 0 {
 		return 0
@@ -308,11 +315,11 @@ func (c *Catalog) IsSigilConstructible(sigil *SigilDef) bool {
 		return false
 	}
 	sigilLevels, err := c.RequireSigilLevels(sigil)
-	if err != nil || len(naturalSigilLevels(sigilLevels)) == 0 {
+	if err != nil || len(naturalSigilLevelsForDefinition(sigil, sigilLevels)) == 0 {
 		return false
 	}
 	primaryLevels, err := c.RequirePrimaryTraitLevels(sigil)
-	if err != nil || len(naturalSigilLevels(primaryLevels)) == 0 {
+	if err != nil || len(naturalSigilLevelsForDefinition(sigil, primaryLevels)) == 0 {
 		return false
 	}
 	if !supportsGeneratedPlusSigil(sigil) {

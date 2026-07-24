@@ -12,7 +12,7 @@ const sessionMultipliers = window.gbfrMonsterEnhanceMultipliers || (window.gbfrM
 const loading = ref(false)
 const result = reactive({ pid: 0, dllPath: '', injected: false, enabled: false, currentBytes: '', items: [] })
 const multipliers = reactive(sessionMultipliers)
-const overdriveState = ref('1')
+const overdriveState = ref('3')
 let disposed = false
 let lifecycleEpoch = 0
 let connectionOwnerToken = ''
@@ -121,13 +121,17 @@ function ensureDamageMeter() {
 }
 
 async function setOne(item, enabled, id = item.id) {
+  if (!item.available) {
+    emit('status', `${item.name}不可用：${item.unavailableReason || '当前游戏版本定位未闭环'}`, 'error')
+    return
+  }
   if (enabled && needsMultiplier(item)) {
     const v = getMultiplier(item)
     if (isNaN(v) || v <= 0 || v > 9999) { emit('status', '倍率请输入 0 到 9999 之间的数值', 'error'); return }
   }
   if (enabled && needsOverdriveState(item)) {
     const v = patchValue(item)
-    if (![1, 4, 9].includes(v)) { emit('status', 'Overdrive 状态请选择 1、4 或自动OD', 'error'); return }
+    if (![0, 3, 9].includes(v)) { emit('status', 'Overdrive 状态请选择空条、满黄条或自动OD', 'error'); return }
   }
   const previous = item.enabled
   item.enabled = enabled
@@ -188,38 +192,40 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="result.items.length" class="card-grid ui-card-grid">
-        <article v-for="item in result.items" :key="item.id" class="feature-card ui-card ui-panel is-compact" :class="{ 'is-active': item.enabled }">
+        <article v-for="item in result.items" :key="item.id" class="feature-card ui-card ui-panel is-compact" :class="{ 'is-active': item.enabled, 'is-unavailable': !item.available }">
           <header class="feature-head ui-split">
             <h3 class="ui-section-title">{{ item.name }}</h3>
-            <span class="ui-tag" :class="item.enabled ? 'is-ok' : ''">{{ item.enabled ? '已开启' : '已关闭' }}</span>
+            <span class="ui-tag" :class="item.enabled ? 'is-ok' : ''">{{ !item.available ? '待适配' : (item.enabled ? '已开启' : '已关闭') }}</span>
           </header>
+
+          <p v-if="!item.available" class="unavailable-copy">{{ item.unavailableReason || '当前游戏版本定位未闭环' }}</p>
 
           <label v-if="needsMultiplier(item)" class="ui-field">
             <span class="ui-field-label">参数值 <em>{{ multiplierHint(item) }}</em></span>
-            <input v-model="multipliers[item.id]" type="number" min="0.1" max="9999" step="0.1" class="ui-input" placeholder="倍率" />
+            <input v-model="multipliers[item.id]" type="number" min="0.1" max="9999" step="0.1" class="ui-input" placeholder="倍率" :disabled="!item.available" />
           </label>
 
           <label v-if="needsOverdriveState(item)" class="ui-field">
-            <span class="ui-field-label">Overdrive 状态 <em>锁定会持续写入；自动 OD 会在非红条时写入一次满黄条</em></span>
-            <select v-model="overdriveState" class="ui-select">
-              <option value="1">1 · 满红条</option>
-              <option value="4">4 · 满黄条</option>
+            <span class="ui-field-label">Overdrive 状态 <em>空条/满黄条会立即写入一次；自动 OD 会在退出 OD 后自动补满</em></span>
+            <select v-model="overdriveState" class="ui-select" :disabled="!item.available">
+              <option value="0">空条</option>
+              <option value="3">满黄条</option>
               <option value="9">自动 OD</option>
             </select>
           </label>
 
           <div v-if="needsOverdriveState(item)" class="feature-actions ui-actions">
-            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || item.enabled">锁定</button>
-            <button type="button" class="ui-btn" @click="setOne(item, true, 'overdrive_state_apply')" :disabled="loading || overdriveState === '9'">应用一次</button>
-            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || !item.available || item.enabled || overdriveState !== '9'">自动 OD</button>
+            <button type="button" class="ui-btn" @click="setOne(item, true, 'overdrive_state_apply')" :disabled="loading || !item.available || overdriveState === '9'">应用一次</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.available || !item.enabled">关闭</button>
           </div>
           <div v-else-if="needsSbaTimer(item)" class="feature-actions ui-actions">
-            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading">应用</button>
-            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">恢复默认</button>
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || !item.available">应用</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.available || !item.enabled">恢复默认</button>
           </div>
           <div v-else class="feature-actions ui-actions">
-            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || item.enabled">开启</button>
-            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.enabled">关闭</button>
+            <button type="button" class="ui-btn is-primary" @click="setOne(item, true)" :disabled="loading || !item.available || item.enabled">开启</button>
+            <button type="button" class="ui-btn is-ghost" @click="setOne(item, false)" :disabled="loading || !item.available || !item.enabled">关闭</button>
           </div>
 
           <details class="ui-disclosure diagnostics">
@@ -247,7 +253,9 @@ onBeforeUnmount(() => {
 .card-grid { --ui-grid-min:320px; }
 .feature-card { align-content:start; }
 .feature-card.is-active { border-color:var(--success); background:var(--success-bg); }
+.feature-card.is-unavailable { border-style:dashed; }
 .feature-head { align-items:flex-start; }
+.unavailable-copy { margin:0; color:var(--text-muted); font-size:var(--fs-sm); }
 .feature-actions { margin-top:auto; }
 .feature-actions .ui-btn { flex:1 1 96px; }
 .diagnostics { margin-top:var(--space-1); }

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"unsafe"
@@ -9,11 +10,15 @@ import (
 
 var monsterEnhanceCaveMarker = []byte{'G', 'B', 'F', 'R', 'M', 'H', '0', '3'}
 
-const monsterEnhanceCrocodileAuxRVA = uintptr(0x23FD463)
-
 var (
-	monsterEnhanceCrocodileAuxOriginal = []byte{0x83, 0xF8, 0x02, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x4D, 0xD0}
-	monsterEnhanceCrocodileAuxPatched  = []byte{0x31, 0xD2, 0x85, 0xC0, 0x0F, 0x4F, 0xD0, 0x90, 0x90, 0x90, 0x90}
+	monsterDamagePlayerPointerPattern = []byte{
+		0xFF, 0x90, 0, 0, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0x8B, 0, 0, 0, 0x00, 0x00,
+		0x48, 0x81, 0xC1, 0, 0, 0x00, 0x00, 0xFF, 0, 0, 0, 0x00, 0x00, 0, 0x39,
+	}
+	monsterDamagePlayerPointerMask = []bool{
+		true, true, false, false, true, true, false, false, false, false, false, false, false, false, true, false, false, false, true, true,
+		true, true, true, false, false, true, true, true, false, false, false, true, true, false, true,
+	}
 )
 
 type monsterEnhanceOwnedPatch struct {
@@ -26,19 +31,45 @@ type monsterEnhanceOwnedPatch struct {
 	AuxTarget   uintptr
 	AuxOriginal []byte
 	AuxPatched  []byte
+	AuxCave     uintptr
+	AuxCaveSize uintptr
+}
+
+type monsterEnhanceAuxPreflight struct {
+	Target   uintptr
+	Original []byte
+	CaveSize uintptr
 }
 
 func monsterEnhanceCaveSize(id string) uintptr {
 	switch id {
-	case "crocodile_damage", "overdrive_state":
-		return 256
+	case "monster_damage":
+		return 192
+	case "overdrive_state":
+		return 128
 	case "inventory_set_45":
 		return 32
-	case "monster_hp", "monster_damage", "monster_stun":
+	case "monster_hp", "monster_stun":
 		return 128
 	default:
 		return 0
 	}
+}
+
+func (a *App) prepareMonsterDamageAuxiliaryHook() (*monsterEnhanceAuxPreflight, error) {
+	match, err := a.scanPatternUnique(monsterDamagePlayerPointerPattern, monsterDamagePlayerPointerMask, "怪物伤害玩家对象")
+	if err != nil {
+		return nil, err
+	}
+	target := match + 0x14
+	original, err := a.readMonsterEnhanceEntry(target, 7)
+	if err != nil {
+		return nil, fmt.Errorf("read monster damage player-pointer instruction: %w", err)
+	}
+	if original[0] != 0x48 || original[1] != 0x81 || original[2] != 0xC1 || original[5] != 0 || original[6] != 0 {
+		return nil, fmt.Errorf("unexpected monster damage player-pointer instruction: %s", bytesToHex(original))
+	}
+	return &monsterEnhanceAuxPreflight{Target: target, Original: original, CaveSize: 96}, nil
 }
 
 func monsterEnhanceCaveMarkerAddress(cave, caveSize uintptr) uintptr {
@@ -142,6 +173,10 @@ func (a *App) prepareMonsterEnhanceEnable(ownerToken string, point *monsterPatch
 }
 
 func (a *App) claimMonsterEnhancePatch(ownerToken string, point *monsterPatchPoint, original []byte) error {
+	return a.claimMonsterEnhancePatchWithAux(ownerToken, point, original, nil)
+}
+
+func (a *App) claimMonsterEnhancePatchWithAux(ownerToken string, point *monsterPatchPoint, original []byte, aux *monsterEnhanceAuxPreflight) error {
 	if point == nil || len(original) == 0 {
 		return fmt.Errorf("cannot claim an empty monster patch")
 	}
@@ -181,23 +216,87 @@ func (a *App) claimMonsterEnhancePatch(ownerToken string, point *monsterPatchPoi
 	}
 	a.monsterEnhanceOwned[point.ID] = record
 
-	if point.ID == "crocodile_damage" {
-		record.AuxTarget = a.moduleBase + monsterEnhanceCrocodileAuxRVA
-		record.AuxOriginal = append([]byte(nil), monsterEnhanceCrocodileAuxOriginal...)
-		record.AuxPatched = append([]byte(nil), monsterEnhanceCrocodileAuxPatched...)
-		a.monsterEnhanceOwned[point.ID] = record
-		current, readErr := a.readMonsterEnhanceEntry(record.AuxTarget, len(record.AuxPatched))
+	if aux != nil {
+		current, readErr := a.readMonsterEnhanceEntry(aux.Target, len(aux.Original))
 		if readErr != nil {
-			return fmt.Errorf("read crocodile auxiliary patch: %w", readErr)
+			return fmt.Errorf("read monster damage auxiliary hook: %w", readErr)
 		}
-		if !bytesEqual(current, record.AuxPatched) {
-			return fmt.Errorf("crocodile auxiliary patch is not owned: %s", bytesToHex(current))
+		cave, ok := monsterEnhanceRelJumpTarget(aux.Target, current)
+		if !ok {
+			return fmt.Errorf("monster damage auxiliary hook is incomplete: %s", bytesToHex(current))
 		}
+		markerRecord := monsterEnhanceOwnedPatch{Cave: cave, CaveSize: aux.CaveSize}
+		if err := a.verifyMonsterEnhanceCaveMarker(markerRecord); err != nil {
+			return fmt.Errorf("monster damage auxiliary cave ownership validation failed: %w", err)
+		}
+		record.AuxTarget = aux.Target
+		record.AuxOriginal = append([]byte(nil), aux.Original...)
+		record.AuxCaveSize = aux.CaveSize
+		record.AuxPatched = append([]byte(nil), current...)
+		record.AuxCave = cave
 	}
-	// Store the auxiliary proof only after it has been read and matched. The
-	// main record was retained above, so a partial DLL application still has a
-	// retryable recovery lease.
+
 	a.monsterEnhanceOwned[point.ID] = record
+	return nil
+}
+
+func (a *App) rollbackMonsterEnhanceFailedEnable(ownerToken string, point *monsterPatchPoint, original []byte) error {
+	return a.rollbackMonsterEnhanceFailedEnableWithAux(ownerToken, point, original, nil)
+}
+
+func (a *App) rollbackMonsterEnhanceFailedEnableWithAux(ownerToken string, point *monsterPatchPoint, original []byte, aux *monsterEnhanceAuxPreflight) error {
+	if point == nil || len(original) == 0 {
+		return fmt.Errorf("failed monster enable has no rollback metadata")
+	}
+	current, err := a.readMonsterEnhanceEntry(a.moduleBase+point.RVA, len(original))
+	if err != nil {
+		return fmt.Errorf("read failed monster enable state: %w", err)
+	}
+	if bytesEqual(current, original) {
+		if aux == nil {
+			return nil
+		}
+		auxCurrent, auxErr := a.readMonsterEnhanceEntry(aux.Target, len(aux.Original))
+		if auxErr != nil {
+			return fmt.Errorf("read failed monster auxiliary enable state: %w", auxErr)
+		}
+		if bytesEqual(auxCurrent, aux.Original) {
+			return nil
+		}
+		record := monsterEnhanceOwnedPatch{
+			OwnerToken:  ownerToken,
+			Target:      a.moduleBase + point.RVA,
+			Original:    append([]byte(nil), original...),
+			Patched:     append([]byte(nil), original...),
+			AuxTarget:   aux.Target,
+			AuxOriginal: append([]byte(nil), aux.Original...),
+			AuxPatched:  append([]byte(nil), auxCurrent...),
+			AuxCaveSize: aux.CaveSize,
+		}
+		cave, ok := monsterEnhanceRelJumpTarget(aux.Target, auxCurrent)
+		if !ok {
+			return fmt.Errorf("failed monster auxiliary enable is not a rel32 jump: %s", bytesToHex(auxCurrent))
+		}
+		record.AuxCave = cave
+		if err := a.verifyMonsterEnhanceCaveMarker(monsterEnhanceOwnedPatch{Cave: cave, CaveSize: aux.CaveSize}); err != nil {
+			return fmt.Errorf("failed monster auxiliary cave validation: %w", err)
+		}
+		if a.monsterEnhanceOwned == nil {
+			a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)
+		}
+		a.monsterEnhanceOwned[point.ID] = record
+		return a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false)
+	}
+	if err := a.claimMonsterEnhancePatchWithAux(ownerToken, point, original, aux); err != nil {
+		claimErr := fmt.Errorf("claim failed monster enable for rollback: %w", err)
+		if _, ok := a.monsterEnhanceOwned[point.ID]; ok {
+			return errors.Join(claimErr, a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false))
+		}
+		return claimErr
+	}
+	if err := a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false); err != nil {
+		return fmt.Errorf("rollback failed monster enable: %w", err)
+	}
 	return nil
 }
 
@@ -259,6 +358,15 @@ func (a *App) restoreMonsterEnhanceOwned(ownerToken, id string, forceAllOwners b
 			if !bytesEqual(aux, record.AuxOriginal) {
 				if !bytesEqual(aux, record.AuxPatched) {
 					return fmt.Errorf("monster %s auxiliary entry is no longer owned: %s", patchID, bytesToHex(aux))
+				}
+				if record.AuxCave != 0 {
+					cave, ok := monsterEnhanceRelJumpTarget(record.AuxTarget, aux)
+					if !ok || cave != record.AuxCave {
+						return fmt.Errorf("monster %s auxiliary jump target changed", patchID)
+					}
+					if err := a.verifyMonsterEnhanceCaveMarker(monsterEnhanceOwnedPatch{Cave: record.AuxCave, CaveSize: record.AuxCaveSize}); err != nil {
+						return fmt.Errorf("monster %s auxiliary cave ownership failed: %w", patchID, err)
+					}
 				}
 				if err := a.writeAndVerifyMonsterEnhanceEntry(record.AuxTarget, record.AuxOriginal, "monster "+patchID+" auxiliary restore"); err != nil {
 					return err

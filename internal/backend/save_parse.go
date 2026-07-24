@@ -137,14 +137,20 @@ func ParseSaveData(data []byte) (*SaveGameFile, error) {
 
 	save := &SaveGameFile{}
 
-	if offset1 > 0 && size1 > 0 && int(offset1)+int(size1) <= len(data) {
+	if offset1 > 0 && size1 > 0 {
+		if !validInt64Span(offset1, size1, int64(len(data))) {
+			return nil, fmt.Errorf("存档头 binary1 偏移无效")
+		}
 		binary1, err := parseSaveDataBinary(data[offset1 : offset1+size1])
 		if err == nil {
 			save.Binary1 = binary1
 		}
 	}
 
-	if slotDataOffset > 0 && slotDataSize > 0 && int(slotDataOffset)+int(slotDataSize) <= len(data) {
+	if slotDataOffset > 0 && slotDataSize > 0 {
+		if !validInt64Span(slotDataOffset, slotDataSize, int64(len(data))) {
+			return nil, fmt.Errorf("存档头 slot-data 偏移无效")
+		}
 		slotBuffer := data[slotDataOffset : slotDataOffset+slotDataSize]
 		slotData, err := parseSaveDataBinary(slotBuffer)
 		if err != nil {
@@ -166,6 +172,14 @@ func ParseSaveData(data []byte) (*SaveGameFile, error) {
 	return save, nil
 }
 
+func validInt64Span(offset, size, total int64) bool {
+	return offset >= 0 && size >= 0 && offset <= total && size <= total-offset
+}
+
+func validIntSpan(offset, size, total int) bool {
+	return offset >= 0 && size >= 0 && offset <= total && size <= total-offset
+}
+
 // ── FlatBuffers reader ──
 
 type fbReader struct {
@@ -173,6 +187,9 @@ type fbReader struct {
 }
 
 func (r *fbReader) u32(pos int) uint32 {
+	if !validIntSpan(pos, 4, len(r.data)) {
+		return 0
+	}
 	return binary.LittleEndian.Uint32(r.data[pos : pos+4])
 }
 
@@ -181,44 +198,66 @@ func (r *fbReader) i32(pos int) int32 {
 }
 
 func (r *fbReader) u16(pos int) uint16 {
+	if !validIntSpan(pos, 2, len(r.data)) {
+		return 0
+	}
 	return binary.LittleEndian.Uint16(r.data[pos : pos+2])
 }
 
 // readVectorAt reads a FlatBuffers vector at the given table+field position.
-// Returns (count, dataStart).
-func (r *fbReader) readVectorAt(tablePos int, fieldOff uint16) (int, int) {
-	if tablePos+int(fieldOff)+4 > len(r.data) {
+// Returns (count, dataStart). elementSize is the encoded size of one vector item.
+func (r *fbReader) readVectorAt(tablePos int, fieldOff uint16, elementSize int) (int, int) {
+	const maxSaveVectorElements = 1 << 20
+	if elementSize <= 0 || !validIntSpan(tablePos, int(fieldOff), len(r.data)) {
 		return 0, 0
 	}
-	vecOff := r.u32(tablePos + int(fieldOff))
-	vecPos := tablePos + int(fieldOff) + int(vecOff)
-	if vecPos+4 > len(r.data) {
+	fieldPos := tablePos + int(fieldOff)
+	if !validIntSpan(fieldPos, 4, len(r.data)) {
+		return 0, 0
+	}
+	vecOff := uint64(r.u32(fieldPos))
+	vecPos64 := uint64(fieldPos) + vecOff
+	if vecPos64 > uint64(len(r.data)) || vecPos64 > uint64(^uint(0)>>1) {
+		return 0, 0
+	}
+	vecPos := int(vecPos64)
+	if !validIntSpan(vecPos, 4, len(r.data)) {
 		return 0, 0
 	}
 	count := int(r.u32(vecPos))
+	if count < 0 || count > maxSaveVectorElements || count > (len(r.data)-(vecPos+4))/elementSize {
+		return 0, 0
+	}
 	return count, vecPos + 4
 }
 
 // readSubTable reads a table element at elementPos.
 // Returns (tableStart, vtablePos, vtableSize, objectSize).
 func (r *fbReader) readSubTable(elementPos int) (int, int, uint16, uint16) {
-	if elementPos+4 > len(r.data) {
+	if !validIntSpan(elementPos, 4, len(r.data)) {
 		return 0, 0, 0, 0
 	}
 	soff := int32(r.u32(elementPos))
-	vpos := elementPos - int(soff)
-	if vpos < 0 || vpos+4 > len(r.data) {
+	vpos64 := int64(elementPos) - int64(soff)
+	if vpos64 < 0 || vpos64 > int64(len(r.data)) {
+		return 0, 0, 0, 0
+	}
+	vpos := int(vpos64)
+	if !validIntSpan(vpos, 4, len(r.data)) {
 		return 0, 0, 0, 0
 	}
 	vs := r.u16(vpos)
 	os := r.u16(vpos + 2)
+	if vs < 4 || os < 4 || !validIntSpan(vpos, int(vs), len(r.data)) || !validIntSpan(elementPos, int(os), len(r.data)) {
+		return 0, 0, 0, 0
+	}
 	return elementPos, vpos, vs, os
 }
 
 // fieldOff returns the offset of a field within the object, or 0 if absent.
 func (r *fbReader) fieldOff(vpos int, vsize uint16, fieldIdx int) (uint16, bool) {
 	off := 4 + fieldIdx*2
-	if off+2 > int(vsize) {
+	if fieldIdx < 0 || !validIntSpan(off, 2, int(vsize)) || !validIntSpan(vpos, off+2, len(r.data)) {
 		return 0, false
 	}
 	fo := r.u16(vpos + off)
@@ -232,7 +271,7 @@ func parseSaveDataBinary(data []byte) (*SaveDataBinary, error) {
 		return nil, fmt.Errorf("数据太小")
 	}
 	rootOff := binary.LittleEndian.Uint32(data[0:4])
-	if int(rootOff)+4 > len(data) {
+	if uint64(rootOff)+4 > uint64(len(data)) {
 		return nil, fmt.Errorf("root offset超出范围")
 	}
 	r := &fbReader{data: data}
@@ -240,11 +279,18 @@ func parseSaveDataBinary(data []byte) (*SaveDataBinary, error) {
 
 	tpos := int(rootOff)
 	soff := int32(r.u32(tpos))
-	vpos := tpos - int(soff)
-	if vpos < 0 || vpos+4 > len(data) {
+	vpos64 := int64(tpos) - int64(soff)
+	if vpos64 < 0 || vpos64 > int64(len(data)) {
+		return nil, fmt.Errorf("根表vtable无效")
+	}
+	vpos := int(vpos64)
+	if !validIntSpan(vpos, 4, len(data)) {
 		return nil, fmt.Errorf("根表vtable无效")
 	}
 	vsize := r.u16(vpos)
+	if vsize < 4 || !validIntSpan(vpos, int(vsize), len(data)) {
+		return nil, fmt.Errorf("根表vtable无效")
+	}
 
 	// Field 0: VersionMaybe
 	if fo, ok := r.fieldOff(vpos, vsize, 0); ok {
@@ -310,7 +356,7 @@ func parseUIntUnits(r *fbReader, tpos int, fo uint16) []UIntSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 4); vc > 0 {
 				u.ValueData = make([]uint32, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = r.u32(vd + j*4)
@@ -331,7 +377,7 @@ type tableVectorReader struct {
 }
 
 func makeTableVec(r *fbReader, tpos int, fo uint16) *tableVectorReader {
-	count, start := r.readVectorAt(tpos, fo)
+	count, start := r.readVectorAt(tpos, fo, 4)
 	if count == 0 {
 		return nil
 	}
@@ -369,7 +415,7 @@ func parseIntUnits(r *fbReader, tpos int, fo uint16) []IntSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 4); vc > 0 {
 				u.ValueData = make([]int32, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = r.i32(vd + j*4)
@@ -400,7 +446,7 @@ func parseBoolUnits(r *fbReader, tpos int, fo uint16) []BoolSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 1); vc > 0 {
 				u.ValueData = make([]bool, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = r.data[vd+j] != 0
@@ -431,7 +477,7 @@ func parseFloatUnits(r *fbReader, tpos int, fo uint16) []FloatSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 4); vc > 0 {
 				u.ValueData = make([]float32, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = math.Float32frombits(r.u32(vd + j*4))
@@ -462,7 +508,7 @@ func parseByteUnits(r *fbReader, tpos int, fo uint16) []ByteSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 1); vc > 0 {
 				u.ValueData = make([]byte, vc)
 				copy(u.ValueData, r.data[vd:vd+vc])
 			}
@@ -491,7 +537,7 @@ func parseUByteUnits(r *fbReader, tpos int, fo uint16) []UByteSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 1); vc > 0 {
 				u.ValueData = make([]byte, vc)
 				copy(u.ValueData, r.data[vd:vd+vc])
 			}
@@ -520,7 +566,7 @@ func parseShortUnits(r *fbReader, tpos int, fo uint16) []ShortSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 2); vc > 0 {
 				u.ValueData = make([]int16, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = int16(r.u16(vd + j*2))
@@ -551,7 +597,7 @@ func parseUShortUnits(r *fbReader, tpos int, fo uint16) []UShortSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 2); vc > 0 {
 				u.ValueData = make([]uint16, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = r.u16(vd + j*2)
@@ -582,7 +628,7 @@ func parseLongUnits(r *fbReader, tpos int, fo uint16) []LongSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 8); vc > 0 {
 				u.ValueData = make([]int64, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = int64(binary.LittleEndian.Uint64(r.data[vd+j*8 : vd+(j+1)*8]))
@@ -613,7 +659,7 @@ func parseULongUnits(r *fbReader, tpos int, fo uint16) []ULongSaveDataUnit {
 			u.UnitID = r.u32(ts + int(f))
 		}
 		if f, ok := r.fieldOff(vp, vs, 2); ok {
-			if vc, vd := r.readVectorAt(ts, f); vc > 0 {
+			if vc, vd := r.readVectorAt(ts, f, 8); vc > 0 {
 				u.ValueData = make([]uint64, vc)
 				for j := 0; j < vc; j++ {
 					u.ValueData[j] = binary.LittleEndian.Uint64(r.data[vd+j*8 : vd+(j+1)*8])

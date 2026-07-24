@@ -26,7 +26,7 @@ func isEmptyWrightstoneMemoryTrait(hash uint32) bool {
 	return hash == 0 || hash == EmptyHash
 }
 
-func validateWrightstoneMemorySlot(catalog *WrightstoneCatalog, hash, level uint32, slot, slotCap int, required bool) error {
+func validateWrightstoneMemorySlot(catalog *WrightstoneCatalog, hash, level uint32, slot, naturalCap int, required bool) error {
 	if isEmptyWrightstoneMemoryTrait(hash) {
 		if required {
 			return fmt.Errorf("祝福词条 %d 不能为空", slot)
@@ -47,15 +47,11 @@ func validateWrightstoneMemorySlot(catalog *WrightstoneCatalog, hash, level uint
 	if err != nil {
 		return err
 	}
-	if level > uint32(slotCap) {
-		return fmt.Errorf("祝福词条 %d 等级 %d 超过第 %d 槽已验证上限 %d", slot, level, slot, slotCap)
+	maxLevel := effectCurveMax(levels, naturalCap)
+	if level > uint32(maxLevel) {
+		return fmt.Errorf("祝福词条 %d 等级 %d 超过技能效果曲线上限 %d", slot, level, maxLevel)
 	}
-	for _, candidate := range levels {
-		if candidate > 0 && uint32(candidate) == level {
-			return nil
-		}
-	}
-	return fmt.Errorf("祝福词条 %d 等级 %d 不在 %s 的已验证范围内", slot, level, cnWrightstoneTrait(trait.DisplayName))
+	return nil
 }
 
 func validateWrightstoneMemoryUpdate(catalog *WrightstoneCatalog, update WrightstoneMemoryUpdate) error {
@@ -93,7 +89,21 @@ func validateWrightstoneMemoryWriteRequest(catalog *WrightstoneCatalog, update W
 	if isEmptyWrightstoneMemoryTrait(update.FirstHash) {
 		return fmt.Errorf("祝福第一槽 Hash 必须是可编码的非空值")
 	}
-	_ = catalog // natural slot/level rules are advisory for writes.
+	slots := []struct {
+		hash       uint32
+		level      uint32
+		naturalCap int
+		required   bool
+	}{
+		{update.FirstHash, update.FirstLevel, 20, true},
+		{update.SecondHash, update.SecondLevel, 15, false},
+		{update.ThirdHash, update.ThirdLevel, 10, false},
+	}
+	for index, slot := range slots {
+		if err := validateWrightstoneMemorySlot(catalog, slot.hash, slot.level, index+1, slot.naturalCap, slot.required); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

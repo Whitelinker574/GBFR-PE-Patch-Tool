@@ -55,6 +55,10 @@ func TestWrightstoneSaveAndRuntimeTraitTablesMatch(t *testing.T) {
 }
 
 func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
 	saveSigils, err := NewSigilGen().GetSigilList()
 	if err != nil {
 		t.Fatal(err)
@@ -90,8 +94,8 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 	if len(runtimeSigils) != len(saveSigils) || len(runtimeTraits) != len(saveTraits) {
 		t.Fatalf("unified factor table count differs: save=%d/%d runtime=%d/%d", len(saveSigils), len(saveTraits), len(runtimeSigils), len(runtimeTraits))
 	}
-	if len(saveSigils) != 219 {
-		t.Fatalf("unified factor table has %d items; want 184 gem.tbl rows plus 35 unique DLC 2.0.2 runtime catalog supplemental rows", len(saveSigils))
+	if len(saveSigils) != 221 {
+		t.Fatalf("unified factor table has %d items; want 189 gem.tbl rows plus 32 unique DLC 2.0.2 runtime catalog supplemental rows", len(saveSigils))
 	}
 	gen := NewSigilGen()
 	for _, item := range saveSigils {
@@ -103,9 +107,12 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 		if !ok {
 			t.Fatalf("save sigil %s missing from runtime catalog", item.Hash)
 		}
-		if item.DisplayName != runtimeItem.DisplayName || item.FirstTraitMaxLevel != derefInt(runtimeItem.FirstTraitMaxLevel) ||
+		if item.DisplayName != runtimeItem.DisplayName ||
 			!reflect.DeepEqual(item.AllowedSigilLevels, runtimeItem.AllowedLevels) || !reflect.DeepEqual(item.AllowedFirstTraitLevels, runtimeItem.AllowedPrimaryTraitLevels) {
 			t.Fatalf("save/runtime sigil metadata differs for %s", item.Hash)
+		}
+		if runtimeItem.MaxLevel == nil || *runtimeItem.MaxLevel != sigilWritableLevelMax {
+			t.Fatalf("runtime sigil %s writable level cap = %v, want %d", item.Hash, runtimeItem.MaxLevel, sigilWritableLevelMax)
 		}
 		compatible, err := gen.GetCompatibleSecondaryTraits(item.InternalID)
 		if err != nil {
@@ -132,8 +139,16 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 		if !ok {
 			t.Fatalf("save trait %s missing from runtime catalog", item.Hash)
 		}
-		if item.DisplayName != runtimeItem.DisplayName || item.MaxLevel != derefInt(runtimeItem.MaxLevel) || !reflect.DeepEqual(item.AllowedLevels, runtimeItem.AllowedLevels) {
+		if item.DisplayName != runtimeItem.DisplayName || !reflect.DeepEqual(item.AllowedLevels, runtimeItem.AllowedLevels) {
 			t.Fatalf("save/runtime trait metadata differs for %s", item.Hash)
+		}
+		trait := catalog.LookupTraitByHash(hash)
+		if trait == nil {
+			t.Fatalf("catalog trait %s missing", item.Hash)
+		}
+		curve, curveErr := requireTraitLevels(trait, "parity")
+		if curveErr != nil || runtimeItem.MaxLevel == nil || *runtimeItem.MaxLevel != effectCurveMax(curve, 15) {
+			t.Fatalf("runtime trait %s effect-curve cap = %v, want %d (err=%v)", item.Hash, runtimeItem.MaxLevel, effectCurveMax(curve, 15), curveErr)
 		}
 	}
 }

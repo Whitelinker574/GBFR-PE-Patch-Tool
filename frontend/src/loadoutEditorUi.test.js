@@ -7,6 +7,12 @@ const viewer = readFileSync(new URL('./components/LoadoutViewer.vue', import.met
 const importDialog = readFileSync(new URL('./components/LoadoutImportDialog.vue', import.meta.url), 'utf8')
 const patchTool = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 
+test('pending imported summons use distinct UI sentinels and zero only at the backend boundary', () => {
+  assert.match(source, /function pendingSummonSlotValue\(index\)/)
+  assert.match(source, /function backendSummonSlotIDs\(\)/)
+  assert.doesNotMatch(source, /importedSummonsByIndex\.has\(index - 1\)" :value="0"/)
+})
+
 test('mastery starts collapsed while the three-direction summary stays visible', () => {
   assert.match(source, /const masteryExpanded = ref\(false\)/)
   const toggle = source.indexOf('class="mastery-toggle"')
@@ -141,10 +147,10 @@ test('verified character hash selects the matching official compact icon', () =>
 
 test('complete build simulation follows weapon, factors, mastery and summon slots', () => {
   assert.match(source, /LoadoutSimulateBuild/)
-	assert.match(source, /form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*selectedMasteryHashes\.value[\s\S]*summonSlotIds\.value/)
+	assert.match(source, /form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*selectedMasteryHashes\.value[\s\S]*backendSummonSlotIDs\(\)/)
 	assert.match(source, /watch\(\(\)\s*=>\s*form\.value\.weaponSlotId\s*,\s*refreshSim\)/)
 	assert.match(source, /watch\(\(\)\s*=>\s*selectedMasteryHashes\.value\.slice\(\)\s*,\s*refreshSim/)
-  assert.match(source, /w\.summonSlotIds\s*=\s*\[\.\.\.summonSlotIds\.value\]/)
+  assert.match(source, /w\.summonSlotIds\s*=\s*backendSummonSlotIDs\(\)/)
 })
 
 test('dynamic calculation scope excludes fixed character progression', () => {
@@ -307,7 +313,7 @@ test('summon selectors are explicit global equipment and only write after opt-in
   assert.match(source, /const writeGlobalSummons = ref\(false\)/)
   assert.match(source, /全局已装备召唤石（独立于单套配装）/)
   assert.match(source, /v-model="writeGlobalSummons"/)
-  assert.match(source, /if \(writeGlobalSummons\.value\) w\.summonSlotIds = \[\.\.\.summonSlotIds\.value\]/)
+  assert.match(source, /if \(writeGlobalSummons\.value\) w\.summonSlotIds = backendSummonSlotIDs\(\)/)
   assert.match(source, /writeGlobalSummons\.value[\s\S]*全局四槽/)
   assert.match(source, /writeGlobalSummons\.value = draft\.summonSlotIds\.every\(\(slotId, index\) => Number\(slotId\) > 0 \|\| generated\.has\(index\)\)/)
 })
@@ -458,7 +464,7 @@ test('constructor exposes the complete trait catalog while natural table rules r
 	assert.match(source, /v-model="constructSecondaryId"/)
 	assert.match(source, /search-placeholder="搜索副词条"/)
 	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructTraits\.value\)/)
-	assert.match(source, /天然因子组合与等级只作提醒/)
+  assert.match(source, /天然等级是默认值；最高可填到对应技能效果曲线的目录上限/)
 	assert.doesNotMatch(source, /forceWrite/)
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
 })

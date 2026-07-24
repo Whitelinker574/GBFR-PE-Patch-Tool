@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.13"
+	appVersion  = "v1.91.14"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -2711,7 +2711,7 @@ func (a *App) poisonCurrentLiveMemoryWrites() {
 
 func (a *App) ensureLiveMemoryWritesSafe() error {
 	if liveMemoryWritePoisoned(a.liveMemoryIndeterminateProcess, a.currentProcessInstance()) {
-		return fmt.Errorf("此前远程保存线程状态不确定，已锁定当前游戏进程的实时物品写入；请完全退出并重新启动游戏后再试")
+		return fmt.Errorf("此前远程线程状态不确定，已锁定当前游戏进程的实时内存写入；请完全退出并重新启动游戏后再试")
 	}
 	return nil
 }
@@ -2831,105 +2831,121 @@ type MonsterEnhanceResult struct {
 }
 
 type MonsterEnhanceItem struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	RVA          uint64 `json:"rva"`
-	Enabled      bool   `json:"enabled"`
-	CurrentBytes string `json:"currentBytes"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	RVA               uint64 `json:"rva"`
+	Available         bool   `json:"available"`
+	UnavailableReason string `json:"unavailableReason,omitempty"`
+	Enabled           bool   `json:"enabled"`
+	CurrentBytes      string `json:"currentBytes"`
 }
 
 type monsterPatchPoint struct {
-	ID       string
-	Name     string
-	RVA      uintptr
-	Original []byte
-	Patch    []byte
-	Hook     bool
+	ID                string
+	Name              string
+	RVA               uintptr
+	Original          []byte
+	Patch             []byte
+	Hook              bool
+	Available         bool
+	UnavailableReason string
 }
 
 var monsterPatchPoints = []monsterPatchPoint{
 	{
-		ID:       "link_time_no_drain",
-		Name:     "无限 link time",
-		RVA:      0x187228,
-		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x9C, 0x24, 0xB4, 0x01, 0x00, 0x00},
-		Patch:    []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		ID:                "link_time_no_drain",
+		Name:              "无限 link time",
+		RVA:               0x187228,
+		Original:          []byte{0xC4, 0xC1, 0x7A, 0x11, 0x9C, 0x24, 0xB4, 0x01, 0x00, 0x00},
+		Patch:             []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "link_time_disable",
-		Name:     "无法进入 link time",
-		RVA:      0x187228,
-		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x9C, 0x24, 0xB4, 0x01, 0x00, 0x00},
-		Patch:    []byte{0xC4, 0xC1, 0x7A, 0x11, 0x84, 0x24, 0xB4, 0x01, 0x00, 0x00},
+		ID:                "link_time_disable",
+		Name:              "无法进入 link time",
+		RVA:               0x187228,
+		Original:          []byte{0xC4, 0xC1, 0x7A, 0x11, 0x9C, 0x24, 0xB4, 0x01, 0x00, 0x00},
+		Patch:             []byte{0xC4, 0xC1, 0x7A, 0x11, 0x84, 0x24, 0xB4, 0x01, 0x00, 0x00},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "monster_hp",
-		Name:     "怪物多倍血",
-		RVA:      0x1F7A820,
-		Original: []byte{0x48, 0x8B, 0x41, 0x10, 0x45, 0x31, 0xC9},
-		Hook:     true,
+		ID:        "monster_hp",
+		Name:      "怪物多倍血",
+		RVA:       0x1F7A820,
+		Original:  []byte{0x48, 0x8B, 0x41, 0x10, 0x45, 0x31, 0xC9},
+		Hook:      true,
+		Available: true,
 	},
 	{
-		ID:       "monster_damage",
-		Name:     "怪物伤害",
-		RVA:      0xAA1539,
-		Original: []byte{0x29, 0xF1, 0x31, 0xD2, 0x85, 0xC9},
-		Hook:     true,
+		ID:        "monster_damage",
+		Name:      "怪物伤害",
+		RVA:       0x1FBDEB4,
+		Original:  []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05},
+		Hook:      true,
+		Available: true,
 	},
 	{
-		ID:       "crocodile_damage",
-		Name:     "鳄鱼多倍血(鳄鱼需单独设置)",
-		RVA:      0x23FD449,
-		Original: []byte{0x01, 0xBE, 0xB8, 0x15, 0x00, 0x00, 0x48, 0x8D, 0x8E, 0xB0, 0xFE, 0xFF, 0xFF, 0x8B, 0x46, 0x10},
-		Hook:     true,
+		ID:                "crocodile_damage",
+		Name:              "鳄鱼多倍血(鳄鱼需单独设置)",
+		RVA:               0x23FD449,
+		Original:          []byte{0x01, 0xBE, 0xB8, 0x15, 0x00, 0x00, 0x48, 0x8D, 0x8E, 0xB0, 0xFE, 0xFF, 0xFF, 0x8B, 0x46, 0x10},
+		Hook:              true,
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "monster_stun",
-		Name:     "怪物多倍昏厥条",
-		RVA:      0xA09ADF,
-		Original: []byte{0xC4, 0xC1, 0x4A, 0x58, 0x85, 0x20, 0x07, 0x00, 0x00},
-		Hook:     true,
+		ID:        "monster_stun",
+		Name:      "怪物多倍昏厥条",
+		RVA:       0xB29128,
+		Original:  []byte{0xC5, 0xFA, 0x58, 0x86, 0x60, 0x08, 0x00, 0x00},
+		Hook:      true,
+		Available: true,
 	},
 	{
-		ID:       "overdrive_state",
-		Name:     "怪物 Overdrive 状态",
-		RVA:      0x1F7123F,
-		Original: []byte{0x49, 0x8B, 0x8C, 0x24, 0x38, 0x03, 0x00, 0x00, 0x48, 0x8B, 0x01},
-		Hook:     true,
+		ID:        "overdrive_state",
+		Name:      "怪物 Overdrive 状态",
+		RVA:       0x22CB316,
+		Original:  []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03, 0x0F, 0x84, 0xC7, 0x00, 0x00, 0x00},
+		Hook:      true,
+		Available: true,
 	},
 	{
-		ID:       "inventory_set_45",
-		Name:     "设置背包物品数量为 45",
-		RVA:      0x356621,
-		Original: []byte{0x41, 0x01, 0x76, 0x04, 0x4C, 0x89, 0xE1},
-		Hook:     true,
+		ID:        "inventory_set_45",
+		Name:      "设置背包物品数量为 45",
+		RVA:       0x356621,
+		Original:  []byte{0x41, 0x01, 0x76, 0x04, 0x4C, 0x89, 0xE1},
+		Hook:      true,
+		Available: true,
 	},
 	{
-		ID:       "sba_chain_timer",
-		Name:     "奥义接续计时",
-		RVA:      0x677B45,
-		Original: []byte{0x48, 0xB8, 0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x40, 0x40},
+		ID:                "sba_chain_timer",
+		Name:              "奥义接续计时",
+		RVA:               0x677B45,
+		Original:          []byte{0x48, 0xB8, 0x00, 0x00, 0x40, 0x40, 0x00, 0x00, 0x40, 0x40},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "purple_drain",
-		Name:     "紫条不自然扣减",
-		RVA:      0xA0379A,
-		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x10, 0x0A, 0x00, 0x00},
-		Patch:    []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		ID:                "purple_drain",
+		Name:              "紫条不自然扣减",
+		RVA:               0xA0379A,
+		Original:          []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x10, 0x0A, 0x00, 0x00},
+		Patch:             []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "blue_grow",
-		Name:     "昏厥蓝条不增长",
-		RVA:      0xA09AF1,
-		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x20, 0x07, 0x00, 0x00},
-		Patch:    []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		ID:                "blue_grow",
+		Name:              "昏厥蓝条不增长",
+		RVA:               0xA09AF1,
+		Original:          []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x20, 0x07, 0x00, 0x00},
+		Patch:             []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 	{
-		ID:       "blue_drain",
-		Name:     "昏厥蓝条不自然扣减",
-		RVA:      0xA03F38,
-		Original: []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x70, 0x0A, 0x00, 0x00},
-		Patch:    []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		ID:                "blue_drain",
+		Name:              "昏厥蓝条不自然扣减",
+		RVA:               0xA03F38,
+		Original:          []byte{0xC4, 0xC1, 0x7A, 0x11, 0x85, 0x70, 0x0A, 0x00, 0x00},
+		Patch:             []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90},
+		UnavailableReason: "当前游戏版本定位未闭环",
 	},
 }
 
@@ -3083,6 +3099,13 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	if pointID != "all" && point == nil {
 		return MonsterEnhanceResult{}, fmt.Errorf("未知怪物增强项目: %s", id)
 	}
+	if point != nil && !point.Available {
+		reason := point.UnavailableReason
+		if reason == "" {
+			reason = "当前游戏版本不可用"
+		}
+		return MonsterEnhanceResult{}, fmt.Errorf("%s不可用：%s", point.Name, reason)
+	}
 	if pointID == "all" || (point != nil && point.ID == "inventory_set_45") {
 		a.runtimePatchMu.Lock()
 		defer a.runtimePatchMu.Unlock()
@@ -3101,8 +3124,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	if enabled && point != nil && point.ID == "sba_chain_timer" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
 		return MonsterEnhanceResult{}, fmt.Errorf("奥义接续计时请输入 0 到 9999 之间的数值")
 	}
-	if enabled && point != nil && point.ID == "overdrive_state" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || (hpMultiplier != 1 && hpMultiplier != 4 && hpMultiplier != 9)) {
-		return MonsterEnhanceResult{}, fmt.Errorf("Overdrive 状态请选择 1、4 或自动OD")
+	if enabled && point != nil && point.ID == "overdrive_state" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || (hpMultiplier != 0 && hpMultiplier != 3 && hpMultiplier != 9)) {
+		return MonsterEnhanceResult{}, fmt.Errorf("Overdrive 状态请选择空条、满黄条或自动OD")
 	}
 
 	if enabled {
@@ -3112,6 +3135,13 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		original, err := a.prepareMonsterEnhanceEnable(ownerToken, point)
 		if err != nil {
 			return MonsterEnhanceResult{}, err
+		}
+		var auxiliary *monsterEnhanceAuxPreflight
+		if point != nil && point.ID == "monster_damage" {
+			auxiliary, err = a.prepareMonsterDamageAuxiliaryHook()
+			if err != nil {
+				return MonsterEnhanceResult{}, err
+			}
 		}
 		if point != nil && point.ID == "sba_chain_timer" {
 			if err := a.setSBAChainTimer(point, hpMultiplier); err != nil {
@@ -3141,14 +3171,19 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			return MonsterEnhanceResult{}, err
 		}
 		if err := injectDLL(a.hProcess, dllPath); err != nil {
+			if isRemoteCallIndeterminate(err) {
+				a.poisonCurrentLiveMemoryWrites()
+			}
 			return MonsterEnhanceResult{}, fmt.Errorf("注入怪物增强 DLL 失败: %w", err)
 		}
 		status, err := a.waitMonsterEnhanceApplied(pointID, dllPath)
 		if err != nil {
-			return MonsterEnhanceResult{}, err
+			a.poisonCurrentLiveMemoryWrites()
+			rollbackErr := a.rollbackMonsterEnhanceFailedEnableWithAux(ownerToken, point, original, auxiliary)
+			return MonsterEnhanceResult{}, errors.Join(err, rollbackErr)
 		}
-		if err := a.claimMonsterEnhancePatch(ownerToken, point, original); err != nil {
-			restoreErr := a.restoreMonsterEnhanceOwned(ownerToken, pointID, false)
+		if err := a.claimMonsterEnhancePatchWithAux(ownerToken, point, original, auxiliary); err != nil {
+			restoreErr := a.rollbackMonsterEnhanceFailedEnableWithAux(ownerToken, point, original, auxiliary)
 			return MonsterEnhanceResult{}, errors.Join(err, restoreErr)
 		}
 		if applyOnce {
@@ -3194,7 +3229,7 @@ func (a *App) MonsterEnhanceInject() (MonsterEnhanceResult, error) {
 func (a *App) waitMonsterEnhanceApplied(id string, dllPath string) (MonsterEnhanceResult, error) {
 	var last MonsterEnhanceResult
 	var err error
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		last, err = a.readMonsterEnhanceStatus(dllPath)
 		if err == nil && monsterStatusHasPatch(last, id) {
@@ -3224,6 +3259,7 @@ func monsterStatusHasPatch(status MonsterEnhanceResult, id string) bool {
 
 func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, error) {
 	patched := 0
+	available := 0
 	var parts []string
 	items := make([]MonsterEnhanceItem, 0, len(monsterPatchPoints))
 	for _, point := range monsterPatchPoints {
@@ -3235,28 +3271,35 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 		currentHex := bytesToHex(current)
 		parts = append(parts, fmt.Sprintf("%s:%s", point.Name, currentHex))
 		enabled := false
-		if point.ID == "sba_chain_timer" {
+		if !point.Available {
+			enabled = false
+		} else if point.ID == "sba_chain_timer" {
 			enabled = !bytesEqual(current, point.Original)
 		} else if point.Hook {
 			enabled = a.monsterEnhanceHookMarked(&point, current)
 		} else {
 			enabled = bytesEqual(current, point.Patch)
 		}
-		if enabled {
+		if point.Available {
+			available++
+		}
+		if enabled && point.Available {
 			patched++
 		}
 		items = append(items, MonsterEnhanceItem{
-			ID:           point.ID,
-			Name:         point.Name,
-			RVA:          uint64(point.RVA),
-			Enabled:      enabled,
-			CurrentBytes: currentHex,
+			ID:                point.ID,
+			Name:              point.Name,
+			RVA:               uint64(point.RVA),
+			Available:         point.Available,
+			UnavailableReason: point.UnavailableReason,
+			Enabled:           enabled,
+			CurrentBytes:      currentHex,
 		})
 	}
 	return MonsterEnhanceResult{
 		PID:          a.charaPID,
 		DLLPath:      dllPath,
-		Enabled:      patched == len(monsterPatchPoints),
+		Enabled:      available > 0 && patched == available,
 		CurrentBytes: strings.Join(parts, " | "),
 		Items:        items,
 	}, nil
@@ -3302,6 +3345,7 @@ func extractPatchCoreDLL(patchID string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	pruneUnlockedPatchCoreDLLs(dir)
 	if err := os.WriteFile(filepath.Join(dir, "patch_core_command.txt"), []byte(patchID), 0o644); err != nil {
 		return "", err
 	}
@@ -3310,6 +3354,21 @@ func extractPatchCoreDLL(patchID string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+func pruneUnlockedPatchCoreDLLs(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "patch_core_") || !strings.HasSuffix(strings.ToLower(name), ".dll") {
+			continue
+		}
+		// Loaded DLLs are locked by Windows and remain until the game exits.
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }
 
 func injectDLL(h windows.Handle, dllPath string) error {
@@ -3322,7 +3381,12 @@ func injectDLL(h windows.Handle, dllPath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = virtualFreeRemote(h, remotePath) }()
+	releaseRemotePath := true
+	defer func() {
+		if releaseRemotePath {
+			_ = virtualFreeRemote(h, remotePath)
+		}
+	}()
 
 	if err := writeProcessMemory(h, remotePath, unsafe.Pointer(&utf16Path[0]), size); err != nil {
 		return err
@@ -3334,8 +3398,22 @@ func injectDLL(h windows.Handle, dllPath string) error {
 	}
 	defer windows.CloseHandle(thread)
 
-	_, err = windows.WaitForSingleObject(thread, 10000)
-	return err
+	wait, waitErr := windows.WaitForSingleObject(thread, 10000)
+	if err := classifyRemoteCallWaitWithTimeout(wait, waitErr, "等待 10 秒后 DLL 注入线程仍未结束"); err != nil {
+		// The remote thread may still read its argument. Keep that tiny allocation
+		// alive until the game exits instead of introducing a use-after-free.
+		releaseRemotePath = false
+		return err
+	}
+	var exitCode uint32
+	ret, _, callErr := procGetExitCodeThread.Call(uintptr(thread), uintptr(unsafe.Pointer(&exitCode)))
+	if ret == 0 {
+		return fmt.Errorf("读取 DLL 注入线程退出码失败: %w", callErr)
+	}
+	if exitCode == 0 {
+		return fmt.Errorf("LoadLibraryW 返回空模块句柄")
+	}
+	return nil
 }
 
 func findPatternMatches(buf []byte, base uintptr, pattern []byte, mask []bool) []uintptr {
@@ -3518,6 +3596,7 @@ var (
 	procVirtualQueryEx        = modKernel32.NewProc("VirtualQueryEx")
 	procFlushInstructionCache = modKernel32.NewProc("FlushInstructionCache")
 	procLoadLibraryW          = modKernel32.NewProc("LoadLibraryW")
+	procGetExitCodeThread     = modKernel32.NewProc("GetExitCodeThread")
 	procCreateRemoteThread    = modKernel32.NewProc("CreateRemoteThread")
 )
 
