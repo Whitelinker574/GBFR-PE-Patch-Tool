@@ -159,10 +159,11 @@ type App struct {
 	// damageMu guards the damage-meter shared-memory lifecycle and every mapped
 	// view read/write. Without it frontend polling could race shutdown after the
 	// view was unmapped.
-	damageMu      sync.Mutex
-	damageOverlay *damageOverlayWindow
-	config        AppConfig
-	configLoaded  bool
+	damageMu        sync.Mutex
+	damageOverlayMu sync.Mutex
+	damageOverlay   *damageOverlayWindow
+	config          AppConfig
+	configLoaded    bool
 }
 
 var (
@@ -198,8 +199,8 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 func (a *App) shutdown(ctx context.Context) {
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
-	if a.damageOverlay != nil {
-		a.damageOverlay.stop()
+	if overlay := a.currentDamageOverlayWindow(); overlay != nil {
+		_ = overlay.stop()
 	}
 	a.closeDamageMeter()
 	if err := a.CharaDetach(); err != nil {
@@ -1202,6 +1203,11 @@ func (a *App) charaDetachLocked() error {
 
 // CharaGetAll reads all character counts, returns valid characters (skipping empty slots).
 func (a *App) CharaGetAll() ([]CharaInfo, error) {
+	if err := a.acquireGameProcessLease(); err != nil {
+		return nil, err
+	}
+	defer a.procMu.Unlock()
+
 	if a.hProcess == 0 {
 		return nil, fmt.Errorf("未连接游戏进程")
 	}
@@ -1239,6 +1245,13 @@ func (a *App) CharaGetAll() ([]CharaInfo, error) {
 
 // CharaSetOne sets a single character's count by slot index.
 func (a *App) CharaSetOne(index int, value int) error {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return err
+	}
+	defer a.procMu.Unlock()
+
 	if a.hProcess == 0 {
 		return fmt.Errorf("未连接游戏进程")
 	}
@@ -1265,6 +1278,13 @@ func (a *App) CharaSetOne(index int, value int) error {
 
 // CharaSetAll sets all valid character counts to the given value, returns number modified.
 func (a *App) CharaSetAll(value int) (int, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return 0, err
+	}
+	defer a.procMu.Unlock()
+
 	if a.hProcess == 0 {
 		return 0, fmt.Errorf("未连接游戏进程")
 	}
@@ -1666,9 +1686,14 @@ type FaceAccessoryStatus struct {
 }
 
 func (a *App) FaceAccessoryScan() (FaceAccessoryStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return FaceAccessoryStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.faceAccessoryScanLocked()
+}
+
+func (a *App) faceAccessoryScanLocked() (FaceAccessoryStatus, error) {
 	addr, err := a.scanPatternUnique(faceAccessoryPattern, faceAccessoryMask, "脸部符文特征")
 	if err != nil {
 		a.faceAccessoryAddr = 0
@@ -1679,22 +1704,34 @@ func (a *App) FaceAccessoryScan() (FaceAccessoryStatus, error) {
 }
 
 func (a *App) FaceAccessoryGetStatus() (FaceAccessoryStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return FaceAccessoryStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.faceAccessoryGetStatusLocked()
+}
+
+func (a *App) faceAccessoryGetStatusLocked() (FaceAccessoryStatus, error) {
 	if a.faceAccessoryAddr == 0 {
-		return a.FaceAccessoryScan()
+		return a.faceAccessoryScanLocked()
 	}
 	status, err := a.readFaceAccessoryStatus(a.faceAccessoryAddr)
 	if err != nil {
 		a.faceAccessoryAddr = 0
-		return a.FaceAccessoryScan()
+		return a.faceAccessoryScanLocked()
 	}
 	return status, nil
 }
 
 func (a *App) FaceAccessorySetHidden(hidden bool) (FaceAccessoryStatus, error) {
-	status, err := a.FaceAccessoryGetStatus()
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return FaceAccessoryStatus{}, err
+	}
+	defer a.procMu.Unlock()
+
+	status, err := a.faceAccessoryGetStatusLocked()
 	if err != nil {
 		return FaceAccessoryStatus{}, err
 	}
@@ -2079,16 +2116,20 @@ type OtherSkinPurpleRuneStatus struct {
 const otherSkinPurpleRuneRVA = uintptr(0x9175B6)
 
 func (a *App) OtherSkinPurpleRuneGetStatus() (OtherSkinPurpleRuneStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return OtherSkinPurpleRuneStatus{}, err
 	}
+	defer a.procMu.Unlock()
 	return a.readOtherSkinPurpleRuneStatus()
 }
 
 func (a *App) OtherSkinPurpleRuneSetEnabled(enabled bool) (OtherSkinPurpleRuneStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
 		return OtherSkinPurpleRuneStatus{}, err
 	}
+	defer a.procMu.Unlock()
 	opcode := byte(0x75)
 	if enabled {
 		opcode = 0x74
@@ -2142,9 +2183,14 @@ var unlockAllTrophyMask = []bool{
 }
 
 func (a *App) UnlockAllTrophyScan() (UnlockAllTrophyStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return UnlockAllTrophyStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.unlockAllTrophyScanLocked()
+}
+
+func (a *App) unlockAllTrophyScanLocked() (UnlockAllTrophyStatus, error) {
 	addr, err := a.scanPatternUnique(unlockAllTrophyPattern, unlockAllTrophyMask, "全称号解锁特征")
 	if err != nil {
 		a.unlockAllTrophyAddr = 0
@@ -2155,22 +2201,34 @@ func (a *App) UnlockAllTrophyScan() (UnlockAllTrophyStatus, error) {
 }
 
 func (a *App) UnlockAllTrophyGetStatus() (UnlockAllTrophyStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return UnlockAllTrophyStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.unlockAllTrophyGetStatusLocked()
+}
+
+func (a *App) unlockAllTrophyGetStatusLocked() (UnlockAllTrophyStatus, error) {
 	if a.unlockAllTrophyAddr == 0 {
-		return a.UnlockAllTrophyScan()
+		return a.unlockAllTrophyScanLocked()
 	}
 	status, err := a.readUnlockAllTrophyStatus(a.unlockAllTrophyAddr)
 	if err != nil {
 		a.unlockAllTrophyAddr = 0
-		return a.UnlockAllTrophyScan()
+		return a.unlockAllTrophyScanLocked()
 	}
 	return status, nil
 }
 
 func (a *App) UnlockAllTrophySetEnabled(enabled bool) (UnlockAllTrophyStatus, error) {
-	status, err := a.UnlockAllTrophyGetStatus()
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return UnlockAllTrophyStatus{}, err
+	}
+	defer a.procMu.Unlock()
+
+	status, err := a.unlockAllTrophyGetStatusLocked()
 	if err != nil {
 		return UnlockAllTrophyStatus{}, err
 	}
@@ -2405,10 +2463,14 @@ type CountdownStatus struct {
 }
 
 func (a *App) CountdownScan() (CountdownStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return CountdownStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.countdownScanLocked()
+}
 
+func (a *App) countdownScanLocked() (CountdownStatus, error) {
 	addr, err := a.scanCountdownPattern()
 	if err != nil {
 		a.countdownAddr = 0
@@ -2419,16 +2481,21 @@ func (a *App) CountdownScan() (CountdownStatus, error) {
 }
 
 func (a *App) CountdownGetStatus() (CountdownStatus, error) {
-	if err := a.ensureGameProcess(); err != nil {
+	if err := a.acquireGameProcessLease(); err != nil {
 		return CountdownStatus{}, err
 	}
+	defer a.procMu.Unlock()
+	return a.countdownGetStatusLocked()
+}
+
+func (a *App) countdownGetStatusLocked() (CountdownStatus, error) {
 	if a.countdownAddr == 0 {
-		return a.CountdownScan()
+		return a.countdownScanLocked()
 	}
 	status, err := a.readCountdownStatus(a.countdownAddr)
 	if err != nil {
 		a.countdownAddr = 0
-		return a.CountdownScan()
+		return a.countdownScanLocked()
 	}
 	return status, nil
 }
@@ -2437,7 +2504,14 @@ func (a *App) CountdownSet(value float64) (CountdownStatus, error) {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 9999 {
 		return CountdownStatus{}, fmt.Errorf("请输入 0 到 9999 之间的有效倒计时数值")
 	}
-	status, err := a.CountdownGetStatus()
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireGameProcessLease(); err != nil {
+		return CountdownStatus{}, err
+	}
+	defer a.procMu.Unlock()
+
+	status, err := a.countdownGetStatusLocked()
 	if err != nil {
 		return CountdownStatus{}, err
 	}

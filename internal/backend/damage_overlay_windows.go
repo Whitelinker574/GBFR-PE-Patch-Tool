@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -81,6 +82,7 @@ type wndClassEx struct {
 }
 
 type damageOverlayWindow struct {
+	lifecycleMu  sync.Mutex
 	mu           sync.Mutex
 	hwnd         syscall.Handle
 	value        uint64
@@ -90,11 +92,11 @@ type damageOverlayWindow struct {
 	fontSize     int
 	animStart    time.Time
 	animating    bool
-	ready        chan error
+	done         chan struct{}
 }
 
 var damageOverlayProc = syscall.NewCallback(damageOverlayWndProc)
-var activeDamageOverlay *damageOverlayWindow
+var activeDamageOverlay atomic.Pointer[damageOverlayWindow]
 
 var (
 	user32               = windows.NewLazySystemDLL("user32.dll")
@@ -132,53 +134,103 @@ func newDamageOverlayWindow() *damageOverlayWindow {
 	return &damageOverlayWindow{fontSize: 48}
 }
 
-func (a *App) DamageOverlaySetEnabled(enabled bool) error {
+func (a *App) ensureDamageOverlayWindow() *damageOverlayWindow {
+	a.damageOverlayMu.Lock()
+	defer a.damageOverlayMu.Unlock()
 	if a.damageOverlay == nil {
 		a.damageOverlay = newDamageOverlayWindow()
 	}
+	return a.damageOverlay
+}
+
+func (a *App) currentDamageOverlayWindow() *damageOverlayWindow {
+	a.damageOverlayMu.Lock()
+	defer a.damageOverlayMu.Unlock()
+	return a.damageOverlay
+}
+
+func (a *App) DamageOverlaySetEnabled(enabled bool) error {
+	overlay := a.ensureDamageOverlayWindow()
 	if enabled {
-		return a.damageOverlay.start()
+		return overlay.start()
 	}
-	a.damageOverlay.stop()
-	return nil
+	return overlay.stop()
 }
 
 func (a *App) DamageOverlaySetValue(value uint64) error {
-	if a.damageOverlay == nil {
+	overlay := a.currentDamageOverlayWindow()
+	if overlay == nil {
 		return nil
 	}
-	a.damageOverlay.setValue(value)
+	overlay.setValue(value)
 	return nil
 }
 
 func (a *App) DamageOverlaySetFontSize(size int) error {
-	if a.damageOverlay == nil {
-		a.damageOverlay = newDamageOverlayWindow()
-	}
-	a.damageOverlay.setFontSize(size)
+	a.ensureDamageOverlayWindow().setFontSize(size)
 	return nil
 }
 
 func (o *damageOverlayWindow) start() error {
+	return o.startWithRunner(o.run)
+}
+
+func (o *damageOverlayWindow) startWithRunner(run func(chan<- error, chan<- struct{})) error {
+	o.lifecycleMu.Lock()
+	defer o.lifecycleMu.Unlock()
+
 	o.mu.Lock()
 	if o.hwnd != 0 {
 		o.mu.Unlock()
 		return nil
 	}
-	o.ready = make(chan error, 1)
-	activeDamageOverlay = o
+	ready := make(chan error, 1)
+	done := make(chan struct{})
+	o.done = done
+	activeDamageOverlay.Store(o)
 	o.mu.Unlock()
 
-	go o.run()
-	return <-o.ready
+	go run(ready, done)
+	err := <-ready
+	if err != nil {
+		<-done
+	}
+	return err
 }
 
-func (o *damageOverlayWindow) stop() {
+func (o *damageOverlayWindow) stop() error {
+	return o.stopWithPoster(postDamageOverlayClose, 3*time.Second)
+}
+
+func postDamageOverlayClose(hwnd syscall.Handle) error {
+	result, _, callErr := procPostMessageW.Call(uintptr(hwnd), wmClose, 0, 0)
+	if result == 0 {
+		return fmt.Errorf("发送伤害悬浮窗关闭消息失败: %w", callErr)
+	}
+	return nil
+}
+
+func (o *damageOverlayWindow) stopWithPoster(post func(syscall.Handle) error, timeout time.Duration) error {
+	o.lifecycleMu.Lock()
+	defer o.lifecycleMu.Unlock()
+
 	o.mu.Lock()
 	hwnd := o.hwnd
+	done := o.done
 	o.mu.Unlock()
 	if hwnd != 0 {
-		procPostMessageW.Call(uintptr(hwnd), wmClose, 0, 0)
+		if err := post(hwnd); err != nil {
+			return err
+		}
+	}
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("等待伤害悬浮窗关闭超时")
 	}
 }
 
@@ -221,9 +273,18 @@ func (o *damageOverlayWindow) setFontSize(size int) {
 	}
 }
 
-func (o *damageOverlayWindow) run() {
+func (o *damageOverlayWindow) run(ready chan<- error, done chan<- struct{}) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	defer func() {
+		o.mu.Lock()
+		o.hwnd = 0
+		if o.done == done {
+			o.done = nil
+		}
+		o.mu.Unlock()
+		close(done)
+	}()
 
 	className, _ := syscall.UTF16PtrFromString(damageOverlayClassName)
 	instance, _, _ := procGetModuleHandleW.Call(0)
@@ -244,7 +305,7 @@ func (o *damageOverlayWindow) run() {
 		0, 0, instance, 0,
 	)
 	if hwnd == 0 {
-		o.ready <- fmt.Errorf("创建伤害悬浮窗失败: %w", err)
+		ready <- fmt.Errorf("创建伤害悬浮窗失败: %w", err)
 		return
 	}
 
@@ -252,7 +313,7 @@ func (o *damageOverlayWindow) run() {
 	o.mu.Lock()
 	o.hwnd = syscall.Handle(hwnd)
 	o.mu.Unlock()
-	o.ready <- nil
+	ready <- nil
 
 	procShowWindow.Call(hwnd, swShow)
 	procUpdateWindow.Call(hwnd)
@@ -285,18 +346,18 @@ func damageOverlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintpt
 		paintDamageOverlay(hwnd)
 		return 0
 	case wmTimer:
-		if activeDamageOverlay != nil {
-			activeDamageOverlay.updateAnimation(hwnd)
+		if overlay := activeDamageOverlay.Load(); overlay != nil {
+			overlay.updateAnimation(hwnd)
 		}
 		return 0
 	case wmClose:
 		procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return 0
 	case wmDestroy:
-		if activeDamageOverlay != nil {
-			activeDamageOverlay.mu.Lock()
-			activeDamageOverlay.hwnd = 0
-			activeDamageOverlay.mu.Unlock()
+		if overlay := activeDamageOverlay.Load(); overlay != nil {
+			overlay.mu.Lock()
+			overlay.hwnd = 0
+			overlay.mu.Unlock()
 		}
 		procPostQuitMessage.Call(0)
 		return 0
@@ -344,15 +405,15 @@ func paintDamageOverlay(hwnd syscall.Handle) {
 
 	value := uint64(0)
 	fontSize := 48
-	if activeDamageOverlay != nil {
-		activeDamageOverlay.mu.Lock()
-		if activeDamageOverlay.displayValue <= 0 {
-			value = activeDamageOverlay.value
+	if overlay := activeDamageOverlay.Load(); overlay != nil {
+		overlay.mu.Lock()
+		if overlay.displayValue <= 0 {
+			value = overlay.value
 		} else {
-			value = uint64(activeDamageOverlay.displayValue + 0.5)
+			value = uint64(overlay.displayValue + 0.5)
 		}
-		fontSize = activeDamageOverlay.fontSize
-		activeDamageOverlay.mu.Unlock()
+		fontSize = overlay.fontSize
+		overlay.mu.Unlock()
 	}
 
 	fontName, _ := syscall.UTF16PtrFromString("Segoe UI")
