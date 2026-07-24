@@ -240,4 +240,5 @@ test('monster safety copy is a full-width notice and raw patch bytes are disclos
   assert.match(source, /!item\.available/)
   assert.match(source, /item\.unavailableReason/)
   assert.match(source, /:disabled="loading \|\| !item\.available/)
+	assert.doesNotMatch(source, /DamageMeter|DamageOverlay|伤害记录|伤害悬浮窗/, 'retired combat data console must not leak into the current monster page')
 })

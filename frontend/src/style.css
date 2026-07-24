@@ -136,7 +136,7 @@ input[type="number"]::-webkit-outer-spin-button { margin:0; -webkit-appearance:n
  */
 :where(input[type="number"], input[inputmode="numeric"], input[inputmode="decimal"], code,
   .number-input, .count, .pid, .memory-bytes, .currency-meta, .burst-timer,
-  .damage-meter-value, .damage-meter-raw, .ed-current-lv, .ed-level,
+  .ed-current-lv, .ed-level,
   .ed-level-hint, .row-name-lv, .row-chip-lv, .tab-count, .slot, .rank,
   .id, .level, .value, .version-label, .build-chip) {
   font-family: var(--font-data) !important;
@@ -149,7 +149,7 @@ input[type="number"]::-webkit-outer-spin-button { margin:0; -webkit-appearance:n
   font-size: max(1em, 13px);
 }
 
-:where(.damage-meter-value, .count, .ed-current-lv, .ed-level, .row-name-lv, .row-chip-lv) {
+:where(.count, .ed-current-lv, .ed-level, .row-name-lv, .row-chip-lv) {
   font-weight: 720 !important;
 }
 

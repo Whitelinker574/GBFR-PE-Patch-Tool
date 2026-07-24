@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>下载 v1.91.14</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>下载 v1.91.15</strong></a> ·
   <a href="README_EN.md">English</a> ·
   <a href="docs/README.md">文档索引</a>
 </p>
@@ -81,7 +81,7 @@ C:\Users\<用户名>\AppData\Local\GBFR\Saved\SaveGames\
 | 战斗规则补丁 | 管理闪避、格挡、Link、召唤限制和部位破坏等补丁 | 仅单机；与下面两页共用常驻连接 |
 | 角色机制补丁 | 按角色启用专属机制补丁并显示冲突 | 互斥项先恢复当前功能，再启用另一项 |
 | 任务与便利补丁 | 修改任务倒计时、宝箱、结算、支线奖励和养成便利 | 仅单机；任务状态变化后刷新回读 |
-| 怪物倍率与伤害记录 | 调整怪物倍率、霸体并记录伤害实验 | 实验功能；先检查当前状态和倍率，再逐项启用 |
+| 怪物倍率与状态控制 | 调整怪物血量、伤害、昏厥条和 Overdrive 状态 | 实验功能；先检查当前状态和参数，再逐项启用 |
 
 战斗规则、角色机制和任务便利三个补丁页共用一条常驻连接。切换页面不会关闭已启用的补丁；选择“恢复全部并断开”或退出程序时才统一清理。
 

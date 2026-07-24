@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.14"
+	appVersion  = "v1.91.15"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -154,16 +154,8 @@ type App struct {
 	formulaSamplerMu         sync.Mutex
 	formulaSamplerSession    *formulaSamplerSession
 	formulaSamplerGeneration uint64
-	damageMeterMapping       windows.Handle
-	damageMeterView          uintptr
-	// damageMu guards the damage-meter shared-memory lifecycle and every mapped
-	// view read/write. Without it frontend polling could race shutdown after the
-	// view was unmapped.
-	damageMu        sync.Mutex
-	damageOverlayMu sync.Mutex
-	damageOverlay   *damageOverlayWindow
-	config          AppConfig
-	configLoaded    bool
+	config                   AppConfig
+	configLoaded             bool
 }
 
 var (
@@ -199,10 +191,6 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 func (a *App) shutdown(ctx context.Context) {
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
-	if overlay := a.currentDamageOverlayWindow(); overlay != nil {
-		_ = overlay.stop()
-	}
-	a.closeDamageMeter()
 	if err := a.CharaDetach(); err != nil {
 		logPath := appendDiagnosticError("shutdown hook restoration", err)
 		runtime.LogErrorf(ctx, "关闭时恢复运行时 Hook 失败；诊断日志：%s；错误：%v", logPath, err)
@@ -3023,87 +3011,6 @@ var monsterPatchPoints = []monsterPatchPoint{
 	},
 }
 
-const damageMeterMappingName = "Local\\GBFRPlayerInfoEditDamageMeterV3"
-const damageMeterSize = 16
-
-type DamageMeterStatus struct {
-	Connected       bool   `json:"connected"`
-	TotalDamage     uint64 `json:"totalDamage"`
-	MonsterDamage   uint64 `json:"monsterDamage"`
-	CrocodileDamage uint64 `json:"crocodileDamage"`
-}
-
-func (a *App) DamageMeterGetStatus() (DamageMeterStatus, error) {
-	a.damageMu.Lock()
-	defer a.damageMu.Unlock()
-	if err := a.ensureDamageMeterLocked(); err != nil {
-		return DamageMeterStatus{}, err
-	}
-	var values [2]int64
-	if err := readProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&values[0]), damageMeterSize); err != nil {
-		return DamageMeterStatus{}, fmt.Errorf("读取伤害统计共享内存失败: %w", err)
-	}
-	monsterDamage := uint64(values[0])
-	crocodileDamage := uint64(values[1])
-	return DamageMeterStatus{Connected: true, TotalDamage: monsterDamage + crocodileDamage, MonsterDamage: monsterDamage, CrocodileDamage: crocodileDamage}, nil
-}
-
-func (a *App) DamageMeterReset() (DamageMeterStatus, error) {
-	a.damageMu.Lock()
-	defer a.damageMu.Unlock()
-	if err := a.ensureDamageMeterLocked(); err != nil {
-		return DamageMeterStatus{}, err
-	}
-	zeros := [damageMeterSize]byte{}
-	if err := writeProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&zeros[0]), damageMeterSize); err != nil {
-		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计共享内存失败: %w", err)
-	}
-	var verified [damageMeterSize]byte
-	if err := readProcessMemory(windows.CurrentProcess(), a.damageMeterView, unsafe.Pointer(&verified[0]), damageMeterSize); err != nil {
-		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计后回读失败: %w", err)
-	}
-	if verified != zeros {
-		return DamageMeterStatus{}, fmt.Errorf("清空伤害统计后回读不一致")
-	}
-	return DamageMeterStatus{Connected: true}, nil
-}
-
-// ensureDamageMeterLocked maps the shared-memory view. Caller must hold damageMu.
-func (a *App) ensureDamageMeterLocked() error {
-	if a.damageMeterView != 0 {
-		return nil
-	}
-	name, err := windows.UTF16PtrFromString(damageMeterMappingName)
-	if err != nil {
-		return err
-	}
-	mapping, err := windows.CreateFileMapping(windows.InvalidHandle, nil, windows.PAGE_READWRITE, 0, damageMeterSize, name)
-	if err != nil && (mapping == 0 || err != windows.ERROR_ALREADY_EXISTS) {
-		return fmt.Errorf("创建伤害记录共享内存失败: %w", err)
-	}
-	view, err := windows.MapViewOfFile(mapping, windows.FILE_MAP_READ|windows.FILE_MAP_WRITE, 0, 0, damageMeterSize)
-	if err != nil {
-		windows.CloseHandle(mapping)
-		return fmt.Errorf("映射伤害记录共享内存失败: %w", err)
-	}
-	a.damageMeterMapping = mapping
-	a.damageMeterView = view
-	return nil
-}
-
-func (a *App) closeDamageMeter() {
-	a.damageMu.Lock()
-	defer a.damageMu.Unlock()
-	if a.damageMeterView != 0 {
-		_ = windows.UnmapViewOfFile(a.damageMeterView)
-		a.damageMeterView = 0
-	}
-	if a.damageMeterMapping != 0 {
-		_ = windows.CloseHandle(a.damageMeterMapping)
-		a.damageMeterMapping = 0
-	}
-}
-
 func (a *App) MonsterEnhanceGetStatus() (MonsterEnhanceResult, error) {
 	if err := a.acquireGameProcessLease(); err != nil {
 		return MonsterEnhanceResult{}, err
@@ -3192,14 +3099,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			return MonsterEnhanceResult{}, err
 		}
 	}
-	if enabled && point != nil && needsMonsterValue(point.ID) && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
-		return MonsterEnhanceResult{}, fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
-	}
-	if enabled && point != nil && point.ID == "sba_chain_timer" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier <= 0 || hpMultiplier > 9999) {
-		return MonsterEnhanceResult{}, fmt.Errorf("奥义接续计时请输入 0 到 9999 之间的数值")
-	}
-	if enabled && point != nil && point.ID == "overdrive_state" && (math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || (hpMultiplier != 0 && hpMultiplier != 3 && hpMultiplier != 9)) {
-		return MonsterEnhanceResult{}, fmt.Errorf("Overdrive 状态请选择空条、满黄条或自动OD")
+	if err := validateMonsterPatchValue(point, enabled, hpMultiplier); err != nil {
+		return MonsterEnhanceResult{}, err
 	}
 
 	if enabled {
@@ -3229,11 +3130,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		}
 		command := pointID
 		if point != nil && point.ID == "inventory_set_45" {
-			if math.IsNaN(hpMultiplier) || math.IsInf(hpMultiplier, 0) || hpMultiplier < 1 || hpMultiplier > 9999 || math.Trunc(hpMultiplier) != hpMultiplier {
-				return MonsterEnhanceResult{}, fmt.Errorf("背包物品数量请输入 1 到 9999 之间的整数")
-			}
 			command = fmt.Sprintf("%s %d", pointID, int(hpMultiplier))
-		} else if point != nil && needsMonsterValue(point.ID) {
+		} else if point != nil && monsterPatchNeedsArgument(point.ID) {
 			commandValue := hpMultiplier
 			if point.ID == "monster_hp" || point.ID == "monster_stun" || point.ID == "crocodile_damage" {
 				commandValue = 1 / hpMultiplier
@@ -3270,7 +3168,6 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 				return MonsterEnhanceResult{}, err
 			}
 		}
-		status.Injected = true
 		return status, nil
 	}
 
@@ -3370,10 +3267,12 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 			CurrentBytes:      currentHex,
 		})
 	}
+	injected, allEnabled := monsterPatchActivity(available, patched)
 	return MonsterEnhanceResult{
 		PID:          a.charaPID,
 		DLLPath:      dllPath,
-		Enabled:      available > 0 && patched == available,
+		Injected:     injected,
+		Enabled:      allEnabled,
 		CurrentBytes: strings.Join(parts, " | "),
 		Items:        items,
 	}, nil
@@ -3398,8 +3297,38 @@ func (a *App) setSBAChainTimer(point *monsterPatchPoint, value float64) error {
 	return nil
 }
 
-func needsMonsterValue(id string) bool {
+func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value float64) error {
+	if !enabled || point == nil {
+		return nil
+	}
+	invalidNumber := math.IsNaN(value) || math.IsInf(value, 0)
+	switch point.ID {
+	case "monster_hp", "monster_stun", "monster_damage", "crocodile_damage":
+		if invalidNumber || value <= 0 || value > 9999 {
+			return fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
+		}
+	case "sba_chain_timer":
+		if invalidNumber || value <= 0 || value > 9999 {
+			return fmt.Errorf("奥义接续计时请输入 0 到 9999 之间的数值")
+		}
+	case "overdrive_state":
+		if invalidNumber || (value != 0 && value != 3 && value != 9) {
+			return fmt.Errorf("Overdrive 状态请选择空条、满黄条或自动OD")
+		}
+	case "inventory_set_45":
+		if invalidNumber || value < 1 || value > 9999 || math.Trunc(value) != value {
+			return fmt.Errorf("背包物品数量请输入 1 到 9999 之间的整数")
+		}
+	}
+	return nil
+}
+
+func monsterPatchNeedsArgument(id string) bool {
 	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "crocodile_damage" || id == "overdrive_state"
+}
+
+func monsterPatchActivity(available, patched int) (injected, allEnabled bool) {
+	return patched > 0, available > 0 && patched == available
 }
 
 func findMonsterPatchPoint(id string) *monsterPatchPoint {

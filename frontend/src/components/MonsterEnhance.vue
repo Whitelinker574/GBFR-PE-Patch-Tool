@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, reactive, ref } from 'vue'
-import { CharaAcquire, CharaRelease, MonsterEnhanceGetStatusOwned, MonsterEnhanceSetPatchValueEnabledOwned, DamageMeterGetStatus } from '../../wailsjs/go/backend/App'
+import { CharaAcquire, CharaRelease, MonsterEnhanceGetStatusOwned, MonsterEnhanceSetPatchValueEnabledOwned } from '../../wailsjs/go/backend/App'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 
 const emit = defineEmits(['status'])
@@ -112,14 +112,6 @@ function patchValue(item) {
   return needsOverdriveState(item) ? parseInt(overdriveState.value, 10) : (needsMultiplier(item) ? getMultiplier(item) : 0)
 }
 
-function startsDamageMeter(item) {
-  return item.id === 'monster_hp' || item.id === 'crocodile_damage'
-}
-
-function ensureDamageMeter() {
-  return DamageMeterGetStatus().catch((err) => emit('status', `伤害记录开启失败: ${String(err)}`, 'error'))
-}
-
 async function setOne(item, enabled, id = item.id) {
   if (!item.available) {
     emit('status', `${item.name}不可用：${item.unavailableReason || '当前游戏版本定位未闭环'}`, 'error')
@@ -142,7 +134,6 @@ async function setOne(item, enabled, id = item.id) {
     if (!ownerToken) throw new Error('当前页面不再持有怪物增强连接所有权')
     const res = await MonsterEnhanceSetPatchValueEnabledOwned(ownerToken, id, enabled, patchValue(item))
     if (disposed || epoch !== lifecycleEpoch) return
-    if (enabled && startsDamageMeter(item)) await ensureDamageMeter()
     applyResult(res)
     const verb = id === 'overdrive_state_apply' || (item.id === 'sba_chain_timer' && enabled) ? '已应用' : (enabled ? '已开启' : '已关闭')
     emit('status', `${item.name}${verb}`, 'success')
@@ -170,10 +161,10 @@ onBeforeUnmount(() => {
     <section class="monster-shell ui-card ui-panel">
       <header class="ui-split">
         <div class="title-copy">
-          <h2 class="ui-section-title">怪物倍率与伤害记录</h2>
+          <h2 class="ui-section-title">怪物倍率与状态控制</h2>
           <p class="ui-section-copy">统一查看运行状态，按功能分别设置倍率或开关。</p>
         </div>
-        <span class="ui-tag" :class="result.injected ? 'is-ok' : 'is-info'">{{ result.injected ? 'DLL 已注入' : '等待注入' }}</span>
+        <span class="ui-tag" :class="result.injected ? 'is-ok' : 'is-info'">{{ result.injected ? 'Hook 已启用' : '等待启用' }}</span>
       </header>
 
       <div class="process-toolbar ui-toolbar">
@@ -188,7 +179,7 @@ onBeforeUnmount(() => {
 
       <div class="usage-notice ui-notice is-warn">
         <strong>本页功能仅在主机端使用时生效，开启前请告知队友。</strong>
-        倍率、霸体、OD 与团队伤害记录属于实验性功能。
+        倍率、昏厥条与 OD 控制属于实验性功能。
       </div>
 
       <div v-if="result.items.length" class="card-grid ui-card-grid">

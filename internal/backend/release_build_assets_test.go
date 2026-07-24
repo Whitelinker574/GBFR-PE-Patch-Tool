@@ -84,6 +84,9 @@ func TestPatchCoreProjectPublishesStableResource(t *testing.T) {
 	if strings.Contains(normalized, `$(solutiondir)`) || strings.Contains(normalized, `$(projectdir)../../build/bin/`) {
 		t.Fatal("patch_core project must not publish an embed input into Wails' disposable build/bin directory")
 	}
+	if strings.Count(normalized, `<platformtoolset>v143</platformtoolset>`) != 4 || strings.Contains(normalized, `<platformtoolset>v145</platformtoolset>`) {
+		t.Fatal("all patch_core configurations must use the installed Visual Studio 2022 v143 toolset")
+	}
 	if !strings.Contains(normalized, `../thirdparty/libmem/lib/debug`) {
 		t.Fatal("patch_core Debug x64 must link the bundled debug libmem library")
 	}
@@ -96,7 +99,6 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 	}
 	source := string(sourceBytes)
 	for _, required := range []string{
-		`if (!g_damageMeter)`,
 		`strcmp(patchId, "all") == 0`,
 		`batch patch id is unsupported`,
 		`InstallPlayerPointerHook`,
@@ -110,9 +112,27 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 			t.Errorf("patch_core source missing monster safety guard %q", required)
 		}
 	}
-	for _, removed := range []string{`PatchCrocodileDamageHook`, `0x23FD449`, `0xAA1539`, `0xA09ADF`, `0x1F7123F`} {
+	for _, removed := range []string{
+		`PatchCrocodileDamageHook`, `0x23FD449`, `0xAA1539`, `0xA09ADF`, `0x1F7123F`,
+		`DamageMeterState`, `AppendTeamDamageFromRcXEdxR8`, `GBFRPlayerInfoEditDamageMeter`,
+	} {
 		if strings.Contains(source, removed) {
 			t.Errorf("patch_core source still carries the retired monster implementation %q", removed)
+		}
+	}
+}
+
+func TestRetiredDamageOverlayBackendIsRemoved(t *testing.T) {
+	if _, err := os.Stat("damage_overlay_windows.go"); !os.IsNotExist(err) {
+		t.Fatalf("retired damage overlay backend still exists: %v", err)
+	}
+	app, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []string{"DamageMeterGetStatus", "DamageMeterReset", "damageOverlay", "damageMeterMapping"} {
+		if strings.Contains(string(app), retired) {
+			t.Errorf("app.go still contains retired damage runtime symbol %q", retired)
 		}
 	}
 }

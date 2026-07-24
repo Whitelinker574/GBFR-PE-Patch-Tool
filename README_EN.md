@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.14</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.15</strong></a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
 </p>
@@ -81,7 +81,7 @@ Launch the game, load a save, then connect from the page. Reconnect or reselect 
 | Combat Rule Patches | Control dodge, guard, Link, summon limits, and part-break patches | Single-player only; shares one persistent connection with the next two pages |
 | Character Mechanic Patches | Enable character-specific mechanics and view conflicts | Restore an active conflicting feature before switching |
 | Quest & Convenience Patches | Control timers, chests, results, side rewards, and progression conveniences | Single-player only; refresh after the quest state changes |
-| Monster Multipliers & Damage Log | Adjust monster multipliers and super armor, and record damage experiments | Experimental; inspect current state and change one item at a time |
+| Monster Multipliers & State Control | Adjust monster HP, damage, stun, and Overdrive state | Experimental; inspect current state and change one item at a time |
 
 The combat, character, and quest patch pages share one persistent connection. Switching pages keeps active patches; `Restore All & Disconnect` or application shutdown restores them together.
 

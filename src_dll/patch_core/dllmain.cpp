@@ -8,15 +8,6 @@
 #include <cstring>
 
 static LONG g_autoOverdrivePhase = 0;
-struct DamageMeterState
-{
-    volatile LONG64 monsterDamage;
-    volatile LONG64 crocodileDamage;
-};
-
-static HANDLE g_damageMeterMapping = nullptr;
-static DamageMeterState* g_damageMeter = nullptr;
-static const wchar_t* kDamageMeterName = L"Local\\GBFRPlayerInfoEditDamageMeterV3";
 
 static constexpr size_t kPlayerPointerCount = 8;
 
@@ -32,35 +23,6 @@ struct PlayerPointerState
 static HANDLE g_playerPointerMapping = nullptr;
 static PlayerPointerState* g_playerPointerState = nullptr;
 static const wchar_t* kPlayerPointerName = L"Local\\GBFRPlayerInfoEditPlayerPointersV1";
-
-static void InitDamageMeter()
-{
-    if (g_damageMeter) return;
-
-    g_damageMeterMapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(DamageMeterState), kDamageMeterName);
-    if (!g_damageMeterMapping) return;
-
-    g_damageMeter = reinterpret_cast<DamageMeterState*>(MapViewOfFile(g_damageMeterMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(DamageMeterState)));
-    if (!g_damageMeter)
-    {
-        CloseHandle(g_damageMeterMapping);
-        g_damageMeterMapping = nullptr;
-    }
-}
-
-static void CloseDamageMeter()
-{
-    if (g_damageMeter)
-    {
-        UnmapViewOfFile(g_damageMeter);
-        g_damageMeter = nullptr;
-    }
-    if (g_damageMeterMapping)
-    {
-        CloseHandle(g_damageMeterMapping);
-        g_damageMeterMapping = nullptr;
-    }
-}
 
 static bool InitPlayerPointers()
 {
@@ -267,42 +229,6 @@ static lm_address_t AllocNear(lm_address_t target, size_t size)
     }
 
     return LM_ADDRESS_BAD;
-}
-
-static void AppendTeamDamageFromRcXEdxR8(lm_byte_t* code, size_t& i, uint8_t damageOffset)
-{
-    code[i++] = 0x44; code[i++] = 0x8B; code[i++] = 0x49; code[i++] = 0x10;                         // mov r9d,[rcx+10]
-    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xC9;                                           // test r9d,r9d
-    code[i++] = 0x7E; size_t jleSkipOldHp = i++;                                                     // jle skip
-    code[i++] = 0x45; code[i++] = 0x89; code[i++] = 0xCA;                                           // mov r10d,r9d
-    code[i++] = 0x41; code[i++] = 0x29; code[i++] = 0xD2;                                           // sub r10d,edx
-    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xC0;                                           // test r8d,r8d
-    code[i++] = 0x74; size_t jzAllowZero = i++;                                                      // jz allow zero
-    code[i++] = 0x41; code[i++] = 0x83; code[i++] = 0xFA; code[i++] = 0x01;                         // cmp r10d,1
-    code[i++] = 0x7D; size_t jgeHaveRemaining = i++;                                                 // jge have remaining
-    code[i++] = 0x41; code[i++] = 0xBA; code[i++] = 0x01; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00; // mov r10d,1
-    code[i++] = 0xEB; size_t jmpHaveRemaining = i++;                                                 // jmp have remaining
-    size_t allowZeroOffset = i;
-    code[i++] = 0x45; code[i++] = 0x85; code[i++] = 0xD2;                                           // test r10d,r10d
-    code[i++] = 0x7F; size_t jgHaveRemaining = i++;                                                  // jg have remaining
-    code[i++] = 0x45; code[i++] = 0x31; code[i++] = 0xD2;                                           // xor r10d,r10d
-    size_t haveRemainingOffset = i;
-    code[i++] = 0x45; code[i++] = 0x29; code[i++] = 0xD1;                                           // sub r9d,r10d
-    code[i++] = 0x7E; size_t jleSkipDelta = i++;                                                     // jle skip
-    code[i++] = 0x49; code[i++] = 0xBB; uintptr_t meterAddr = reinterpret_cast<uintptr_t>(&g_damageMeter); memcpy(code + i, &meterAddr, sizeof(meterAddr)); i += sizeof(meterAddr); // mov r11,&g_damageMeter
-    code[i++] = 0x4D; code[i++] = 0x8B; code[i++] = 0x1B;                                           // mov r11,[r11]
-    code[i++] = 0x4D; code[i++] = 0x85; code[i++] = 0xDB;                                           // test r11,r11
-    code[i++] = 0x74; size_t jzSkipMeter = i++;                                                      // jz skip
-    code[i++] = 0xF0; code[i++] = 0x4D; code[i++] = 0x01; code[i++] = 0x4B; code[i++] = damageOffset;              // lock add [r11+damageOffset],r9
-    size_t skipOffset = i;
-
-    code[jleSkipOldHp] = static_cast<lm_byte_t>(skipOffset - (jleSkipOldHp + 1));
-    code[jzAllowZero] = static_cast<lm_byte_t>(allowZeroOffset - (jzAllowZero + 1));
-    code[jgeHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jgeHaveRemaining + 1));
-    code[jmpHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jmpHaveRemaining + 1));
-    code[jgHaveRemaining] = static_cast<lm_byte_t>(haveRemainingOffset - (jgHaveRemaining + 1));
-    code[jleSkipDelta] = static_cast<lm_byte_t>(skipOffset - (jleSkipDelta + 1));
-    code[jzSkipMeter] = static_cast<lm_byte_t>(skipOffset - (jzSkipMeter + 1));
 }
 
 static bool PatchDamageHook(lm_address_t target, wchar_t* message, size_t messageSize)
@@ -864,8 +790,6 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 
 static DWORD WINAPI InitThread(LPVOID)
 {
-    InitDamageMeter();
-
     wchar_t message[256]{};
     ApplyMonsterPatches(message, _countof(message));
 
@@ -892,7 +816,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         break;
     case DLL_PROCESS_DETACH:
         ClosePlayerPointers();
-        CloseDamageMeter();
         break;
     }
     return TRUE;

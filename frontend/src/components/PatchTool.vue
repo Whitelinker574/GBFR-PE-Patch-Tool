@@ -263,8 +263,8 @@ const toolMeta = {
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
   monster: {
-    group: 'memory', title: '怪物倍率与伤害记录', eyebrow: '实验', status: '实验', tone: 'live',
-    description: '怪物倍率、霸体和伤害记录相关功能。',
+    group: 'memory', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
+    description: '控制怪物血量、伤害、昏厥条和 Overdrive 状态。',
     usage: ['仅在主机端测试', '先刷新并检查状态', '告知队友后再启用'],
     caution: '',
     speaker: '伊德', note: '先确认主机端和倍率，再动手。力量失控的话，记录也会失去意义。',
@@ -311,8 +311,8 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   evidence: '证据与边界',
   experimentKicker: '实验入口',
   experimentTitle: '不计入稳定完成项',
-  experimentName: '怪物倍率与伤害记录',
-  experimentDetail: '页面已保留；怪物倍率写入尚未完成全场景现场验证',
+  experimentName: '怪物倍率与状态控制',
+  experimentDetail: '四项 Hook 已在 DLC 2.0.2 实机完成安装与恢复验证；战斗效果仍按实验功能标注',
   open: '查看 ›',
 } : {
   manualFile: 'Select it manually on the Game File Maintenance page',
@@ -331,8 +331,8 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   evidence: 'Evidence and boundary',
   experimentKicker: 'Experimental Entry',
   experimentTitle: 'Not counted as stable completion',
-  experimentName: 'Monster Multipliers & Damage Log',
-  experimentDetail: 'The page is retained; monster-multiplier writes are not field-tested across all scenarios',
+  experimentName: 'Monster Multipliers & State Control',
+  experimentDetail: 'All four hooks pass live install and restore checks on DLC 2.0.2; combat effects remain experimental',
   open: 'Open ›',
 })
 

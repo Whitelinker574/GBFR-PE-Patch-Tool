@@ -305,30 +305,63 @@ func TestMonsterEnhanceLiveInstallRestore(t *testing.T) {
 		}
 	}()
 	for _, test := range []struct {
-		id    string
-		value float64
+		id        string
+		pointID   string
+		value     float64
+		applyOnce bool
 	}{
-		{id: "monster_hp", value: 1},
-		{id: "monster_damage", value: 1},
-		{id: "monster_stun", value: 1},
-		{id: "overdrive_state", value: 9},
+		{id: "monster_hp", pointID: "monster_hp", value: 1},
+		{id: "monster_damage", pointID: "monster_damage", value: 1},
+		{id: "monster_stun", pointID: "monster_stun", value: 1},
+		{id: "overdrive_state", pointID: "overdrive_state", value: 9},
+		{id: "overdrive_state_empty_once", pointID: "overdrive_state", value: 0, applyOnce: true},
 	} {
 		t.Run(test.id, func(t *testing.T) {
-			status, err := app.MonsterEnhanceSetPatchValueEnabledOwned(info.OwnerToken, test.id, true, test.value)
+			requestID := test.pointID
+			if test.applyOnce {
+				requestID = "overdrive_state_apply"
+			}
+			status, err := app.MonsterEnhanceSetPatchValueEnabledOwned(info.OwnerToken, requestID, true, test.value)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !monsterStatusHasPatch(status, test.id) {
+			if test.applyOnce {
+				if monsterStatusHasPatch(status, test.pointID) {
+					t.Fatalf("%s retained its one-shot hook", test.id)
+				}
+				return
+			}
+			if !monsterStatusHasPatch(status, test.pointID) {
 				t.Fatalf("%s did not report enabled", test.id)
 			}
-			status, err = app.MonsterEnhanceSetPatchValueEnabledOwned(info.OwnerToken, test.id, false, test.value)
+			status, err = app.MonsterEnhanceSetPatchValueEnabledOwned(info.OwnerToken, test.pointID, false, test.value)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if monsterStatusHasPatch(status, test.id) {
+			if monsterStatusHasPatch(status, test.pointID) {
 				t.Fatalf("%s remained enabled after restore", test.id)
 			}
 		})
+	}
+}
+
+func TestMonsterPatchValueValidationAllowsEmptyOverdriveState(t *testing.T) {
+	if err := validateMonsterPatchValue(findMonsterPatchPoint("overdrive_state"), true, 0); err != nil {
+		t.Fatalf("empty overdrive state was rejected: %v", err)
+	}
+	if err := validateMonsterPatchValue(findMonsterPatchPoint("monster_hp"), true, 0); err == nil {
+		t.Fatal("zero monster HP multiplier was accepted")
+	}
+}
+
+func TestMonsterPatchActivityReportsAnyActiveHook(t *testing.T) {
+	injected, allEnabled := monsterPatchActivity(4, 1)
+	if !injected || allEnabled {
+		t.Fatalf("one active hook = injected %v, allEnabled %v", injected, allEnabled)
+	}
+	injected, allEnabled = monsterPatchActivity(4, 4)
+	if !injected || !allEnabled {
+		t.Fatalf("all active hooks = injected %v, allEnabled %v", injected, allEnabled)
 	}
 }
 
