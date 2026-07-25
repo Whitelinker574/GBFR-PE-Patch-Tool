@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v1.91.15 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.91\.15"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.15')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.15')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.15')
+test('release metadata uses v1.91.16 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.91\.16"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.91.16')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.91.16')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.91.16')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -33,6 +33,8 @@ test('README reference notes contain only the approved public links', () => {
   const allowed = new Set([
     'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest',
     'https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml',
+    'https://share.whitelinker.top',
+    'https://share.whitelinker.top/?lang=en',
     'https://github.com/BitterG/GBFR-PE-Patch-Tool',
     'https://b23.tv/xhiZ7fm',
     'https://lib.kannanote.top/%e7%a2%a7%e8%93%9d%e9%85%8d%e8%a3%85%e6%a8%a1%e6%8b%9f%e5%99%a8/',

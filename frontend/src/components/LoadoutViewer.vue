@@ -249,7 +249,7 @@ onMounted(async () => {
                     <div class="sigil-detail-title">
                       <img v-if="traitIcon(s.primaryTraitName, s.primaryTraitHash)" :src="traitIcon(s.primaryTraitName, s.primaryTraitHash)" alt="" />
                       <span v-else class="sigil-icon-fallback" aria-hidden="true">◇</span>
-                      <b>{{ s.name || '未收录因子' }}</b>
+                      <b>{{ s.name || '因子' }}</b>
                       <small>因子 Lv{{ s.level }}</small>
                     </div>
                     <div v-if="!s.missing" class="sigil-traits">

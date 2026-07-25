@@ -28,3 +28,42 @@ func TestSummonMainSkillNamesUseCanonicalProductChinese(t *testing.T) {
 		}
 	}
 }
+
+func TestSummonOptionsSelectOfficialLanguageCatalog(t *testing.T) {
+	app := &App{}
+	setCurrentLanguage("zh")
+	zh, err := app.SummonGetOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setCurrentLanguage("en")
+	en, err := app.SummonGetOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(zh.Types) != 189 || len(zh.Traits) != 82 || len(zh.SubParams) != 22 {
+		t.Fatalf("unexpected Chinese summon catalog sizes: %d/%d/%d", len(zh.Types), len(zh.Traits), len(zh.SubParams))
+	}
+	find := func(options []SummonOption, hash uint32) string {
+		for _, option := range options {
+			if option.Hash == hash {
+				return option.Name
+			}
+		}
+		return ""
+	}
+	checks := []struct {
+		options []SummonOption
+		hash    uint32
+		want    string
+	}{
+		{en.Traits, 0x0DE887A0, "Celestial Nyx"},
+		{en.SubParams, 0x00D171E0, "Critical Hit Rate (Low · Max 20%)"},
+		{zh.Traits, 0x0DE887A0, "天星之炼"},
+	}
+	for _, check := range checks {
+		if got := find(check.options, check.hash); got != check.want {
+			t.Errorf("summon option %08X = %q, want %q", check.hash, got, check.want)
+		}
+	}
+}

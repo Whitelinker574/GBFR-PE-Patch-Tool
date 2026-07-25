@@ -419,7 +419,10 @@ func TestSingleTraitShareImportReplacesOpaqueSigilNameAndKeepsSecondaryEmpty(t *
 	}
 }
 
-func TestCombinationShareImportDerivesNameFromTraitsInsteadOfKeepingOpaqueHash(t *testing.T) {
+func TestCombinationShareImportUsesTheUniqueLegalItemNameWithoutJoiningTraits(t *testing.T) {
+	previous := getCurrentLanguage()
+	setCurrentLanguage("en")
+	t.Cleanup(func() { setCurrentLanguage(previous) })
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -446,9 +449,12 @@ func TestCombinationShareImportDerivesNameFromTraitsInsteadOfKeepingOpaqueHash(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantName := draft.Item.PrimaryTraitName + " + " + draft.Item.SecondaryTraitName
+	wantName := "Precise Wrath V+"
 	if draft.Item.SigilName != wantName || isOpaqueLoadoutShareName(draft.Item.SigilName, sigilHash) {
-		t.Fatalf("opaque combination name was not reconstructed: got=%q want=%q", draft.Item.SigilName, wantName)
+		t.Fatalf("combination instance did not resolve to its unique legal item name: got=%q want=%q", draft.Item.SigilName, wantName)
+	}
+	if strings.Contains(draft.Item.SigilName, " + ") {
+		t.Fatalf("item title joined primary and secondary traits: %q", draft.Item.SigilName)
 	}
 }
 

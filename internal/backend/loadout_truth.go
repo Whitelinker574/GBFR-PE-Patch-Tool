@@ -24,26 +24,140 @@ func loadoutSigilAccess(cat *Catalog, hash uint32, precedent map[uint32]bool) (g
 	return true, true
 }
 
-// loadoutSigilDisplayNameFromTraits keeps uncatalogued save records useful
-// without presenting their opaque hash as if it were a game-facing name.
-func loadoutSigilDisplayNameFromTraits(hash uint32, primary, secondary string) string {
-	if name := strings.TrimSpace(sigilDisplayName(hash)); name != "" {
-		return name
+// loadoutSigilDisplayNameFromTraits keeps traits in their own fields and derives
+// the game's V/V+/+ item-family suffix when a combination uses an instance hash.
+func loadoutSigilDisplayNameFromTraits(hash uint32, primaryName, secondaryName string) string {
+	return loadoutSigilDisplayNameForTraits(hash, primaryName, secondaryName)
+}
+
+func loadoutSigilDisplayNameForTraits(hash uint32, primaryName, secondaryName string) string {
+	if cat, err := LoadCatalog(); err == nil {
+		if sigil := cat.LookupSigilByHash(hash); sigil != nil {
+			if strings.TrimSpace(secondaryName) != "" && !supportsGeneratedPlusSigil(sigil) {
+				if name := synthesizeSigilNameForTraits(cat, primaryName, true, useChinese()); name != "" {
+					return name
+				}
+			}
+			return displaySigilName(sigil)
+		}
+		if name := synthesizeSigilNameForTraits(cat, primaryName, strings.TrimSpace(secondaryName) != "", useChinese()); name != "" {
+			return name
+		}
 	}
-	primary = strings.TrimSpace(primary)
-	secondary = strings.TrimSpace(secondary)
-	switch {
-	case primary != "" && secondary != "" && primary != secondary:
-		return primary + " + " + secondary
-	case primary != "":
-		return primary
-	case secondary != "":
-		return secondary
-	case useChinese():
-		return "未收录因子"
+	if useChinese() {
+		return fallbackSynthesizedSigilName(primaryName, secondaryName, true)
+	}
+	return fallbackSynthesizedSigilName(primaryName, secondaryName, false)
+}
+
+func fallbackSynthesizedSigilName(primaryName, secondaryName string, chinese bool) string {
+	primaryName = strings.TrimSpace(primaryName)
+	if primaryName == "" {
+		if chinese {
+			return "因子"
+		}
+		return "Sigil"
+	}
+	if isNoSuffixSpecialSigilPrimary(primaryName) {
+		return primaryName
+	}
+	if strings.TrimSpace(secondaryName) == "" {
+		return primaryName
+	}
+	if chinese && primaryName == "躲避性能" {
+		return primaryName + "+"
+	}
+	return primaryName + " V+"
+}
+
+func isNoSuffixSpecialSigilPrimary(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "可怕的漆黑钳蟹因子", "相扑斗力", "漆黑之谊", "Crabby Resonance", "Crabmiration", "Crabvestment Returns", "Seven Net":
+		return true
 	default:
-		return "Uncatalogued Sigil"
+		return false
 	}
+}
+
+func synthesizeSigilNameForTraits(cat *Catalog, primaryName string, hasSecondary, chinese bool) string {
+	primaryName = strings.TrimSpace(primaryName)
+	if cat == nil || primaryName == "" {
+		if hasSecondary {
+			return fallbackSynthesizedSigilName(primaryName, "secondary", chinese)
+		}
+		return fallbackSynthesizedSigilName(primaryName, "", chinese)
+	}
+	base := ""
+	suffixes := make(map[string]bool)
+	for index := range cat.Sigils {
+		sigil := &cat.Sigils[index]
+		if sigil.PrimaryTraitName == nil {
+			continue
+		}
+		catalogName := strings.TrimSpace(*sigil.PrimaryTraitName)
+		chineseName := strings.TrimSpace(traitCN[catalogName])
+		if !strings.EqualFold(primaryName, catalogName) && (chineseName == "" || !strings.EqualFold(primaryName, chineseName)) {
+			continue
+		}
+		if base == "" {
+			base = catalogName
+			if chinese && chineseName != "" {
+				base = chineseName
+			}
+		}
+		candidate := sigilDisplayNameForLanguage(sigil, chinese)
+		if candidate == "" {
+			continue
+		}
+		if strings.HasPrefix(candidate, base) {
+			suffixes[strings.TrimSpace(strings.TrimPrefix(candidate, base))] = true
+		}
+	}
+	if base == "" {
+		base = primaryName
+	}
+	if isNoSuffixSpecialSigilPrimary(primaryName) {
+		return base
+	}
+	if hasSecondary {
+		if suffixes["V+"] {
+			return base + " V+"
+		}
+		if suffixes["+"] {
+			return base + "+"
+		}
+		if suffixes["V"] {
+			return base + " V+"
+		}
+		return fallbackSynthesizedSigilName(base, "secondary", chinese)
+	}
+	for _, suffix := range []string{"V+", "V", "+", ""} {
+		if suffixes[suffix] {
+			if suffix == "" {
+				return base
+			}
+			if suffix == "+" {
+				return base + "+"
+			}
+			return base + " " + suffix
+		}
+	}
+	return fallbackSynthesizedSigilName(base, "", chinese)
+}
+
+func sigilDisplayNameForLanguage(sigil *SigilDef, chinese bool) string {
+	if sigil == nil {
+		return ""
+	}
+	if chinese {
+		if name := strings.TrimSpace(sigilCN[sigil.DisplayName]); name != "" {
+			return normalizeChineseSigilItemName(name)
+		}
+		if hash, err := ParseHashHex(sigil.Hash); err == nil {
+			return normalizeChineseSigilItemName(runtimeNameCN[hash])
+		}
+	}
+	return strings.TrimSpace(sigil.DisplayName)
 }
 
 func validateLoadoutWeaponDefinition(hash uint32, ownerCode string) (ProgressionWeaponDef, error) {

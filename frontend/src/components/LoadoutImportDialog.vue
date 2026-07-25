@@ -173,7 +173,7 @@ function submit() {
             <i class="import-choice-icon" aria-hidden="true">◆</i><span><b>上限突破</b><small>四槽属性与等级，可选择不覆盖</small></span><em>{{ choices.overLimit ? '已选择' : '保留目标' }}</em>
           </button>
           <button v-if="has.characterGrowth" type="button" class="import-choice risk" :class="{ on: choices.characterGrowth, blocked: characterGrowthBlocked }" :disabled="characterGrowthBlocked" @click="toggle('characterGrowth')">
-            <i class="import-choice-icon" aria-hidden="true">▦</i><span><b>角色强化进度</b><small>同步攻击与 HP·抗性强化页；目标未满级时联动升至 Lv100，不改命运篇章或任何武器</small></span><em>{{ characterGrowthBlocked ? '缺少等级快照' : choices.characterGrowth ? '将覆盖' : '默认不改' }}</em>
+            <i class="import-choice-icon" aria-hidden="true">▦</i><span><b>角色强化进度</b><small>只补足攻击与 HP·抗性强化页的未完成节点；不会让已点满的目标降级，也不改命运篇章或任何武器</small></span><em>{{ characterGrowthBlocked ? '缺少等级快照' : choices.characterGrowth ? '只增不减' : '默认不改' }}</em>
           </button>
           <button v-if="has.characterWeaponCollection" type="button" class="import-choice risk" :class="{ on: choices.characterWeaponCollection }" @click="toggle('characterWeaponCollection')">
             <i class="import-choice-icon" aria-hidden="true">▤</i><span><b>整组角色武器收藏</b><small>同步该角色全部武器的等级、突破、幻晶、觉醒与超凡；会影响武器收集加成</small></span><em>{{ choices.characterWeaponCollection ? '将覆盖全部' : '默认不改' }}</em>

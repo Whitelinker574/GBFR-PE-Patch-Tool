@@ -47,6 +47,20 @@ type expectedWeaponWrightstone struct {
 	snapshot preparedWeaponWrightstone
 }
 
+func keepHigherProgress(target, source int) int {
+	if target > source {
+		return target
+	}
+	return source
+}
+
+func mergeEnhancementNodeProgress(target, source int) (int, error) {
+	if target < 0 || source < 0 {
+		return 0, fmt.Errorf("角色强化节点值不能为负数")
+	}
+	return target | source, nil
+}
+
 func prepareWeaponWrightstone(source *LoadoutWeaponWrightstone) (preparedWeaponWrightstone, error) {
 	prepared := preparedWeaponWrightstone{source: source}
 	if source == nil {
@@ -370,9 +384,24 @@ func prepareLoadoutImport(save *SaveData, changes []LoadoutWrite, payload *Loado
 					return nil, fmt.Errorf("角色强化面板槽 %d 尚未初始化，不能覆盖目标角色", index+1)
 				}
 			}
-			legacy := payload.Character.LegacyProgress
+			legacyEntry, ok := save.findUnitExact(1321, unitID)
+			if !ok || legacyEntry.ValueCnt != 1 {
+				return nil, fmt.Errorf("目标角色缺少角色强化进度字段")
+			}
+			legacy := keepHigherProgress(int(legacyEntry.Uint32()), payload.Character.LegacyProgress)
 			prepared.legacyProgress = &legacy
-			prepared.enhancementPanel = append([]int(nil), payload.Character.EnhancementPanel...)
+			panelEntry, ok := save.findUnitExact(1503, unitID)
+			if !ok || panelEntry.ValueCnt != 2 {
+				return nil, fmt.Errorf("目标角色缺少角色强化面板字段")
+			}
+			prepared.enhancementPanel = make([]int, 2)
+			for index, sourceValue := range payload.Character.EnhancementPanel {
+				targetValue, readErr := panelEntry.Uint32At(index)
+				if readErr != nil {
+					return nil, fmt.Errorf("读取目标角色强化面板槽 %d 失败: %w", index+1, readErr)
+				}
+				prepared.enhancementPanel[index] = keepHigherProgress(int(int32(targetValue)), sourceValue)
+			}
 			nodeBase := uint32(10000000) + (unitID-10000)*1000
 			seenNodes := make(map[int]bool, len(payload.Character.EnhancementNodes))
 			for _, node := range payload.Character.EnhancementNodes {
@@ -384,6 +413,10 @@ func prepareLoadoutImport(save *SaveData, changes []LoadoutWrite, payload *Loado
 					return nil, fmt.Errorf("目标角色缺少 1602 强化节点 %d，无法安全复制", node.Index)
 				}
 				seenNodes[node.Index] = true
+				node.Value, err = mergeEnhancementNodeProgress(int(entry.Int32()), node.Value)
+				if err != nil {
+					return nil, fmt.Errorf("角色强化节点 %d 无法合并: %w", node.Index, err)
+				}
 				prepared.enhancementNodes = append(prepared.enhancementNodes, node)
 			}
 		}

@@ -15,8 +15,10 @@ const props = defineProps({
   error: { type: String, default: '' },
   canGenerate: { type: Boolean, default: false },
   selectedName: { type: String, default: '' },
+  autoPublish: { type: Boolean, default: true },
+  shareTitle: { type: String, default: '' },
 })
-const emit = defineEmits(['close', 'generate', 'publish', 'import'])
+const emit = defineEmits(['close', 'generate', 'publish', 'import', 'update:auto-publish', 'update:share-title'])
 
 const pasteCode = ref('')
 const copied = ref('')
@@ -146,6 +148,8 @@ function submitImport() {
               <button type="button" class="ui-btn is-primary publish-button" :disabled="working || !result" @click="emit('publish')">
                 {{ publishing ? '正在生成…' : '生成短链接' }}
               </button>
+              <label class="share-title"><span>分享名称</span><input :value="shareTitle" maxlength="80" placeholder="例如：伊欧 · 训练场上限" @input="emit('update:share-title', $event.target.value)"></label>
+              <label class="share-optin"><input type="checkbox" :checked="autoPublish" @change="emit('update:auto-publish', $event.target.checked)"><span>生成后同时上传到线上分享站</span><small>默认开启；关闭后只生成本机离线码</small></label>
             </div>
             <p class="online-note">线上仅保存压缩后的单套配装，不包含整个存档。获得短码的人可读取该配装；当前短码不自动过期。</p>
           </section>
@@ -210,6 +214,11 @@ function submitImport() {
 .publish-prompt b { color:#483725; }
 .publish-prompt small { color:#7b6a55; line-height:1.45; }
 .publish-button { min-width:118px; min-height:40px; }
+.share-optin { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:7px 9px; margin-top:2px; color:#5d503e; font-size:.75rem; line-height:1.4; cursor:pointer; }
+.share-optin input { width:15px; height:15px; accent-color:#806039; }
+.share-optin small { color:#8a7964; }
+.share-title { grid-column:1/-1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; color:#66563f; font-size:.75rem; }
+.share-title input { min-height:33px; width:100%; padding:0 9px; border:1px solid rgba(126,88,42,.3); border-radius:5px; background:#fffdf7; color:#413426; font:inherit; }
 .published-ticket { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 18px; align-items:center; padding:18px; border:1px solid rgba(74,119,89,.45); border-left:4px solid #4a7759; border-radius:8px; background:#f7fbf4; }
 .published-code { min-width:0; display:flex; flex-direction:column; gap:3px; }
 .published-code small { color:#65816c; font-weight:700; }

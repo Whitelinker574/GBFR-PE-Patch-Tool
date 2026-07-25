@@ -71,6 +71,13 @@ type summonStatCatalog struct {
 	sub   map[uint32]SummonOption
 }
 
+func summonSubParamPanelScale(name string, unit string) float64 {
+	if unit == "flat" && strings.HasPrefix(name, "昏厥") {
+		return legacyMasteryStunPanelScale
+	}
+	return 1
+}
+
 func loadSummonStatCatalog() (*summonStatCatalog, error) {
 	var types summonTypeFile
 	var skills summonSkillFile
@@ -284,7 +291,7 @@ func readSummonInventory(data *SaveDataBinary, catalog *summonStatCatalog, warni
 				} else {
 					summon.SubParamUnit = "flat"
 				}
-				summon.SubParamValue = option.Values[summon.SubParamLevel]
+				summon.SubParamValue = option.Values[summon.SubParamLevel] * summonSubParamPanelScale(option.Name, summon.SubParamUnit)
 			} else {
 				appendWarning(warnings, "召唤石 SlotID %d 的副参数等级 %d 超出目录范围", slotID, summon.SubParamLevel)
 			}
@@ -630,6 +637,75 @@ func summonSubParamLabel(name string) string {
 	}
 }
 
+func loadoutFactorSource(index int, name string, constructed bool) string {
+	if useChinese() {
+		if constructed {
+			return fmt.Sprintf("构造因子%02d · %s", index+1, name)
+		}
+		return fmt.Sprintf("因子%02d · %s", index+1, name)
+	}
+	if constructed {
+		return fmt.Sprintf("Constructed Sigil %02d · %s", index+1, name)
+	}
+	return fmt.Sprintf("Sigil %02d · %s", index+1, name)
+}
+
+func loadoutWeaponSource(weaponName, traitName string, level int) string {
+	if useChinese() {
+		return fmt.Sprintf("武器 · %s · %s Lv%d", weaponName, traitName, level)
+	}
+	return fmt.Sprintf("Weapon · %s · %s Lv%d", weaponName, traitName, level)
+}
+
+func loadoutWrightstoneSource(wrightstoneName, traitName string, level int) string {
+	if useChinese() {
+		return fmt.Sprintf("武器祝福 · %s · %s Lv%d", wrightstoneName, traitName, level)
+	}
+	return fmt.Sprintf("Wrightstone · %s · %s Lv%d", wrightstoneName, traitName, level)
+}
+
+func loadoutSummonSource(index int, summon LoadoutSummon) string {
+	if useChinese() {
+		return "召唤石 · " + summon.Name
+	}
+	return fmt.Sprintf("Summon %d · %s", index+1, summon.TypeHash)
+}
+
+func localizedLoadoutWeaponName(weapon *LoadoutWeaponContext) string {
+	if weapon == nil {
+		return ""
+	}
+	if hash, err := ParseHashHex(weapon.StoredHash); err == nil {
+		if definition, ok := progressionWeaponDefForHash(hash); ok {
+			return progressionWeaponName(definition)
+		}
+	}
+	return strings.TrimSpace(weapon.Name)
+}
+
+func localizedLoadoutWeaponTraitName(cat *Catalog, skill LoadoutWeaponSkill) string {
+	if hash, err := ParseHashHex(skill.TraitHash); err == nil {
+		if name := loadoutTraitDisplayName(cat, hash); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(skill.Name)
+}
+
+func localizedLoadoutWrightstoneName(wrightstone *LoadoutWeaponWrightstone) string {
+	if wrightstone == nil {
+		return ""
+	}
+	if hash, err := ParseHashHex(wrightstone.Hash); err == nil {
+		if catalog, loadErr := LoadWrightstoneCatalog(); loadErr == nil {
+			if definition := catalog.LookupWrightstoneByHash(hash); definition != nil {
+				return cnWrightstone(definition.DisplayName)
+			}
+		}
+	}
+	return cnWrightstone(wrightstone.Name)
+}
+
 func sortEffectTotals(totals []EffectTotal) {
 	sort.SliceStable(totals, func(i, j int) bool {
 		ci, cj := catRank(totals[i].CatLabel), catRank(totals[j].CatLabel)
@@ -764,10 +840,10 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 		primaryHash, primaryLevel, secondaryHash, secondaryLevel := readSigilTraits(save, gemUnitID)
 		if primaryHash != 0 && primaryHash != EmptyHash && primaryLevel > 0 {
 			factorPrimaryHashes = append(factorPrimaryHashes, primaryHash)
-			factorSources = append(factorSources, traitSourcePair{primaryHash, fmt.Sprintf("因子%02d · %s", index+1, loadoutTraitDisplayName(cat, primaryHash))})
+			factorSources = append(factorSources, traitSourcePair{primaryHash, loadoutFactorSource(index, loadoutTraitDisplayName(cat, primaryHash), false)})
 		}
 		if secondaryHash != 0 && secondaryHash != EmptyHash && secondaryLevel > 0 {
-			factorSources = append(factorSources, traitSourcePair{secondaryHash, fmt.Sprintf("因子%02d · %s", index+1, loadoutTraitDisplayName(cat, secondaryHash))})
+			factorSources = append(factorSources, traitSourcePair{secondaryHash, loadoutFactorSource(index, loadoutTraitDisplayName(cat, secondaryHash), false)})
 		}
 	}
 	for index, draft := range constructed {
@@ -780,13 +856,13 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 			level int
 		}{prepared.primaryHash, prepared.item.PrimaryLevel})
 		factorPrimaryHashes = append(factorPrimaryHashes, prepared.primaryHash)
-		factorSources = append(factorSources, traitSourcePair{prepared.primaryHash, fmt.Sprintf("构造因子%02d · %s", index+1, loadoutTraitDisplayName(cat, prepared.primaryHash))})
+		factorSources = append(factorSources, traitSourcePair{prepared.primaryHash, loadoutFactorSource(index, loadoutTraitDisplayName(cat, prepared.primaryHash), true)})
 		if prepared.secondaryHash != 0 && prepared.secondaryHash != EmptyHash && prepared.secondaryLevel > 0 {
 			factorPairs = append(factorPairs, struct {
 				hash  uint32
 				level int
 			}{prepared.secondaryHash, prepared.secondaryLevel})
-			factorSources = append(factorSources, traitSourcePair{prepared.secondaryHash, fmt.Sprintf("构造因子%02d · %s", index+1, loadoutTraitDisplayName(cat, prepared.secondaryHash))})
+			factorSources = append(factorSources, traitSourcePair{prepared.secondaryHash, loadoutFactorSource(index, loadoutTraitDisplayName(cat, prepared.secondaryHash), true)})
 		}
 	}
 	// 因子强化 is a weapon skill that raises every equipped factor trait before
@@ -895,12 +971,17 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 		addTraitSource(resolveTraitValueID(pair.hash, hashToID), pair.source)
 	}
 	if weapon != nil {
+		weaponName := localizedLoadoutWeaponName(weapon)
 		if weapon.Wrightstone != nil {
 			for _, trait := range weapon.Wrightstone.Traits {
 				if trait.TraitID == "" {
 					continue
 				}
-				source := fmt.Sprintf("武炼结晶 · %s · %s Lv%d", weapon.Wrightstone.Name, trait.Name, trait.Level)
+				traitName := trait.Name
+				if hash, parseErr := ParseHashHex(trait.Hash); parseErr == nil {
+					traitName = loadoutTraitDisplayName(cat, hash)
+				}
+				source := loadoutWrightstoneSource(localizedLoadoutWrightstoneName(weapon.Wrightstone), traitName, trait.Level)
 				addTraitSource(trait.TraitID, source)
 			}
 		}
@@ -908,18 +989,18 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 			if skill.TraitID == "" {
 				continue
 			}
-			source := fmt.Sprintf("武器 · %s · %s Lv%d", weapon.Name, skill.Name, skill.Level)
+			source := loadoutWeaponSource(weaponName, localizedLoadoutWeaponTraitName(cat, skill), skill.Level)
 			addTraitSource(skill.TraitID, source)
 		}
 	}
-	for _, summon := range selected {
+	for index, summon := range selected {
 		hash, parseErr := ParseHashHex(summon.MainTraitHash)
 		if parseErr != nil {
 			continue
 		}
 		traitID := resolveTraitValueID(hash, hashToID)
 		if traitID != "" {
-			addTraitSource(traitID, "召唤石 · "+summon.Name)
+			addTraitSource(traitID, loadoutSummonSource(index, summon))
 		}
 	}
 	bonuses := simulateTraits(pairs, hashToID)
@@ -928,7 +1009,11 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 	}
 	totals := aggregateTraitEffects(bonuses)
 	if weapon != nil {
-		weaponSource := "武器 · " + weapon.Name
+		weaponName := localizedLoadoutWeaponName(weapon)
+		weaponSource := "Weapon · " + weaponName
+		if useChinese() {
+			weaponSource = "武器 · " + weaponName
+		}
 		if weapon.Total.HP != 0 {
 			addTotal(&totals, "最大HP", "flat", weapon.Total.HP, "基础能力", weaponSource)
 		}

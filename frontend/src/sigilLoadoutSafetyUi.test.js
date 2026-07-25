@@ -36,3 +36,8 @@ test('录制文件保留可读名称并兼容旧版纯哈希文件', () => {
   assert.doesNotMatch(source, /function sigilName\(entry\)\s*\{[^}]*formatHash/)
   assert.doesNotMatch(source, /return traitNames\.value\.get\(value\) \|\| formatHash\(value\)/)
 })
+
+test('因子标题不把主副词条拼成虚构物品名', () => {
+  assert.doesNotMatch(source, /`\$\{primary\}\s*\+\s*\$\{secondary\}`/)
+	assert.match(source, /if \(exact\) return exact[\s\S]*return '因子'/)
+})

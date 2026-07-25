@@ -3,14 +3,28 @@
   "name": "share",
   "main": "src/index.js",
   "compatibility_date": "2026-07-23",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [
+    { "pattern": "share.whitelinker.top", "custom_domain": true }
+  ],
   "observability": {
     "enabled": true
+  },
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
   },
   "r2_buckets": [
     {
       "binding": "LOADOUTS",
       "bucket_name": "gbfr-loadout-share"
     }
-  ]
+  ],
+  "d1_databases": [{
+    "binding": "COMMUNITY_DB",
+    "database_name": "gbfr-loadout-community",
+    "database_id": "2b421fb0-63fa-4b88-8685-1c80fa1ae184"
+  }]
 }

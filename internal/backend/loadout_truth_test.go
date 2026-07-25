@@ -47,16 +47,36 @@ func TestLoadoutSigilAccessFailsClosedForUnknownHashes(t *testing.T) {
 	}
 }
 
-func TestUncataloguedLoadoutSigilNameUsesItsStoredTraits(t *testing.T) {
+func TestLoadoutSigilNameUsesOnlyVerifiedItemIdentity(t *testing.T) {
 	previous := getCurrentLanguage()
 	setCurrentLanguage("zh")
 	t.Cleanup(func() { setCurrentLanguage(previous) })
 
-	if got := loadoutSigilDisplayNameFromTraits(0x6CBA6B0D, "怒涛", "攻击力"); got != "怒涛 + 攻击力" {
-		t.Fatalf("未知因子名=%q，期望由实际主副词条组成", got)
+	if got := loadoutSigilDisplayNameFromTraits(0x46ABA3C0, "怒发冲冠", "伤害上限"); got != "怒发冲冠 V+" {
+		t.Fatalf("目录因子名=%q，不能把强制副词条拼进物品标题", got)
 	}
-	if got := loadoutSigilDisplayNameFromTraits(0xDEADBEEF, "", ""); got != "未收录因子" {
-		t.Fatalf("完全未知因子名=%q，不应显示八位 hash", got)
+	if got := loadoutSigilDisplayNameFromTraits(0x80C94A24, "怒发冲冠", "伤害上限"); got != "怒发冲冠 V+" {
+		t.Fatalf("组合实例因子名=%q，应由唯一主词条对应到合法物品名", got)
+	}
+	for _, test := range []struct {
+		primary   string
+		secondary string
+		want      string
+	}{
+		{primary: "怒发冲冠", want: "怒发冲冠 V"},
+		{primary: "体力", secondary: "伤害上限", want: "体力 V+"},
+		{primary: "躲避性能", secondary: "伤害上限", want: "躲避性能+"},
+		{primary: "可怕的漆黑钳蟹因子", secondary: "伤害上限", want: "可怕的漆黑钳蟹因子"},
+	} {
+		if got := loadoutSigilDisplayNameFromTraits(0xDEADBEEF, test.primary, test.secondary); got != test.want {
+			t.Errorf("主词条 %q、副词条 %q 的因子名=%q，期望 %q", test.primary, test.secondary, got, test.want)
+		}
+	}
+	if got := loadoutSigilDisplayNameFromTraits(0x6CBA6B0D, "不存在的主词条", "攻击力"); got != "不存在的主词条 V+" {
+		t.Fatalf("无法匹配目录时也应按主副词条形态显示，不应显示占位语: %q", got)
+	}
+	if got := loadoutSigilDisplayNameFromTraits(0xDEADBEEF, "", ""); got != "因子" {
+		t.Fatalf("完全未知因子名=%q，不应显示占位语或八位 hash", got)
 	}
 	cat, err := LoadCatalog()
 	if err != nil {
@@ -65,7 +85,7 @@ func TestUncataloguedLoadoutSigilNameUsesItsStoredTraits(t *testing.T) {
 	if got := loadoutTraitDisplayName(cat, 0xDEADBEEF); got != "未收录词条" {
 		t.Fatalf("未知词条名=%q，不应显示八位 hash", got)
 	}
-	if got := sigilDisplayNameOr(0xDEADBEEF); got != "未收录因子" {
+	if got := sigilDisplayNameOr(0xDEADBEEF); got != "因子" {
 		t.Fatalf("未知因子回退名=%q，不应显示八位 hash", got)
 	}
 }

@@ -171,8 +171,8 @@ func supplementalSigilDisplayName(sigil *SigilDef) string {
 	if name == "" {
 		return ""
 	}
-	if useChinese() && strings.HasPrefix(name, "天星之") && strings.HasSuffix(name, "V+") {
-		name = strings.TrimSuffix(name, "V+") + " V+"
+	if useChinese() {
+		name = normalizeChineseSigilItemName(name)
 	}
 	return name
 }

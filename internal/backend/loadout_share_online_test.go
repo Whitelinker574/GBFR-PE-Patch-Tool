@@ -3,6 +3,7 @@ package backend
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -49,6 +50,185 @@ func TestNormalizeLoadoutShareShortCodeAcceptsCodesAndKnownLinkShapes(t *testing
 		if _, err := normalizeLoadoutShareShortCode(input); err == nil {
 			t.Fatalf("accepted invalid input %q", input)
 		}
+	}
+}
+
+func TestPreviewUsesLocalizedLoadoutEvidenceAndMergedSkillLedger(t *testing.T) {
+	first, second := 1, 7
+	share := &LoadoutShare{
+		Name: "测试配装", CharaHash: "4D0A60C3", CharaName: "伊欧", OwnerCode: "PL0400",
+		WeaponHash: "CDB13688", WeaponName: "Stygian Ornament",
+		Sigils: []LoadoutShareSigil{
+			{Index: &second, Name: "Quick Cooldown", Level: 15, PrimaryTraitHash: "318D12E9", PrimaryTraitLevel: 14, SecondaryTraitLevel: 7},
+			{Index: &first, Name: "Berserker Echo", Level: 15, PrimaryTraitHash: "EE85CD1F", PrimaryTraitLevel: 15, SecondaryTraitLevel: 3},
+		},
+		Summons:       []LoadoutShareSummon{{Name: "召唤石", Rank: 5, MainTraitLevel: 10, SubParamLevel: 3}},
+		MasteryHashes: []string{"11111111", "22222222"},
+	}
+	entry := &LoadoutEntry{
+		Weapon: &LoadoutWeaponContext{
+			Skills:      []LoadoutWeaponSkill{{Name: "攻击力", Level: 25, Effect: "攻击力+50%"}},
+			Wrightstone: &LoadoutWeaponWrightstone{Name: "Sequestration Wrightstone", Traits: []LoadoutWeaponWrightstoneTrait{{Name: "暴击率", Level: 10}}},
+		},
+		Sigils: []LoadoutSigil{
+			{Index: first, Name: "狂战士回响", PrimaryTraitName: "狂战士回响", SecondaryTraitName: "攻击力"},
+			{Index: second, Name: "快速冷却", PrimaryTraitName: "快速冷却", SecondaryTraitName: "伤害上限"},
+		},
+		Mastery: []LoadoutMasteryNode{
+			{Rank: "R1", RankLabel: "1阶专精技能", Name: "魔法连锁", Desc: "攻击力+10%"},
+			{Rank: "R1", RankLabel: "1阶专精技能", Name: "魔法连锁", Desc: "攻击力+10%"},
+		},
+	}
+	context := &LoadoutStatContext{
+		EquippedSummons: []LoadoutSummon{{Name: "巴哈姆特", Rank: 5, MainTraitName: "攻击力", MainTraitLevel: 10, SubParamName: "暴击率", SubParamLevel: 3, SubParamValue: 12, SubParamUnit: "pct"}},
+		OverLimit: []LoadoutOverLimitBonus{
+			{Index: 0, AttributeHash: "6CB38EF3", Name: "昏厥值", Level: 10, Value: 20, Unit: "flat"},
+			{Index: 1, AttributeHash: "6CB38EF3", Name: "昏厥值", Level: 10, Value: 20, Unit: "flat"},
+			{Index: 2, AttributeHash: "43B7581D", Name: "普通攻击伤害上限", Level: 10, Value: 20, Unit: "pct"},
+			{Index: 3, AttributeHash: "9C555433", Name: "能力伤害上限", Level: 10, Value: 20, Unit: "pct"},
+		},
+	}
+	simulation := &LoadoutSimulation{Bonuses: []TraitBonus{{Name: "DMG Cap", Level: 45, RawLevel: 55, MaxLevel: 45, Effect: "攻击力+100%", Sources: []string{
+		"Sigil 01 · DMG Cap",
+		"Weapon · Stygian Ornament · DMG Cap Lv5",
+		"Wrightstone · Sequestration Wrightstone · DMG Cap Lv10",
+	}}}}
+
+	preview := previewForLoadout(share, entry, context, simulation)
+	if preview.Sigils[0].Name != "快速冷却" || preview.Sigils[1].Name != "狂战士回响" {
+		t.Fatalf("preview did not resolve localized sigils by their real slot indexes: %+v", preview.Sigils)
+	}
+	if preview.Sigils[0].PrimaryLevel != 14 || preview.Sigils[0].SecondaryLevel != 7 || preview.Sigils[1].SecondaryLevel != 3 {
+		t.Fatalf("preview merged or lost per-trait levels: %+v", preview.Sigils)
+	}
+	if preview.Summons[0].MainTrait != "攻击力" || preview.Summons[0].SubParam != "暴击率" || preview.Summons[0].SubParamValue != 12 {
+		t.Fatalf("summon effects are incomplete: %+v", preview.Summons[0])
+	}
+	if len(preview.MasterySkills) != 1 || preview.MasterySkills[0].Count != 2 {
+		t.Fatalf("mastery nodes were not grouped for display: %+v", preview.MasterySkills)
+	}
+	if len(preview.OverLimit) != 4 || preview.OverLimit[0].Name != "昏厥值" || preview.OverLimit[0].Value != 20 || preview.OverLimit[2].Value != 20 {
+		t.Fatalf("over-limit preview is incomplete: %+v", preview.OverLimit)
+	}
+	if len(preview.CombinedSkills) != 1 || preview.CombinedSkills[0].Level != 45 || preview.CombinedSkills[0].RawLevel != 55 {
+		t.Fatalf("combined skill ledger is incomplete: %+v", preview.CombinedSkills)
+	}
+	wantSources := []string{
+		"因子01 · 伤害上限",
+		"武器 · [黑榫]幽冥华冠 · 伤害上限 Lv5",
+		"武器祝福 · 隔绝之祝福 · 伤害上限 Lv10",
+	}
+	if !reflect.DeepEqual(preview.CombinedSkills[0].Sources, wantSources) {
+		t.Fatalf("public preview sources are not fixed Simplified Chinese: got=%v want=%v", preview.CombinedSkills[0].Sources, wantSources)
+	}
+	if preview.Wrightstone == nil || preview.Wrightstone.Name != "隔绝之祝福" || preview.Wrightstone.Traits[0].Name != "暴击率" {
+		t.Fatalf("wrightstone traits are incomplete: %+v", preview.Wrightstone)
+	}
+}
+
+func TestOnlinePreviewUsesChineseCatalogIndependentlyOfDesktopLanguage(t *testing.T) {
+	previous := getCurrentLanguage()
+	setCurrentLanguage("en")
+	t.Cleanup(func() { setCurrentLanguage(previous) })
+
+	if got := previewChineseName("318D12E9", "Quick Cooldown"); got != "迅捷能力" {
+		t.Fatalf("public preview trait = %q, want fixed Simplified Chinese", got)
+	}
+	if got := previewChineseName("", "Berserker Echo"); got != "狂战士" {
+		t.Fatalf("public preview fallback trait = %q, want fixed Simplified Chinese", got)
+	}
+	if got := previewChineseWrightstoneName("Dread Wrightstone"); got != "畏惧之祝福" {
+		t.Fatalf("public preview wrightstone = %q, want fixed Simplified Chinese", got)
+	}
+	for hash, want := range map[string]string{
+		"46ABA3C0": "怒发冲冠 V",
+		"E92EE838": "体力 V+",
+		"9300FADB": "天星之止息 V+",
+	} {
+		if got := previewChineseSigilName(hash, ""); got != want {
+			t.Errorf("public preview sigil %s = %q, want legal item name %q", hash, got, want)
+		}
+	}
+	if got := previewChineseSigilNameForTraits("46ABA3C0", "怒发冲冠 V+", "怒发冲冠", "伤害上限"); got != "怒发冲冠 V+" {
+		t.Fatalf("combined public preview sigil = %q, want V+ family title", got)
+	}
+}
+
+func TestChineseSigilItemRankSpacingDoesNotInventOrRemovePlus(t *testing.T) {
+	for input, want := range map[string]string{
+		"怒发冲冠V":   "怒发冲冠 V",
+		"怒发冲冠IV":  "怒发冲冠 IV",
+		"体力V+":    "体力 V+",
+		"天星之止息V+": "天星之止息 V+",
+		"躲避性能+":   "躲避性能+",
+		"黑龙的战气+":  "黑龙的战气+",
+	} {
+		if got := normalizeChineseSigilItemName(input); got != want {
+			t.Errorf("normalizeChineseSigilItemName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestPreviewEncodingKeepsSkillNamesAndLevelsWhenSourcesAreTooLarge(t *testing.T) {
+	preview := &loadoutSharePreview{CombinedSkills: make([]loadoutSharePreviewTrait, 50)}
+	for index := range preview.CombinedSkills {
+		preview.CombinedSkills[index] = loadoutSharePreviewTrait{
+			Name: "攻击力", Level: 45, RawLevel: 60, MaxLevel: 45, Effect: strings.Repeat("攻击力+10%", 20),
+			Sources: []string{strings.Repeat("因子来源", 100), strings.Repeat("武器来源", 100)},
+		}
+	}
+	encoded := encodeLoadoutSharePreview(preview)
+	if encoded == "" {
+		t.Fatal("preview was dropped instead of compacted")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(payload) > loadoutSharePreviewMaxBytes {
+		t.Fatalf("preview encoding is not bounded: len=%d err=%v", len(payload), err)
+	}
+	var decoded loadoutSharePreview
+	if err := json.Unmarshal(payload, &decoded); err != nil || len(decoded.CombinedSkills) != 50 || decoded.CombinedSkills[0].Name != "攻击力" || decoded.CombinedSkills[0].Level != 45 {
+		t.Fatalf("preview lost its skill ledger: %+v err=%v", decoded.CombinedSkills, err)
+	}
+}
+
+func TestPreviewEncodingAlwaysKeepsCoreAndOverLimitSlots(t *testing.T) {
+	preview := &loadoutSharePreview{
+		Title: "伊欧测试", CharacterHash: "4D0A60C3", CharacterName: "伊欧",
+		WeaponHash: "CDB13688", WeaponName: "[黑榫]幽冥华冠",
+		MasterySkills:  make([]loadoutSharePreviewMastery, 50),
+		CombinedSkills: make([]loadoutSharePreviewTrait, 80),
+		OverLimit: []loadoutSharePreviewOverLimit{
+			{Index: 0, AttributeHash: "6CB38EF3", Name: "昏厥值", Level: 10, Value: 20, Unit: "flat"},
+			{Index: 1, AttributeHash: "6CB38EF3", Name: "昏厥值", Level: 10, Value: 20, Unit: "flat"},
+			{Index: 2, AttributeHash: "43B7581D", Name: "普通攻击伤害上限", Level: 10, Value: 20, Unit: "pct"},
+			{Index: 3, AttributeHash: "9C555433", Name: "能力伤害上限", Level: 10, Value: 20, Unit: "pct"},
+		},
+	}
+	for index := range preview.MasterySkills {
+		preview.MasterySkills[index] = loadoutSharePreviewMastery{Name: strings.Repeat("专精技能", 20), Effect: strings.Repeat("效果说明", 100), Count: 1}
+	}
+	for index := range preview.CombinedSkills {
+		preview.CombinedSkills[index] = loadoutSharePreviewTrait{Name: strings.Repeat("合并技能", 20), Effect: strings.Repeat("效果说明", 100), Level: 45}
+	}
+	encoded := encodeLoadoutSharePreview(preview)
+	if encoded == "" {
+		t.Fatal("oversized preview lost its core summary")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(payload) > loadoutSharePreviewMaxBytes {
+		t.Fatalf("core preview encoding is not bounded: len=%d err=%v", len(payload), err)
+	}
+	var decoded loadoutSharePreview
+	if err := json.Unmarshal(payload, &decoded); err != nil || decoded.CharacterName != "伊欧" || len(decoded.OverLimit) != 4 || decoded.OverLimit[0].Value != 20 {
+		t.Fatalf("core preview lost identity or over-limit slots: %+v err=%v", decoded, err)
+	}
+}
+
+func TestLoadoutShareTitleUsesUnicodeCharactersAndWorkerLimit(t *testing.T) {
+	input := strings.Repeat("伊", loadoutShareTitleMaxRunes+5)
+	got := trimLoadoutShareTitle("  " + input + "  ")
+	if len([]rune(got)) != loadoutShareTitleMaxRunes || !strings.HasPrefix(input, got) {
+		t.Fatalf("title rune limit=%d, want %d", len([]rune(got)), loadoutShareTitleMaxRunes)
 	}
 }
 

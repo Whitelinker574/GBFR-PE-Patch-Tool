@@ -81,28 +81,32 @@ type SummonOptions struct {
 
 type summonTypeFile struct {
 	Summons []struct {
-		Hash        string `json:"hash"`
-		DisplayName string `json:"displayName"`
-		Cost        int    `json:"cost"`
-		TypeName    string `json:"typeName"`
+		Hash          string `json:"hash"`
+		DisplayName   string `json:"displayName"`
+		DisplayNameEN string `json:"displayNameEn"`
+		Cost          int    `json:"cost"`
+		TypeName      string `json:"typeName"`
+		TypeNameEN    string `json:"typeNameEn"`
 	} `json:"summons"`
 }
 
 type summonSkillFile struct {
 	Skills []struct {
-		Hash        string `json:"hash"`
-		DisplayName string `json:"displayName"`
-		MaxLevel    int    `json:"maxLevel"`
+		Hash          string `json:"hash"`
+		DisplayName   string `json:"displayName"`
+		DisplayNameEN string `json:"displayNameEn"`
+		MaxLevel      int    `json:"maxLevel"`
 	} `json:"skills"`
 }
 
 type summonSubParamFile struct {
 	SubParams []struct {
-		Hash        string    `json:"hash"`
-		DisplayName string    `json:"displayName"`
-		MaxLevel    int       `json:"maxLevel"`
-		IsPercent   bool      `json:"isPercent"`
-		Values      []float64 `json:"values"`
+		Hash          string    `json:"hash"`
+		DisplayName   string    `json:"displayName"`
+		DisplayNameEN string    `json:"displayNameEn"`
+		MaxLevel      int       `json:"maxLevel"`
+		IsPercent     bool      `json:"isPercent"`
+		Values        []float64 `json:"values"`
 	} `json:"subParams"`
 }
 
@@ -136,28 +140,40 @@ func (a *App) SummonGetOptions() (SummonOptions, error) {
 	for _, item := range types.Summons {
 		hash, err := ParseHashHex(item.Hash)
 		if err == nil {
+			name, typeName := item.DisplayName, item.TypeName
+			if !useChinese() {
+				name, typeName = item.DisplayNameEN, item.TypeNameEN
+			}
 			rule, ok := rulesByHash[hash]
 			if !ok {
 				return SummonOptions{}, fmt.Errorf("召唤石 0x%08X 缺少天然规则", hash)
 			}
 			options.Types = append(options.Types, SummonOption{
-				Hash: hash, Name: item.DisplayName, Cost: item.Cost, EquipCost: rule.EquipCost,
-				Tier: rule.Tier, Mode: rule.Mode, TypeName: item.TypeName,
+				Hash: hash, Name: name, Cost: item.Cost, EquipCost: rule.EquipCost,
+				Tier: rule.Tier, Mode: rule.Mode, TypeName: typeName,
 			})
 		}
 	}
 	for _, item := range skills.Skills {
 		hash, err := ParseHashHex(item.Hash)
 		if err == nil {
-			options.Traits = append(options.Traits, SummonOption{Hash: hash, Name: item.DisplayName, MaxLevel: item.MaxLevel})
+			name := item.DisplayName
+			if !useChinese() {
+				name = item.DisplayNameEN
+			}
+			options.Traits = append(options.Traits, SummonOption{Hash: hash, Name: name, MaxLevel: item.MaxLevel})
 		}
 	}
 	for _, item := range subParams.SubParams {
 		hash, err := ParseHashHex(item.Hash)
 		if err == nil {
+			name := item.DisplayName
+			if !useChinese() {
+				name = item.DisplayNameEN
+			}
 			options.SubParams = append(options.SubParams, SummonOption{
 				Hash:      hash,
-				Name:      item.DisplayName,
+				Name:      name,
 				MaxLevel:  item.MaxLevel,
 				IsPercent: item.IsPercent,
 				Values:    item.Values,

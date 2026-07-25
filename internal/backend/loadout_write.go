@@ -1125,13 +1125,7 @@ func entryTextAt(save *SaveData, unitID uint32) string {
 }
 
 func sigilDisplayNameOr(hash uint32) string {
-	if n := sigilDisplayName(hash); n != "" {
-		return n
-	}
-	if useChinese() {
-		return "未收录因子"
-	}
-	return "Uncatalogued Sigil"
+	return loadoutSigilDisplayNameFromTraits(hash, "", "")
 }
 
 // applyResolvedWrite 把一条已校验的写入落到缓冲区（内存态）。

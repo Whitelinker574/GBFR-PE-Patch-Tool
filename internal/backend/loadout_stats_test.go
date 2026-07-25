@@ -268,6 +268,47 @@ func TestSummonSubParamLabelCanonicalizesCharacterPanelNames(t *testing.T) {
 	}
 }
 
+func TestLoadoutDynamicSourceLabelsStayLanguageIsolated(t *testing.T) {
+	previous := getCurrentLanguage()
+	t.Cleanup(func() { setCurrentLanguage(previous) })
+	if _, err := loadProgressionCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	weapon := &LoadoutWeaponContext{StoredHash: "CDB13688", Name: "stale-name"}
+
+	setCurrentLanguage("zh")
+	if got := localizedLoadoutWeaponName(weapon); got != "[黑榫]幽冥华冠" {
+		t.Fatalf("Chinese weapon source name = %q", got)
+	}
+	for _, got := range []string{
+		loadoutFactorSource(0, "伤害上限", false),
+		loadoutFactorSource(1, "伤害上限", true),
+		loadoutWeaponSource("[黑榫]幽冥华冠", "伤害上限", 5),
+		loadoutWrightstoneSource("隔绝之祝福", "暴击率", 10),
+		loadoutSummonSource(0, LoadoutSummon{Name: "巴哈姆特", TypeHash: "0033943A"}),
+	} {
+		if strings.Contains(got, "Weapon") || strings.Contains(got, "Sigil") || strings.Contains(got, "Wrightstone") || strings.Contains(got, "Summon") {
+			t.Fatalf("Chinese source contains English label: %q", got)
+		}
+	}
+
+	setCurrentLanguage("en")
+	if got := localizedLoadoutWeaponName(weapon); got != "Stygian Ornament" {
+		t.Fatalf("English weapon source name = %q", got)
+	}
+	for _, got := range []string{
+		loadoutFactorSource(0, "DMG Cap", false),
+		loadoutFactorSource(1, "DMG Cap", true),
+		loadoutWeaponSource("Stygian Ornament", "DMG Cap", 5),
+		loadoutWrightstoneSource("Sequestration Wrightstone", "Critical Hit Rate", 10),
+		loadoutSummonSource(0, LoadoutSummon{Name: "巴哈姆特", TypeHash: "0033943A"}),
+	} {
+		if strings.ContainsAny(got, "因子武器祝福召唤石巴哈姆特") {
+			t.Fatalf("English source contains Chinese text: %q", got)
+		}
+	}
+}
+
 func TestFactorBoostPreservesAuditedFixedLevelTraits(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
@@ -558,6 +599,52 @@ func TestOverLimitDefinitionsIncludeAuditedHighTierAliases(t *testing.T) {
 		if got != want {
 			t.Errorf("高档极限加成别名 %08X=%+v，期望与 %08X=%+v 相同", alias, got, canonical, want)
 		}
+	}
+}
+
+func TestSummonSubParamPanelScaleOnlyExpandsRawStun(t *testing.T) {
+	if got := summonSubParamPanelScale("昏厥（高·最高2）", "flat"); got != 10 {
+		t.Fatalf("summon stun panel scale=%g, want 10", got)
+	}
+	for _, test := range []struct{ name, unit string }{
+		{"攻击力（高·最高3000）", "flat"}, {"体力（高·最高5000）", "flat"}, {"暴击率（高·最高30%）", "pct"},
+	} {
+		if got := summonSubParamPanelScale(test.name, test.unit); got != 1 {
+			t.Errorf("%s/%s panel scale=%g, want 1", test.name, test.unit, got)
+		}
+	}
+}
+
+func TestReadSummonInventoryConvertsRawStunToPanelValue(t *testing.T) {
+	catalog, err := loadSummonStatCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const unitID = uint32(9001)
+	data := &SaveDataBinary{
+		UIntTable: []UIntSaveDataUnit{
+			{IDType: 1456, UnitID: unitID, ValueData: []uint32{42}},
+			{IDType: 1457, UnitID: unitID, ValueData: []uint32{0x0033943A}},
+			{IDType: 1458, UnitID: unitID, ValueData: []uint32{0x50079A1C, 0xF0F77BC1}},
+			{IDType: 1460, UnitID: unitID, ValueData: []uint32{5}},
+		},
+		IntTable: []IntSaveDataUnit{
+			{IDType: 1459, UnitID: unitID, ValueData: []int32{10, 9}},
+		},
+	}
+	warnings := []string{}
+	summons := readSummonInventory(data, catalog, &warnings)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(summons) != 1 {
+		t.Fatalf("summon count=%d, want 1", len(summons))
+	}
+	if got := summons[0].SubParamValue; got != 20 {
+		t.Fatalf("stun panel value=%g, want 20", got)
+	}
+	if summons[0].SubParamUnit != "flat" || summons[0].SubParamLevel != 9 {
+		t.Fatalf("unexpected stun metadata: %+v", summons[0])
 	}
 }
 

@@ -70,6 +70,8 @@ func TestMasteryNodePoolHidesNodesWithoutVerifiedEffects(t *testing.T) {
 }
 
 func TestSkillPoolUsesFullUnpackedCharacterCatalog(t *testing.T) {
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage("en") })
 	got := skillPoolForOwnerCode("PL0400")
 	if len(got) != 8 {
 		t.Fatalf("伊欧完整技能池应有 8 个，得 %d: %+v", len(got), got)
@@ -83,6 +85,8 @@ func TestSkillPoolUsesFullUnpackedCharacterCatalog(t *testing.T) {
 }
 
 func TestLoadoutMasteryNodeCarriesOfficialRank(t *testing.T) {
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage("en") })
 	node, ok := loadoutMasteryNodeForHash(0x5B124A50) // 伊欧 EX：魔力漩涡额外赋予防御UP
 	if !ok {
 		t.Fatal("未找到伊欧 EX 节点 5B124A50")
@@ -96,6 +100,8 @@ func TestLoadoutMasteryNodeCarriesOfficialRank(t *testing.T) {
 }
 
 func TestLoadoutMasteryStunUsesVerifiedPanelScaleButKeepsRawText(t *testing.T) {
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage("en") })
 	node, ok := loadoutMasteryNodeForHash(0x1F52146F)
 	if !ok {
 		t.Fatal("未找到伊欧 EX 昏厥节点 1F52146F")
@@ -105,6 +111,18 @@ func TestLoadoutMasteryStunUsesVerifiedPanelScaleButKeepsRawText(t *testing.T) {
 	}
 	if node.Evidence != "2.0.2-table+runtime-display-scale" {
 		t.Fatalf("昏厥节点证据等级=%q", node.Evidence)
+	}
+}
+
+func TestLoadoutCatalogUsesOfficialEnglishNames(t *testing.T) {
+	setCurrentLanguage("en")
+	pool := skillPoolForOwnerCode("PL0400")
+	if len(pool) != 8 || pool[0].Name != "Healing Winds" || pool[7].Name != "Mystic Vortex" {
+		t.Fatalf("English skill catalog was not selected: %+v", pool)
+	}
+	node, ok := loadoutMasteryNodeForHash(0x1F52146F)
+	if !ok || node.Desc != "Stun Power +4 (raw f32 0.4 ×10 panel scale)" || node.RawDesc != "Stun Power +0.4" {
+		t.Fatalf("English mastery text or panel scale is incorrect: %+v", node)
 	}
 }
 

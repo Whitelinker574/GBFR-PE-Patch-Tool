@@ -366,3 +366,21 @@ func masteryRankLabel(rank string) string {
 	}
 	return rank
 }
+
+func localizedMasteryRankLabel(rank string) string {
+	if !useChinese() {
+		switch rank {
+		case "I":
+			return "Mastery I"
+		case "II":
+			return "Mastery II"
+		case "III":
+			return "Mastery III"
+		case "IV":
+			return "Mastery IV"
+		case "V":
+			return "Mastery V"
+		}
+	}
+	return masteryRankLabel(rank)
+}

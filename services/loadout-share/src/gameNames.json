@@ -1,0 +1,5274 @@
+{
+  "schemaVersion": 1,
+  "source": "GBFR 2.0.2 official cs/en text resources",
+  "traits": {
+    "004557B8": {
+      "zh": "刀上舞IV+",
+      "en": "Glass Cannon IV+"
+    },
+    "004CDEEC": {
+      "zh": "蓄力会心II",
+      "en": "Lucky Charge II"
+    },
+    "0053599E": {
+      "zh": "蓄力强化",
+      "en": "Steady Focus"
+    },
+    "0114DD91": {
+      "zh": "追击III",
+      "en": "Supplementary Damage III"
+    },
+    "01643EF4": {
+      "zh": "玫瑰早绽",
+      "en": "Rose's Blooming"
+    },
+    "01D1A6CE": {
+      "zh": "玫瑰早绽+",
+      "en": "Rose's Blooming+"
+    },
+    "02472C43": {
+      "zh": "王者之觉醒+",
+      "en": "Lord's Awakening+"
+    },
+    "02B1F8C0": {
+      "zh": "极致之觉醒+",
+      "en": "Founder's Awakening+"
+    },
+    "02BA37A3": {
+      "zh": "穷寇心V+",
+      "en": "Berserker V+"
+    },
+    "02C67F5E": {
+      "zh": "蓄力攻击V+",
+      "en": "Charged Attack V+"
+    },
+    "035A4DDD": {
+      "zh": "追击V+",
+      "en": "Supplementary Damage V+"
+    },
+    "040549B7": {
+      "zh": "明镜止水V",
+      "en": "Nimble Onslaught V"
+    },
+    "04D028E3": {
+      "zh": "暴击伤害IV",
+      "en": "Critical Damage IV"
+    },
+    "0537EF0B": {
+      "zh": "昏厥",
+      "en": "Stun Power I"
+    },
+    "05ACA892": {
+      "zh": "老兵的天眼+",
+      "en": "Veteran's Vision+"
+    },
+    "05F2ECDC": {
+      "zh": "怒涛",
+      "en": "Cascade"
+    },
+    "05FA4599": {
+      "zh": "屠龙者的才智",
+      "en": "Dragonslayer's Ingenuity"
+    },
+    "06260D96": {
+      "zh": "背水IV+",
+      "en": "Enmity IV+"
+    },
+    "062844FD": {
+      "zh": "背水III",
+      "en": "Enmity III"
+    },
+    "062ECB15": {
+      "zh": "弱点攻击III",
+      "en": "Exploiter III"
+    },
+    "069046D9": {
+      "zh": "屠龙者的威猛",
+      "en": "Dragonslayer's Dominance"
+    },
+    "07703A8A": {
+      "zh": "激昂III",
+      "en": "Uplift III"
+    },
+    "082033CB": {
+      "zh": "钳蟹的共鸣",
+      "en": "Crabby Resonance"
+    },
+    "08DA7279": {
+      "zh": "攻击力V+",
+      "en": "Attack Power V+"
+    },
+    "0952F945": {
+      "zh": "快速蓄力V",
+      "en": "Quick Charge V"
+    },
+    "09AA7DB5": {
+      "zh": "凝神",
+      "en": "Nimble Defense"
+    },
+    "0A410BD8": {
+      "zh": "英勇神速",
+      "en": "Fearless Drive"
+    },
+    "0A4651BB": {
+      "zh": "摇曳步+",
+      "en": "Flight over Fight+"
+    },
+    "0AA20846": {
+      "zh": "格挡性能",
+      "en": "Improved Guard"
+    },
+    "0AA7735E": {
+      "zh": "修罗V",
+      "en": "Power Hungry V"
+    },
+    "0B3A6CC9": {
+      "zh": "HP吸收II",
+      "en": "Drain II"
+    },
+    "0BB4CCDA": {
+      "zh": "先发制人V+",
+      "en": "Head Start V+"
+    },
+    "0BB9C188": {
+      "zh": "暴击率V+",
+      "en": "Critical Hit Rate V+"
+    },
+    "0BBD27F6": {
+      "zh": "灾祸抗性II",
+      "en": "Blight Resistance II"
+    },
+    "0C967A31": {
+      "zh": "伤害上限IV+",
+      "en": "Damage Cap IV+"
+    },
+    "0CD6C625": {
+      "zh": "变换自如的迅刃",
+      "en": "Swordmaster's Prowess"
+    },
+    "0DA193FE": {
+      "zh": "破防特效IV+",
+      "en": "Break Assassin IV+"
+    },
+    "0DB316F8": {
+      "zh": "刀上舞V",
+      "en": "Glass Cannon V"
+    },
+    "0DB62B78": {
+      "zh": "奋不顾身III+",
+      "en": "Life on the Line III+"
+    },
+    "0DD30EC5": {
+      "zh": "古今无双的强者",
+      "en": "Eternal Rage's Ethos"
+    },
+    "0E24BE1B": {
+      "zh": "老兵的战气",
+      "en": "Veteran's Warpath"
+    },
+    "0E3BE66C": {
+      "zh": "连击收招III+",
+      "en": "Combo Finisher III+"
+    },
+    "0E83606D": {
+      "zh": "能力伤害V",
+      "en": "Skilled Assault V"
+    },
+    "0EA21045": {
+      "zh": "穷寇心IV+",
+      "en": "Berserker IV+"
+    },
+    "0EAD65E0": {
+      "zh": "全弱化效果抗性",
+      "en": "Natural Defenses"
+    },
+    "0EE1E9D7": {
+      "zh": "骰子剑",
+      "en": "Roll of the Die"
+    },
+    "0F026CF0": {
+      "zh": "古今无双的战气",
+      "en": "Eternal Rage's Warpath"
+    },
+    "0F06D22C": {
+      "zh": "修罗IV+",
+      "en": "Power Hungry IV+"
+    },
+    "0F1E9FF1": {
+      "zh": "穷寇心IV+",
+      "en": "Berserker IV+"
+    },
+    "0F2BB8B2": {
+      "zh": "灼热抗性III",
+      "en": "Burn Resistance III"
+    },
+    "0F386F8E": {
+      "zh": "冰冻抗性",
+      "en": "Glaciate Resistance I"
+    },
+    "0F4A0A62": {
+      "zh": "身无长技",
+      "en": "Less Is More I"
+    },
+    "0FBA47E8": {
+      "zh": "强健甘露",
+      "en": "Instilling Vigor"
+    },
+    "100E4B1D": {
+      "zh": "获得经验值IV",
+      "en": "Fast Learner IV"
+    },
+    "102FF7AA": {
+      "zh": "攻击力IV",
+      "en": "Attack Power IV"
+    },
+    "104CD6EA": {
+      "zh": "破防特效V+",
+      "en": "Break Assassin V+"
+    },
+    "10B32273": {
+      "zh": "昏厥III",
+      "en": "Stun Power III"
+    },
+    "1122D016": {
+      "zh": "快速蓄力III",
+      "en": "Quick Charge III"
+    },
+    "1150513C": {
+      "zh": "奋不顾身IV",
+      "en": "Life on the Line IV"
+    },
+    "119B24A8": {
+      "zh": "变幻自如之觉醒+",
+      "en": "Swordmaster's Awakening+"
+    },
+    "11AAE5F5": {
+      "zh": "魔法师的伶俐",
+      "en": "Mage's Savvy"
+    },
+    "11DF14E3": {
+      "zh": "古今无双的气概",
+      "en": "Eternal Rage's Mettle"
+    },
+    "120C5D98": {
+      "zh": "获得MSPIV",
+      "en": "Path to Mastery IV"
+    },
+    "1291F7CA": {
+      "zh": "破防特效III+",
+      "en": "Break Assassin III+"
+    },
+    "129E224A": {
+      "zh": "协同攻击IV+",
+      "en": "Linked Together IV+"
+    },
+    "12D6F539": {
+      "zh": "弱点攻击V+",
+      "en": "Exploiter V+"
+    },
+    "12FBB007": {
+      "zh": "弱化状态特效IV",
+      "en": "Injury to Insult IV"
+    },
+    "130508AC": {
+      "zh": "连击收招V+",
+      "en": "Combo Finisher V+"
+    },
+    "132952C1": {
+      "zh": "蓄力会心III+",
+      "en": "Lucky Charge III+"
+    },
+    "13896108": {
+      "zh": "连击收招IV+",
+      "en": "Combo Finisher IV+"
+    },
+    "14082B75": {
+      "zh": "修罗III+",
+      "en": "Power Hungry III+"
+    },
+    "1470F860": {
+      "zh": "坚持",
+      "en": "Steel Nerves"
+    },
+    "147DA58B": {
+      "zh": "极致真理+",
+      "en": "Founder's Truth+"
+    },
+    "14C58BF1": {
+      "zh": "极致谋略+",
+      "en": "Founder's Strategy+"
+    },
+    "151E4674": {
+      "zh": "舵手的指引",
+      "en": "Helmsman's Navigation"
+    },
+    "1568E0E4": {
+      "zh": "先发制人",
+      "en": "Head Start"
+    },
+    "16216FDD": {
+      "zh": "激昂IV",
+      "en": "Uplift IV"
+    },
+    "164E776A": {
+      "zh": "刚健IV+",
+      "en": "Stronghold IV+"
+    },
+    "16EFF868": {
+      "zh": "勇士的毅力",
+      "en": "Hero's Will"
+    },
+    "1706DB6C": {
+      "zh": "弱点攻击IV+",
+      "en": "Exploiter IV+"
+    },
+    "1727E6B7": {
+      "zh": "灾祸抗性V",
+      "en": "Blight Resistance V"
+    },
+    "1791546F": {
+      "zh": "舵手的战气",
+      "en": "Helmsman's Warpath"
+    },
+    "17974BBA": {
+      "zh": "热血II",
+      "en": "Stamina II"
+    },
+    "17BE4841": {
+      "zh": "能力伤害III+",
+      "en": "Skilled Assault III+"
+    },
+    "17CE9A47": {
+      "zh": "连击加成IV",
+      "en": "Combo Booster IV"
+    },
+    "190C656D": {
+      "zh": "追击IV+",
+      "en": "Supplementary DMG IV+"
+    },
+    "197818B7": {
+      "zh": "麻痹抗性IV",
+      "en": "Paralysis Resistance IV"
+    },
+    "19F0455D": {
+      "zh": "协同攻击V",
+      "en": "Linked Together V"
+    },
+    "1A225843": {
+      "zh": "凝神V",
+      "en": "Nimble Defense V"
+    },
+    "1A57AEF1": {
+      "zh": "斩姬之觉醒+",
+      "en": "Butterfly's Awakening+"
+    },
+    "1A94123D": {
+      "zh": "热血IV+",
+      "en": "Stamina IV+"
+    },
+    "1ABADC4D": {
+      "zh": "圣骑士的剑辉",
+      "en": "Holy Knight's Luster"
+    },
+    "1AF3D4DC": {
+      "zh": "蓄力强化",
+      "en": "Steady Focus I"
+    },
+    "1B0D9897": {
+      "zh": "钳蟹的报恩",
+      "en": "Crabvestment Returns"
+    },
+    "1BBE919C": {
+      "zh": "老兵之觉醒+",
+      "en": "Veteran's Awakening+"
+    },
+    "1BF76D02": {
+      "zh": "明镜止水",
+      "en": "Nimble Onslaught I"
+    },
+    "1C1123CA": {
+      "zh": "Overdrive特效III+",
+      "en": "Overdrive Assassin III+"
+    },
+    "1C360C63": {
+      "zh": "蓄力攻击",
+      "en": "Charged Attack DMG"
+    },
+    "1C4D37E4": {
+      "zh": "钳蟹的共鸣",
+      "en": "Crabby Resonance"
+    },
+    "1CA872E7": {
+      "zh": "蓄力攻击V+",
+      "en": "Charged Attack V+"
+    },
+    "1CD1D367": {
+      "zh": "追击V+",
+      "en": "Supplementary Damage V+"
+    },
+    "1CEB58AA": {
+      "zh": "刚健III",
+      "en": "Stronghold III"
+    },
+    "1D3B007A": {
+      "zh": "抗争V+",
+      "en": "Precise Resilience V+"
+    },
+    "1D409445": {
+      "zh": "刀上舞V+",
+      "en": "Glass Cannon V+"
+    },
+    "1DC9D7E7": {
+      "zh": "水牢抗性",
+      "en": "Held Under Resistance"
+    },
+    "1DF4D351": {
+      "zh": "躲避仇火IV",
+      "en": "Dodge Payback IV"
+    },
+    "1E56FE99": {
+      "zh": "昏厥II",
+      "en": "Stun Power II"
+    },
+    "1FC0C1A5": {
+      "zh": "守护V+",
+      "en": "Aegis V+"
+    },
+    "2014714C": {
+      "zh": "协同攻击",
+      "en": "Linked Together I"
+    },
+    "2037A9ED": {
+      "zh": "弱点攻击IV+",
+      "en": "Exploiter IV+"
+    },
+    "207559B9": {
+      "zh": "蓄力会心V+",
+      "en": "Lucky Charge V+"
+    },
+    "208AF595": {
+      "zh": "躲避性能",
+      "en": "Improved Dodge"
+    },
+    "212B81F5": {
+      "zh": "幽幻之应",
+      "en": "Phantasm's Harmony"
+    },
+    "21E10EB7": {
+      "zh": "玫瑰缤纷+",
+      "en": "Rose's Profusion+"
+    },
+    "22319F27": {
+      "zh": "不动II",
+      "en": "Firm Stance II"
+    },
+    "2242921F": {
+      "zh": "麻痹抗性",
+      "en": "Paralysis Resistance"
+    },
+    "232147AD": {
+      "zh": "身无长技IV+",
+      "en": "Less Is More IV+"
+    },
+    "237CAA21": {
+      "zh": "水牢抗性",
+      "en": "Held Under Resistance I"
+    },
+    "23D0F67F": {
+      "zh": "玫瑰早绽",
+      "en": "Rose's Blooming"
+    },
+    "24883AF3": {
+      "zh": "药水携带数",
+      "en": "Potion Hoarder"
+    },
+    "248C0116": {
+      "zh": "昏迷抗性",
+      "en": "Dizzy Resistance I"
+    },
+    "24ED29E6": {
+      "zh": "格挡仇火IV",
+      "en": "Guard Payback IV"
+    },
+    "268CEDC5": {
+      "zh": "怒涛IV",
+      "en": "Cascade IV"
+    },
+    "27C62352": {
+      "zh": "泥沙抗性III",
+      "en": "Sandtomb Resistance III"
+    },
+    "28089A97": {
+      "zh": "异能增长",
+      "en": "Versalis Foundation"
+    },
+    "281214AB": {
+      "zh": "涯之二王+",
+      "en": "Two-Crown Boundary+"
+    },
+    "28A30205": {
+      "zh": "连击收招III+",
+      "en": "Combo Finisher III+"
+    },
+    "29B07BEB": {
+      "zh": "斩姬梦幻",
+      "en": "Butterfly's Grace"
+    },
+    "29B292A8": {
+      "zh": "抗争",
+      "en": "Precise Resilience"
+    },
+    "29BE4772": {
+      "zh": "泥沙抗性",
+      "en": "Sandtomb Resistance I"
+    },
+    "2A85A4C2": {
+      "zh": "能力伤害V+",
+      "en": "Skilled Assault V+"
+    },
+    "2B247EE4": {
+      "zh": "HP吸收",
+      "en": "Drain I"
+    },
+    "2B94D8D6": {
+      "zh": "获得MSPIII",
+      "en": "Path to Mastery III"
+    },
+    "2BDFBA94": {
+      "zh": "昏迷抗性V",
+      "en": "Dizzy Resistance V"
+    },
+    "2C958609": {
+      "zh": "能力封印抗性",
+      "en": "Skill Sealed Resistance I"
+    },
+    "2C95CEE8": {
+      "zh": "Overdrive特效II",
+      "en": "Overdrive Assassin II"
+    },
+    "2CB6D0D9": {
+      "zh": "刚健II",
+      "en": "Stronghold II"
+    },
+    "2CDC1FE0": {
+      "zh": "迅捷能力V",
+      "en": "Quick Cooldown V"
+    },
+    "2D188557": {
+      "zh": "修罗IV",
+      "en": "Power Hungry IV"
+    },
+    "2D2C99E9": {
+      "zh": "坚持V",
+      "en": "Steel Nerves V"
+    },
+    "2D637D25": {
+      "zh": "穷寇心V",
+      "en": "Berserker V"
+    },
+    "2D7F2E70": {
+      "zh": "攻击力V+",
+      "en": "Attack Power V+"
+    },
+    "2E65A774": {
+      "zh": "勇士的信念",
+      "en": "Hero's Creed"
+    },
+    "2F06AC30": {
+      "zh": "躲避距离",
+      "en": "Untouchable"
+    },
+    "2F5ADAC6": {
+      "zh": "身无长技II",
+      "en": "Less Is More II"
+    },
+    "2FC8FBFF": {
+      "zh": "热血",
+      "en": "Stamina"
+    },
+    "2FD5965C": {
+      "zh": "追击III+",
+      "en": "Supplementary Damage III+"
+    },
+    "30A3F2EA": {
+      "zh": "守护者的骄傲+",
+      "en": "Guardian's Honor+"
+    },
+    "311D9CB9": {
+      "zh": "破防特效IV",
+      "en": "Break Assassin IV"
+    },
+    "318D12E9": {
+      "zh": "迅捷能力",
+      "en": "Quick Cooldown"
+    },
+    "31AFD43A": {
+      "zh": "先发制人III+",
+      "en": "Head Start III+"
+    },
+    "31D241E4": {
+      "zh": "暴击率III+",
+      "en": "Critical Hit Rate III+"
+    },
+    "31F91FCF": {
+      "zh": "屠龙者的才智",
+      "en": "Dragonslayer's Ingenuity"
+    },
+    "3332E18D": {
+      "zh": "能力封印抗性V",
+      "en": "Skill Sealed Resistance V"
+    },
+    "333E5862": {
+      "zh": "骰子剑",
+      "en": "Roll of the Die"
+    },
+    "335B55D0": {
+      "zh": "格挡仇火III+",
+      "en": "Guard Payback III+"
+    },
+    "33C89F1C": {
+      "zh": "先发制人V",
+      "en": "Head Start V"
+    },
+    "33F01810": {
+      "zh": "英勇神速+",
+      "en": "Fearless Drive+"
+    },
+    "342143D7": {
+      "zh": "Overdrive特效III",
+      "en": "Overdrive Assassin III"
+    },
+    "34C77091": {
+      "zh": "圣骑士的战气",
+      "en": "Holy Knight's Warpath"
+    },
+    "3559988C": {
+      "zh": "奋不顾身V",
+      "en": "Life on the Line V"
+    },
+    "3564AA4D": {
+      "zh": "奋不顾身III+",
+      "en": "Life on the Line III+"
+    },
+    "3572645C": {
+      "zh": "修罗III+",
+      "en": "Power Hungry III+"
+    },
+    "35A14FC3": {
+      "zh": "昏厥IV",
+      "en": "Stun Power IV"
+    },
+    "35A6BADD": {
+      "zh": "背水IV",
+      "en": "Enmity IV"
+    },
+    "35ACCC3C": {
+      "zh": "破防特效IV+",
+      "en": "Break Assassin IV+"
+    },
+    "35BD0F81": {
+      "zh": "背水III+",
+      "en": "Enmity III+"
+    },
+    "361D44C4": {
+      "zh": "投掷III+",
+      "en": "Throw III+"
+    },
+    "3644EF2C": {
+      "zh": "明镜止水III",
+      "en": "Nimble Onslaught III"
+    },
+    "364C8E19": {
+      "zh": "躲避仇火III+",
+      "en": "Dodge Payback III+"
+    },
+    "36F4B48A": {
+      "zh": "暴击伤害III+",
+      "en": "Critical Damage III+"
+    },
+    "3759A5B9": {
+      "zh": "昏迷抗性",
+      "en": "Dizzy Resistance"
+    },
+    "37B0783C": {
+      "zh": "剑圣的闪刃",
+      "en": "Spirit Edge's Fury"
+    },
+    "37E83548": {
+      "zh": "守护IV",
+      "en": "Aegis IV"
+    },
+    "380A3CA8": {
+      "zh": "英勇灵气+",
+      "en": "Fearless Spirit+"
+    },
+    "381BBE64": {
+      "zh": "坚守V+",
+      "en": "Garrison V+"
+    },
+    "38A9CADF": {
+      "zh": "豪胆III",
+      "en": "Guts III"
+    },
+    "38DE81D2": {
+      "zh": "魔法师的伶俐",
+      "en": "Mage's Savvy"
+    },
+    "390175E7": {
+      "zh": "灼热抗性",
+      "en": "Burn Resistance I"
+    },
+    "3973C1C4": {
+      "zh": "Overdrive特效V+",
+      "en": "Overdrive Assassin V+"
+    },
+    "3976136F": {
+      "zh": "身无长技III+",
+      "en": "Less Is More III+"
+    },
+    "397A3150": {
+      "zh": "攻击DOWN抗性III",
+      "en": "Attack Down Resistance III"
+    },
+    "39A38B2C": {
+      "zh": "缓速抗性III",
+      "en": "Slow Resistance III"
+    },
+    "39B62087": {
+      "zh": "勇士的毅力",
+      "en": "Hero's Will"
+    },
+    "39BEA99B": {
+      "zh": "昏厥V+",
+      "en": "Stun Power V+"
+    },
+    "3B03DC0F": {
+      "zh": "刀上舞III",
+      "en": "Glass Cannon III"
+    },
+    "3B48E4E7": {
+      "zh": "集中炮火V",
+      "en": "Concentrated Fire V"
+    },
+    "3BCA3FD5": {
+      "zh": "异能耐受IV",
+      "en": "Darkflame Resistance IV"
+    },
+    "3BDBE4B0": {
+      "zh": "魔法师的心愿",
+      "en": "Mage's Aspiration"
+    },
+    "3BFED918": {
+      "zh": "守护者的决心",
+      "en": "Guardian's Conviction"
+    },
+    "3C2B57B0": {
+      "zh": "格挡仇火",
+      "en": "Guard Payback"
+    },
+    "3C4E2FCF": {
+      "zh": "暴击率III+",
+      "en": "Critical Hit Rate III+"
+    },
+    "3D5E4678": {
+      "zh": "魔眼的万箭",
+      "en": "Dark Huntress's Volley"
+    },
+    "3D8D9109": {
+      "zh": "勇士的战气",
+      "en": "Hero's Warpath"
+    },
+    "3D9B8E6F": {
+      "zh": "攻击力II",
+      "en": "Attack Power II"
+    },
+    "3DC4D818": {
+      "zh": "灼热抗性IV",
+      "en": "Burn Resistance IV"
+    },
+    "3EDD4C1F": {
+      "zh": "自愈III",
+      "en": "Regen III"
+    },
+    "3F2C482E": {
+      "zh": "弱化效果延长",
+      "en": "Supplements"
+    },
+    "3F45DBDC": {
+      "zh": "昏迷抗性III",
+      "en": "Dizzy Resistance III"
+    },
+    "3F488339": {
+      "zh": "背水",
+      "en": "Enmity"
+    },
+    "3F5E8FD8": {
+      "zh": "追击III+",
+      "en": "Supplementary DMG III+"
+    },
+    "3F8FC674": {
+      "zh": "防御DOWN抗性",
+      "en": "Defense Down Resistance I"
+    },
+    "3FEC5F80": {
+      "zh": "协同攻击",
+      "en": "Linked Together"
+    },
+    "40223C28": {
+      "zh": "浩劫",
+      "en": "Catastrophe"
+    },
+    "40738CDD": {
+      "zh": "幽幻的战气",
+      "en": "Phantasm's Warpath"
+    },
+    "408CC3B5": {
+      "zh": "奋不顾身V+",
+      "en": "Life on the Line V+"
+    },
+    "42BB0C1C": {
+      "zh": "追击V",
+      "en": "Supplementary Damage V"
+    },
+    "430DF884": {
+      "zh": "蓄力会心",
+      "en": "Lucky Charge I"
+    },
+    "430FB951": {
+      "zh": "暴击率II",
+      "en": "Critical Hit Rate II"
+    },
+    "4365B3FF": {
+      "zh": "怒发冲冠II",
+      "en": "Precise Wrath II"
+    },
+    "439A2D9C": {
+      "zh": "集中炮火III+",
+      "en": "Concentrated Fire III+"
+    },
+    "43DDE5DD": {
+      "zh": "涯之二王+",
+      "en": "Two-Crown Boundary+"
+    },
+    "4438676E": {
+      "zh": "γ秘纹+",
+      "en": "Gamma+"
+    },
+    "44D48479": {
+      "zh": "真红翔舞+",
+      "en": "Crimson's Flight+"
+    },
+    "450B862C": {
+      "zh": "屠龙者的战气",
+      "en": "Dragonslayer's Warpath"
+    },
+    "45140AE4": {
+      "zh": "刀上舞III+",
+      "en": "Glass Cannon III+"
+    },
+    "451D814C": {
+      "zh": "古今无双的强者",
+      "en": "Eternal Rage's Ethos"
+    },
+    "459DD2C2": {
+      "zh": "暴击率V+",
+      "en": "Critical Hit Rate V+"
+    },
+    "45B43024": {
+      "zh": "背水II",
+      "en": "Enmity II"
+    },
+    "462782D5": {
+      "zh": "王者行进",
+      "en": "Lord's Procession"
+    },
+    "462B27D3": {
+      "zh": "暴君IV+",
+      "en": "Tyranny IV+"
+    },
+    "46ABA3C0": {
+      "zh": "怒发冲冠V",
+      "en": "Precise Wrath V"
+    },
+    "47B00599": {
+      "zh": "冰冻抗性IV",
+      "en": "Glaciate Resistance IV"
+    },
+    "47DA8C35": {
+      "zh": "明镜止水II",
+      "en": "Nimble Onslaught II"
+    },
+    "4823BBB3": {
+      "zh": "自愈II",
+      "en": "Regen II"
+    },
+    "4840C322": {
+      "zh": "蓄力攻击IV",
+      "en": "Charged Attack IV"
+    },
+    "48A95B8D": {
+      "zh": "金刚",
+      "en": "Greater Aegis"
+    },
+    "49651C89": {
+      "zh": "变幻自如的妖剑士+",
+      "en": "Swordmaster's Art+"
+    },
+    "4971E8FB": {
+      "zh": "刀上舞V+",
+      "en": "Glass Cannon V+"
+    },
+    "49745934": {
+      "zh": "躲避距离+",
+      "en": "Untouchable+"
+    },
+    "4A336D1E": {
+      "zh": "凝神III",
+      "en": "Nimble Defense III"
+    },
+    "4A36B37F": {
+      "zh": "抗争IV",
+      "en": "Precise Resilience IV"
+    },
+    "4A39DC7D": {
+      "zh": "中毒抗性IV",
+      "en": "Poison Resistance IV"
+    },
+    "4B754D3A": {
+      "zh": "能力伤害",
+      "en": "Skilled Assault I"
+    },
+    "4B98F53A": {
+      "zh": "守护III",
+      "en": "Aegis III"
+    },
+    "4BA4E4AC": {
+      "zh": "热血V+",
+      "en": "Stamina V+"
+    },
+    "4BF2E191": {
+      "zh": "攻击DOWN抗性",
+      "en": "Attack Down Resistance"
+    },
+    "4C588C27": {
+      "zh": "属性克制转换",
+      "en": "War Elemental"
+    },
+    "4C6AD990": {
+      "zh": "真红烈焰",
+      "en": "Crimson's Clout"
+    },
+    "4C942ED5": {
+      "zh": "躲避仇火",
+      "en": "Dodge Payback I"
+    },
+    "4CC406CA": {
+      "zh": "挑衅IV",
+      "en": "Provoke IV"
+    },
+    "4CC5031D": {
+      "zh": "异能耐受V",
+      "en": "Darkflame Resistance V"
+    },
+    "4D7C8632": {
+      "zh": "王者的战气",
+      "en": "Lord's Warpath"
+    },
+    "4D962F18": {
+      "zh": "防御DOWN抗性III",
+      "en": "Defense Down Resistance III"
+    },
+    "4DB1FDC1": {
+      "zh": "格挡仇火V+",
+      "en": "Guard Payback V+"
+    },
+    "4E4911FA": {
+      "zh": "挑衅V",
+      "en": "Provoke V"
+    },
+    "4E988D4F": {
+      "zh": "伤害上限II",
+      "en": "Damage Cap II"
+    },
+    "4EBAA02A": {
+      "zh": "冰冻抗性III",
+      "en": "Glaciate Resistance III"
+    },
+    "4F01D6CA": {
+      "zh": "真红之觉醒+",
+      "en": "Crimson's Awakening+"
+    },
+    "4F135217": {
+      "zh": "真红的战气",
+      "en": "Crimson's Warpath"
+    },
+    "4F1A3683": {
+      "zh": "弱化状态特效",
+      "en": "Injury to Insult"
+    },
+    "4F37BE70": {
+      "zh": "激昂",
+      "en": "Uplift I"
+    },
+    "4F500FBF": {
+      "zh": "迅捷能力III",
+      "en": "Quick Cooldown III"
+    },
+    "4FFE62E5": {
+      "zh": "暴君III+",
+      "en": "Tyranny III+"
+    },
+    "50079A1C": {
+      "zh": "攻击力",
+      "en": "ATK"
+    },
+    "50B05700": {
+      "zh": "匿踪V",
+      "en": "Low Profile V"
+    },
+    "50B453DD": {
+      "zh": "能力封印抗性",
+      "en": "Skill Sealed Resistance"
+    },
+    "5144FE4D": {
+      "zh": "破防特效V+",
+      "en": "Break Assassin V+"
+    },
+    "522004AB": {
+      "zh": "守护者的决心+",
+      "en": "Guardian's Conviction+"
+    },
+    "522C13B8": {
+      "zh": "格挡仇火V+",
+      "en": "Guard Payback V+"
+    },
+    "522E2388": {
+      "zh": "圣骑士的威光",
+      "en": "Holy Knight's Grandeur"
+    },
+    "524DE21C": {
+      "zh": "剑圣的炼气",
+      "en": "Spirit Edge's Rally"
+    },
+    "52A6E299": {
+      "zh": "英勇之魂+",
+      "en": "Fearless Soul+"
+    },
+    "52BD3102": {
+      "zh": "奋不顾身IV+",
+      "en": "Life on the Line IV+"
+    },
+    "533D337B": {
+      "zh": "身无长技V+",
+      "en": "Less Is More V+"
+    },
+    "534B93C2": {
+      "zh": "背水III+",
+      "en": "Enmity III+"
+    },
+    "5463232F": {
+      "zh": "古今无双的气概",
+      "en": "Eternal Rage's Mettle"
+    },
+    "54CEFD1C": {
+      "zh": "背水",
+      "en": "Enmity I"
+    },
+    "54D62FDF": {
+      "zh": "身无长技IV",
+      "en": "Less Is More IV"
+    },
+    "54D8EA04": {
+      "zh": "伤害上限V+",
+      "en": "Damage Cap V+"
+    },
+    "5608EF7E": {
+      "zh": "身无长技III",
+      "en": "Less Is More III"
+    },
+    "5670AECA": {
+      "zh": "奋不顾身IV+",
+      "en": "Life on the Line IV+"
+    },
+    "56881C69": {
+      "zh": "白龙的誓约",
+      "en": "White Dragon's Oath"
+    },
+    "56A668B1": {
+      "zh": "修炼甘露",
+      "en": "Instilling Vigor"
+    },
+    "57AB5B10": {
+      "zh": "追击",
+      "en": "Supplementary DMG"
+    },
+    "57B6D9A5": {
+      "zh": "奥义封印抗性IV",
+      "en": "SBA Sealed Resistance IV"
+    },
+    "57D2CAF2": {
+      "zh": "穷寇心III+",
+      "en": "Berserker III+"
+    },
+    "57E8A93F": {
+      "zh": "因子强化",
+      "en": "Sigil Booster"
+    },
+    "583CF40F": {
+      "zh": "变幻自如的迅刃",
+      "en": "Swordmaster's Prowess"
+    },
+    "58F63427": {
+      "zh": "豪胆",
+      "en": "Guts I"
+    },
+    "58FFAEAA": {
+      "zh": "体力III",
+      "en": "Health III"
+    },
+    "590C19C8": {
+      "zh": "冥暗的战气",
+      "en": "Ebony's Warpath"
+    },
+    "59E5335B": {
+      "zh": "协同攻击V+",
+      "en": "Linked Together V+"
+    },
+    "5B939637": {
+      "zh": "防御DOWN抗性IV",
+      "en": "Defense Down Resistance IV"
+    },
+    "5C19BBB0": {
+      "zh": "中毒抗性V",
+      "en": "Poison Resistance V"
+    },
+    "5C569745": {
+      "zh": "修罗IV+",
+      "en": "Power Hungry IV+"
+    },
+    "5C862E13": {
+      "zh": "γ秘纹",
+      "en": "Gamma"
+    },
+    "5DCC1F70": {
+      "zh": "昏厥III+",
+      "en": "Stun Power III+"
+    },
+    "5E422AE5": {
+      "zh": "获得MSP",
+      "en": "Path to Mastery"
+    },
+    "5E7EEEC4": {
+      "zh": "体力V",
+      "en": "Health V"
+    },
+    "5EB282C6": {
+      "zh": "自动复活V",
+      "en": "Autorevive V"
+    },
+    "5F117445": {
+      "zh": "暴击伤害IV+",
+      "en": "Critical Damage IV+"
+    },
+    "5F988136": {
+      "zh": "抗争IV+",
+      "en": "Precise Resilience IV+"
+    },
+    "5FAA08E3": {
+      "zh": "斩姬梦幻",
+      "en": "Butterfly's Grace"
+    },
+    "5FB842E4": {
+      "zh": "极致的战气",
+      "en": "Founder's Warpath"
+    },
+    "6018372B": {
+      "zh": "挑衅",
+      "en": "Provoke"
+    },
+    "6056E1C7": {
+      "zh": "弱点攻击IV",
+      "en": "Exploiter IV"
+    },
+    "60571189": {
+      "zh": "躲避仇火V+",
+      "en": "Dodge Payback V+"
+    },
+    "6085DA25": {
+      "zh": "自愈",
+      "en": "Regen"
+    },
+    "60BD40A1": {
+      "zh": "修罗V+",
+      "en": "Power Hungry V+"
+    },
+    "60CABDDB": {
+      "zh": "能力封印抗性II",
+      "en": "Skill Sealed Resistance II"
+    },
+    "6130D327": {
+      "zh": "守护II",
+      "en": "Aegis II"
+    },
+    "6151F5F6": {
+      "zh": "刀上舞IV+",
+      "en": "Glass Cannon IV+"
+    },
+    "621A2A97": {
+      "zh": "守护者的战气",
+      "en": "Guardian's Warpath"
+    },
+    "628DD0DF": {
+      "zh": "集中炮火",
+      "en": "Concentrated Fire I"
+    },
+    "62FED4F1": {
+      "zh": "缓速抗性IV",
+      "en": "Slow Resistance IV"
+    },
+    "630DE5DD": {
+      "zh": "暴击伤害V+",
+      "en": "Critical Damage V+"
+    },
+    "6316CBEB": {
+      "zh": "白龙的战气",
+      "en": "White Dragon's Warpath"
+    },
+    "645ACEE5": {
+      "zh": "变幻自如的妖剑士",
+      "en": "Swordmaster's Art"
+    },
+    "64D63823": {
+      "zh": "老兵的智慧+",
+      "en": "Veteran's Insight+"
+    },
+    "65150A03": {
+      "zh": "自动复活",
+      "en": "Autorevive I"
+    },
+    "6674C639": {
+      "zh": "真红的战气",
+      "en": "Crimson's Warpath"
+    },
+    "66DE60B1": {
+      "zh": "防御DOWN抗性",
+      "en": "Defense Down Resistance"
+    },
+    "673C5D8F": {
+      "zh": "勇士之觉醒+",
+      "en": "Hero's Awakening+"
+    },
+    "6786CF44": {
+      "zh": "蓄力会心III",
+      "en": "Lucky Charge III"
+    },
+    "67C1E5E3": {
+      "zh": "剑圣的战气",
+      "en": "Spirit Edge's Warpath"
+    },
+    "687B928E": {
+      "zh": "药水携带数",
+      "en": "Potion Hoarder I"
+    },
+    "68B1E888": {
+      "zh": "热血V",
+      "en": "Stamina V"
+    },
+    "68D0507A": {
+      "zh": "协同攻击III+",
+      "en": "Linked Together III+"
+    },
+    "692276E2": {
+      "zh": "获得经验值II",
+      "en": "Fast Learner II"
+    },
+    "695EBC2E": {
+      "zh": "快速蓄力III+",
+      "en": "Quick Charge III+"
+    },
+    "696226BB": {
+      "zh": "冥暗刚刃",
+      "en": "Ebony's Presence"
+    },
+    "69BF4AAC": {
+      "zh": "投掷II",
+      "en": "Throw II"
+    },
+    "6A3B2653": {
+      "zh": "连击加成V+",
+      "en": "Combo Booster V+"
+    },
+    "6AB4974C": {
+      "zh": "获得金币IV",
+      "en": "Rupie Tycoon IV"
+    },
+    "6B59242A": {
+      "zh": "万能药",
+      "en": "Potent Greens"
+    },
+    "6B694D6D": {
+      "zh": "弱点攻击",
+      "en": "Weak Point DMG"
+    },
+    "6BA991CD": {
+      "zh": "获得经验值",
+      "en": "Fast Learner I"
+    },
+    "6BB655F1": {
+      "zh": "灾祸抗性IV",
+      "en": "Blight Resistance IV"
+    },
+    "6C85983C": {
+      "zh": "刚健V+",
+      "en": "Stronghold V+"
+    },
+    "6CCA1FF7": {
+      "zh": "古今无双的强者+",
+      "en": "Eternal Rage's Ethos+"
+    },
+    "6D18E7DC": {
+      "zh": "舵手的坚持",
+      "en": "Helmsman's Tenacity"
+    },
+    "6EBFA176": {
+      "zh": "真红烈焰",
+      "en": "Crimson's Clout"
+    },
+    "6EC9D6BB": {
+      "zh": "蓄力会心IV+",
+      "en": "Lucky Charge IV+"
+    },
+    "6F2CF65F": {
+      "zh": "Overdrive特效",
+      "en": "Overdrive Assassin I"
+    },
+    "6F4749AD": {
+      "zh": "先发制人IV",
+      "en": "Head Start IV"
+    },
+    "6FF05223": {
+      "zh": "王者一心",
+      "en": "Lord's Ambition"
+    },
+    "70336D00": {
+      "zh": "迅捷能力",
+      "en": "Quick Cooldown I"
+    },
+    "70361EF1": {
+      "zh": "真红翔舞",
+      "en": "Crimson's Flight"
+    },
+    "70395731": {
+      "zh": "穷寇心",
+      "en": "Berserker"
+    },
+    "70F6AE03": {
+      "zh": "破防特效II",
+      "en": "Break Assassin II"
+    },
+    "7173B93F": {
+      "zh": "快速蓄力V+",
+      "en": "Quick Charge V+"
+    },
+    "718F62F7": {
+      "zh": "格挡仇火IV+",
+      "en": "Guard Payback IV+"
+    },
+    "71F11A9B": {
+      "zh": "暴君",
+      "en": "Tyranny"
+    },
+    "71FF966A": {
+      "zh": "连击加成III+",
+      "en": "Combo Booster III+"
+    },
+    "72304799": {
+      "zh": "玫瑰缤纷",
+      "en": "Rose's Profusion"
+    },
+    "72466F3C": {
+      "zh": "守护IV+",
+      "en": "Aegis IV+"
+    },
+    "72735A07": {
+      "zh": "暴君V",
+      "en": "Tyranny V"
+    },
+    "728BDA66": {
+      "zh": "自愈",
+      "en": "Regen I"
+    },
+    "72946A51": {
+      "zh": "能力封印抗性IV",
+      "en": "Skill Sealed Resistance IV"
+    },
+    "72CBA710": {
+      "zh": "泥沙抗性V",
+      "en": "Sandtomb Resistance V"
+    },
+    "72D83138": {
+      "zh": "身无长技III+",
+      "en": "Less Is More III+"
+    },
+    "7351D602": {
+      "zh": "幽幻之应",
+      "en": "Phantasm's Concord"
+    },
+    "735769A7": {
+      "zh": "迅捷能力II",
+      "en": "Quick Cooldown II"
+    },
+    "73E5554F": {
+      "zh": "坚守",
+      "en": "Garrison I"
+    },
+    "7428DF74": {
+      "zh": "穷寇心III+",
+      "en": "Berserker III+"
+    },
+    "7440E869": {
+      "zh": "冥暗刚刃",
+      "en": "Ebony Presence"
+    },
+    "7461BD6D": {
+      "zh": "获得MSPII",
+      "en": "Path to Mastery II"
+    },
+    "74AA75D6": {
+      "zh": "刚健",
+      "en": "Stronghold"
+    },
+    "751228A2": {
+      "zh": "热血III",
+      "en": "Stamina III"
+    },
+    "75183BFD": {
+      "zh": "刀上舞",
+      "en": "Glass Cannon I"
+    },
+    "753ECF9D": {
+      "zh": "王者一心",
+      "en": "Lord's Ambition"
+    },
+    "7562F00A": {
+      "zh": "热血IV+",
+      "en": "Stamina IV+"
+    },
+    "758D5322": {
+      "zh": "先发制人",
+      "en": "Head Start I"
+    },
+    "75B8DAD7": {
+      "zh": "蓄力强化II",
+      "en": "Steady Focus II"
+    },
+    "75FE50E5": {
+      "zh": "弱化状态特效IV+",
+      "en": "Injury to Insult IV+"
+    },
+    "7653B159": {
+      "zh": "斩姬武艺",
+      "en": "Butterfly's Valor"
+    },
+    "76710852": {
+      "zh": "挑衅II",
+      "en": "Provoke II"
+    },
+    "76C7EB69": {
+      "zh": "格挡性能II",
+      "en": "Improved Guard II"
+    },
+    "772601D4": {
+      "zh": "追击II",
+      "en": "Supplementary Damage II"
+    },
+    "7739FEBD": {
+      "zh": "老兵的天眼",
+      "en": "Veteran's Vision"
+    },
+    "77802303": {
+      "zh": "坚持IV+",
+      "en": "Steel Nerves IV+"
+    },
+    "77803875": {
+      "zh": "投掷III",
+      "en": "Throw III"
+    },
+    "77C809F5": {
+      "zh": "剑圣的练气",
+      "en": "Spirit Edge's Rally"
+    },
+    "7885354A": {
+      "zh": "匿踪II",
+      "en": "Low Profile II"
+    },
+    "78B9F5AB": {
+      "zh": "追击IV+",
+      "en": "Supplementary Damage IV+"
+    },
+    "78C6F203": {
+      "zh": "灾祸抗性",
+      "en": "Blight Resistance I"
+    },
+    "791DA8ED": {
+      "zh": "昏厥V+",
+      "en": "Stun Power V+"
+    },
+    "793CFAC5": {
+      "zh": "弱点攻击",
+      "en": "Exploiter I"
+    },
+    "79D7536F": {
+      "zh": "回复性能III",
+      "en": "Improved Healing III"
+    },
+    "79F4FD3E": {
+      "zh": "暴君",
+      "en": "Tyranny I"
+    },
+    "7A74E84C": {
+      "zh": "刚健IV+",
+      "en": "Stronghold IV+"
+    },
+    "7AA335B6": {
+      "zh": "连击加成V",
+      "en": "Combo Booster V"
+    },
+    "7AD0C010": {
+      "zh": "异能战意",
+      "en": "Versalis Ignition"
+    },
+    "7AEBEF91": {
+      "zh": "投掷",
+      "en": "Throw I"
+    },
+    "7B4FC47A": {
+      "zh": "剑圣的战气",
+      "en": "Spirit Edge's Warpath"
+    },
+    "7B8C3E06": {
+      "zh": "刀上舞IV",
+      "en": "Glass Cannon IV"
+    },
+    "7C2E4D64": {
+      "zh": "躲避仇火",
+      "en": "Dodge Payback"
+    },
+    "7C7EC053": {
+      "zh": "老兵的战气",
+      "en": "Veteran's Warpath"
+    },
+    "7C84A6B3": {
+      "zh": "灼热抗性",
+      "en": "Burn Resistance"
+    },
+    "7C8580CA": {
+      "zh": "圣骑士的威光+",
+      "en": "Holy Knight's Grandeur+"
+    },
+    "7CCFF74F": {
+      "zh": "HP吸收",
+      "en": "Drain"
+    },
+    "7D318FF7": {
+      "zh": "古今无双的气概+",
+      "en": "Eternal Rage's Mettle+"
+    },
+    "7D5C5A42": {
+      "zh": "攻击DOWN抗性",
+      "en": "Attack Down Resistance I"
+    },
+    "7D8FF2EE": {
+      "zh": "蓄力强化III",
+      "en": "Steady Focus III"
+    },
+    "7DEA157B": {
+      "zh": "药水携带数V",
+      "en": "Potion Hoarder V"
+    },
+    "7E0D082A": {
+      "zh": "防御DOWN抗性II",
+      "en": "Defense Down Resistance II"
+    },
+    "7E76F58D": {
+      "zh": "挑衅III",
+      "en": "Provoke III"
+    },
+    "7EDD69D0": {
+      "zh": "怒发冲冠",
+      "en": "Precise Wrath"
+    },
+    "7EFA8C0D": {
+      "zh": "暴击伤害III+",
+      "en": "Critical Damage III+"
+    },
+    "7F5DDA19": {
+      "zh": "昏厥IV+",
+      "en": "Stun Power IV+"
+    },
+    "7F7E82AB": {
+      "zh": "白龙的荣耀",
+      "en": "White Dragon's Glory"
+    },
+    "7FB3E3D5": {
+      "zh": "灾祸抗性III",
+      "en": "Blight Resistance III"
+    },
+    "803F64BD": {
+      "zh": "冥暗自若",
+      "en": "Ebony's Poise"
+    },
+    "80A6DD30": {
+      "zh": "修罗",
+      "en": "Power Hungry I"
+    },
+    "80CCCD83": {
+      "zh": "极致真理",
+      "en": "Founder's Truth"
+    },
+    "811D8A6A": {
+      "zh": "蓄力会心III+",
+      "en": "Lucky Charge III+"
+    },
+    "81742849": {
+      "zh": "刚健IV",
+      "en": "Stronghold IV"
+    },
+    "81B293D9": {
+      "zh": "魔眼的战气",
+      "en": "Dark Huntress's Warpath"
+    },
+    "81CB6C6B": {
+      "zh": "明镜止水IV",
+      "en": "Nimble Onslaught IV"
+    },
+    "8224E6E0": {
+      "zh": "蓄力会心V+",
+      "en": "Lucky Charge V+"
+    },
+    "8230B722": {
+      "zh": "集中炮火III+",
+      "en": "Concentrated Fire III+"
+    },
+    "82677AAA": {
+      "zh": "防御DOWN抗性V",
+      "en": "Defense Down Resistance V"
+    },
+    "82903E7E": {
+      "zh": "连击加成IV+",
+      "en": "Combo Booster IV+"
+    },
+    "829EE87B": {
+      "zh": "协同攻击II",
+      "en": "Linked Together II"
+    },
+    "82B300F5": {
+      "zh": "获得MSPV",
+      "en": "Path to Mastery V"
+    },
+    "82CE278D": {
+      "zh": "身无长技",
+      "en": "Less Is More"
+    },
+    "82CEA35A": {
+      "zh": "暴击率",
+      "en": "Critical Hit Rate I"
+    },
+    "83E5006E": {
+      "zh": "穷寇心V+",
+      "en": "Berserker V+"
+    },
+    "84078CB0": {
+      "zh": "快速蓄力",
+      "en": "Quick Charge"
+    },
+    "842ABBEB": {
+      "zh": "投掷IV",
+      "en": "Throw IV"
+    },
+    "843070E7": {
+      "zh": "古今无双的战气",
+      "en": "Eternal Rage's Warpath"
+    },
+    "8456B1A3": {
+      "zh": "躲避仇火V",
+      "en": "Dodge Payback V"
+    },
+    "8519AD4A": {
+      "zh": "玫瑰的战气",
+      "en": "Rose's Warpath"
+    },
+    "855E7713": {
+      "zh": "异能战意",
+      "en": "Versalis Ignition"
+    },
+    "8572B8AF": {
+      "zh": "魔眼的凛翔",
+      "en": "Dark Huntress's Surge"
+    },
+    "85D7B335": {
+      "zh": "白龙的誓约+",
+      "en": "White Dragon's Oath+"
+    },
+    "867EFFED": {
+      "zh": "攻击力III+",
+      "en": "Attack Power III+"
+    },
+    "86CBCDC4": {
+      "zh": "屠龙者的威猛",
+      "en": "Dragonslayer's Dominance"
+    },
+    "872D3AF9": {
+      "zh": "魔眼的凛翔",
+      "en": "Dark Huntress's Surge"
+    },
+    "883380D4": {
+      "zh": "激昂V",
+      "en": "Uplift V"
+    },
+    "8856F755": {
+      "zh": "快速蓄力II",
+      "en": "Quick Charge II"
+    },
+    "887AE0B0": {
+      "zh": "无",
+      "en": "None"
+    },
+    "89CA4DB0": {
+      "zh": "体力IV+",
+      "en": "Health IV+"
+    },
+    "8A108211": {
+      "zh": "穷寇心II",
+      "en": "Berserker II"
+    },
+    "8A3DCAB1": {
+      "zh": "热血III+",
+      "en": "Stamina III+"
+    },
+    "8A967A6E": {
+      "zh": "连击收招V+",
+      "en": "Combo Finisher V+"
+    },
+    "8A9F7374": {
+      "zh": "穷寇心III",
+      "en": "Berserker III"
+    },
+    "8B3BF60C": {
+      "zh": "躲避性能",
+      "en": "Improved Dodge"
+    },
+    "8B647510": {
+      "zh": "暴击率IV+",
+      "en": "Critical Hit Rate IV+"
+    },
+    "8B66775A": {
+      "zh": "格挡仇火III",
+      "en": "Guard Payback III"
+    },
+    "8CA7D9C1": {
+      "zh": "投掷V+",
+      "en": "Throw V+"
+    },
+    "8CDF9382": {
+      "zh": "白龙的誓约",
+      "en": "White Dragon's Oath"
+    },
+    "8D078597": {
+      "zh": "投掷",
+      "en": "Throw DMG"
+    },
+    "8D2ADB6E": {
+      "zh": "β秘纹",
+      "en": "Beta"
+    },
+    "8D639E0C": {
+      "zh": "获得金币II",
+      "en": "Rupie Tycoon II"
+    },
+    "8D78A19B": {
+      "zh": "暴击率",
+      "en": "Critical Hit Rate"
+    },
+    "8DBF201A": {
+      "zh": "体力III+",
+      "en": "Health III+"
+    },
+    "8E3F1EC7": {
+      "zh": "先发制人II",
+      "en": "Head Start II"
+    },
+    "8E5B056B": {
+      "zh": "蓄力会心IV",
+      "en": "Lucky Charge IV"
+    },
+    "8F0329FC": {
+      "zh": "蓄力攻击III+",
+      "en": "Charged Attack III+"
+    },
+    "8F1B4DC4": {
+      "zh": "集中炮火IV",
+      "en": "Concentrated Fire IV"
+    },
+    "8F502F0D": {
+      "zh": "奋不顾身",
+      "en": "Life on the Line"
+    },
+    "905C6D7F": {
+      "zh": "连击加成",
+      "en": "Combo Booster I"
+    },
+    "909A3AEB": {
+      "zh": "暴君II",
+      "en": "Tyranny II"
+    },
+    "90FBB4BF": {
+      "zh": "自动复活II",
+      "en": "Autorevive II"
+    },
+    "91196499": {
+      "zh": "不动",
+      "en": "Firm Stance I"
+    },
+    "9172D000": {
+      "zh": "体力III+",
+      "en": "Health III+"
+    },
+    "91956B39": {
+      "zh": "快速蓄力V+",
+      "en": "Quick Charge V+"
+    },
+    "9196A989": {
+      "zh": "快速蓄力IV+",
+      "en": "Quick Charge IV+"
+    },
+    "91CC46C0": {
+      "zh": "连击加成II",
+      "en": "Combo Booster II"
+    },
+    "921B6B0C": {
+      "zh": "老兵的天眼",
+      "en": "Veteran's Vision"
+    },
+    "921BB96E": {
+      "zh": "体力IV",
+      "en": "Health IV"
+    },
+    "921D90D8": {
+      "zh": "α秘纹+",
+      "en": "Alpha+"
+    },
+    "922804EF": {
+      "zh": "攻击力IV+",
+      "en": "Attack Power IV+"
+    },
+    "9230E3F5": {
+      "zh": "剑圣的闪刃",
+      "en": "Spirit Edge's Fury"
+    },
+    "92B2D85F": {
+      "zh": "挑衅",
+      "en": "Provoke I"
+    },
+    "936DFE00": {
+      "zh": "英勇灵气",
+      "en": "Fearless Spirit"
+    },
+    "9389CC06": {
+      "zh": "回复性能",
+      "en": "Improved Healing"
+    },
+    "93A2093C": {
+      "zh": "异能增长",
+      "en": "Versalis Foundation"
+    },
+    "93D9774F": {
+      "zh": "蓄力攻击II",
+      "en": "Charged Attack II"
+    },
+    "946481A5": {
+      "zh": "坚守IV",
+      "en": "Garrison IV"
+    },
+    "94B33570": {
+      "zh": "奥义封印抗性II",
+      "en": "SBA Sealed Resistance II"
+    },
+    "94C2D5B3": {
+      "zh": "修罗III",
+      "en": "Power Hungry III"
+    },
+    "94F7053C": {
+      "zh": "弱点攻击III+",
+      "en": "Exploiter III+"
+    },
+    "958588F6": {
+      "zh": "不动IV",
+      "en": "Firm Stance IV"
+    },
+    "95858B63": {
+      "zh": "攻击力",
+      "en": "Attack Power I"
+    },
+    "959C926E": {
+      "zh": "身无长技V",
+      "en": "Less Is More V"
+    },
+    "95A41365": {
+      "zh": "蓄力攻击III+",
+      "en": "Charged Attack III+"
+    },
+    "95F3FA86": {
+      "zh": "自动复活",
+      "en": "Autorevive"
+    },
+    "961B274C": {
+      "zh": "暴击率IV+",
+      "en": "Critical Hit Rate IV+"
+    },
+    "96434C8D": {
+      "zh": "中毒抗性II",
+      "en": "Poison Resistance II"
+    },
+    "9673ABB9": {
+      "zh": "药水携带数IV",
+      "en": "Potion Hoarder IV"
+    },
+    "9702860F": {
+      "zh": "灾祸抗性",
+      "en": "Blight Resistance"
+    },
+    "973B49AF": {
+      "zh": "中毒抗性",
+      "en": "Poison Resistance"
+    },
+    "978255EF": {
+      "zh": "格挡性能",
+      "en": "Improved Guard I"
+    },
+    "9814E19B": {
+      "zh": "投掷III+",
+      "en": "Throw III+"
+    },
+    "9851FD38": {
+      "zh": "躲避仇火IV+",
+      "en": "Dodge Payback IV+"
+    },
+    "987968DF": {
+      "zh": "弱化状态特效II",
+      "en": "Injury to Insult II"
+    },
+    "989216CB": {
+      "zh": "能力伤害II",
+      "en": "Skilled Assault II"
+    },
+    "98A6D249": {
+      "zh": "舵手之觉醒+",
+      "en": "Helmsman's Awakening+"
+    },
+    "98AEB873": {
+      "zh": "Overdrive特效IV+",
+      "en": "Overdrive Assassin IV+"
+    },
+    "98C33860": {
+      "zh": "异能耐受III",
+      "en": "Darkflame Resistance III"
+    },
+    "98DFFCA0": {
+      "zh": "攻击力IV+",
+      "en": "Attack Power IV+"
+    },
+    "98E88FDF": {
+      "zh": "能力封印抗性III",
+      "en": "Skill Sealed Resistance III"
+    },
+    "99A4B2A7": {
+      "zh": "获得金币",
+      "en": "Rupie Tycoon I"
+    },
+    "99C83B77": {
+      "zh": "异能耐受II",
+      "en": "Darkflame Resistance II"
+    },
+    "9A341899": {
+      "zh": "获得MSP",
+      "en": "Path to Mastery I"
+    },
+    "9A59F1EC": {
+      "zh": "穷寇心",
+      "en": "Berserker I"
+    },
+    "9A753E01": {
+      "zh": "蓄力会心V",
+      "en": "Lucky Charge V"
+    },
+    "9A9DC170": {
+      "zh": "圣骑士的剑辉",
+      "en": "Holy Knight's Luster"
+    },
+    "9AD8B5E6": {
+      "zh": "7net",
+      "en": "7net"
+    },
+    "9ADA3E00": {
+      "zh": "守护者之觉醒+",
+      "en": "Guardian's Awakening+"
+    },
+    "9AFDFA9E": {
+      "zh": "守护者的战气",
+      "en": "Guardian's Warpath"
+    },
+    "9B2B4B8F": {
+      "zh": "英勇之心",
+      "en": "Fearless Heart"
+    },
+    "9BD1CC24": {
+      "zh": "玫瑰之觉醒+",
+      "en": "Rose's Awakening+"
+    },
+    "9C2399DA": {
+      "zh": "守护V+",
+      "en": "Aegis V+"
+    },
+    "9CB98CC1": {
+      "zh": "坚守III",
+      "en": "Garrison III"
+    },
+    "9D3093AE": {
+      "zh": "暴击伤害V+",
+      "en": "Critical Damage V+"
+    },
+    "9D5BC5BF": {
+      "zh": "勇士的信念+",
+      "en": "Hero's Creed+"
+    },
+    "9D65E6B6": {
+      "zh": "泥沙抗性IV",
+      "en": "Sandtomb Resistance IV"
+    },
+    "9D88DEA1": {
+      "zh": "魔法师的心愿+",
+      "en": "Mage's Aspiration+"
+    },
+    "9DC8305D": {
+      "zh": "暴君V+",
+      "en": "Tyranny V+"
+    },
+    "9DE27B41": {
+      "zh": "连击加成III+",
+      "en": "Combo Booster III+"
+    },
+    "9F08F697": {
+      "zh": "舵手的指引+",
+      "en": "Helmsman's Navigation+"
+    },
+    "9F741115": {
+      "zh": "格挡性能III",
+      "en": "Improved Guard III"
+    },
+    "9FE3A10D": {
+      "zh": "弱化状态特效V",
+      "en": "Injury to Insult V"
+    },
+    "A0F94F69": {
+      "zh": "圣骑士的剑辉+",
+      "en": "Holy Knight's Luster+"
+    },
+    "A110DC1E": {
+      "zh": "格挡性能IV+",
+      "en": "Improved Guard IV+"
+    },
+    "A12CCE9B": {
+      "zh": "格挡仇火V",
+      "en": "Guard Payback V"
+    },
+    "A1448DB8": {
+      "zh": "刚健III+",
+      "en": "Stronghold III+"
+    },
+    "A1A8E39D": {
+      "zh": "霸体",
+      "en": "Stout Heart"
+    },
+    "A1C947C2": {
+      "zh": "伤害上限IV+",
+      "en": "Damage Cap IV+"
+    },
+    "A1E5C919": {
+      "zh": "奥义封印抗性",
+      "en": "SBA Sealed Resistance I"
+    },
+    "A224A830": {
+      "zh": "坚守V",
+      "en": "Garrison V"
+    },
+    "A248E5D1": {
+      "zh": "坚持IV",
+      "en": "Steel Nerves IV"
+    },
+    "A278238E": {
+      "zh": "躲避仇火V+",
+      "en": "Dodge Payback V+"
+    },
+    "A2FA9685": {
+      "zh": "缓速抗性",
+      "en": "Slow Resistance"
+    },
+    "A3021B5E": {
+      "zh": "背水V+",
+      "en": "Enmity V+"
+    },
+    "A3210B84": {
+      "zh": "攻击DOWN抗性IV",
+      "en": "Attack Down Resistance IV"
+    },
+    "A339D642": {
+      "zh": "幽幻的战气",
+      "en": "Phantasm's Warpath"
+    },
+    "A33AF136": {
+      "zh": "凝神",
+      "en": "Nimble Defense I"
+    },
+    "A3578968": {
+      "zh": "坚守IV+",
+      "en": "Garrison IV+"
+    },
+    "A374FDF0": {
+      "zh": "舵手的坚持",
+      "en": "Helmsman's Tenacity"
+    },
+    "A38510E2": {
+      "zh": "英勇灵气",
+      "en": "Fearless Spirit"
+    },
+    "A3B49220": {
+      "zh": "变换自如的妖剑士",
+      "en": "Swordmaster's Art"
+    },
+    "A4204593": {
+      "zh": "暴君III",
+      "en": "Tyranny III"
+    },
+    "A441FB51": {
+      "zh": "魔法师的战气",
+      "en": "Mage's Warpath"
+    },
+    "A4456853": {
+      "zh": "弱化状态特效",
+      "en": "Injury to Insult I"
+    },
+    "A44AEFC0": {
+      "zh": "水牢抗性III",
+      "en": "Held Under Resistance III"
+    },
+    "A468A3E8": {
+      "zh": "能力伤害V+",
+      "en": "Skilled Assault V+"
+    },
+    "A492FFAC": {
+      "zh": "暴君V+",
+      "en": "Tyranny V+"
+    },
+    "A4B849A0": {
+      "zh": "凝神V+",
+      "en": "Nimble Defense V+"
+    },
+    "A4D6B880": {
+      "zh": "修炼甘露",
+      "en": "Gilding Vigor"
+    },
+    "A576B01B": {
+      "zh": "修罗II",
+      "en": "Power Hungry II"
+    },
+    "A59C9613": {
+      "zh": "冥暗自若+",
+      "en": "Ebony's Poise+"
+    },
+    "A5B20C3C": {
+      "zh": "攻击力III",
+      "en": "Attack Power III"
+    },
+    "A63B89CD": {
+      "zh": "斩姬武艺",
+      "en": "Butterfly's Valor"
+    },
+    "A6EE588A": {
+      "zh": "体力",
+      "en": "Health I"
+    },
+    "A70DAF5A": {
+      "zh": "奋不顾身",
+      "en": "Life on the Line I"
+    },
+    "A74C2893": {
+      "zh": "异能耐受",
+      "en": "Darkflame Resistance I"
+    },
+    "A7856A22": {
+      "zh": "暴击率V",
+      "en": "Critical Hit Rate V"
+    },
+    "A7A45F28": {
+      "zh": "连击收招",
+      "en": "Combo Finisher DMG"
+    },
+    "A7F292BF": {
+      "zh": "回复性能II",
+      "en": "Improved Healing II"
+    },
+    "A7F84C3B": {
+      "zh": "摇曳步+",
+      "en": "Flight over Fight+"
+    },
+    "A879208F": {
+      "zh": "斩姬武艺+",
+      "en": "Butterfly's Valor+"
+    },
+    "A89C98C9": {
+      "zh": "连击加成V+",
+      "en": "Combo Booster V+"
+    },
+    "A8A3163B": {
+      "zh": "刀上舞",
+      "en": "Glass Cannon"
+    },
+    "A8C67937": {
+      "zh": "快速蓄力III+",
+      "en": "Quick Charge III+"
+    },
+    "A8DC84BD": {
+      "zh": "弱点攻击II",
+      "en": "Exploiter II"
+    },
+    "A91BE816": {
+      "zh": "灼热抗性II",
+      "en": "Burn Resistance II"
+    },
+    "A931E9FA": {
+      "zh": "热血III+",
+      "en": "Stamina III+"
+    },
+    "A9D17F55": {
+      "zh": "Overdrive特效",
+      "en": "Overdrive Assassin"
+    },
+    "A9D804D4": {
+      "zh": "异能之心",
+      "en": "Versalis Heart"
+    },
+    "AA793DE2": {
+      "zh": "昏迷抗性IV",
+      "en": "Dizzy Resistance IV"
+    },
+    "AA83F548": {
+      "zh": "老兵的智慧",
+      "en": "Veteran's Insight"
+    },
+    "AA941053": {
+      "zh": "奋不顾身II",
+      "en": "Life on the Line II"
+    },
+    "AAC7A219": {
+      "zh": "追击IV",
+      "en": "Supplementary Damage IV"
+    },
+    "AB835493": {
+      "zh": "屠龙者之觉醒+",
+      "en": "Dragonslayer's Awakening+"
+    },
+    "ABC07972": {
+      "zh": "暴君III+",
+      "en": "Tyranny III+"
+    },
+    "ABFA79F2": {
+      "zh": "强健甘露",
+      "en": "Fortifying Vigor"
+    },
+    "AC7822A4": {
+      "zh": "灼热抗性V",
+      "en": "Burn Resistance V"
+    },
+    "AC9674C1": {
+      "zh": "破防特效",
+      "en": "Break Assassin"
+    },
+    "AD0A2AE1": {
+      "zh": "怒涛II",
+      "en": "Cascade II"
+    },
+    "AE5D5A4F": {
+      "zh": "破防特效III+",
+      "en": "Break Assassin III+"
+    },
+    "AE6C2F04": {
+      "zh": "弱点攻击III+",
+      "en": "Exploiter III+"
+    },
+    "AE9899C6": {
+      "zh": "追击",
+      "en": "Supplementary Damage I"
+    },
+    "AEBFADF5": {
+      "zh": "先发制人III+",
+      "en": "Head Start III+"
+    },
+    "AEEF8343": {
+      "zh": "圣骑士之觉醒+",
+      "en": "Holy Knight's Awakening+"
+    },
+    "AF513A9D": {
+      "zh": "极致真理",
+      "en": "Founder's Truth"
+    },
+    "AF794A87": {
+      "zh": "躲避距离",
+      "en": "Untouchable"
+    },
+    "AF7FB20D": {
+      "zh": "协同攻击IV",
+      "en": "Linked Together IV"
+    },
+    "AF8E7E7E": {
+      "zh": "异能之魂+",
+      "en": "Versalis Soul+"
+    },
+    "B0634504": {
+      "zh": "魔眼的战气",
+      "en": "Dark Huntress's Warpath"
+    },
+    "B064A634": {
+      "zh": "异能之心",
+      "en": "Versalis Heart"
+    },
+    "B06C66A6": {
+      "zh": "凝神IV+",
+      "en": "Nimble Defense IV+"
+    },
+    "B0AD15DD": {
+      "zh": "背水IV+",
+      "en": "Enmity IV+"
+    },
+    "B0CB5C64": {
+      "zh": "伤害上限V+",
+      "en": "Damage Cap V+"
+    },
+    "B109C429": {
+      "zh": "中毒抗性",
+      "en": "Poison Resistance I"
+    },
+    "B143DAE6": {
+      "zh": "斩姬梦幻+",
+      "en": "Butterfly's Grace+"
+    },
+    "B17C7207": {
+      "zh": "能力伤害IV+",
+      "en": "Skilled Assault IV+"
+    },
+    "B1C1200B": {
+      "zh": "玫瑰的战气",
+      "en": "Rose's Warpath"
+    },
+    "B1D40170": {
+      "zh": "骰子剑+",
+      "en": "Roll of the Die+"
+    },
+    "B20182A7": {
+      "zh": "躲避仇火III",
+      "en": "Dodge Payback III"
+    },
+    "B2191F16": {
+      "zh": "圣骑士的威光",
+      "en": "Holy Knight's Grandeur"
+    },
+    "B2B08F0D": {
+      "zh": "匿踪III",
+      "en": "Low Profile III"
+    },
+    "B2C6F95A": {
+      "zh": "集中炮火III",
+      "en": "Concentrated Fire III"
+    },
+    "B2D492A3": {
+      "zh": "迅捷能力IV",
+      "en": "Quick Cooldown IV"
+    },
+    "B360801D": {
+      "zh": "集中炮火",
+      "en": "Concentrated Fire"
+    },
+    "B441275D": {
+      "zh": "幽幻之觉醒+",
+      "en": "Phantasm's Awakening+"
+    },
+    "B48EEF48": {
+      "zh": "魔法师的心愿",
+      "en": "Mage's Aspiration"
+    },
+    "B4ADDDC5": {
+      "zh": "投掷V+",
+      "en": "Throw V+"
+    },
+    "B570D9CA": {
+      "zh": "暴击伤害",
+      "en": "Critical Damage I"
+    },
+    "B5725272": {
+      "zh": "王者行进+",
+      "en": "Lord's Procession+"
+    },
+    "B5B23F02": {
+      "zh": "体力V+",
+      "en": "Health V+"
+    },
+    "B5DA3E80": {
+      "zh": "白龙的荣耀+",
+      "en": "White Dragon's Glory+"
+    },
+    "B5FF9FD3": {
+      "zh": "激昂",
+      "en": "Uplift"
+    },
+    "B60D6796": {
+      "zh": "伤害上限III",
+      "en": "Damage Cap III"
+    },
+    "B63E221A": {
+      "zh": "水牢抗性IV",
+      "en": "Held Under Resistance IV"
+    },
+    "B6552BA8": {
+      "zh": "暴击伤害III",
+      "en": "Critical Damage III"
+    },
+    "B694CDD6": {
+      "zh": "刀上舞II",
+      "en": "Glass Cannon II"
+    },
+    "B6E31F76": {
+      "zh": "不动",
+      "en": "Firm Stance"
+    },
+    "B71DF666": {
+      "zh": "缓速抗性",
+      "en": "Slow Resistance I"
+    },
+    "B74C207B": {
+      "zh": "真红烈焰+",
+      "en": "Crimson's Clout+"
+    },
+    "B7C4535A": {
+      "zh": "集中炮火V+",
+      "en": "Concentrated Fire V+"
+    },
+    "B7F89AC3": {
+      "zh": "怒涛V",
+      "en": "Cascade V"
+    },
+    "B832E7A7": {
+      "zh": "格挡性能V+",
+      "en": "Improved Guard V+"
+    },
+    "B83FB38E": {
+      "zh": "Overdrive特效IV",
+      "en": "Overdrive Assassin IV"
+    },
+    "B85202BC": {
+      "zh": "圣骑士的战气",
+      "en": "Holy Knight's Warpath"
+    },
+    "B85C5C3B": {
+      "zh": "激昂II",
+      "en": "Uplift II"
+    },
+    "B8A811ED": {
+      "zh": "获得金币V",
+      "en": "Rupie Tycoon V"
+    },
+    "B98A0F22": {
+      "zh": "异能增长+",
+      "en": "Versalis Foundation+"
+    },
+    "BA504607": {
+      "zh": "王者的战气",
+      "en": "Lord's Warpath"
+    },
+    "BA77B7F2": {
+      "zh": "豪胆V",
+      "en": "Guts V"
+    },
+    "BA8A0229": {
+      "zh": "身无长技IV+",
+      "en": "Less Is More IV+"
+    },
+    "BB86EF75": {
+      "zh": "集中炮火IV+",
+      "en": "Concentrated Fire IV+"
+    },
+    "BBF1566E": {
+      "zh": "守护者的决心",
+      "en": "Guardian's Conviction"
+    },
+    "BC445153": {
+      "zh": "协同攻击V+",
+      "en": "Linked Together V+"
+    },
+    "BC795189": {
+      "zh": "投掷IV+",
+      "en": "Throw IV+"
+    },
+    "BCEDF060": {
+      "zh": "屠龙者的才智+",
+      "en": "Dragonslayer's Ingenuity+"
+    },
+    "BD2CF495": {
+      "zh": "热血IV",
+      "en": "Stamina IV"
+    },
+    "BDCC9A89": {
+      "zh": "守护者的骄傲",
+      "en": "Guardian's Honor"
+    },
+    "BE0F226F": {
+      "zh": "凝神IV",
+      "en": "Nimble Defense IV"
+    },
+    "BE3C851C": {
+      "zh": "攻击力V",
+      "en": "Attack Power V"
+    },
+    "BE6B6288": {
+      "zh": "先发制人V+",
+      "en": "Head Start V+"
+    },
+    "BE799271": {
+      "zh": "自愈IV",
+      "en": "Regen IV"
+    },
+    "BE8CAF15": {
+      "zh": "刀上舞III+",
+      "en": "Glass Cannon III+"
+    },
+    "BF4D978A": {
+      "zh": "快速蓄力",
+      "en": "Quick Charge I"
+    },
+    "BF714A8A": {
+      "zh": "幽幻之应+",
+      "en": "Phantasm's Harmony+"
+    },
+    "BF7CA5DB": {
+      "zh": "昏迷抗性II",
+      "en": "Dizzy Resistance II"
+    },
+    "BFAA447E": {
+      "zh": "弱点攻击V+",
+      "en": "Exploiter V+"
+    },
+    "C00163B3": {
+      "zh": "魔法师的战气",
+      "en": "Mage's Warpath"
+    },
+    "C02E6BEA": {
+      "zh": "金刚V",
+      "en": "Greater Aegis V"
+    },
+    "C06F4708": {
+      "zh": "王者一心+",
+      "en": "Lord's Ambition+"
+    },
+    "C0979A17": {
+      "zh": "暴击伤害",
+      "en": "Critical Hit DMG"
+    },
+    "C0B5128E": {
+      "zh": "屠龙者的威猛+",
+      "en": "Dragonslayer's Dominance+"
+    },
+    "C0C92D64": {
+      "zh": "能力伤害IV+",
+      "en": "Skilled Assault IV+"
+    },
+    "C1377955": {
+      "zh": "匿踪",
+      "en": "Low Profile I"
+    },
+    "C19839BD": {
+      "zh": "暴君IV+",
+      "en": "Tyranny IV+"
+    },
+    "C1A3F47E": {
+      "zh": "冰冻抗性V",
+      "en": "Glaciate Resistance V"
+    },
+    "C275B86F": {
+      "zh": "躲避仇火IV+",
+      "en": "Dodge Payback IV+"
+    },
+    "C2A4C7A9": {
+      "zh": "玫瑰缤纷",
+      "en": "Rose's Profusion"
+    },
+    "C349AD51": {
+      "zh": "格挡仇火II",
+      "en": "Guard Payback II"
+    },
+    "C35B111B": {
+      "zh": "蓄力会心",
+      "en": "Lucky Charge"
+    },
+    "C37A0842": {
+      "zh": "弱化状态特效V+",
+      "en": "Injury to Insult V+"
+    },
+    "C37D080A": {
+      "zh": "体力II",
+      "en": "Health II"
+    },
+    "C452AB03": {
+      "zh": "投掷V",
+      "en": "Throw V"
+    },
+    "C4DD863A": {
+      "zh": "涯之七星+",
+      "en": "Seven-Star Boundary+"
+    },
+    "C55F6CDF": {
+      "zh": "抗争II",
+      "en": "Precise Resilience II"
+    },
+    "C5B72CE6": {
+      "zh": "暴击伤害IV+",
+      "en": "Critical Damage IV+"
+    },
+    "C64737E7": {
+      "zh": "抗争",
+      "en": "Precise Resilience I"
+    },
+    "C6539CB5": {
+      "zh": "昏厥IV+",
+      "en": "Stun Power IV+"
+    },
+    "C66E8203": {
+      "zh": "极致谋略",
+      "en": "Founder's Strategy"
+    },
+    "C6A019AE": {
+      "zh": "协同攻击III",
+      "en": "Linked Together III"
+    },
+    "C6B1BBE6": {
+      "zh": "伤害上限",
+      "en": "Damage Cap I"
+    },
+    "C6E71D09": {
+      "zh": "快速蓄力IV+",
+      "en": "Quick Charge IV+"
+    },
+    "C7D124DD": {
+      "zh": "药水携带数III",
+      "en": "Potion Hoarder III"
+    },
+    "C7D379F1": {
+      "zh": "屠龙者的战气",
+      "en": "Dragonslayer's Warpath"
+    },
+    "C7D94DC9": {
+      "zh": "连击收招V",
+      "en": "Combo Finisher V"
+    },
+    "C86F3082": {
+      "zh": "获得金币",
+      "en": "Rupie Tycoon"
+    },
+    "C8935975": {
+      "zh": "破防特效III",
+      "en": "Break Assassin III"
+    },
+    "C98DC248": {
+      "zh": "自愈V",
+      "en": "Regen V"
+    },
+    "CB5F29C1": {
+      "zh": "霸体",
+      "en": "Stout Heart"
+    },
+    "CBABDB59": {
+      "zh": "集中炮火II",
+      "en": "Concentrated Fire II"
+    },
+    "CC29955A": {
+      "zh": "匿踪IV",
+      "en": "Low Profile IV"
+    },
+    "CC5DB833": {
+      "zh": "蓄力攻击III",
+      "en": "Charged Attack III"
+    },
+    "CCD29B2B": {
+      "zh": "缓速抗性V",
+      "en": "Slow Resistance V"
+    },
+    "CD030268": {
+      "zh": "英勇神速",
+      "en": "Fearless Drive"
+    },
+    "CD124165": {
+      "zh": "冥暗自若",
+      "en": "Ebony's Poise"
+    },
+    "CD18A77D": {
+      "zh": "万能药",
+      "en": "Potent Greens"
+    },
+    "CD4B83C7": {
+      "zh": "水牢抗性V",
+      "en": "Held Under Resistance V"
+    },
+    "CDEB73F6": {
+      "zh": "幸运甘露",
+      "en": "Fortifying Vigor"
+    },
+    "CDFEB37E": {
+      "zh": "先发制人IV+",
+      "en": "Head Start IV+"
+    },
+    "CE16D68B": {
+      "zh": "古今无双之觉醒+",
+      "en": "Eternal Rage's Awakening+"
+    },
+    "CEB700EE": {
+      "zh": "昏厥",
+      "en": "Stun Power"
+    },
+    "CEE9DD46": {
+      "zh": "先发制人III",
+      "en": "Head Start III"
+    },
+    "CFB48782": {
+      "zh": "奥义封印抗性",
+      "en": "SBA Sealed Resistance"
+    },
+    "D038F852": {
+      "zh": "集中炮火V+",
+      "en": "Concentrated Fire V+"
+    },
+    "D0B43CA0": {
+      "zh": "蓄力攻击IV+",
+      "en": "Charged Attack IV+"
+    },
+    "D0D61CAA": {
+      "zh": "怒涛",
+      "en": "Cascade I"
+    },
+    "D1012D8C": {
+      "zh": "白龙的荣耀",
+      "en": "White Dragon's Glory"
+    },
+    "D14AA754": {
+      "zh": "弱化状态特效III+",
+      "en": "Injury to Insult III+"
+    },
+    "D1B747C5": {
+      "zh": "蓄力攻击IV+",
+      "en": "Charged Attack IV+"
+    },
+    "D259D5D7": {
+      "zh": "弱化状态特效III+",
+      "en": "Injury to Insult III+"
+    },
+    "D2740E3B": {
+      "zh": "麻痹抗性",
+      "en": "Paralysis Resistance I"
+    },
+    "D2C8E10A": {
+      "zh": "明镜止水",
+      "en": "Nimble Onslaught"
+    },
+    "D32C0CAF": {
+      "zh": "暴击率III",
+      "en": "Critical Hit Rate III"
+    },
+    "D32DC086": {
+      "zh": "蓄力会心IV+",
+      "en": "Lucky Charge IV+"
+    },
+    "D3538CFD": {
+      "zh": "凝神II",
+      "en": "Nimble Defense II"
+    },
+    "D36CC890": {
+      "zh": "勇士的信念",
+      "en": "Hero's Creed"
+    },
+    "D3774B13": {
+      "zh": "HP吸收III",
+      "en": "Drain III"
+    },
+    "D393DA22": {
+      "zh": "伤害上限IV",
+      "en": "Damage Cap IV"
+    },
+    "D39F1C79": {
+      "zh": "HP吸收V",
+      "en": "Drain V"
+    },
+    "D3A40C27": {
+      "zh": "协同攻击III+",
+      "en": "Linked Together III+"
+    },
+    "D42A2D77": {
+      "zh": "怒发冲冠",
+      "en": "Precise Wrath I"
+    },
+    "D42DC37C": {
+      "zh": "连击收招IV+",
+      "en": "Combo Finisher IV+"
+    },
+    "D4488A1D": {
+      "zh": "变幻自如的战气",
+      "en": "Swordmaster's Warpath"
+    },
+    "D48ABDDA": {
+      "zh": "舵手的坚持+",
+      "en": "Helmsman's Tenacity+"
+    },
+    "D4B2ADBA": {
+      "zh": "不动III",
+      "en": "Firm Stance III"
+    },
+    "D4EBB836": {
+      "zh": "刚健V+",
+      "en": "Stronghold V+"
+    },
+    "D54F8CA7": {
+      "zh": "泥沙抗性",
+      "en": "Sandtomb Resistance"
+    },
+    "D5808F9E": {
+      "zh": "体力IV+",
+      "en": "Health IV+"
+    },
+    "D5A23569": {
+      "zh": "缓速抗性II",
+      "en": "Slow Resistance II"
+    },
+    "D5CA277F": {
+      "zh": "协同攻击IV+",
+      "en": "Linked Together IV+"
+    },
+    "D626AC9F": {
+      "zh": "泥沙抗性II",
+      "en": "Sandtomb Resistance II"
+    },
+    "D657DB39": {
+      "zh": "连击加成III",
+      "en": "Combo Booster III"
+    },
+    "D6738E0F": {
+      "zh": "蓄力攻击",
+      "en": "Charged Attack I"
+    },
+    "D6C28E35": {
+      "zh": "格挡性能V",
+      "en": "Improved Guard V"
+    },
+    "D76F4D24": {
+      "zh": "舵手的战气",
+      "en": "Helmsman's Warpath"
+    },
+    "D77EFBC6": {
+      "zh": "中毒抗性III",
+      "en": "Poison Resistance III"
+    },
+    "D7C37871": {
+      "zh": "冰冻抗性II",
+      "en": "Glaciate Resistance II"
+    },
+    "D7F9BB88": {
+      "zh": "冥暗的战气",
+      "en": "Ebony's Warpath"
+    },
+    "D8D6B380": {
+      "zh": "豪胆II",
+      "en": "Guts II"
+    },
+    "D8F66C1C": {
+      "zh": "勇士的战气",
+      "en": "Hero's Warpath"
+    },
+    "D908223D": {
+      "zh": "幽幻之谊",
+      "en": "Phantasm's Harmony"
+    },
+    "D959A6D2": {
+      "zh": "连击收招III",
+      "en": "Combo Finisher III"
+    },
+    "D982AE55": {
+      "zh": "药水携带数II",
+      "en": "Potion Hoarder II"
+    },
+    "DA9136A1": {
+      "zh": "属性克制转换",
+      "en": "War Elemental"
+    },
+    "DADE14DC": {
+      "zh": "英勇之心",
+      "en": "Fearless Heart"
+    },
+    "DAEFBB27": {
+      "zh": "变幻自如的战气",
+      "en": "Swordmaster's Warpath"
+    },
+    "DBE1D775": {
+      "zh": "α秘纹",
+      "en": "Alpha"
+    },
+    "DBEBFDAD": {
+      "zh": "坚守II",
+      "en": "Garrison II"
+    },
+    "DC09B8D1": {
+      "zh": "Overdrive特效V+",
+      "en": "Overdrive Assassin V+"
+    },
+    "DC225C96": {
+      "zh": "修罗",
+      "en": "Power Hungry"
+    },
+    "DC584F60": {
+      "zh": "伤害上限",
+      "en": "DMG Cap"
+    },
+    "DC607D75": {
+      "zh": "匿踪",
+      "en": "Low Profile"
+    },
+    "DD12001E": {
+      "zh": "坚持III",
+      "en": "Steel Nerves III"
+    },
+    "DD492226": {
+      "zh": "格挡仇火III+",
+      "en": "Guard Payback III+"
+    },
+    "DD4A701E": {
+      "zh": "异能耐受",
+      "en": "Darkflame Resistance"
+    },
+    "DD5EFF28": {
+      "zh": "蓄力强化IV",
+      "en": "Steady Focus IV"
+    },
+    "DED4E384": {
+      "zh": "刚健V",
+      "en": "Stronghold V"
+    },
+    "DF4A666E": {
+      "zh": "奥义封印抗性V",
+      "en": "SBA Sealed Resistance V"
+    },
+    "DF8A52FB": {
+      "zh": "水牢抗性II",
+      "en": "Held Under Resistance II"
+    },
+    "DFC20239": {
+      "zh": "暴君IV",
+      "en": "Tyranny IV"
+    },
+    "DFD60614": {
+      "zh": "Overdrive特效IV+",
+      "en": "Overdrive Assassin IV+"
+    },
+    "DFE82763": {
+      "zh": "回复性能IV",
+      "en": "Improved Healing IV"
+    },
+    "E073EA65": {
+      "zh": "幽幻之谊+",
+      "en": "Phantasm's Concord+"
+    },
+    "E0ABFDFE": {
+      "zh": "守护",
+      "en": "Aegis"
+    },
+    "E0B702C6": {
+      "zh": "连击收招IV",
+      "en": "Combo Finisher IV"
+    },
+    "E135A05A": {
+      "zh": "幸运甘露",
+      "en": "Gilding Vigor"
+    },
+    "E1443933": {
+      "zh": "能力伤害IV",
+      "en": "Skilled Assault IV"
+    },
+    "E16E4DD4": {
+      "zh": "昏厥V",
+      "en": "Stun Power V"
+    },
+    "E19B1965": {
+      "zh": "白龙之觉醒+",
+      "en": "White Dragon's Awakening+"
+    },
+    "E19DE7AE": {
+      "zh": "获得经验值V",
+      "en": "Fast Learner V"
+    },
+    "E255FAD2": {
+      "zh": "破防特效",
+      "en": "Break Assassin I"
+    },
+    "E27B1C51": {
+      "zh": "回复性能V",
+      "en": "Improved Healing V"
+    },
+    "E2B380E5": {
+      "zh": "魔法师之觉醒+",
+      "en": "Mage's Awakening+"
+    },
+    "E3103186": {
+      "zh": "自动复活III",
+      "en": "Autorevive III"
+    },
+    "E347B563": {
+      "zh": "暴击伤害V",
+      "en": "Critical Damage V"
+    },
+    "E405ACA0": {
+      "zh": "抗争III",
+      "en": "Precise Resilience III"
+    },
+    "E4F986D9": {
+      "zh": "冥暗之觉醒+",
+      "en": "Ebony's Awakening+"
+    },
+    "E4FC5AF6": {
+      "zh": "抗争V",
+      "en": "Precise Resilience V"
+    },
+    "E501B772": {
+      "zh": "伤害上限III+",
+      "en": "Damage Cap III+"
+    },
+    "E507A543": {
+      "zh": "奋不顾身III",
+      "en": "Life on the Line III"
+    },
+    "E53D0E38": {
+      "zh": "豪胆IV",
+      "en": "Guts IV"
+    },
+    "E546F899": {
+      "zh": "骰子剑+",
+      "en": "Roll of the Die+"
+    },
+    "E570A041": {
+      "zh": "白龙的战气",
+      "en": "White Dragon's Warpath"
+    },
+    "E5B58127": {
+      "zh": "获得金币III",
+      "en": "Rupie Tycoon III"
+    },
+    "E5D96666": {
+      "zh": "集中炮火IV+",
+      "en": "Concentrated Fire IV+"
+    },
+    "E60A735C": {
+      "zh": "王者行进",
+      "en": "Lord's Procession"
+    },
+    "E69A4694": {
+      "zh": "豪胆",
+      "en": "Guts"
+    },
+    "E6B92E34": {
+      "zh": "极致的战气",
+      "en": "Founder's Warpath"
+    },
+    "E6CDBA9C": {
+      "zh": "坚守",
+      "en": "Garrison"
+    },
+    "E7062C19": {
+      "zh": "舵手的指引",
+      "en": "Helmsman's Navigation"
+    },
+    "E71B1FE4": {
+      "zh": "守护V",
+      "en": "Aegis V"
+    },
+    "E7624711": {
+      "zh": "变幻自如的迅刃+",
+      "en": "Swordmaster's Prowess+"
+    },
+    "E7643634": {
+      "zh": "昏厥III+",
+      "en": "Stun Power III+"
+    },
+    "E8454459": {
+      "zh": "热血V+",
+      "en": "Stamina V+"
+    },
+    "E85FF8E0": {
+      "zh": "魔眼的万箭",
+      "en": "Dark Huntress's Volley"
+    },
+    "E89224A1": {
+      "zh": "躲避性能+",
+      "en": "Improved Dodge+"
+    },
+    "E8B8A474": {
+      "zh": "攻击DOWN抗性V",
+      "en": "Attack Down Resistance V"
+    },
+    "E92EE838": {
+      "zh": "体力V+",
+      "en": "Health V+"
+    },
+    "E93B7346": {
+      "zh": "麻痹抗性II",
+      "en": "Paralysis Resistance II"
+    },
+    "E9917AC1": {
+      "zh": "暴击伤害II",
+      "en": "Critical Damage II"
+    },
+    "E9D3B6CA": {
+      "zh": "奥义封印抗性III",
+      "en": "SBA Sealed Resistance III"
+    },
+    "EAA911B2": {
+      "zh": "异能战意+",
+      "en": "Versalis Ignition+"
+    },
+    "EAE321EB": {
+      "zh": "能力伤害",
+      "en": "Skilled Assault"
+    },
+    "EB105B98": {
+      "zh": "刚健III+",
+      "en": "Stronghold III+"
+    },
+    "EB10ACA3": {
+      "zh": "怒发冲冠III",
+      "en": "Precise Wrath III"
+    },
+    "EB5F28E0": {
+      "zh": "能力伤害III+",
+      "en": "Skilled Assault III+"
+    },
+    "EB73E730": {
+      "zh": "怒涛III",
+      "en": "Cascade III"
+    },
+    "EBC1FE90": {
+      "zh": "刚健",
+      "en": "Stronghold I"
+    },
+    "EBCC193C": {
+      "zh": "坚持",
+      "en": "Steel Nerves I"
+    },
+    "EC1C6779": {
+      "zh": "摇曳步",
+      "en": "Flight over Fight"
+    },
+    "EC3CF174": {
+      "zh": "极致谋略",
+      "en": "Founder's Strategy"
+    },
+    "ECD324C7": {
+      "zh": "蓄力强化V",
+      "en": "Steady Focus V"
+    },
+    "EDA2116A": {
+      "zh": "坚持V+",
+      "en": "Steel Nerves V+"
+    },
+    "EE25BD8F": {
+      "zh": "能力伤害III",
+      "en": "Skilled Assault III"
+    },
+    "EE337FE3": {
+      "zh": "β秘纹+",
+      "en": "Beta+"
+    },
+    "EE732781": {
+      "zh": "伤害上限V",
+      "en": "Damage Cap V"
+    },
+    "EEB6C4CC": {
+      "zh": "Overdrive特效V",
+      "en": "Overdrive Assassin V"
+    },
+    "EF05EC4D": {
+      "zh": "涯之七星+",
+      "en": "Seven-Star Boundary+"
+    },
+    "F04C2CDC": {
+      "zh": "连击加成IV+",
+      "en": "Combo Booster IV+"
+    },
+    "F127D45F": {
+      "zh": "投掷IV+",
+      "en": "Throw IV+"
+    },
+    "F142A66C": {
+      "zh": "HP吸收IV",
+      "en": "Drain IV"
+    },
+    "F1691ADC": {
+      "zh": "格挡性能IV",
+      "en": "Improved Guard IV"
+    },
+    "F17850B9": {
+      "zh": "连击加成",
+      "en": "Combo Booster"
+    },
+    "F1839306": {
+      "zh": "攻击力III+",
+      "en": "Attack Power III+"
+    },
+    "F1CAFFA6": {
+      "zh": "修罗V+",
+      "en": "Power Hungry V+"
+    },
+    "F1D5DBD0": {
+      "zh": "真红翔舞",
+      "en": "Crimson's Flight"
+    },
+    "F1D9E8DD": {
+      "zh": "暴击率IV",
+      "en": "Critical Hit Rate IV"
+    },
+    "F212DB64": {
+      "zh": "弱化状态特效IV+",
+      "en": "Injury to Insult IV+"
+    },
+    "F22290A6": {
+      "zh": "背水V+",
+      "en": "Enmity V+"
+    },
+    "F2C84D4F": {
+      "zh": "全弱化效果抗性",
+      "en": "Natural Defenses"
+    },
+    "F2CBFFD2": {
+      "zh": "自动复活IV",
+      "en": "Autorevive IV"
+    },
+    "F30A86F6": {
+      "zh": "怒发冲冠IV",
+      "en": "Precise Wrath IV"
+    },
+    "F3220FD0": {
+      "zh": "躲避距离+",
+      "en": "Untouchable+"
+    },
+    "F3336835": {
+      "zh": "摇曳步",
+      "en": "Flight over Fight"
+    },
+    "F372F096": {
+      "zh": "体力",
+      "en": "HP"
+    },
+    "F3C8C676": {
+      "zh": "麻痹抗性III",
+      "en": "Paralysis Resistance III"
+    },
+    "F40082D6": {
+      "zh": "Overdrive特效III+",
+      "en": "Overdrive Assassin III+"
+    },
+    "F44367CF": {
+      "zh": "7net",
+      "en": "Seven Net"
+    },
+    "F47FDA29": {
+      "zh": "坚持II",
+      "en": "Steel Nerves II"
+    },
+    "F4A5E0AD": {
+      "zh": "躲避仇火III+",
+      "en": "Dodge Payback III+"
+    },
+    "F4ACCC72": {
+      "zh": "躲避仇火II",
+      "en": "Dodge Payback II"
+    },
+    "F50A5FE2": {
+      "zh": "守护",
+      "en": "Aegis I"
+    },
+    "F610E3B9": {
+      "zh": "奋不顾身V+",
+      "en": "Life on the Line V+"
+    },
+    "F687B1BB": {
+      "zh": "背水V",
+      "en": "Enmity V"
+    },
+    "F687C5EF": {
+      "zh": "获得经验值",
+      "en": "Fast Learner"
+    },
+    "F6C0FCA5": {
+      "zh": "魔法师的伶俐+",
+      "en": "Mage's Savvy+"
+    },
+    "F6F3C863": {
+      "zh": "回复性能",
+      "en": "Improved Healing I"
+    },
+    "F719D195": {
+      "zh": "斩姬的战气",
+      "en": "Butterfly's Warpath"
+    },
+    "F71F8997": {
+      "zh": "自动药水",
+      "en": "Auto Potion"
+    },
+    "F7707CAC": {
+      "zh": "弱点攻击V",
+      "en": "Exploiter V"
+    },
+    "F7A65030": {
+      "zh": "破防特效V",
+      "en": "Break Assassin V"
+    },
+    "F7B836F6": {
+      "zh": "连击收招",
+      "en": "Combo Finisher I"
+    },
+    "F8496336": {
+      "zh": "守护者的骄傲",
+      "en": "Guardian's Honor"
+    },
+    "F85B6AB0": {
+      "zh": "获得经验值III",
+      "en": "Fast Learner III"
+    },
+    "F8CF8814": {
+      "zh": "身无长技V+",
+      "en": "Less Is More V+"
+    },
+    "F8FEF304": {
+      "zh": "钳蟹的报恩",
+      "en": "Crabvestment Returns"
+    },
+    "F94B6319": {
+      "zh": "弱化状态特效V+",
+      "en": "Injury to Insult V+"
+    },
+    "F9870AD0": {
+      "zh": "伤害上限III+",
+      "en": "Damage Cap III+"
+    },
+    "FA3DB1E3": {
+      "zh": "连击收招II",
+      "en": "Combo Finisher II"
+    },
+    "FB0F9037": {
+      "zh": "冥暗刚刃+",
+      "en": "Ebony's Presence+"
+    },
+    "FB5092F2": {
+      "zh": "自动药水",
+      "en": "Auto Potion"
+    },
+    "FB572681": {
+      "zh": "冰冻抗性",
+      "en": "Glaciate Resistance"
+    },
+    "FB8C743F": {
+      "zh": "蓄力攻击V",
+      "en": "Charged Attack V"
+    },
+    "FB9B6DD5": {
+      "zh": "勇士的毅力+",
+      "en": "Hero's Will+"
+    },
+    "FB9BC6C9": {
+      "zh": "麻痹抗性V",
+      "en": "Paralysis Resistance V"
+    },
+    "FBB938E9": {
+      "zh": "格挡仇火IV+",
+      "en": "Guard Payback IV+"
+    },
+    "FBF16984": {
+      "zh": "热血",
+      "en": "Stamina I"
+    },
+    "FBF24912": {
+      "zh": "格挡仇火",
+      "en": "Guard Payback I"
+    },
+    "FC1A2561": {
+      "zh": "穷寇心IV",
+      "en": "Berserker IV"
+    },
+    "FCF90349": {
+      "zh": "攻击DOWN抗性II",
+      "en": "Attack Down Resistance II"
+    },
+    "FD99311B": {
+      "zh": "幽幻之谊",
+      "en": "Phantasm's Concord"
+    },
+    "FDD1AD24": {
+      "zh": "斩姬的战气",
+      "en": "Butterfly's Warpath"
+    },
+    "FEEE9198": {
+      "zh": "先发制人IV+",
+      "en": "Head Start IV+"
+    },
+    "FF580AF6": {
+      "zh": "老兵的智慧",
+      "en": "Veteran's Insight"
+    },
+    "FF8A608B": {
+      "zh": "快速蓄力IV",
+      "en": "Quick Charge IV"
+    },
+    "FFBA8AF0": {
+      "zh": "弱化状态特效III",
+      "en": "Injury to Insult III"
+    },
+    "00612B10": {
+      "zh": "属性克制转换+",
+      "en": "War Elemental+"
+    },
+    "2D85102A": {
+      "zh": "属性克制转换+",
+      "en": "War Elemental+"
+    },
+    "0713D928": {
+      "zh": "英勇之心+",
+      "en": "Fearless Heart+"
+    },
+    "12DFD310": {
+      "zh": "剑圣的炼气+",
+      "en": "Spirit Edge's Rally+"
+    },
+    "1E69C3D0": {
+      "zh": "自愈V+",
+      "en": "Regen V+"
+    },
+    "23C84E82": {
+      "zh": "药水携带数V+",
+      "en": "Potion Hoarder V+"
+    },
+    "295219F9": {
+      "zh": "明镜止水V+",
+      "en": "Nimble Onslaught V+"
+    },
+    "2D5F3437": {
+      "zh": "自动复活V+",
+      "en": "Autorevive V+"
+    },
+    "3069C2FE": {
+      "zh": "古今无双的战气+",
+      "en": "Eternal Rage's Warpath+"
+    },
+    "332E9B30": {
+      "zh": "狂战士+",
+      "en": "Berserker Echo+"
+    },
+    "99E8B892": {
+      "zh": "狂战士+",
+      "en": "Berserker Echo+"
+    },
+    "3EA4134B": {
+      "zh": "天司长的灵威+",
+      "en": "Supreme Primarch's Awe+"
+    },
+    "43F26A91": {
+      "zh": "魔法师的战气+",
+      "en": "Mage's Warpath+"
+    },
+    "4AA48417": {
+      "zh": "万能药+",
+      "en": "Potent Greens+"
+    },
+    "97CF485D": {
+      "zh": "万能药+",
+      "en": "Potent Greens+"
+    },
+    "4C28585A": {
+      "zh": "圣骑士的战气+",
+      "en": "Holy Knight's Warpath+"
+    },
+    "4CDCE25B": {
+      "zh": "王者的战气+",
+      "en": "Lord's Warpath+"
+    },
+    "515E693C": {
+      "zh": "玫瑰的战气+",
+      "en": "Rose's Warpath+"
+    },
+    "5D592FDD": {
+      "zh": "天司长的战气+",
+      "en": "Supreme Primarch's Warpath+"
+    },
+    "65909E04": {
+      "zh": "迅捷能力V+",
+      "en": "Quick Cooldown V+"
+    },
+    "66F1B128": {
+      "zh": "极致的战气+",
+      "en": "Founder's Warpath+"
+    },
+    "6AAE4B8F": {
+      "zh": "剑圣之觉醒+",
+      "en": "Spirit Edge's Awakening+"
+    },
+    "6F1D0870": {
+      "zh": "金刚V+",
+      "en": "Greater Aegis V+"
+    },
+    "6FD12E61": {
+      "zh": "怒涛V+",
+      "en": "Cascade V+"
+    },
+    "73F80160": {
+      "zh": "因子强化V",
+      "en": "Sigil Booster V"
+    },
+    "76D4716B": {
+      "zh": "变幻自如的战气+",
+      "en": "Swordmaster's Warpath+"
+    },
+    "7E13A72D": {
+      "zh": "回复性能V+",
+      "en": "Improved Healing V+"
+    },
+    "7E3A52A3": {
+      "zh": "天司长的风雅+",
+      "en": "Supreme Primarch's Nimbus+"
+    },
+    "80CA66ED": {
+      "zh": "强化效果延长V",
+      "en": "Supplements V"
+    },
+    "82F1E7E4": {
+      "zh": "终极钳蟹因子",
+      "en": "Crabmiration"
+    },
+    "8A3819C0": {
+      "zh": "白龙的战气+",
+      "en": "White Dragon's Warpath+"
+    },
+    "8ECBB0A3": {
+      "zh": "魔眼之觉醒+",
+      "en": "Dark Huntress's Awakening+"
+    },
+    "8F562E0E": {
+      "zh": "把握机会 V",
+      "en": "Window of Opportunity V"
+    },
+    "91AC1DDD": {
+      "zh": "豪胆V+",
+      "en": "Guts V+"
+    },
+    "938DB625": {
+      "zh": "斯巴达+",
+      "en": "Spartan Echo+"
+    },
+    "4AE72C9E": {
+      "zh": "斯巴达+",
+      "en": "Spartan Echo+"
+    },
+    "95C88E4F": {
+      "zh": "HP吸收V+",
+      "en": "Drain V+"
+    },
+    "98E9E6EF": {
+      "zh": "异能之心+",
+      "en": "Versalis Heart+"
+    },
+    "9F72BAE0": {
+      "zh": "剑圣的战气+",
+      "en": "Spirit Edge's Warpath+"
+    },
+    "A490BADF": {
+      "zh": "勇士的战气+",
+      "en": "Hero's Warpath+"
+    },
+    "AC175924": {
+      "zh": "守护者的战气+",
+      "en": "Guardian's Warpath+"
+    },
+    "AD8CAEFB": {
+      "zh": "魔眼的战气+",
+      "en": "Dark Huntress's Warpath+"
+    },
+    "AE9D89DF": {
+      "zh": "剑圣的闪刃+",
+      "en": "Spirit Edge's Fury+"
+    },
+    "B3AB43F3": {
+      "zh": "冥暗的战气+",
+      "en": "Ebony's Warpath+"
+    },
+    "B8C44D5E": {
+      "zh": "天司长之觉醒+",
+      "en": "Supreme Primarch's Awakening+"
+    },
+    "BBE831B2": {
+      "zh": "超终极精准躲避+",
+      "en": "Super Ultimate Perfect Dodge+"
+    },
+    "BC53CE24": {
+      "zh": "舵手的战气+",
+      "en": "Helmsman's Warpath+"
+    },
+    "BFDF838C": {
+      "zh": "真红的战气+",
+      "en": "Crimson's Warpath+"
+    },
+    "CAAE3F9C": {
+      "zh": "老兵的战气+",
+      "en": "Veteran's Warpath+"
+    },
+    "CEF31894": {
+      "zh": "斩姬的战气+",
+      "en": "Butterfly's Warpath+"
+    },
+    "DBE503C7": {
+      "zh": "魔眼的凛翔+",
+      "en": "Dark Huntress's Surge+"
+    },
+    "E21A4170": {
+      "zh": "屠龙者的战气+",
+      "en": "Dragonslayer's Warpath+"
+    },
+    "E496D882": {
+      "zh": "幽幻的战气+",
+      "en": "Phantasm's Warpath+"
+    },
+    "E5C9F685": {
+      "zh": "激昂V+",
+      "en": "Uplift V+"
+    },
+    "EB4AD96D": {
+      "zh": "魔眼的万箭+",
+      "en": "Dark Huntress's Volley+"
+    },
+    "F1267035": {
+      "zh": "无态+",
+      "en": "Ain+"
+    },
+    "B1CCC211": {
+      "zh": "不动V+",
+      "en": "Firm Stance V+"
+    },
+    "0523A202": {
+      "zh": "黑龙的咒印+",
+      "en": "The Black's Mark+"
+    },
+    "0723F7EC": {
+      "zh": "黑龙的折跃+",
+      "en": "The Black's Impulse+"
+    },
+    "1A359B67": {
+      "zh": "雷狼的慧眼+",
+      "en": "Thunderwolf's Acuity+"
+    },
+    "20492635": {
+      "zh": "天星之煌V+",
+      "en": "Celestial Lumen V+"
+    },
+    "23953FD4": {
+      "zh": "雷狼之觉醒+",
+      "en": "Thunderwolf's Awakening+"
+    },
+    "282DBFF0": {
+      "zh": "狼王的激昂+",
+      "en": "Gladiator's Frenzy+"
+    },
+    "2D70C37D": {
+      "zh": "转世的战气+",
+      "en": "Enchantress's Warpath+"
+    },
+    "41AC1082": {
+      "zh": "狼王的战气+",
+      "en": "Gladiator's Warpath+"
+    },
+    "49434696": {
+      "zh": "可怕的漆黑钳蟹因子",
+      "en": "Immortal Shell"
+    },
+    "51E98A7C": {
+      "zh": "群青的战气+",
+      "en": "Ultramarine's Warpath+"
+    },
+    "5A360EA8": {
+      "zh": "转世之觉醒+",
+      "en": "Enchantress's Awakening+"
+    },
+    "5BF84FD1": {
+      "zh": "浪迹天涯V+",
+      "en": "Fatebreaker V+"
+    },
+    "64301E91": {
+      "zh": "转世的恩宠+",
+      "en": "Enchantress's Blessing+"
+    },
+    "65F0420A": {
+      "zh": "漆黑之谊",
+      "en": "In a Pinch"
+    },
+    "74061B0C": {
+      "zh": "天星之焰V+",
+      "en": "Celestial Incendo V+"
+    },
+    "7B4AAB30": {
+      "zh": "分歧V+",
+      "en": "Divergence V+"
+    },
+    "895ABBF6": {
+      "zh": "狼王之觉醒+",
+      "en": "Gladiator's Awakening+"
+    },
+    "8B8085C0": {
+      "zh": "天星之炼V+",
+      "en": "Celestial Nyx V+"
+    },
+    "9300FADB": {
+      "zh": "天星之止息V+",
+      "en": "Celestial Ventus V+"
+    },
+    "95CC3CB8": {
+      "zh": "群青之觉醒+",
+      "en": "Ultramarine's Awakening+"
+    },
+    "96D6FE5E": {
+      "zh": "刃姬的轮舞曲+",
+      "en": "Bladequeen's Circuit+"
+    },
+    "9ABD2DA5": {
+      "zh": "黑龙的战气+",
+      "en": "The Black's Warpath+"
+    },
+    "9EC6C56D": {
+      "zh": "群青的剑光+",
+      "en": "Ultramarine's Flash+"
+    },
+    "A8A0CBFF": {
+      "zh": "黑龙之觉醒+",
+      "en": "The Black's Awakening+"
+    },
+    "B289A9AD": {
+      "zh": "相扑斗力",
+      "en": "Sumo Force"
+    },
+    "BA28C81C": {
+      "zh": "转世的跃动+",
+      "en": "Enchantress's Rhythm+"
+    },
+    "D29CD8E0": {
+      "zh": "天星之界V+",
+      "en": "Celestial Terra V+"
+    },
+    "D4117FF3": {
+      "zh": "群青的逆境+",
+      "en": "Ultramarine's Adversity+"
+    },
+    "D8A464F1": {
+      "zh": "刃姬之觉醒+",
+      "en": "Bladequeen's Awakening+"
+    },
+    "D8C61507": {
+      "zh": "雷狼的战气+",
+      "en": "Thunderwolf's Warpath+"
+    },
+    "E14E1598": {
+      "zh": "天星之雪V+",
+      "en": "Celestial Aqua V+"
+    },
+    "EB766D87": {
+      "zh": "刃姬的战气+",
+      "en": "Bladequeen's Warpath+"
+    },
+    "EC9FFE77": {
+      "zh": "刃姬的小夜曲+",
+      "en": "Bladequeen's Serenade+"
+    },
+    "F21404B1": {
+      "zh": "狼王的大转轮+",
+      "en": "Gladiator's Top+"
+    },
+    "F964A4CA": {
+      "zh": "雷狼的弹匣+",
+      "en": "Thunderwolf's Recharge+"
+    },
+    "00277247": {
+      "zh": "分歧II",
+      "en": "Divergence II"
+    },
+    "0188E9E3": {
+      "zh": "体力II+",
+      "en": "Health II+"
+    },
+    "01B49F0D": {
+      "zh": "快速蓄力II+",
+      "en": "Quick Charge II+"
+    },
+    "01BB436B": {
+      "zh": "雷狼的弹匣",
+      "en": "Thunderwolf's Recharge"
+    },
+    "02262975": {
+      "zh": "破防特效+",
+      "en": "Break Assassin I+"
+    },
+    "054F4ACE": {
+      "zh": "因子强化",
+      "en": "Sigil Booster I"
+    },
+    "05E72720": {
+      "zh": "天星之煌II+",
+      "en": "Celestial Lumen II+"
+    },
+    "07A3ABD9": {
+      "zh": "天星之界III+",
+      "en": "Celestial Terra III+"
+    },
+    "088829B8": {
+      "zh": "分歧II+",
+      "en": "Divergence II+"
+    },
+    "0890882F": {
+      "zh": "暴击伤害+",
+      "en": "Critical Damage I+"
+    },
+    "0980B80F": {
+      "zh": "蓄力攻击II+",
+      "en": "Charged Attack II+"
+    },
+    "0B456DEF": {
+      "zh": "蓄力强化V+",
+      "en": "Steady Focus V+"
+    },
+    "0B55DD64": {
+      "zh": "热血+",
+      "en": "Stamina I+"
+    },
+    "0E87C8D2": {
+      "zh": "蓄力攻击+",
+      "en": "Charged Attack I+"
+    },
+    "0FC3E656": {
+      "zh": "昏厥+",
+      "en": "Stun Power I+"
+    },
+    "12789216": {
+      "zh": "天星之煌III",
+      "en": "Celestial Lumen III"
+    },
+    "158D506F": {
+      "zh": "快速蓄力+",
+      "en": "Quick Charge I+"
+    },
+    "15F618B1": {
+      "zh": "天星之焰III+",
+      "en": "Celestial Incendo III+"
+    },
+    "16199EAE": {
+      "zh": "协同攻击+",
+      "en": "Linked Together I+"
+    },
+    "176FE02C": {
+      "zh": "中毒抗性V+",
+      "en": "Poison Resistance V+"
+    },
+    "1834C3AA": {
+      "zh": "伤害上限V+",
+      "en": "Damage Cap V+"
+    },
+    "19A4598E": {
+      "zh": "奋不顾身II+",
+      "en": "Life on the Line II+"
+    },
+    "19C4348E": {
+      "zh": "天星之雪II",
+      "en": "Celestial Aqua II"
+    },
+    "19CB4EB9": {
+      "zh": "能力封印抗性V+",
+      "en": "Skill Sealed Resistance V+"
+    },
+    "1A743E14": {
+      "zh": "天星之界IV",
+      "en": "Celestial Terra IV"
+    },
+    "1B813E10": {
+      "zh": "背水+",
+      "en": "Enmity I+"
+    },
+    "1BE87EAD": {
+      "zh": "暴击伤害II+",
+      "en": "Critical Damage II+"
+    },
+    "1CAA06BD": {
+      "zh": "强化效果延长",
+      "en": "Supplements I"
+    },
+    "1F372593": {
+      "zh": "暴君V+",
+      "en": "Tyranny V+"
+    },
+    "1FFB1AED": {
+      "zh": "Overdrive特效II+",
+      "en": "Overdrive Assassin II+"
+    },
+    "207B67D1": {
+      "zh": "暴君II+",
+      "en": "Tyranny II+"
+    },
+    "20BCDB1B": {
+      "zh": "昏迷抗性V+",
+      "en": "Dizzy Resistance V+"
+    },
+    "22115F71": {
+      "zh": "缓速抗性V+",
+      "en": "Slow Resistance V+"
+    },
+    "22DC8701": {
+      "zh": "天星之焰IV",
+      "en": "Celestial Incendo IV"
+    },
+    "231EBAA2": {
+      "zh": "天星之煌IV+",
+      "en": "Celestial Lumen IV+"
+    },
+    "247A41F3": {
+      "zh": "刃姬的轮舞曲",
+      "en": "Bladequeen's Circuit"
+    },
+    "25CD5873": {
+      "zh": "金刚III",
+      "en": "Greater Aegis III"
+    },
+    "26DDCD39": {
+      "zh": "霸体+",
+      "en": "Stout Heart+"
+    },
+    "274973D7": {
+      "zh": "蓄力会心II+",
+      "en": "Lucky Charge II+"
+    },
+    "2767B7E2": {
+      "zh": "浪迹天涯III+",
+      "en": "Fatebreaker III+"
+    },
+    "27F0408A": {
+      "zh": "灼热抗性V+",
+      "en": "Burn Resistance V+"
+    },
+    "280E1329": {
+      "zh": "修罗+",
+      "en": "Power Hungry I+"
+    },
+    "2835E81B": {
+      "zh": "弱化状态特效II+",
+      "en": "Injury to Insult II+"
+    },
+    "2B400FAA": {
+      "zh": "背水II+",
+      "en": "Enmity II+"
+    },
+    "2C150C6A": {
+      "zh": "穷寇心II+",
+      "en": "Berserker II+"
+    },
+    "2C6F3453": {
+      "zh": "连击加成+",
+      "en": "Combo Booster I+"
+    },
+    "2D8E0E4D": {
+      "zh": "暴击率II+",
+      "en": "Critical Hit Rate II+"
+    },
+    "2E1BDB4A": {
+      "zh": "追击II+",
+      "en": "Supplementary Damage II+"
+    },
+    "2E3351E3": {
+      "zh": "获得MSPV+",
+      "en": "Path to Mastery V+"
+    },
+    "2FF84069": {
+      "zh": "强化效果延长II",
+      "en": "Supplements II"
+    },
+    "33006FC3": {
+      "zh": "天星之止息V",
+      "en": "Celestial Ventus V"
+    },
+    "346EDD73": {
+      "zh": "斯巴达",
+      "en": "Spartan Echo"
+    },
+    "35637B96": {
+      "zh": "守护V+",
+      "en": "Aegis V+"
+    },
+    "35AE024E": {
+      "zh": "天星之雪III+",
+      "en": "Celestial Aqua III+"
+    },
+    "3739DB5E": {
+      "zh": "投掷+",
+      "en": "Throw I+"
+    },
+    "39810C9E": {
+      "zh": "躲避仇火II+",
+      "en": "Dodge Payback II+"
+    },
+    "3BEED064": {
+      "zh": "体力+",
+      "en": "Health I+"
+    },
+    "3C0D684D": {
+      "zh": "能力伤害II+",
+      "en": "Skilled Assault II+"
+    },
+    "3CB7E988": {
+      "zh": "格挡仇火+",
+      "en": "Guard Payback I+"
+    },
+    "3CC5E451": {
+      "zh": "攻击力+",
+      "en": "Attack Power I+"
+    },
+    "3DD38511": {
+      "zh": "天星之雪",
+      "en": "Celestial Aqua I"
+    },
+    "3EDE3CC3": {
+      "zh": "刚健II+",
+      "en": "Stronghold II+"
+    },
+    "40049A6C": {
+      "zh": "天星之雪II+",
+      "en": "Celestial Aqua II+"
+    },
+    "4035D98A": {
+      "zh": "因子强化III",
+      "en": "Sigil Booster III"
+    },
+    "4119F09B": {
+      "zh": "黑龙的战气",
+      "en": "The Black's Warpath"
+    },
+    "41CD7FA1": {
+      "zh": "格挡仇火+",
+      "en": "Guard Payback I+"
+    },
+    "426AD20E": {
+      "zh": "永恒钳蟹因子+",
+      "en": "Crabs Are Forever+"
+    },
+    "4597A8A8": {
+      "zh": "狼王的战气",
+      "en": "Gladiator's Warpath"
+    },
+    "45D92C1A": {
+      "zh": "蓄力攻击II+",
+      "en": "Charged Attack II+"
+    },
+    "464099CD": {
+      "zh": "奥义封印抗性V+",
+      "en": "SBA Sealed Resistance V+"
+    },
+    "482FD699": {
+      "zh": "弱点攻击II+",
+      "en": "Exploiter II+"
+    },
+    "49D00CAF": {
+      "zh": "暴击率II+",
+      "en": "Critical Hit Rate II+"
+    },
+    "4A25D812": {
+      "zh": "天星之止息IV+",
+      "en": "Celestial Ventus IV+"
+    },
+    "4B253AC6": {
+      "zh": "集中炮火II+",
+      "en": "Concentrated Fire II+"
+    },
+    "4B86CC01": {
+      "zh": "天星之煌",
+      "en": "Celestial Lumen I"
+    },
+    "4D50D1FB": {
+      "zh": "破防特效II+",
+      "en": "Break Assassin II+"
+    },
+    "4D52C35C": {
+      "zh": "分歧IV+",
+      "en": "Divergence IV+"
+    },
+    "4E22352D": {
+      "zh": "暴击伤害+",
+      "en": "Critical Damage I+"
+    },
+    "4FDE80AE": {
+      "zh": "连击收招+",
+      "en": "Combo Finisher I+"
+    },
+    "501973CE": {
+      "zh": "浪迹天涯V",
+      "en": "Fatebreaker V"
+    },
+    "5048C546": {
+      "zh": "防御DOWN抗性V+",
+      "en": "Defense Down Resistance V+"
+    },
+    "50996321": {
+      "zh": "天星之炼IV+",
+      "en": "Celestial Nyx IV+"
+    },
+    "51163103": {
+      "zh": "投掷+",
+      "en": "Throw I+"
+    },
+    "5252689F": {
+      "zh": "连击加成II+",
+      "en": "Combo Booster II+"
+    },
+    "53B1458D": {
+      "zh": "天星之焰IV+",
+      "en": "Celestial Incendo IV+"
+    },
+    "53BC1F91": {
+      "zh": "天星之煌+",
+      "en": "Celestial Lumen I+"
+    },
+    "53BD323F": {
+      "zh": "浪迹天涯",
+      "en": "Fatebreaker I"
+    },
+    "5536EE62": {
+      "zh": "天星之焰V",
+      "en": "Celestial Incendo V"
+    },
+    "56D196C5": {
+      "zh": "天星之炼V",
+      "en": "Celestial Nyx V"
+    },
+    "58A21FB7": {
+      "zh": "金刚III+",
+      "en": "Greater Aegis III+"
+    },
+    "590715D9": {
+      "zh": "天星之雪III",
+      "en": "Celestial Aqua III"
+    },
+    "595AD681": {
+      "zh": "暴君+",
+      "en": "Tyranny I+"
+    },
+    "5CB2445F": {
+      "zh": "转世的跃动",
+      "en": "Enchantress's Rhythm"
+    },
+    "5DF353C3": {
+      "zh": "弱点攻击+",
+      "en": "Exploiter I+"
+    },
+    "5E19150E": {
+      "zh": "昏厥II+",
+      "en": "Stun Power II+"
+    },
+    "5F097193": {
+      "zh": "天星之炼IV",
+      "en": "Celestial Nyx IV"
+    },
+    "614FB550": {
+      "zh": "泥沙抗性V+",
+      "en": "Sandtomb Resistance V+"
+    },
+    "61A1A299": {
+      "zh": "雷狼的战气",
+      "en": "Thunderwolf's Warpath"
+    },
+    "62E18D53": {
+      "zh": "破防特效II+",
+      "en": "Break Assassin II+"
+    },
+    "634F82CB": {
+      "zh": "天星之雪+",
+      "en": "Celestial Aqua I+"
+    },
+    "64245EA7": {
+      "zh": "蓄力会心II+",
+      "en": "Lucky Charge II+"
+    },
+    "65B73B3F": {
+      "zh": "药水携带数V+",
+      "en": "Potion Hoarder V+"
+    },
+    "661B4D50": {
+      "zh": "热血II+",
+      "en": "Stamina II+"
+    },
+    "66CB28BA": {
+      "zh": "可怕的漆黑钳蟹因子+",
+      "en": "Immortal Shell+"
+    },
+    "6AC327A2": {
+      "zh": "麻痹抗性V+",
+      "en": "Paralysis Resistance V+"
+    },
+    "6B8224EB": {
+      "zh": "Overdrive特效+",
+      "en": "Overdrive Assassin I+"
+    },
+    "6B920DA2": {
+      "zh": "刃姬的战气",
+      "en": "Bladequeen's Warpath"
+    },
+    "6C788459": {
+      "zh": "攻击力II+",
+      "en": "Attack Power II+"
+    },
+    "6C788DB7": {
+      "zh": "奋不顾身+",
+      "en": "Life on the Line I+"
+    },
+    "6C943387": {
+      "zh": "背水II+",
+      "en": "Enmity II+"
+    },
+    "6DEF71C8": {
+      "zh": "躲避仇火+",
+      "en": "Dodge Payback I+"
+    },
+    "6FFC5452": {
+      "zh": "暴击率+",
+      "en": "Critical Hit Rate I+"
+    },
+    "70A871D5": {
+      "zh": "金刚IV",
+      "en": "Greater Aegis IV"
+    },
+    "71B2DA28": {
+      "zh": "连击收招II+",
+      "en": "Combo Finisher II+"
+    },
+    "72118F86": {
+      "zh": "刚健+",
+      "en": "Stronghold I+"
+    },
+    "7291A3F9": {
+      "zh": "攻击DOWN抗性V+",
+      "en": "Attack Down Resistance V+"
+    },
+    "72C5A23D": {
+      "zh": "天星之炼III",
+      "en": "Celestial Nyx III"
+    },
+    "7300A967": {
+      "zh": "天星之煌V",
+      "en": "Celestial Lumen V"
+    },
+    "74EEDC99": {
+      "zh": "天星之炼II",
+      "en": "Celestial Nyx II"
+    },
+    "76786869": {
+      "zh": "漆黑之谊+",
+      "en": "In a Pinch+"
+    },
+    "77FAE8C2": {
+      "zh": "伤害上限II+",
+      "en": "Damage Cap II+"
+    },
+    "7A06C7FB": {
+      "zh": "转世的恩宠",
+      "en": "Enchantress's Blessing"
+    },
+    "7A65B8FB": {
+      "zh": "天星之界+",
+      "en": "Celestial Terra I+"
+    },
+    "7AC9DC94": {
+      "zh": "分歧IV",
+      "en": "Divergence IV"
+    },
+    "7B9BB801": {
+      "zh": "因子强化IV",
+      "en": "Sigil Booster IV"
+    },
+    "7C5B7FAE": {
+      "zh": "奋不顾身+",
+      "en": "Life on the Line I+"
+    },
+    "7D9C105C": {
+      "zh": "热血+",
+      "en": "Stamina I+"
+    },
+    "7DC9DA30": {
+      "zh": "天星之焰II+",
+      "en": "Celestial Incendo II+"
+    },
+    "7F4F38EF": {
+      "zh": "天星之止息IV",
+      "en": "Celestial Ventus IV"
+    },
+    "7FCCEF02": {
+      "zh": "修罗II+",
+      "en": "Power Hungry II+"
+    },
+    "8091ACBE": {
+      "zh": "金刚IV+",
+      "en": "Greater Aegis IV+"
+    },
+    "80DC0FB8": {
+      "zh": "不动V",
+      "en": "Firm Stance V"
+    },
+    "81B3962D": {
+      "zh": "天星之止息III+",
+      "en": "Celestial Ventus III+"
+    },
+    "83B5463B": {
+      "zh": "天星之止息",
+      "en": "Celestial Ventus I"
+    },
+    "83E94B0C": {
+      "zh": "协同攻击II+",
+      "en": "Linked Together II+"
+    },
+    "840C419A": {
+      "zh": "天星之界",
+      "en": "Celestial Terra I"
+    },
+    "85E85D91": {
+      "zh": "浪迹天涯II",
+      "en": "Fatebreaker II"
+    },
+    "86E38BAB": {
+      "zh": "蓄力会心+",
+      "en": "Lucky Charge I+"
+    },
+    "87658A6F": {
+      "zh": "天星之界V",
+      "en": "Celestial Terra V"
+    },
+    "88131731": {
+      "zh": "相扑斗力+",
+      "en": "Sumo Force+"
+    },
+    "8B105FC8": {
+      "zh": "身无长技II+",
+      "en": "Less Is More II+"
+    },
+    "8B6C67F0": {
+      "zh": "伤害上限+",
+      "en": "Damage Cap I+"
+    },
+    "8B9C3D0F": {
+      "zh": "天星之界IV+",
+      "en": "Celestial Terra IV+"
+    },
+    "8C4688E2": {
+      "zh": "协同攻击+",
+      "en": "Linked Together I+"
+    },
+    "8CE18579": {
+      "zh": "天星之雪V",
+      "en": "Celestial Aqua V"
+    },
+    "8F2FFE00": {
+      "zh": "暴击率+",
+      "en": "Critical Hit Rate I+"
+    },
+    "8F519293": {
+      "zh": "天星之炼II+",
+      "en": "Celestial Nyx II+"
+    },
+    "8FF568F7": {
+      "zh": "天星之界III",
+      "en": "Celestial Terra III"
+    },
+    "90176D85": {
+      "zh": "天星之煌IV",
+      "en": "Celestial Lumen IV"
+    },
+    "908D5612": {
+      "zh": "分歧III+",
+      "en": "Divergence III+"
+    },
+    "90E42E35": {
+      "zh": "天星之煌III+",
+      "en": "Celestial Lumen III+"
+    },
+    "9184F37B": {
+      "zh": "刃姬的小夜曲",
+      "en": "Bladequeen's Serenade"
+    },
+    "92373AF9": {
+      "zh": "协同攻击II+",
+      "en": "Linked Together II+"
+    },
+    "9393D637": {
+      "zh": "超终极精准躲避",
+      "en": "Super Ultimate Perfect Dodge"
+    },
+    "94DC820E": {
+      "zh": "黑龙的折跃",
+      "en": "The Black's Impulse"
+    },
+    "94DD2628": {
+      "zh": "能力伤害+",
+      "en": "Skilled Assault I+"
+    },
+    "9503691B": {
+      "zh": "集中炮火+",
+      "en": "Concentrated Fire I+"
+    },
+    "9558F543": {
+      "zh": "浪迹天涯II+",
+      "en": "Fatebreaker II+"
+    },
+    "96390ECF": {
+      "zh": "天星之焰III",
+      "en": "Celestial Incendo III"
+    },
+    "96C069D8": {
+      "zh": "伤害上限II+",
+      "en": "Damage Cap II+"
+    },
+    "97927F50": {
+      "zh": "先发制人II+",
+      "en": "Head Start II+"
+    },
+    "99194505": {
+      "zh": "雷狼的慧眼",
+      "en": "Thunderwolf's Acuity"
+    },
+    "9978C657": {
+      "zh": "黑龙的咒印",
+      "en": "The Black's Mark"
+    },
+    "9BAF1D6D": {
+      "zh": "金刚II",
+      "en": "Greater Aegis II"
+    },
+    "9CBBCF0F": {
+      "zh": "天星之止息+",
+      "en": "Celestial Ventus I+"
+    },
+    "9CD340A8": {
+      "zh": "浪迹天涯+",
+      "en": "Fatebreaker I+"
+    },
+    "9D4F66D7": {
+      "zh": "自动药水+",
+      "en": "Auto Potion+"
+    },
+    "9E62759D": {
+      "zh": "获得金币V+",
+      "en": "Rupie Tycoon V+"
+    },
+    "9E79AA31": {
+      "zh": "格挡性能V+",
+      "en": "Improved Guard V+"
+    },
+    "9FF30620": {
+      "zh": "躲避仇火II+",
+      "en": "Dodge Payback II+"
+    },
+    "A07BDC96": {
+      "zh": "集中炮火+",
+      "en": "Concentrated Fire I+"
+    },
+    "A14BA9CE": {
+      "zh": "天星之止息II",
+      "en": "Celestial Ventus II"
+    },
+    "A6AAC25F": {
+      "zh": "浪迹天涯IV+",
+      "en": "Fatebreaker IV+"
+    },
+    "A6F5982E": {
+      "zh": "攻击力II+",
+      "en": "Attack Power II+"
+    },
+    "A8533CE3": {
+      "zh": "分歧V",
+      "en": "Divergence V"
+    },
+    "A86B5418": {
+      "zh": "刀上舞II+",
+      "en": "Glass Cannon II+"
+    },
+    "A99085F7": {
+      "zh": "天星之焰II",
+      "en": "Celestial Incendo II"
+    },
+    "A99E6B1A": {
+      "zh": "强化效果延长III",
+      "en": "Supplements III"
+    },
+    "AA45CD2D": {
+      "zh": "灾祸抗性V+",
+      "en": "Blight Resistance V+"
+    },
+    "AAAB893B": {
+      "zh": "快速蓄力II+",
+      "en": "Quick Charge II+"
+    },
+    "AB4F7D56": {
+      "zh": "天司长的风雅",
+      "en": "Supreme Primarch's Nimbus"
+    },
+    "ABAEFE36": {
+      "zh": "天星之雪IV+",
+      "en": "Celestial Aqua IV+"
+    },
+    "ABF24655": {
+      "zh": "天星之界II",
+      "en": "Celestial Terra II"
+    },
+    "AC2ED9A4": {
+      "zh": "摇曳步+",
+      "en": "Flight over Fight+"
+    },
+    "AD2E0751": {
+      "zh": "连击收招+",
+      "en": "Combo Finisher I+"
+    },
+    "AD341007": {
+      "zh": "伤害上限+",
+      "en": "Damage Cap I+"
+    },
+    "B0207B68": {
+      "zh": "先发制人+",
+      "en": "Head Start I+"
+    },
+    "B1683ADD": {
+      "zh": "狼王的大转轮",
+      "en": "Gladiator's Top"
+    },
+    "B2420CBE": {
+      "zh": "天星之止息III",
+      "en": "Celestial Ventus III"
+    },
+    "B2DEE2B6": {
+      "zh": "快速蓄力+",
+      "en": "Quick Charge I+"
+    },
+    "B3C0C93D": {
+      "zh": "天星之煌II",
+      "en": "Celestial Lumen II"
+    },
+    "B4ECE7BC": {
+      "zh": "群青的战气",
+      "en": "Ultramarine's Warpath"
+    },
+    "B5D4581F": {
+      "zh": "能力伤害II+",
+      "en": "Skilled Assault II+"
+    },
+    "B6ADA175": {
+      "zh": "体力+",
+      "en": "Health I+"
+    },
+    "B6E74772": {
+      "zh": "连击加成+",
+      "en": "Combo Booster I+"
+    },
+    "B87B2777": {
+      "zh": "暴击伤害II+",
+      "en": "Critical Damage II+"
+    },
+    "B87C64C5": {
+      "zh": "背水+",
+      "en": "Enmity I+"
+    },
+    "B9060498": {
+      "zh": "弱化状态特效+",
+      "en": "Injury to Insult I+"
+    },
+    "B98343CD": {
+      "zh": "天星之止息II+",
+      "en": "Celestial Ventus II+"
+    },
+    "BC4A3C09": {
+      "zh": "集中炮火II+",
+      "en": "Concentrated Fire II+"
+    },
+    "BCF91F80": {
+      "zh": "狂战士",
+      "en": "Berserker Echo"
+    },
+    "BD8BA705": {
+      "zh": "分歧III",
+      "en": "Divergence III"
+    },
+    "BDA8ED0D": {
+      "zh": "格挡仇火II+",
+      "en": "Guard Payback II+"
+    },
+    "BE4C13A6": {
+      "zh": "狼王的激昂",
+      "en": "Gladiator's Frenzy"
+    },
+    "C122758C": {
+      "zh": "天星之界II+",
+      "en": "Celestial Terra II+"
+    },
+    "C63C8DDF": {
+      "zh": "挑衅V+",
+      "en": "Provoke V+"
+    },
+    "C6B0616D": {
+      "zh": "昏厥II+",
+      "en": "Stun Power II+"
+    },
+    "C77AA05D": {
+      "zh": "热血II+",
+      "en": "Stamina II+"
+    },
+    "C79BD47F": {
+      "zh": "暴君+",
+      "en": "Tyranny I+"
+    },
+    "C9D8BD97": {
+      "zh": "天司长的灵威",
+      "en": "Supreme Primarch's Awe"
+    },
+    "CA227740": {
+      "zh": "天星之炼+",
+      "en": "Celestial Nyx I+"
+    },
+    "CBE5DC36": {
+      "zh": "投掷II+",
+      "en": "Throw II+"
+    },
+    "CC7DDE55": {
+      "zh": "天星之焰",
+      "en": "Celestial Incendo I"
+    },
+    "CCE507E7": {
+      "zh": "天司长的战气",
+      "en": "Supreme Primarch's Warpath"
+    },
+    "CD357780": {
+      "zh": "因子强化II",
+      "en": "Sigil Booster II"
+    },
+    "CD6BB486": {
+      "zh": "天星之炼",
+      "en": "Celestial Nyx I"
+    },
+    "CD77D1AA": {
+      "zh": "连击加成II+",
+      "en": "Combo Booster II+"
+    },
+    "CE6C62CF": {
+      "zh": "怒发冲冠V+",
+      "en": "Precise Wrath V+"
+    },
+    "CE8AA073": {
+      "zh": "追击V+",
+      "en": "Supplementary Damage V+"
+    },
+    "D135E07D": {
+      "zh": "体力II+",
+      "en": "Health II+"
+    },
+    "D28011A6": {
+      "zh": "天星之雪IV",
+      "en": "Celestial Aqua IV"
+    },
+    "D3071D85": {
+      "zh": "异能耐受V+",
+      "en": "Darkflame Resistance V+"
+    },
+    "D4CB7D87": {
+      "zh": "格挡仇火II+",
+      "en": "Guard Payback II+"
+    },
+    "D594D945": {
+      "zh": "群青的剑光",
+      "en": "Ultramarine's Flash"
+    },
+    "D59E112B": {
+      "zh": "蓄力会心+",
+      "en": "Lucky Charge I+"
+    },
+    "D5B71062": {
+      "zh": "刀上舞+",
+      "en": "Glass Cannon I+"
+    },
+    "D6CDD98E": {
+      "zh": "连击收招II+",
+      "en": "Combo Finisher II+"
+    },
+    "D77A4A3F": {
+      "zh": "奋不顾身II+",
+      "en": "Life on the Line II+"
+    },
+    "D7ABBDCA": {
+      "zh": "获得经验值V+",
+      "en": "Fast Learner V+"
+    },
+    "D9215E48": {
+      "zh": "弱点攻击II+",
+      "en": "Exploiter II+"
+    },
+    "DB05A865": {
+      "zh": "转世的战气",
+      "en": "Enchantress's Warpath"
+    },
+    "DCE00DDB": {
+      "zh": "浪迹天涯III",
+      "en": "Fatebreaker III"
+    },
+    "DDBD7013": {
+      "zh": "弱点攻击+",
+      "en": "Exploiter I+"
+    },
+    "E18CC78F": {
+      "zh": "分歧",
+      "en": "Divergence I"
+    },
+    "E3CD2935": {
+      "zh": "群青的逆境",
+      "en": "Ultramarine's Adversity"
+    },
+    "E3FF2E6A": {
+      "zh": "身无长技+",
+      "en": "Less Is More I+"
+    },
+    "E4815918": {
+      "zh": "浪迹天涯IV",
+      "en": "Fatebreaker IV"
+    },
+    "E58BC7DB": {
+      "zh": "投掷II+",
+      "en": "Throw II+"
+    },
+    "E7279480": {
+      "zh": "穷寇心+",
+      "en": "Berserker I+"
+    },
+    "E8257487": {
+      "zh": "蓄力攻击+",
+      "en": "Charged Attack I+"
+    },
+    "EF08F02C": {
+      "zh": "攻击力+",
+      "en": "Attack Power I+"
+    },
+    "EF5D0D16": {
+      "zh": "水牢抗性V+",
+      "en": "Held Under Resistance V+"
+    },
+    "EF60ED89": {
+      "zh": "能力伤害+",
+      "en": "Skilled Assault I+"
+    },
+    "EF70CA76": {
+      "zh": "冰冻抗性V+",
+      "en": "Glaciate Resistance V+"
+    },
+    "EFEFF6D1": {
+      "zh": "暴君II+",
+      "en": "Tyranny II+"
+    },
+    "F12B5464": {
+      "zh": "金刚",
+      "en": "Greater Aegis I"
+    },
+    "F1B56E13": {
+      "zh": "追击+",
+      "en": "Supplementary Damage I+"
+    },
+    "F27D1B15": {
+      "zh": "强化效果延长IV",
+      "en": "Supplements IV"
+    },
+    "F2E371D3": {
+      "zh": "Overdrive特效+",
+      "en": "Overdrive Assassin I+"
+    },
+    "F3F24C7F": {
+      "zh": "Overdrive特效II+",
+      "en": "Overdrive Assassin II+"
+    },
+    "F4DD8A6B": {
+      "zh": "昏厥+",
+      "en": "Stun Power I+"
+    },
+    "F5171CA2": {
+      "zh": "弱化状态特效II+",
+      "en": "Injury to Insult II+"
+    },
+    "F650D741": {
+      "zh": "分歧+",
+      "en": "Divergence I+"
+    },
+    "F94E0066": {
+      "zh": "天星之炼III+",
+      "en": "Celestial Nyx III+"
+    },
+    "FA9FF841": {
+      "zh": "自愈V+",
+      "en": "Regen V+"
+    },
+    "FDE6479F": {
+      "zh": "天星之焰+",
+      "en": "Celestial Incendo I+"
+    },
+    "FE7F1552": {
+      "zh": "破防特效+",
+      "en": "Break Assassin I+"
+    },
+    "FF28D126": {
+      "zh": "弱化状态特效+",
+      "en": "Injury to Insult I+"
+    },
+    "FF2CBCD0": {
+      "zh": "匿踪V+",
+      "en": "Low Profile V+"
+    },
+    "FF4FD22D": {
+      "zh": "躲避仇火+",
+      "en": "Dodge Payback I+"
+    }
+  },
+  "summonSkills": {
+    "50079A1C": {
+      "zh": "攻击力",
+      "en": "ATK"
+    },
+    "F372F096": {
+      "zh": "体力",
+      "en": "HP"
+    },
+    "8D78A19B": {
+      "zh": "暴击率",
+      "en": "Critical Hit Rate"
+    },
+    "CEB700EE": {
+      "zh": "昏厥",
+      "en": "Stun Power"
+    },
+    "3F488339": {
+      "zh": "背水",
+      "en": "Enmity"
+    },
+    "2FC8FBFF": {
+      "zh": "热血",
+      "en": "Stamina"
+    },
+    "1C360C63": {
+      "zh": "蓄力攻击",
+      "en": "Charged Attack DMG"
+    },
+    "3FEC5F80": {
+      "zh": "协同攻击",
+      "en": "Linked Together"
+    },
+    "C0979A17": {
+      "zh": "暴击伤害",
+      "en": "Critical Hit DMG"
+    },
+    "6B694D6D": {
+      "zh": "弱点攻击",
+      "en": "Weak Point DMG"
+    },
+    "A7A45F28": {
+      "zh": "连击收招",
+      "en": "Combo Finisher DMG"
+    },
+    "B360801D": {
+      "zh": "集中炮火",
+      "en": "Concentrated Fire"
+    },
+    "DC584F60": {
+      "zh": "伤害上限",
+      "en": "DMG Cap"
+    },
+    "F17850B9": {
+      "zh": "连击加成",
+      "en": "Combo Booster"
+    },
+    "71F11A9B": {
+      "zh": "暴君",
+      "en": "Tyranny"
+    },
+    "C35B111B": {
+      "zh": "蓄力会心",
+      "en": "Lucky Charge"
+    },
+    "4F1A3683": {
+      "zh": "弱化状态特效",
+      "en": "Injury to Insult"
+    },
+    "A9D17F55": {
+      "zh": "Overdrive特效",
+      "en": "Overdrive Assassin"
+    },
+    "E6CDBA9C": {
+      "zh": "坚守",
+      "en": "Garrison"
+    },
+    "A1A8E39D": {
+      "zh": "霸体",
+      "en": "Stout Heart"
+    },
+    "E69A4694": {
+      "zh": "豪胆",
+      "en": "Guts"
+    },
+    "973B49AF": {
+      "zh": "中毒抗性",
+      "en": "Poison Resistance"
+    },
+    "7C84A6B3": {
+      "zh": "灼热抗性",
+      "en": "Burn Resistance"
+    },
+    "D54F8CA7": {
+      "zh": "泥沙抗性",
+      "en": "Sandtomb Resistance"
+    },
+    "FB572681": {
+      "zh": "冰冻抗性",
+      "en": "Glaciate Resistance"
+    },
+    "2242921F": {
+      "zh": "麻痹抗性",
+      "en": "Paralysis Resistance"
+    },
+    "0AA20846": {
+      "zh": "格挡性能",
+      "en": "Improved Guard"
+    },
+    "3C2B57B0": {
+      "zh": "格挡仇火",
+      "en": "Guard Payback"
+    },
+    "8B3BF60C": {
+      "zh": "躲避性能",
+      "en": "Improved Dodge"
+    },
+    "7C2E4D64": {
+      "zh": "躲避仇火",
+      "en": "Dodge Payback"
+    },
+    "9389CC06": {
+      "zh": "回复性能",
+      "en": "Improved Healing"
+    },
+    "6085DA25": {
+      "zh": "自愈",
+      "en": "Regen"
+    },
+    "7CCFF74F": {
+      "zh": "HP吸收",
+      "en": "Drain"
+    },
+    "95F3FA86": {
+      "zh": "自动复活",
+      "en": "Autorevive"
+    },
+    "318D12E9": {
+      "zh": "迅捷能力",
+      "en": "Quick Cooldown"
+    },
+    "05F2ECDC": {
+      "zh": "怒涛",
+      "en": "Cascade"
+    },
+    "B5FF9FD3": {
+      "zh": "激昂",
+      "en": "Uplift"
+    },
+    "24883AF3": {
+      "zh": "药水携带数",
+      "en": "Potion Hoarder"
+    },
+    "DC607D75": {
+      "zh": "匿踪",
+      "en": "Low Profile"
+    },
+    "6018372B": {
+      "zh": "挑衅",
+      "en": "Provoke"
+    },
+    "F687C5EF": {
+      "zh": "获得经验值",
+      "en": "Fast Learner"
+    },
+    "C86F3082": {
+      "zh": "获得金币",
+      "en": "Rupie Tycoon"
+    },
+    "EAE321EB": {
+      "zh": "能力伤害",
+      "en": "Skilled Assault"
+    },
+    "E0ABFDFE": {
+      "zh": "守护",
+      "en": "Aegis"
+    },
+    "A2FA9685": {
+      "zh": "缓速抗性",
+      "en": "Slow Resistance"
+    },
+    "9702860F": {
+      "zh": "灾祸抗性",
+      "en": "Blight Resistance"
+    },
+    "0053599E": {
+      "zh": "蓄力强化",
+      "en": "Steady Focus"
+    },
+    "1470F860": {
+      "zh": "坚持",
+      "en": "Steel Nerves"
+    },
+    "0EAD65E0": {
+      "zh": "全弱化效果抗性",
+      "en": "Natural Defenses"
+    },
+    "09AA7DB5": {
+      "zh": "凝神",
+      "en": "Nimble Defense"
+    },
+    "D2C8E10A": {
+      "zh": "明镜止水",
+      "en": "Nimble Onslaught"
+    },
+    "29B292A8": {
+      "zh": "抗争",
+      "en": "Precise Resilience"
+    },
+    "7EDD69D0": {
+      "zh": "怒发冲冠",
+      "en": "Precise Wrath"
+    },
+    "8F502F0D": {
+      "zh": "奋不顾身",
+      "en": "Life on the Line"
+    },
+    "84078CB0": {
+      "zh": "快速蓄力",
+      "en": "Quick Charge"
+    },
+    "66DE60B1": {
+      "zh": "防御DOWN抗性",
+      "en": "Defense Down Resistance"
+    },
+    "1B0D9897": {
+      "zh": "钳蟹的报恩",
+      "en": "Crabvestment Returns"
+    },
+    "74AA75D6": {
+      "zh": "刚健",
+      "en": "Stronghold"
+    },
+    "DC225C96": {
+      "zh": "修罗",
+      "en": "Power Hungry"
+    },
+    "4C588C27": {
+      "zh": "属性克制转换",
+      "en": "War Elemental"
+    },
+    "5E422AE5": {
+      "zh": "获得MSP",
+      "en": "Path to Mastery"
+    },
+    "57AB5B10": {
+      "zh": "追击",
+      "en": "Supplementary DMG"
+    },
+    "82CE278D": {
+      "zh": "身无长技",
+      "en": "Less Is More"
+    },
+    "1568E0E4": {
+      "zh": "先发制人",
+      "en": "Head Start"
+    },
+    "70395731": {
+      "zh": "穷寇心",
+      "en": "Berserker"
+    },
+    "CD18A77D": {
+      "zh": "万能药",
+      "en": "Potent Greens"
+    },
+    "A8A3163B": {
+      "zh": "刀上舞",
+      "en": "Glass Cannon"
+    },
+    "DBE1D775": {
+      "zh": "α秘纹",
+      "en": "Alpha"
+    },
+    "8D2ADB6E": {
+      "zh": "β秘纹",
+      "en": "Beta"
+    },
+    "5C862E13": {
+      "zh": "γ秘纹",
+      "en": "Gamma"
+    },
+    "48A95B8D": {
+      "zh": "金刚",
+      "en": "Greater Aegis"
+    },
+    "F71F8997": {
+      "zh": "自动药水",
+      "en": "Auto Potion"
+    },
+    "EE85CD1F": {
+      "zh": "狂战士",
+      "en": "Berserker Echo"
+    },
+    "3D8153A1": {
+      "zh": "斯巴达",
+      "en": "Spartan Echo"
+    },
+    "0DE887A0": {
+      "zh": "天星之炼",
+      "en": "Celestial Nyx"
+    },
+    "A7726190": {
+      "zh": "天星之煌",
+      "en": "Celestial Lumen"
+    },
+    "9232DC17": {
+      "zh": "天星之界",
+      "en": "Celestial Terra"
+    },
+    "36E3848D": {
+      "zh": "天星之焰",
+      "en": "Celestial Incendo"
+    },
+    "A898E283": {
+      "zh": "天星之雪",
+      "en": "Celestial Aqua"
+    },
+    "D029FE08": {
+      "zh": "浪迹天涯",
+      "en": "Fatebreaker"
+    },
+    "73220725": {
+      "zh": "天星之止息",
+      "en": "Celestial Ventus"
+    },
+    "F26BAEA5": {
+      "zh": "分歧",
+      "en": "Divergence"
+    }
+  },
+  "summonSubParams": {
+    "5A39D81B": {
+      "zh": "奥义连锁伤害（低·最高50%）",
+      "en": "Chain Burst DMG (Low · Max 50%)"
+    },
+    "54B09A37": {
+      "zh": "奥义连锁伤害（高·最高100%）",
+      "en": "Chain Burst DMG (High · Max 100%)"
+    },
+    "BC4E92CB": {
+      "zh": "体力（低·最高2000）",
+      "en": "HP (Low · Max 2000)"
+    },
+    "F2256E44": {
+      "zh": "体力（高·最高5000）",
+      "en": "HP (High · Max 5000)"
+    },
+    "A3539FBB": {
+      "zh": "奥义伤害上限（低·最高50%）",
+      "en": "SBA DMG Cap (Low · Max 50%)"
+    },
+    "5A1D2C89": {
+      "zh": "奥义伤害上限（高·最高100%）",
+      "en": "SBA DMG Cap (High · Max 100%)"
+    },
+    "75138D21": {
+      "zh": "奥义伤害（低·最高20%）",
+      "en": "SBA DMG (Low · Max 20%)"
+    },
+    "33C0D50C": {
+      "zh": "奥义伤害（高·最高30%）",
+      "en": "SBA DMG (High · Max 30%)"
+    },
+    "A8900C80": {
+      "zh": "攻击力（低·最高2000）",
+      "en": "ATK (Low · Max 2000)"
+    },
+    "A3E537B1": {
+      "zh": "攻击力（高·最高3000）",
+      "en": "ATK (High · Max 3000)"
+    },
+    "F7B0316F": {
+      "zh": "昏厥（低·最高1.5）",
+      "en": "Stun Power (Low · Max 1.5)"
+    },
+    "F0F77BC1": {
+      "zh": "昏厥（高·最高2）",
+      "en": "Stun Power (High · Max 2)"
+    },
+    "A66241C9": {
+      "zh": "普通攻击伤害上限（低·最高50%）",
+      "en": "Attack DMG Cap (Low · Max 50%)"
+    },
+    "9245DFA4": {
+      "zh": "普通攻击伤害上限（高·最高100%）",
+      "en": "Attack DMG Cap (High · Max 100%)"
+    },
+    "00D171E0": {
+      "zh": "暴击率（低·最高20%）",
+      "en": "Critical Hit Rate (Low · Max 20%)"
+    },
+    "A074A967": {
+      "zh": "暴击率（高·最高30%）",
+      "en": "Critical Hit Rate (High · Max 30%)"
+    },
+    "2270BC40": {
+      "zh": "HP回复上限（低·最高50%）",
+      "en": "Healing Cap (Low · Max 50%)"
+    },
+    "2EA9CA80": {
+      "zh": "HP回复上限（高·最高75%）",
+      "en": "Healing Cap (High · Max 75%)"
+    },
+    "2FFB509F": {
+      "zh": "能力伤害上限（低·最高50%）",
+      "en": "Skill DMG Cap (Low · Max 50%)"
+    },
+    "CE70C58A": {
+      "zh": "能力伤害上限（高·最高100%）",
+      "en": "Skill DMG Cap (High · Max 100%)"
+    },
+    "664E8E32": {
+      "zh": "能力伤害（低·最高20%）",
+      "en": "Skill DMG (Low · Max 20%)"
+    },
+    "AF39A3FB": {
+      "zh": "能力伤害（高·最高30%）",
+      "en": "Skill DMG (High · Max 30%)"
+    }
+  }
+}

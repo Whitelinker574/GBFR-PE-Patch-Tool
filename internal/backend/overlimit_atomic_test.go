@@ -34,6 +34,27 @@ func TestOverLimitCatalogIsSharedByRuntimeAndSaveViews(t *testing.T) {
 	}
 }
 
+func TestOverLimitAuditedCurvesKeepRawAndPanelUnitsSeparate(t *testing.T) {
+	want := map[uint32][10]float64{
+		0xC4925BD7: {100, 100, 200, 300, 400, 500, 600, 700, 800, 1000},
+		0x52A207B5: {100, 200, 400, 500, 600, 800, 1000, 1200, 1600, 2000},
+		0x45C65767: {1, 1, 2, 4, 6, 8, 10, 12, 16, 20},
+		0x6CB38EF3: {0.1, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.6, 2},
+	}
+	for hash, rawValues := range want {
+		entry := overLimitCatalog[hash]
+		if entry.values != rawValues {
+			t.Errorf("%08X raw curve=%v, want %v", hash, entry.values, rawValues)
+		}
+		if got := float64(entry.maxValue); got != rawValues[9]*float64(entry.scale) {
+			t.Errorf("%08X panel max=%g, want raw %g × scale %g", hash, got, rawValues[9], entry.scale)
+		}
+	}
+	if overLimitCatalog[0x6CB38EF3].scale != 10 || overLimitCatalog[0xC4925BD7].scale != 1 || overLimitCatalog[0x52A207B5].scale != 1 {
+		t.Fatal("only stun may use the audited ×10 panel display scale")
+	}
+}
+
 func TestSaveOverLimitReaderKeepsKnownAliasAndIgnoresUnknownHash(t *testing.T) {
 	const base = uint32(10000000)
 	data := &SaveDataBinary{}

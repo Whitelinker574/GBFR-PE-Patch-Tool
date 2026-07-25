@@ -2,7 +2,9 @@ package backend
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -103,6 +105,22 @@ type overLimitCatalogEntry struct {
 	canonical uint32
 }
 
+//go:embed data/overlimit_curves.json
+var overLimitCurvesJSON []byte
+
+type overLimitCurveFile struct {
+	Version string `json:"version"`
+	Entries []struct {
+		Hash         string    `json:"hash"`
+		Aliases      []string  `json:"aliases"`
+		Name         string    `json:"name"`
+		EffectID     uint32    `json:"effectId"`
+		Unit         string    `json:"unit"`
+		DisplayScale float32   `json:"displayScale"`
+		RawValues    []float64 `json:"rawValues"`
+	} `json:"entries"`
+}
+
 var overLimitCatalogOrder = []uint32{
 	0x52A207B5, 0x54929589, 0x6CB38EF3, 0xC4925BD7, 0x45C65767, 0x43B7581D,
 	0x9A97C049, 0x9C555433, 0x4E42646B, 0x4A4C093D, 0x68B39018,
@@ -112,30 +130,27 @@ var overLimitCatalogOrder = []uint32{
 }
 
 var overLimitCatalog = func() map[uint32]overLimitCatalogEntry {
-	pctCurve := [10]float64{1, 1, 2, 4, 6, 8, 10, 12, 16, 20}
-	entries := map[uint32]overLimitCatalogEntry{
-		0xC4925BD7: {name: "攻击力", effectID: 0, maxValue: 1000, scale: 1, unit: "flat", values: [10]float64{100, 100, 200, 300, 400, 500, 600, 700, 800, 1000}, canonical: 0xC4925BD7},
-		0x52A207B5: {name: "最大HP", effectID: 1, maxValue: 2000, scale: 1, unit: "flat", values: [10]float64{100, 200, 400, 500, 600, 800, 1000, 1200, 1600, 2000}, canonical: 0x52A207B5},
-		0x45C65767: {name: "暴击率", effectID: 2, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x45C65767},
-		0x6CB38EF3: {name: "昏厥值", effectID: 3, maxValue: 20, scale: 10, unit: "flat", values: [10]float64{0.1, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.6, 2}, canonical: 0x6CB38EF3},
-		0x9A97C049: {name: "能力伤害", effectID: 100, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x9A97C049},
-		0x4E42646B: {name: "奥义伤害", effectID: 101, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x4E42646B},
-		0x68B39018: {name: "奥义连锁伤害", effectID: 102, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x68B39018},
-		0x43B7581D: {name: "普通攻击伤害上限", effectID: 103, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x43B7581D},
-		0x9C555433: {name: "能力伤害上限", effectID: 104, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x9C555433},
-		0x4A4C093D: {name: "奥义伤害上限", effectID: 105, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x4A4C093D},
-		0x54929589: {name: "HP回复上限", effectID: 107, maxValue: 20, scale: 1, unit: "pct", values: pctCurve, canonical: 0x54929589},
+	var source overLimitCurveFile
+	if err := json.Unmarshal(overLimitCurvesJSON, &source); err != nil || source.Version != "2.0.2-audited-20260725" {
+		panic("invalid audited over-limit curve catalog")
 	}
-	aliases := map[uint32]uint32{
-		0xCB63BE55: 0xC4925BD7, 0xDCBD8423: 0xC4925BD7, 0x59DCE1E8: 0xC4925BD7, 0xF203BB15: 0xC4925BD7,
-		0x57BBC478: 0x52A207B5, 0x5A51F0CB: 0x52A207B5, 0x9C6375CF: 0x52A207B5, 0xF004E9F2: 0x52A207B5,
-		0xC4B86ED7: 0x45C65767, 0xCEB0DBD2: 0x45C65767,
-		0xA3545CA1: 0x6CB38EF3, 0x59FBB7D8: 0x6CB38EF3,
-	}
-	for alias, canonical := range aliases {
-		entry := entries[canonical]
-		entry.canonical = canonical
-		entries[alias] = entry
+	entries := make(map[uint32]overLimitCatalogEntry, 23)
+	for _, row := range source.Entries {
+		canonical, err := ParseHashHex(row.Hash)
+		if err != nil || len(row.RawValues) != 10 || row.DisplayScale <= 0 {
+			panic("invalid audited over-limit curve entry")
+		}
+		var values [10]float64
+		copy(values[:], row.RawValues)
+		entry := overLimitCatalogEntry{name: row.Name, effectID: row.EffectID, maxValue: float32(values[9] * float64(row.DisplayScale)), scale: row.DisplayScale, unit: row.Unit, values: values, canonical: canonical}
+		entries[canonical] = entry
+		for _, aliasText := range row.Aliases {
+			alias, parseErr := ParseHashHex(aliasText)
+			if parseErr != nil {
+				panic("invalid audited over-limit alias")
+			}
+			entries[alias] = entry
+		}
 	}
 	return entries
 }()

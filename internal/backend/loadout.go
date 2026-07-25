@@ -58,12 +58,14 @@ const (
 var skillboardNodesJSON []byte
 
 type SkillboardNode struct {
-	Hash string `json:"hash"`
-	Char string `json:"char"` // PL0400 等
-	Cat  string `json:"cat"`  // SB_ATK / SB_DEF / SB_LIMIT / 基础盘
-	Grp  string `json:"grp"`
-	Name string `json:"name"` // 具名大节点（真谛/觉醒/秘义），多数节点为空
-	Desc string `json:"desc"` // 效果说明（数值已填充）
+	Hash   string `json:"hash"`
+	Char   string `json:"char"` // PL0400 等
+	Cat    string `json:"cat"`  // SB_ATK / SB_DEF / SB_LIMIT / 基础盘
+	Grp    string `json:"grp"`
+	Name   string `json:"name"` // 具名大节点（真谛/觉醒/秘义），多数节点为空
+	Desc   string `json:"desc"` // 效果说明（数值已填充）
+	NameEN string `json:"nameEn"`
+	DescEN string `json:"descEn"`
 }
 
 var (
@@ -119,16 +121,24 @@ func loadoutMasteryNodeForHash(hash uint32) (LoadoutMasteryNode, bool) {
 	if !rankOK {
 		return LoadoutMasteryNode{}, false
 	}
-	desc, rawDesc, displayScale, evidence := n.Desc, "", float64(0), "2.0.2-table"
+	name, desc := n.Name, n.Desc
+	if !useChinese() {
+		name, desc = n.NameEN, n.DescEN
+	}
+	rawDesc, displayScale, evidence := "", float64(0), "2.0.2-table"
 	if panel, parsed := parseMasteryPanelBonus(n.Desc, ""); parsed && panel.Label == "昏厥值" && panel.Unit == "flat" {
-		rawDesc = n.Desc
-		desc = fmt.Sprintf("昏厥值%+.10g（原始 f32 %g ×%g 面板）", panel.Value, panel.RawValue, panel.DisplayScale)
+		rawDesc = desc
+		if useChinese() {
+			desc = fmt.Sprintf("昏厥值%+.10g（原始 f32 %g ×%g 面板）", panel.Value, panel.RawValue, panel.DisplayScale)
+		} else {
+			desc = fmt.Sprintf("Stun Power %+.10g (raw f32 %g ×%g panel scale)", panel.Value, panel.RawValue, panel.DisplayScale)
+		}
 		displayScale = panel.DisplayScale
 		evidence = panel.Evidence
 	}
 	return LoadoutMasteryNode{
 		Hash: fmt.Sprintf("%08X", hash), Cat: n.Cat, Grp: n.Grp,
-		Rank: rank, RankLabel: masteryRankLabel(rank), Name: n.Name, Desc: desc,
+		Rank: rank, RankLabel: localizedMasteryRankLabel(rank), Name: name, Desc: desc,
 		RawDesc: rawDesc, DisplayScale: displayScale, Evidence: evidence,
 	}, true
 }
@@ -146,23 +156,26 @@ type LoadoutSkill struct {
 }
 
 var (
-	skillNamesOnce   sync.Once
-	skillNameByHash  map[uint32]string
-	skillKeyByHash   map[uint32]string
-	skillOwnerByHash map[uint32]string
-	skillPoolByOwner map[string][]LoadoutPickSkill
+	skillNamesOnce    sync.Once
+	skillNameByHash   map[uint32]string
+	skillNameENByHash map[uint32]string
+	skillKeyByHash    map[uint32]string
+	skillOwnerByHash  map[uint32]string
+	skillPoolByOwner  map[string][]LoadoutPickSkill
 )
 
 func loadSkillNameCatalog() {
 	skillNamesOnce.Do(func() {
 		var payload struct {
 			Skills map[string]struct {
-				Key  string `json:"key"`
-				Char string `json:"char"`
-				Name string `json:"name"`
+				Key    string `json:"key"`
+				Char   string `json:"char"`
+				Name   string `json:"name"`
+				NameEN string `json:"nameEn"`
 			} `json:"skills"`
 		}
 		skillNameByHash = map[uint32]string{}
+		skillNameENByHash = map[uint32]string{}
 		skillKeyByHash = map[uint32]string{}
 		skillOwnerByHash = map[uint32]string{}
 		skillPoolByOwner = map[string][]LoadoutPickSkill{}
@@ -172,6 +185,7 @@ func loadSkillNameCatalog() {
 		for hex, s := range payload.Skills {
 			if h, err := ParseHashHex(hex); err == nil {
 				skillNameByHash[h] = s.Name
+				skillNameENByHash[h] = s.NameEN
 				skillKeyByHash[h] = s.Key
 				skillOwnerByHash[h] = s.Char
 				if s.Char != "" {
@@ -187,6 +201,9 @@ func loadSkillNameCatalog() {
 
 func skillNameForHash(hash uint32) string {
 	loadSkillNameCatalog()
+	if !useChinese() && skillNameENByHash[hash] != "" {
+		return skillNameENByHash[hash]
+	}
 	return skillNameByHash[hash]
 }
 
@@ -200,6 +217,13 @@ func skillPoolForOwnerCode(ownerCode string) []LoadoutPickSkill {
 	source := skillPoolByOwner[ownerCode]
 	out := make([]LoadoutPickSkill, len(source))
 	copy(out, source)
+	if !useChinese() {
+		for i := range out {
+			if h, err := ParseHashHex(out[i].Hash); err == nil && skillNameENByHash[h] != "" {
+				out[i].Name = skillNameENByHash[h]
+			}
+		}
+	}
 	return out
 }
 

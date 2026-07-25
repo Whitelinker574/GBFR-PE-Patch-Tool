@@ -349,12 +349,13 @@ func displaySigilName(sigil *SigilDef) string {
 		return ""
 	}
 	if name := supplementalSigilDisplayName(sigil); name != "" {
-		return name
+		return normalizeChineseSigilItemName(name)
 	}
-	if supportsGeneratedPlusSigil(sigil) {
-		return cnName(sigil.DisplayName)
+	name := cnName(sigil.DisplayName)
+	if useChinese() {
+		return normalizeChineseSigilItemName(name)
 	}
-	return cnName(sigil.DisplayName)
+	return name
 }
 
 func (c *Catalog) GetAllowedSecondaryTraits(sigil *SigilDef) ([]*TraitDef, error) {

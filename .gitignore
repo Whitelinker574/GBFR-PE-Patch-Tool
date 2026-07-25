@@ -14,6 +14,12 @@
 /services/*/node_modules/
 /services/*/.wrangler/
 
+# Local browser and test output
+/.playwright-cli/
+/.tmp-gocache-*/
+/output/
+/({height
+
 # Wails generated bindings
 /frontend/wailsjs/
 

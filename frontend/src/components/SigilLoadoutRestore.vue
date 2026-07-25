@@ -107,9 +107,12 @@ function sigilName(entry) {
   const exact = recordedName(entry.sigilName) || sigilNames.value.get(uint(entry.sigilHash))
   if (exact) return exact
   const primary = traitName(entry.primaryTraitHash, entry.primaryTraitName)
+  if (primary === '未收录词条') return '因子'
   const secondary = traitName(entry.secondaryTraitHash, entry.secondaryTraitName)
-  if (primary === '未收录词条') return '未收录因子'
-  return secondary === '无副词条' || secondary === '未收录词条' ? primary : `${primary} + ${secondary}`
+  if (secondary === '无副词条' || secondary === '未收录词条') return primary
+  if (['可怕的漆黑钳蟹因子', '相扑斗力', '漆黑之谊'].includes(primary)) return primary
+  if (primary === '躲避性能') return `${primary}+`
+  return `${primary} V+`
 }
 function traitIcon(hash) {
   const value = uint(hash)

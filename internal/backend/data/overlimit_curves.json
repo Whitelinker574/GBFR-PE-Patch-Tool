@@ -1,0 +1,16 @@
+{
+  "version": "2.0.2-audited-20260725",
+  "entries": [
+    { "hash": "C4925BD7", "aliases": ["CB63BE55", "DCBD8423", "59DCE1E8", "F203BB15"], "name": "攻击力", "nameEn": "ATK", "effectId": 0, "unit": "flat", "displayScale": 1, "rawValues": [100, 100, 200, 300, 400, 500, 600, 700, 800, 1000] },
+    { "hash": "52A207B5", "aliases": ["57BBC478", "5A51F0CB", "9C6375CF", "F004E9F2"], "name": "最大HP", "nameEn": "Max HP", "effectId": 1, "unit": "flat", "displayScale": 1, "rawValues": [100, 200, 400, 500, 600, 800, 1000, 1200, 1600, 2000] },
+    { "hash": "45C65767", "aliases": ["C4B86ED7", "CEB0DBD2"], "name": "暴击率", "nameEn": "Critical Hit Rate", "effectId": 2, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "6CB38EF3", "aliases": ["A3545CA1", "59FBB7D8"], "name": "昏厥值", "nameEn": "Stun Power", "effectId": 3, "unit": "flat", "displayScale": 10, "rawValues": [0.1, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.6, 2] },
+    { "hash": "9A97C049", "name": "能力伤害", "nameEn": "Skill Damage", "effectId": 100, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "4E42646B", "name": "奥义伤害", "nameEn": "Skybound Art Damage", "effectId": 101, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "68B39018", "name": "奥义连锁伤害", "nameEn": "Chain Burst Damage", "effectId": 102, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "43B7581D", "name": "普通攻击伤害上限", "nameEn": "Normal Attack Damage Cap", "effectId": 103, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "9C555433", "name": "能力伤害上限", "nameEn": "Skill Damage Cap", "effectId": 104, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "4A4C093D", "name": "奥义伤害上限", "nameEn": "Skybound Art Damage Cap", "effectId": 105, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] },
+    { "hash": "54929589", "name": "HP回复上限", "nameEn": "Healing Cap", "effectId": 107, "unit": "pct", "displayScale": 1, "rawValues": [1, 1, 2, 4, 6, 8, 10, 12, 16, 20] }
+  ]
+}

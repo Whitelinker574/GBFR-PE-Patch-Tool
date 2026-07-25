@@ -9,9 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.15</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.16</strong></a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
+</p>
+
+<p align="center">
+  <a href="https://share.whitelinker.top/?lang=en"><strong>◆ Open the GBFR Loadout Atlas · Browse, search, preview, and share community builds ◆</strong></a>
 </p>
 
 <p align="center">
@@ -46,7 +50,7 @@ Default save directory:
 C:\Users\YOUR_NAME\AppData\Local\GBFR\Saved\SaveGames\
 ```
 
-![The four workspaces on the home page](docs/screenshots/home.png)
+![The four workspaces on the home page](docs/screenshots/home-v19116-annotated.png)
 
 **What to look for:** the four workspaces in the sidebar determine whether the tool uses offline writes, live writes, or read-only access. Choose the workspace from the current game state, then open the task page from the home cards.
 
@@ -58,7 +62,7 @@ Fully close the game before using these pages. The tool lists save slots 1 / 2 /
 
 | Page | What it does | Basic flow |
 | --- | --- | --- |
-| Loadout Presets | View saved weapons, 12 sigils, 4 skills, and mastery; write a custom loadout | Choose save → character → view, or select `Edit [Character] Loadout` → destination slot |
+| Loadout Presets | View and edit complete builds, selectively import components, and create online short codes or offline long codes | Import any combination of sigils, skills, mastery/level, weapon and five skills, wrightstone, summons, progression, and four Over Mastery slots; progression merges upward only |
 | Sigil Save Editor | Generate (add), batch-manage, and remove sigils | Configure the sigil and traits; combination checks warn but do not change your choice |
 | Items & Weapons | Edit items, materials, progression resources, and weapon levels | Use for batch changes; check the automatic backup and readback |
 | Wrightstone Save Editor | Generate (add) a wrightstone with three traits | Confirm all traits, level warnings, and the pending write |
@@ -111,9 +115,13 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 5. Write only after confirming the destination; check that backup and readback succeeded.
 6. Launch the game and verify. If the result is wrong, stop overwriting, fully close the game, open `Save Protection` at the top right, and restore the pre-write point.
 
-![Three save slots and saved loadouts](docs/screenshots/loadout-presets.png)
+![Full loadout editor](docs/screenshots/loadout-editor-v19116.png)
 
-**What to look for:** `Save Slot 1 / 2 / 3` are separate saves, `Browse...` selects a file manually, and `Refresh` reloads the current file. After choosing the save and character, open the edit action on the right; the selected destination preset is overwritten.
+**What to look for:** the left column compares estimates with live game readback; the center edits 12 independent sigils with official icons. Continue horizontally to inspect merged sigil, weapon, wrightstone, summon, and mastery skill levels and sources. `Import Single Build` always opens the component-scope confirmation first.
+
+![Online short codes and offline long codes](docs/screenshots/loadout-share-v19116-annotated.png)
+
+**Share a build:** `Share Code` creates a 16-character code and link. Online publishing is enabled by default, but it can be disabled to create only an offline long code. Receiving a code still opens selective import confirmation.
 
 ### Use a live editor or single-player patch
 
@@ -124,7 +132,7 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 5. Switch freely among the three patch pages; the shared connection and active state persist.
 6. Select `Restore All & Disconnect` when finished. A game restart also clears live state.
 
-![Combat rule patch page](docs/screenshots/patch-combat.png)
+![Combat rule patch page](docs/screenshots/patch-combat-v19116.png)
 
 **What to look for:** the connection card at the top is shared by all three patch pages; each feature card shows its state and readback. Select `Connect to Game`, enable one feature at a time, and finish with `Restore All & Disconnect`.
 

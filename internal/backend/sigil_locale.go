@@ -1,5 +1,23 @@
 package backend
 
+import (
+	"regexp"
+	"strings"
+)
+
+var chineseSigilRankSuffixPattern = regexp.MustCompile(`^(.+?)(V|IV|III|II|I)(\+?)$`)
+
+// normalizeChineseSigilItemName only fixes spacing before an item-rank suffix.
+// A trailing plus without a Roman rank can be part of the game's actual name.
+func normalizeChineseSigilItemName(name string) string {
+	name = strings.TrimSpace(name)
+	match := chineseSigilRankSuffixPattern.FindStringSubmatch(name)
+	if len(match) == 0 {
+		return name
+	}
+	return strings.TrimSpace(match[1]) + " " + match[2] + match[3]
+}
+
 // sigilCN 因子中文名映射
 var sigilCN = map[string]string{
 	"Attack Power V+":               "攻击力 V+",

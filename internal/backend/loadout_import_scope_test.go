@@ -30,6 +30,43 @@ func TestLoadoutImportDefaultsDoNotPreparePermanentOrWeaponChanges(t *testing.T)
 	}
 }
 
+func TestCharacterGrowthProgressNeverDowngrades(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		target, source int
+		want           int
+	}{
+		{name: "target-complete", target: 55, source: 12, want: 55},
+		{name: "source-ahead", target: 12, source: 55, want: 55},
+		{name: "equal", target: 30, source: 30, want: 30},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := keepHigherProgress(test.target, test.source); got != test.want {
+				t.Fatalf("keepHigherProgress(%d, %d)=%d, want %d", test.target, test.source, got, test.want)
+			}
+		})
+	}
+}
+
+func TestCharacterGrowthNodeBitmapsMergeWithoutLosingEitherBranch(t *testing.T) {
+	for _, test := range []struct {
+		target, source int
+		want           int
+	}{
+		{target: 0b0011, source: 0b0101, want: 0b0111},
+		{target: 0b1111, source: 0b0011, want: 0b1111},
+		{target: 0, source: 0b1000, want: 0b1000},
+	} {
+		got, err := mergeEnhancementNodeProgress(test.target, test.source)
+		if err != nil || got != test.want {
+			t.Fatalf("mergeEnhancementNodeProgress(%b, %b)=%b, want %b, err=%v", test.target, test.source, got, test.want, err)
+		}
+	}
+	if _, err := mergeEnhancementNodeProgress(-1, 1); err == nil {
+		t.Fatal("negative enhancement node bitmap was accepted")
+	}
+}
+
 func TestMasterProgressSelectionPreservesSourceTotalOrUsesAuditedThreshold(t *testing.T) {
 	const sourceTotal = 3309499
 	got, err := masterTotalMSPForProgress(sourceTotal, 55)

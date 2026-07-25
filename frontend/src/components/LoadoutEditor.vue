@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutImportCode, LoadoutImportShortCode, LoadoutRuntimePanelStats, LoadoutShareCode, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, PublishLoadoutShare, SummonGetOptions } from '../../wailsjs/go/backend/App'
+import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutImportCode, LoadoutImportShortCode, LoadoutRuntimePanelStats, LoadoutShareCode, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, PublishLoadoutShare, PublishLoadoutShareNamed, SummonGetOptions } from '../../wailsjs/go/backend/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/backend/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
@@ -35,6 +35,8 @@ const importSelection = ref(null)
 const shareCodeOpen = ref(false)
 const shareCodeResult = ref(null)
 const publishedShare = ref(null)
+const shareAutoPublish = ref(true)
+const shareTitle = ref('')
 const sharePublishing = ref(false)
 const shareCodeError = ref('')
 
@@ -142,7 +144,7 @@ const factorSlotCards = computed(() => factorSlots.value.map((entry, index) => {
     kind: 'bag',
     slotId: entry.slotId,
     hash: sigil?.hash || '',
-    name: sigil?.name || '未收录因子',
+    name: sigil?.name || '因子',
     level: sigil?.level || 0,
     primaryTraitHash: sigil?.primaryTraitHash || '',
     primaryTraitName: sigil?.primaryTraitName || '',
@@ -1050,6 +1052,7 @@ function openShareCodeDialog() {
   shareCodeResult.value = null
   publishedShare.value = null
   shareCodeError.value = ''
+  shareTitle.value = selectedLoadout.value?.name || ''
   shareCodeOpen.value = true
 }
 
@@ -1057,14 +1060,17 @@ async function generateShareCode() {
   if (!selectedLoadout.value || selectedLoadout.value.isParty || sharing.value) return
   sharing.value = true
   shareCodeError.value = ''
+  let generated = false
   try {
     shareCodeResult.value = await LoadoutShareCode(props.savePath, selectedLoadout.value.unitId)
     publishedShare.value = null
+    generated = true
   } catch (err) {
     shareCodeError.value = String(err)
   } finally {
     sharing.value = false
   }
+  if (generated && shareAutoPublish.value) await publishShareCode()
 }
 
 async function publishShareCode() {
@@ -1072,7 +1078,9 @@ async function publishShareCode() {
   sharePublishing.value = true
   shareCodeError.value = ''
   try {
-    publishedShare.value = await PublishLoadoutShare(props.savePath, selectedLoadout.value.unitId)
+    publishedShare.value = shareTitle.value.trim()
+      ? await PublishLoadoutShareNamed(props.savePath, selectedLoadout.value.unitId, shareTitle.value.trim())
+      : await PublishLoadoutShare(props.savePath, selectedLoadout.value.unitId)
   } catch (err) {
     shareCodeError.value = String(err)
   } finally {
@@ -1103,9 +1111,8 @@ function stageImportedFactors(draft) {
   factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
   for (const constructed of draft.constructedSigils || []) {
       const item = constructed?.item || {}
-      const localizedName = [item.primaryTraitName, item.secondaryTraitName].filter(Boolean).join(' + ')
       factorSlots.value = putConstructedFactor(factorSlots.value, Number(constructed.index), item, {
-        name: localizedName || item.sigilName || '导入因子',
+        name: item.sigilName || '因子',
         level: Number(item.level || 0),
         primaryTraitId: item.primaryTraitId || '',
         primaryTraitHash: constructed.exactPrimaryTraitHash || '',
@@ -1863,6 +1870,8 @@ async function apply() {
       :published="publishedShare"
       :busy="sharing"
       :publishing="sharePublishing"
+      :auto-publish="shareAutoPublish"
+      :share-title="shareTitle"
       :error="shareCodeError"
       :can-generate="!!selectedLoadout && !selectedLoadout.isParty"
       :selected-name="selectedLoadout?.name || ''"
@@ -1870,6 +1879,8 @@ async function apply() {
       @generate="generateShareCode"
       @publish="publishShareCode"
       @import="importShareCode"
+      @update:auto-publish="shareAutoPublish = $event"
+      @update:share-title="shareTitle = $event"
     />
     <LoadoutImportDialog :draft="importDraft" @cancel="importDraft = null" @apply="applyImportChoices" />
     <ConfirmDialog ref="confirmDialog" />

@@ -343,7 +343,7 @@ test('single-loadout import constructs independent factors and blocks partial wr
   assert.match(importDialog, /随新武器同步/)
   assert.match(importDialog, /缺少时自动新增并登记/)
   assert.match(importDialog, /上限突破[\s\S]*可选择不覆盖/)
-  assert.match(importDialog, /角色强化进度[\s\S]*目标未满级时联动升至 Lv100，不改命运篇章或任何武器/)
+  assert.match(importDialog, /角色强化进度[\s\S]*只补足攻击与 HP·抗性强化页的未完成节点[\s\S]*不会让已点满的目标降级/)
   assert.match(importDialog, /整组角色武器收藏[\s\S]*同步该角色全部武器/)
 	assert.match(importDialog, /同步全部武器祝福[\s\S]*实际生效的三条附加技能/)
   assert.match(importDialog, /characterGrowth:\s*false/)
@@ -381,7 +381,8 @@ test('loadout import choices use visible semantic icons instead of bare numeric 
 test('imported factor drafts resolve official icons before the save is reread', () => {
 	assert.match(source, /function stageImportedFactors[\s\S]*primaryTraitId:\s*item\.primaryTraitId/)
 	assert.match(source, /function stageImportedFactors[\s\S]*primaryTraitHash:\s*constructed\.exactPrimaryTraitHash/)
-	assert.match(source, /localizedName\s*=\s*\[item\.primaryTraitName,\s*item\.secondaryTraitName\][\s\S]*name:\s*localizedName\s*\|\|\s*item\.sigilName/)
+	assert.match(source, /function stageImportedFactors[\s\S]*name:\s*item\.sigilName\s*\|\|\s*'因子'/)
+	assert.doesNotMatch(source, /localizedName\s*=\s*\[item\.primaryTraitName,\s*item\.secondaryTraitName\]/)
 	assert.match(source, /traitIcon\(card\.primaryTraitName, card\.primaryTraitHash, card\.primaryTraitId\)/)
 })
 
