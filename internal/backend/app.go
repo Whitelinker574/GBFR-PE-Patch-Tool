@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.16"
+	appVersion  = "v1.91.17"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -577,7 +577,7 @@ var charaNames = [maxCharacters]string{
 	"古兰", "姬塔", "卡塔莉娜", "拉卡姆", "伊欧", "欧根",
 	"", "萝赛塔", "冈达葛萨", "菲莉", "兰斯洛特", "巴恩", "珀西瓦尔",
 	"", "齐格飞", "夏洛特", "索恩", "尤达拉哈", "娜露梅",
-	"", "塞达", "伊德", "巴萨拉卡",
+	"", "泽塔", "伊德", "巴萨拉卡",
 	"", "卡莉奥丝特罗",
 	"", "", "圣德芬", "希耶提",
 	"", "", "", "", "", "", "", "", "", "", "",

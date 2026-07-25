@@ -30,15 +30,33 @@ func loadoutSigilDisplayNameFromTraits(hash uint32, primaryName, secondaryName s
 	return loadoutSigilDisplayNameForTraits(hash, primaryName, secondaryName)
 }
 
+func sigilHasFixedCatalogTitle(sigil *SigilDef) bool {
+	if sigil == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(derefStr(sigil.Category))) {
+	case "character_sigil", "dlc_supplement":
+		return true
+	default:
+		return false
+	}
+}
+
 func loadoutSigilDisplayNameForTraits(hash uint32, primaryName, secondaryName string) string {
 	if cat, err := LoadCatalog(); err == nil {
 		if sigil := cat.LookupSigilByHash(hash); sigil != nil {
-			if strings.TrimSpace(secondaryName) != "" && !supportsGeneratedPlusSigil(sigil) {
-				if name := synthesizeSigilNameForTraits(cat, primaryName, true, useChinese()); name != "" {
+			if !sigilHasFixedCatalogTitle(sigil) && strings.TrimSpace(primaryName) != "" {
+				if name := synthesizeSigilNameForTraits(cat, primaryName, strings.TrimSpace(secondaryName) != "", useChinese()); name != "" {
 					return name
 				}
 			}
 			return displaySigilName(sigil)
+		}
+		if name := strings.TrimSpace(localizedRuntimeName(hash)); name != "" {
+			if useChinese() {
+				return normalizeChineseSigilItemName(name)
+			}
+			return name
 		}
 		if name := synthesizeSigilNameForTraits(cat, primaryName, strings.TrimSpace(secondaryName) != "", useChinese()); name != "" {
 			return name

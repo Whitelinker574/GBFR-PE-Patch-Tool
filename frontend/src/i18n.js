@@ -14,7 +14,7 @@ function normalizeLanguage(value) {
 const translations = {
   "\"\", \"\", \"圣德芬\", \"希耶提\",": "\"\", \"\", \"Sandalphon\", \"Seofon\",",
   "\"\", \"卡莉奥丝特罗\",": "\"\", \"Cagliostro\",",
-  "\"\", \"塞达\", \"伊德\", \"巴萨拉卡\",": "\"\", \"Zeta\", \"Id\", \"Vaseraga\",",
+  "\"\", \"泽塔\", \"伊德\", \"巴萨拉卡\",": "\"\", \"Zeta\", \"Id\", \"Vaseraga\",",
   "\"\", \"萝赛塔\", \"冈达葛萨\", \"菲莉\", \"兰斯洛特\", \"巴恩\", \"珀西瓦尔\",": "\"\", \"Rosetta\", \"Ghandagoza\", \"Ferry\", \"Lancelot\", \"Vane\", \"Percival\",",
   "\"\", \"齐格飞\", \"夏洛特\", \"索恩\", \"尤达拉哈\", \"娜露梅\",": "\"\", \"Siegfried\", \"Charlotta\", \"Tweyen\", \"Yodarha\", \"Narmaya\",",
   "\"古兰\", \"姬塔\", \"卡塔莉娜\", \"拉卡姆\", \"伊欧\", \"欧根\",": "\"Gran\", \"Djeeta\", \"Katalina\", \"Rackam\", \"Io\", \"Eugen\",",
@@ -1706,7 +1706,7 @@ const translations = {
   "坚持III": "Steel Nerves III",
   "坚持IV": "Steel Nerves IV",
   "坚持V": "Steel Nerves V",
-  "塞达": "Zeta",
+  "泽塔": "Zeta",
   "备份": "Backup",
   "备份:": "Backup:",
   "备份创建成功": "Backup created successfully",

@@ -233,14 +233,19 @@ func previewChineseSigilName(hashText, fallback string) string {
 }
 
 func previewChineseSigilNameForTraits(hashText, fallback, primary, secondary string) string {
-	if strings.TrimSpace(secondary) != "" {
+	if cat, loadErr := LoadCatalog(); loadErr == nil {
+		var sigil *SigilDef
 		if hash, err := ParseHashHex(hashText); err == nil {
-			if cat, loadErr := LoadCatalog(); loadErr == nil {
-				if sigil := cat.LookupSigilByHash(hash); sigil != nil && !supportsGeneratedPlusSigil(sigil) {
-					if name := synthesizeSigilNameForTraits(cat, primary, true, true); name != "" {
-						return name
-					}
+			sigil = cat.LookupSigilByHash(hash)
+			if sigil == nil {
+				if name := strings.TrimSpace(runtimeNameCN[hash]); name != "" {
+					return normalizeChineseSigilItemName(name)
 				}
+			}
+		}
+		if !sigilHasFixedCatalogTitle(sigil) {
+			if name := synthesizeSigilNameForTraits(cat, primary, strings.TrimSpace(secondary) != "", true); name != "" {
+				return name
 			}
 		}
 	}

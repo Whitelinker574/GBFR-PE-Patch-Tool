@@ -1,5 +1,5 @@
 const roster = [
-  { slug: 'gran', name: '格兰', nameEn: 'Gran', plId: 'pl0000', hash: '2A26B1B2', dlc: false, accent: '#85704b' },
+  { slug: 'gran', name: '古兰', nameEn: 'Gran', plId: 'pl0000', hash: '2A26B1B2', dlc: false, accent: '#85704b', aliases: ['格兰'] },
   { slug: 'djeeta', name: '姬塔', nameEn: 'Djeeta', plId: 'pl0100', hash: 'A4ACBA76', dlc: false, accent: '#9c543f' },
   { slug: 'katalina', name: '卡塔莉娜', nameEn: 'Katalina', plId: 'pl0200', hash: '18E2F9F9', dlc: false, accent: '#50798e' },
   { slug: 'rackam', name: '拉卡姆', nameEn: 'Rackam', plId: 'pl0300', hash: '079DF0CC', dlc: false, accent: '#8e4f3a' },

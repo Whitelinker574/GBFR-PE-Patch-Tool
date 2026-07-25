@@ -59,6 +59,33 @@ func TestLoadoutSigilNameUsesOnlyVerifiedItemIdentity(t *testing.T) {
 		t.Fatalf("组合实例因子名=%q，应由唯一主词条对应到合法物品名", got)
 	}
 	for _, test := range []struct {
+		hash      uint32
+		primary   string
+		secondary string
+		want      string
+	}{
+		{hash: 0xB5B23F02, primary: "体力", secondary: "金刚", want: "体力 V+"},
+		{hash: 0x80C94A24, primary: "怒发冲冠", secondary: "伤害上限", want: "怒发冲冠 V+"},
+		{hash: 0xF1D8F754, primary: "分歧", secondary: "天星之炼", want: "分歧 V+"},
+	} {
+		if got := loadoutSigilDisplayNameFromTraits(test.hash, test.primary, test.secondary); got != test.want {
+			t.Errorf("实档因子 %08X 的标题=%q，期望按真实主副词条显示 %q", test.hash, got, test.want)
+		}
+	}
+	if got := loadoutSigilDisplayNameFromTraits(0x673C5D8F, "勇士的信念", "勇士的毅力"); got != "勇士之觉醒+" {
+		t.Fatalf("角色专属觉醒因子标题=%q，不能被通用 V+ 规则覆盖", got)
+	}
+	for hash, want := range map[uint32]string{
+		0x426AD20E: "永恒钳蟹因子+",
+		0x95CC3CB8: "群青之觉醒+",
+		0xD8A464F1: "刃姬之觉醒+",
+		0x23953FD4: "雷狼之觉醒+",
+	} {
+		if got := loadoutSigilDisplayNameFromTraits(hash, "DLC专属主词条", "DLC专属副词条"); got != want {
+			t.Errorf("DLC 专属因子 %08X 的标题=%q，期望固定物品名 %q", hash, got, want)
+		}
+	}
+	for _, test := range []struct {
 		primary   string
 		secondary string
 		want      string
@@ -87,6 +114,26 @@ func TestLoadoutSigilNameUsesOnlyVerifiedItemIdentity(t *testing.T) {
 	}
 	if got := sigilDisplayNameOr(0xDEADBEEF); got != "因子" {
 		t.Fatalf("未知因子回退名=%q，不应显示八位 hash", got)
+	}
+}
+
+func TestLoadoutTraitNamesPreferHashSpecificExtractedGameText(t *testing.T) {
+	previous := getCurrentLanguage()
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage(previous) })
+
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for hash, want := range map[uint32]string{
+		0x0CD6C625: "变幻自如的迅刃",
+		0xA3B49220: "变幻自如的妖剑士",
+		0x77C809F5: "剑圣的炼气",
+	} {
+		if got := loadoutTraitDisplayName(cat, hash); got != want {
+			t.Errorf("解包词条 %08X 的名称=%q，期望 %q", hash, got, want)
+		}
 	}
 }
 

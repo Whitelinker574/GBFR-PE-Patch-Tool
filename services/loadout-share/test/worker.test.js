@@ -282,6 +282,31 @@ test('source-less merged skills rebuild their recorded sources from the loadout 
   ])
 })
 
+test('legacy sigil shells use the actual trait title and primary trait icon', async () => {
+  const env = { LOADOUTS: makeR2() }
+  const preview = Buffer.from(JSON.stringify({
+    characterName: '巴恩',
+    sigils: [
+      { hash: 'B5B23F02', name: 'HP V+', primaryHash: 'F372F096', primary: '体力', secondaryHash: '48A95B8D', secondary: '金刚' },
+      { hash: '80C94A24', name: 'Precise Wrath V+', primaryHash: '7EDD69D0', primary: '怒发冲冠', secondaryHash: 'DC584F60', secondary: '伤害上限' },
+      { hash: 'F1D8F754', name: 'Divergence V+', primaryHash: 'F26BAEA5', primary: '分歧', secondaryHash: '0DE887A0', secondary: '天星之炼' },
+      { hash: '673C5D8F', name: '勇士之觉醒+', primaryHash: '2E65A774', primary: '勇士的信念', secondaryHash: '16EFF868', secondary: '勇士的毅力' },
+	  { hash: '95CC3CB8', name: '群青的剑光 V+', primaryHash: 'D176D262', primary: '群青的剑光', secondaryHash: '461A8E07', secondary: '群青的逆境' },
+	  { hash: 'D8A464F1', name: '刃姬的小夜曲 V+', primaryHash: '7B5B081D', primary: '刃姬的小夜曲', secondaryHash: '9ACE140B', secondary: '刃姬的轮舞曲' },
+	  { hash: '23953FD4', name: '雷狼的弹匣 V+', primaryHash: '7D75D904', primary: '雷狼的弹匣', secondaryHash: 'BE3404B9', secondary: '雷狼的慧眼' },
+    ],
+  })).toString('base64url')
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Preview': preview }, body: makeFrame(),
+  }), env).then(response => response.json())
+  const metadata = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/meta`), env).then(response => response.json())
+  assert.deepEqual(metadata.preview.sigils.map(item => item.name), ['体力 V+', '怒发冲冠 V+', '分歧 V+', '勇士之觉醒+', '群青之觉醒+', '刃姬之觉醒+', '雷狼之觉醒+'])
+  assert.equal(metadata.preview.sigils[0].icon, metadata.preview.sigils[0].primaryIcon)
+  assert.equal(metadata.preview.sigils[1].icon, metadata.preview.sigils[1].primaryIcon)
+  assert.equal(metadata.preview.sigils[2].icon, metadata.preview.sigils[2].primaryIcon)
+  assert.doesNotMatch(metadata.preview.sigils[0].icon, /cmn_icskill_05_00\.png/)
+})
+
 test('detail page includes summon effects, mastery nodes, and merged skill sections', async () => {
   const env = { LOADOUTS: makeR2() }
   const frame = makeFrame()
@@ -306,8 +331,8 @@ test('detail page includes summon effects, mastery nodes, and merged skill secti
   assert.match(html, /隔绝之祝福/)
   assert.match(html, /t\.direction\+': '/)
   assert.match(html, /class="detail-icon"/)
-  assert.match(html, /class="detail-back" href="\/c\/gran\?lang=zh">← 返回格兰配装<\/a>/)
-  assert.doesNotMatch(html, /class="detail-actions"[^]*返回格兰配装/)
+  assert.match(html, /class="detail-back" href="\/c\/gran\?lang=zh">← 返回古兰配装<\/a>/)
+  assert.doesNotMatch(html, /class="detail-actions"[^]*返回古兰配装/)
   assert.equal((html.match(/<div class="detail-column">/g) || []).length, 3)
   assert.doesNotMatch(html, /动态加成汇总/)
 })
@@ -457,4 +482,27 @@ test('character names, routes, hashes, and avatars stay on the same roster recor
 
   assert.equal(characterByIdentity('塞达').slug, 'zeta')
   assert.equal(characterByIdentity('', '0D21B430').slug, 'zeta')
+	assert.equal(characterByIdentity('格兰').name, '古兰')
+})
+
+test('legacy previews are canonicalized with extracted hash-specific Chinese names', async () => {
+  const env = { LOADOUTS: makeR2() }
+  const preview = Buffer.from(JSON.stringify({
+    characterName: '塞达',
+    characterHash: '0D21B430',
+    sigils: [
+      { hash: '119B24A8', name: '变幻自如之觉醒+', primaryHash: '0CD6C625', primary: '变换自如的迅刃', secondaryHash: 'A3B49220', secondary: '变换自如的妖剑士' },
+      { hash: '6AAE4B8F', name: '剑圣之觉醒+', primaryHash: '77C809F5', primary: '剑圣的练气' },
+      { hash: '426AD20E', name: '钳蟹的共鸣 V+', primaryHash: '082033CB', primary: '钳蟹的共鸣', secondaryHash: 'D3B8C21F', secondary: '终极钳蟹因子' },
+    ],
+  })).toString('base64url')
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Preview': preview }, body: makeFrame(),
+  }), env).then(response => response.json())
+  const metadata = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/meta?lang=zh`), env).then(response => response.json())
+  assert.equal(metadata.preview.characterName, '泽塔')
+  assert.equal(metadata.preview.sigils[0].primary, '变幻自如的迅刃')
+  assert.equal(metadata.preview.sigils[0].secondary, '变幻自如的妖剑士')
+  assert.equal(metadata.preview.sigils[1].primary, '剑圣的炼气')
+  assert.equal(metadata.preview.sigils[2].name, '永恒钳蟹因子+')
 })

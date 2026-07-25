@@ -273,7 +273,8 @@ function legalLegacySigilName(sigil) {
   let name = String(sigil?.name || '').trim()
   const hasSecondary = Boolean(String(sigil?.secondary || '').trim())
   if (hasSecondary && name === `${primary} + ${String(sigil.secondary).trim()}`) name = primary
-  if (hasSecondary && (name === primary || name === `${primary} V` || name === `${primary} V+`)) {
+  const rankedPlusShell = /(?:^|\s)(?:V|IV|III|II|I)\+?$/i.test(name)
+  if (hasSecondary && (name === primary || name === `${primary} V` || name === `${primary} V+` || rankedPlusShell)) {
     if (['可怕的漆黑钳蟹因子', '相扑斗力', '漆黑之谊'].includes(primary)) return primary
     if (primary === '躲避性能') return `${primary}+`
     return `${primary} V+`
@@ -316,14 +317,27 @@ function chinesePreviewSource(source, preview, skill, summonNames) {
 
 function decoratePreview(preview) {
   if (!preview || typeof preview !== 'object') return preview
+  const characterHash = assetKey(preview.characterHash)
+  const characterName = String(preview.characterName || '').trim().toLocaleLowerCase('zh-CN')
+  const character = CHARACTER_ROSTER.find(item => (
+    characterHash && item.hash === characterHash
+  ) || [item.name, item.nameEn, item.slug, ...(item.aliases || [])]
+    .some(value => String(value || '').trim().toLocaleLowerCase('zh-CN') === characterName))
+  if (character) {
+    preview.characterName = character.name
+    preview.characterNameEn = character.nameEn
+    preview.characterHash = character.hash
+  }
   preview.abilities = (preview.abilities || []).map(skill => typeof skill === 'string' ? { name: skill } : skill)
   preview.weaponName = chineseWeaponName(preview.weaponName, preview.weaponHash)
   preview.weaponIcon = assetIcon('weapons', catalogWeaponHash(preview.weaponHash), 'weapons') || assetIcon('weapons', weaponHashByName.get(String(preview.weaponName || '').trim()), 'weapons') || DEFAULT_WEAPON_ICON
   for (const sigil of preview.sigils || []) {
+    const catalogItemName = localizedName(gameNames?.traits?.[assetKey(sigil.hash)], 'zh', '')
+    if (catalogItemName) sigil.name = catalogItemName
     sigil.name = legalLegacySigilName(sigil)
-    sigil.icon = namedAssetIcon('traits', sigil.hash || sigil.primary || sigil.name || sigil.primaryHash, 'traits') || DEFAULT_TRAIT_ICON
     sigil.primaryIcon = namedAssetIcon('traits', sigil.primaryHash || sigil.primary, 'traits') || (sigil.primary ? DEFAULT_TRAIT_ICON : '')
     sigil.secondaryIcon = namedAssetIcon('traits', sigil.secondaryHash || sigil.secondary, 'traits') || (sigil.secondary ? DEFAULT_TRAIT_ICON : '')
+    sigil.icon = sigil.primaryIcon || namedAssetIcon('traits', sigil.primary || sigil.name, 'traits') || DEFAULT_TRAIT_ICON
   }
   for (const skill of preview.abilities || []) {
     if (skill && typeof skill === 'object') skill.icon = abilityAssetIcon(skill)
@@ -446,6 +460,7 @@ function localizePreview(preview, lang) {
     sigil.primary = traitName(sigil.primaryHash, sigil.primary)
     sigil.secondary = traitName(sigil.secondaryHash, sigil.secondary)
     if (lang === 'zh') {
+      if (itemName) sigil.name = itemName
       sigil.name = legalLegacySigilName(sigil)
     } else if (itemName) {
       sigil.name = itemName

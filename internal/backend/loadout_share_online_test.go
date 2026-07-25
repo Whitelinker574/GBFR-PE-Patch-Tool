@@ -95,7 +95,7 @@ func TestPreviewUsesLocalizedLoadoutEvidenceAndMergedSkillLedger(t *testing.T) {
 	}}}}
 
 	preview := previewForLoadout(share, entry, context, simulation)
-	if preview.Sigils[0].Name != "快速冷却" || preview.Sigils[1].Name != "狂战士回响" {
+	if preview.Sigils[0].Name != "迅捷能力 V+" || preview.Sigils[1].Name != "狂战士回响 V+" {
 		t.Fatalf("preview did not resolve localized sigils by their real slot indexes: %+v", preview.Sigils)
 	}
 	if preview.Sigils[0].PrimaryLevel != 14 || preview.Sigils[0].SecondaryLevel != 7 || preview.Sigils[1].SecondaryLevel != 3 {
@@ -151,6 +151,25 @@ func TestOnlinePreviewUsesChineseCatalogIndependentlyOfDesktopLanguage(t *testin
 	}
 	if got := previewChineseSigilNameForTraits("46ABA3C0", "怒发冲冠 V+", "怒发冲冠", "伤害上限"); got != "怒发冲冠 V+" {
 		t.Fatalf("combined public preview sigil = %q, want V+ family title", got)
+	}
+	for _, test := range []struct {
+		hash      string
+		fallback  string
+		primary   string
+		secondary string
+		want      string
+	}{
+		{hash: "B5B23F02", fallback: "HP V+", primary: "体力", secondary: "金刚", want: "体力 V+"},
+		{hash: "80C94A24", fallback: "Precise Wrath V+", primary: "怒发冲冠", secondary: "伤害上限", want: "怒发冲冠 V+"},
+		{hash: "F1D8F754", fallback: "Divergence V+", primary: "分歧", secondary: "天星之炼", want: "分歧 V+"},
+		{hash: "673C5D8F", fallback: "Hero's Awakening+", primary: "勇士的信念", secondary: "勇士的毅力", want: "勇士之觉醒+"},
+		{hash: "95CC3CB8", fallback: "Ultramarine's Awakening+", primary: "群青的剑光", secondary: "群青的逆境", want: "群青之觉醒+"},
+		{hash: "D8A464F1", fallback: "Bladequeen's Awakening+", primary: "刃姬的小夜曲", secondary: "刃姬的轮舞曲", want: "刃姬之觉醒+"},
+		{hash: "23953FD4", fallback: "Thunderwolf's Awakening+", primary: "雷狼的弹匣", secondary: "雷狼的慧眼", want: "雷狼之觉醒+"},
+	} {
+		if got := previewChineseSigilNameForTraits(test.hash, test.fallback, test.primary, test.secondary); got != test.want {
+			t.Errorf("public preview sigil %s = %q, want %q", test.hash, got, test.want)
+		}
 	}
 }
 

@@ -80,6 +80,17 @@ func TestDLCCharacterHashesAreNotFilteredByLegacySlotOrder(t *testing.T) {
 	}
 }
 
+func TestCanonicalChineseCharacterNames(t *testing.T) {
+	for hash, want := range map[uint32]string{
+		0x2A26B1B2: "古兰",
+		0x0D21B430: "泽塔",
+	} {
+		if got := characterNameByHash[hash]; got != want {
+			t.Errorf("角色 %08X 名称=%q，期望 %q", hash, got, want)
+		}
+	}
+}
+
 // vecLen 必须钳制 ValueCnt：tryReadUnitEntry 不校验它与剩余字节的关系，
 // 损坏/伪造存档可给出巨大的 ValueCnt，照此预分配会直接 OOM。
 func TestVecLenClampsHostileValueCnt(t *testing.T) {

@@ -131,7 +131,7 @@ const groupEnglishNames = Object.freeze({
   '夏洛特': 'Charlotta',
   '尤达哈拉': 'Yodarha',
   '巴萨拉卡': 'Vaseraga',
-  '塞达': 'Zeta',
+  '泽塔': 'Zeta',
   '冈达葛萨': 'Ghandagoza',
   '巴恩': 'Vane',
   '伊德': 'Id',
