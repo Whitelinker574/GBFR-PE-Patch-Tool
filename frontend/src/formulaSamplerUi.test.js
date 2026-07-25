@@ -44,6 +44,11 @@ test('capture and export controls follow evidence state and remain responsive', 
   assert.match(source, /@container formula-sampler \(max-width:\s*620px\)/)
 })
 
+test('formula sampler controls use the full toolbar instead of collapsing against the right edge', () => {
+  assert.match(source, /\.sampler-toolbar\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:/s)
+  assert.match(source, /@container formula-sampler \(max-width:\s*620px\)[\s\S]*?\.sampler-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,1fr\)/)
+})
+
 test('formula sampler can scan defense and damage-cap candidates and reveals the exact export path', () => {
   assert.match(source, /\['defense', '防御力'/)
   assert.match(source, /\['damage_cap', '伤害上限'/)

@@ -18,6 +18,10 @@ const MAX_FRAME_BYTES = 8 * 1024
 const MAX_RAW_BYTES = 1024 * 1024
 const MAX_TITLE_LENGTH = 80
 const MAX_PREVIEW_BYTES = 12 * 1024
+const DEFAULT_CATALOG_LIMIT = 24
+const MAX_CATALOG_LIMIT = 48
+const MAX_SEARCH_LIMIT = 96
+const METADATA_READ_BATCH = 10
 const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{16,24}$/
 const DEFAULT_TRAIT_ICON = '/assets/traits/cmn_icskill_05_00.png'
@@ -215,6 +219,12 @@ function metadataKey(code) {
 
 function cleanText(value, max = MAX_TITLE_LENGTH) {
   return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max)
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character])
 }
 
 function displayText(value) {
@@ -647,6 +657,37 @@ async function readMetadata(env, code, lang = 'zh') {
   }
 }
 
+function previewSearchText(metadata) {
+  const preview = metadata?.preview || {}
+  const values = [metadata?.title, metadata?.characterName, preview.weaponName, preview.masteryLabel]
+  const add = (items, fields) => {
+    for (const item of items || []) {
+      for (const field of fields) values.push(item?.[field])
+    }
+  }
+  add(preview.sigils, ['name', 'primary', 'secondary'])
+  add(preview.abilities || preview.skills, ['name'])
+  add(preview.weaponSkills, ['name', 'effect'])
+  values.push(preview.wrightstone?.name)
+  add(preview.wrightstone?.traits, ['name', 'effect'])
+  add(preview.summons, ['name', 'mainTrait', 'subParam'])
+  add(preview.masterySkills, ['name', 'effect', 'rank'])
+  add(preview.combinedSkills, ['name', 'effect'])
+  return values.filter(Boolean).join('\n').toLowerCase()
+}
+
+async function readMetadataInBatches(env, objects, lang) {
+  const results = []
+  for (let offset = 0; offset < objects.length; offset += METADATA_READ_BATCH) {
+    const batch = objects.slice(offset, offset + METADATA_READ_BATCH)
+    results.push(...await Promise.all(batch.map(async item => {
+      const code = item.key.slice('meta/v1/'.length).replace(/\.json$/, '')
+      return { code, meta: await readMetadata(env, code, lang) }
+    })))
+  }
+  return results
+}
+
 async function visitorDigest(value) {
   const bytes = new TextEncoder().encode(String(value || '').slice(0, 256))
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
@@ -698,14 +739,49 @@ async function readObjectBytes(object) {
   return new Uint8Array(await object.arrayBuffer())
 }
 
+async function readBoundedRequestBody(request, maximum, message) {
+  const declaredText = request.headers.get('Content-Length')
+  if (declaredText) {
+    const declared = Number(declaredText)
+    if (!Number.isFinite(declared) || declared < 0) return { response: errorResponse('Content-Length 无效', 400) }
+    if (declared > maximum) return { response: errorResponse(message, 413) }
+  }
+  if (!request.body) return { bytes: new Uint8Array() }
+  const reader = request.body.getReader()
+  const chunks = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value)
+      total += chunk.byteLength
+      if (total > maximum) {
+        await reader.cancel()
+        return { response: errorResponse(message, 413) }
+      }
+      chunks.push(chunk)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return { bytes }
+}
+
 async function publish(request, env, origin) {
   const contentType = request.headers.get('Content-Type') || ''
   if (!contentType.toLowerCase().startsWith('application/octet-stream')) {
     return errorResponse('只接受 application/octet-stream', 415)
   }
-  const contentLength = Number(request.headers.get('Content-Length') || 0)
-  if (contentLength > MAX_FRAME_BYTES) return errorResponse('配装帧超过 8 KB', 413)
-  const bytes = new Uint8Array(await request.arrayBuffer())
+  const body = await readBoundedRequestBody(request, MAX_FRAME_BYTES, '配装帧超过 8 KB')
+  if (body.response) return body.response
+  const bytes = body.bytes
   const frameError = validateFrame(bytes)
   if (frameError) return errorResponse(frameError, 400)
 
@@ -736,7 +812,7 @@ async function publish(request, env, origin) {
 
   const preview = decodePreviewHeader(request)
   const previousMetadata = reused ? await readMetadata(env, code) : null
-  if (!reused || preview || !previousMetadata) {
+  if (!previousMetadata) {
     const title = headerText(request, 'X-Loadout-Title', 'X-Loadout-Title-B64') || preview?.title || preview?.characterName || '未命名配装'
     const metadata = {
       schema: 1,
@@ -779,7 +855,9 @@ async function importJSON(request, env, origin) {
   const contentType = (request.headers.get('Content-Type') || '').toLowerCase()
   if (!contentType.startsWith('application/json')) return errorResponse('只接受 application/json 配装文件', 415)
   try {
-    const converted = await loadoutJSONToFrame(new Uint8Array(await request.arrayBuffer()))
+    const body = await readBoundedRequestBody(request, MAX_RAW_BYTES, '配装 JSON 超过 1 MiB')
+    if (body.response) return body.response
+    const converted = await loadoutJSONToFrame(body.bytes)
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
       'X-Loadout-Preview': previewHeader(converted.preview),
@@ -826,6 +904,8 @@ function showcaseStyles() {
   @font-face{font-family:"GBFR UI Latin";src:url('/assets/fonts/gbfr-ui.woff2') format('woff2');font-style:normal;font-weight:400 800;font-display:swap}
   :root{font-family:"GBFR UI Latin","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif;color:#3f3932;background:#e9dfcc;color-scheme:light;--paper:#f7f0df;--paper-deep:#efe2c8;--ink:#3f3932;--ink-soft:#655b50;--brass:#896331;--line:rgba(105,76,37,.24)}
   *{box-sizing:border-box}::selection{background:rgba(167,123,57,.28)}
+  html{scrollbar-width:thin;scrollbar-color:rgba(126,89,40,.42) transparent}
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{border:2px solid transparent;border-radius:8px;background:rgba(126,89,40,.42);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:rgba(110,78,40,.62)}
   body{margin:0;min-height:100vh;background:#e9dfcc url('/assets/backgrounds/parchment-archive.webp') center/cover fixed;color:var(--ink)}
   body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(80,50,22,.1),transparent 13%,transparent 87%,rgba(80,50,22,.1));mix-blend-mode:multiply}
   a,button,input,textarea{font:inherit}a{color:inherit;text-decoration:none}button{cursor:pointer}.page{position:relative;width:min(1400px,100%);margin:auto;padding:18px clamp(14px,3vw,38px) 42px}
@@ -963,14 +1043,15 @@ function landingPage(origin, code, metadata = null, lang = 'zh') {
   const character = characterByIdentity(metadata?.characterName, metadata?.characterHash)
   const characterName = lang === 'en' ? character.nameEn : character.name
   const title = (lang === 'en' ? cleanText(metadata?.title) : displayText(metadata?.title)) || (lang === 'en' ? `${characterName} Loadout` : `${characterName} 配装`)
+  const safeTitle = escapeHtml(title)
   const download = `${origin}/download/${code}.gbfr-loadout`
   const en = lang === 'en'
-  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><meta name="description" content="GBFR ${en ? 'loadout share' : '配装分享'} ${shown}"><title>${title}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'LOADOUT DETAILS' : '配装详情'}</div><h1>${en ? 'Loadout Details' : '配装详情'}</h1></div><div class="masthead-tools"><p>${en ? 'Review equipment, sigils, skills, and mastery before importing.' : '按桌面应用的结构核对装备、因子、技能和专精，再决定是否导入。'}</p>${languageSwitch(`/s/${code}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="showcase" style="--character-accent:${character.accent}"><div class="panel"><header class="detail-head"><div class="detail-avatar-stack"><a class="detail-back" href="${withLanguage(`/c/${character.slug}`, lang)}">← ${en ? `Back to ${characterName}` : `返回${characterName}配装`}</a><img src="/assets/avatars/${character.iconFile}" alt="${characterName}"></div><div class="detail-title"><small>${characterName} · ${en ? 'CHARACTER LOADOUT' : '角色配装'}</small><h2>${title}</h2></div><div class="detail-actions"><span class="detail-code">${shown}</span><a class="button primary" href="${download}">${en ? 'Download' : '下载配装'}</a><button class="button" type="button" onclick="navigator.clipboard.writeText('${shown}').then(()=>this.textContent='${en ? 'Copied' : '已复制'}')">${en ? 'Copy Code' : '复制短码'}</button></div></header><p class="panel-copy">${en ? 'This is a sanitized preview. The website never modifies save data.' : '这是一份脱敏预览。网页不会修改存档，导入范围仍由桌面工具确认。'}</p><div class="detail-layout" id="preview"><div class="empty">${en ? 'Loading loadout details…' : '正在读取配装详情…'}</div></div><section class="community"><h3>${en ? 'Guestbook' : '旅人留言板'}</h3><div class="community-actions"><button class="button" id="like" type="button">♡ ${en ? 'Like' : '喜欢'} <span>0</span></button><small id="community-note">${en ? 'No account required.' : '无需登录，浏览器会保存匿名标识。'}</small></div><textarea id="comment" maxlength="500" placeholder="${en ? 'Leave a plain-text comment' : '给这套配装留一句话（纯文本）'}"></textarea><button class="button" id="send" type="button" style="margin-top:8px">${en ? 'Post' : '发布留言'}</button><div id="comments" class="comments"></div></section></div></section><p class="footer">${en ? 'Only the compressed loadout frame and sanitized preview are stored online.' : '线上只保存压缩配装帧与脱敏预览，不包含存档、路径或本机身份信息。'}</p>${detailScript(origin, code, lang)}${communityScript(origin, code, lang)}</main></body></html>`
+  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><meta name="description" content="GBFR ${en ? 'loadout share' : '配装分享'} ${shown}"><title>${safeTitle}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'LOADOUT DETAILS' : '配装详情'}</div><h1>${en ? 'Loadout Details' : '配装详情'}</h1></div><div class="masthead-tools"><p>${en ? 'Review equipment, sigils, skills, and mastery before importing.' : '按桌面应用的结构核对装备、因子、技能和专精，再决定是否导入。'}</p>${languageSwitch(`/s/${code}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="showcase" style="--character-accent:${character.accent}"><div class="panel"><header class="detail-head"><div class="detail-avatar-stack"><a class="detail-back" href="${withLanguage(`/c/${character.slug}`, lang)}">← ${en ? `Back to ${characterName}` : `返回${characterName}配装`}</a><img src="/assets/avatars/${character.iconFile}" alt="${characterName}"></div><div class="detail-title"><small>${characterName} · ${en ? 'CHARACTER LOADOUT' : '角色配装'}</small><h2>${safeTitle}</h2></div><div class="detail-actions"><span class="detail-code">${shown}</span><a class="button primary" href="${download}">${en ? 'Download' : '下载配装'}</a><button class="button" type="button" onclick="navigator.clipboard.writeText('${shown}').then(()=>this.textContent='${en ? 'Copied' : '已复制'}')">${en ? 'Copy Code' : '复制短码'}</button></div></header><p class="panel-copy">${en ? 'This is a sanitized preview. The website never modifies save data.' : '这是一份脱敏预览。网页不会修改存档，导入范围仍由桌面工具确认。'}</p><div class="detail-layout" id="preview"><div class="empty">${en ? 'Loading loadout details…' : '正在读取配装详情…'}</div></div><section class="community"><h3>${en ? 'Guestbook' : '旅人留言板'}</h3><div class="community-actions"><button class="button" id="like" type="button">♡ ${en ? 'Like' : '喜欢'} <span>0</span></button><small id="community-note">${en ? 'No account required.' : '无需登录，浏览器会保存匿名标识。'}</small></div><textarea id="comment" maxlength="500" placeholder="${en ? 'Leave a plain-text comment' : '给这套配装留一句话（纯文本）'}"></textarea><button class="button" id="send" type="button" style="margin-top:8px">${en ? 'Post' : '发布留言'}</button><div id="comments" class="comments"></div></section></div></section><p class="footer">${en ? 'Only the compressed loadout frame and sanitized preview are stored online.' : '线上只保存压缩配装帧与脱敏预览，不包含存档、路径或本机身份信息。'}</p>${detailScript(origin, code, lang)}${communityScript(origin, code, lang)}</main></body></html>`
 }
 
 function catalogPage(origin, lang = 'zh') {
   const en = lang === 'en'
-  const uploadScript = `<script>(()=>{const input=document.querySelector('#loadout-file'),zone=document.querySelector('#upload-zone'),status=document.querySelector('#upload-status');async function upload(file){if(!file)return;status.textContent='${en ? 'Uploading and validating…' : '正在校验并上传…'}';try{const r=await fetch('/api/v1/loadouts/import',{method:'POST',headers:{'Content-Type':'application/json'},body:await file.arrayBuffer()});const d=await r.json();if(!r.ok)throw new Error(d.error||'${en ? 'Upload failed' : '上传失败'}');status.innerHTML='<a href="/s/'+d.compactCode+'?lang=${lang}">${en ? 'Uploaded. Open loadout' : '上传成功，打开配装'} · '+d.code+'</a>';await load()}catch(e){status.textContent=e.message}}input.onchange=()=>upload(input.files[0]);zone.onclick=()=>input.click();zone.ondragover=e=>{e.preventDefault();zone.classList.add('drag')};zone.ondragleave=()=>zone.classList.remove('drag');zone.ondrop=e=>{e.preventDefault();zone.classList.remove('drag');upload(e.dataTransfer.files[0])}})()</script>`
+  const uploadScript = `<script>(()=>{const input=document.querySelector('#loadout-file'),zone=document.querySelector('#upload-zone'),status=document.querySelector('#upload-status');zone.querySelector('small').textContent='${en ? 'Drop or choose a v10/v11 .gbfr-loadout.json file. Save data is never uploaded.' : '拖入或选择 v10/v11 .gbfr-loadout.json；只上传脱敏配装，不上传存档。'}';async function upload(file){if(!file)return;status.textContent='${en ? 'Uploading and validating…' : '正在校验并上传…'}';try{const r=await fetch('/api/v1/loadouts/import',{method:'POST',headers:{'Content-Type':'application/json'},body:await file.arrayBuffer()});const d=await r.json();if(!r.ok)throw new Error(d.error||'${en ? 'Upload failed' : '上传失败'}');status.innerHTML='<a href="/s/'+d.compactCode+'?lang=${lang}">${en ? 'Uploaded. Open loadout' : '上传成功，打开配装'} · '+d.code+'</a>';await load()}catch(e){status.textContent=e.message}}input.onchange=()=>upload(input.files[0]);zone.onclick=()=>input.click();zone.ondragover=e=>{e.preventDefault();zone.classList.add('drag')};zone.ondragleave=()=>zone.classList.remove('drag');zone.ondrop=e=>{e.preventDefault();zone.classList.remove('drag');upload(e.dataTransfer.files[0])}})()</script>`
   return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><title>GBFR ${en ? 'Loadout Archive' : '配装图鉴'}</title>${showcaseStyles()}<style>.upload-zone{margin-top:14px;padding:14px 18px;border:1px dashed rgba(126,89,40,.42);border-radius:7px;background:rgba(255,253,247,.7);color:var(--ink-soft);cursor:pointer;transition:.16s}.upload-zone:hover,.upload-zone.drag{border-color:#896331;background:#fffdf7;box-shadow:0 5px 14px rgba(72,50,22,.08)}.upload-zone strong{display:block;color:var(--ink);font-size:14px}.upload-zone small{display:block;margin-top:3px}.upload-status{margin-top:7px;min-height:18px;color:#6e4e28;font-size:12px}.upload-status a{color:#6e4e28;font-weight:800}</style></head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'COMMUNITY LOADOUT ARCHIVE' : '社区配装图鉴'}</div><h1>${en ? 'Loadout Archive' : '配装图鉴'}</h1></div><div class="masthead-tools"><p>${en ? 'Choose a character, then compare weapons, skills, sigils, and mastery.' : '先选角色，再用卡片快速比较武器、技能、因子和专精方向。'}</p>${languageSwitch('/', lang)}</div></header>${rosterBar('', true, lang)}<section class="upload-zone" id="upload-zone" tabindex="0"><strong>${en ? 'Publish an exported loadout' : '发布应用导出的单套配装'}</strong><small>${en ? 'Drop or choose a v10 .gbfr-loadout.json file. Save data is never uploaded.' : '拖入或选择 v10 .gbfr-loadout.json；只上传脱敏配装，不上传存档。'}</small><input id="loadout-file" type="file" accept=".json,.gbfr-loadout.json,application/json" hidden><div class="upload-status" id="upload-status"></div></section><div class="code"><strong>${en ? 'All Public Loadouts' : '全部公开配装'}</strong><div class="actions"><input id="q" aria-label="${en ? 'Search loadouts' : '搜索配装'}" placeholder="${en ? 'Search characters, weapons, sigils, traits, or mastery' : '搜索角色、武器、因子、祝福、技能、专精'}" style="min-height:38px;padding:0 10px;border:1px solid rgba(126,89,40,.26);background:#fffdf7;color:#3f3932"><button class="button primary" onclick="load()">${en ? 'Search' : '搜索'}</button></div></div><section id="grid" class="catalog"><div class="empty">${en ? 'Loading archive…' : '正在读取配装目录…'}</div></section><p class="footer">${en ? 'Open a card for the complete preview. Import choices remain in the desktop app.' : '点开卡片查看完整预览；导入仍由桌面工具逐项确认。'}</p>${catalogScript(origin, '', lang)}${uploadScript}</main></body></html>`
 }
 
@@ -1017,33 +1098,37 @@ export default {
       if (!env.LOADOUTS?.list) return errorResponse('当前分享服务未启用目录索引', 503)
       const character = cleanText(url.searchParams.get('character'), 40).toLowerCase()
       const query = cleanText(url.searchParams.get('q') || url.searchParams.get('search'), 80).toLowerCase()
-      const requestedLimit = query ? 1000 : Math.max(1, Math.min(48, Number(url.searchParams.get('limit') || 24)))
-      const listed = await env.LOADOUTS.list({ prefix: 'meta/v1/', limit: requestedLimit })
+      const maximumLimit = query ? MAX_SEARCH_LIMIT : MAX_CATALOG_LIMIT
+      const fallbackLimit = query ? MAX_CATALOG_LIMIT : DEFAULT_CATALOG_LIMIT
+      const requestedLimit = Math.max(1, Math.min(maximumLimit, Number(url.searchParams.get('limit') || fallbackLimit)))
+      const cursor = cleanText(url.searchParams.get('cursor'), 256)
       const items = []
-      for (const item of listed.objects || []) {
-        const code = item.key.slice('meta/v1/'.length).replace(/\.json$/, '')
-        const meta = await readMetadata(env, code, lang)
-        if (!hasPublicCatalogPreview(meta)) continue
-        const identity = characterByIdentity(meta?.characterName, meta?.characterHash)
-        const characterTerms = [meta?.characterName, identity.name, identity.nameEn, identity.slug].filter(Boolean).map(value => String(value).toLowerCase())
-        if (!meta || (character && !characterTerms.some(value => value.includes(character)))) continue
-        if (query) {
-          const searchable = [
-            meta.title,
-            meta.characterName,
-            meta.preview?.weaponName,
-            JSON.stringify(meta.preview || {}),
-          ].join('\n').toLowerCase()
-          if (!searchable.includes(query)) continue
+      const filtered = Boolean(character || query)
+      let nextCursor = cursor
+      let truncated = false
+      let scanned = 0
+      do {
+        const pageLimit = filtered ? Math.max(1, Math.min(requestedLimit - items.length, 128)) : requestedLimit
+        const listed = await env.LOADOUTS.list({ prefix: 'meta/v1/', limit: pageLimit, ...(nextCursor ? { cursor: nextCursor } : {}) })
+        scanned += (listed.objects || []).length
+        truncated = Boolean(listed.truncated)
+        nextCursor = truncated ? String(listed.cursor || '') : ''
+        for (const { code, meta } of await readMetadataInBatches(env, listed.objects || [], lang)) {
+          if (!hasPublicCatalogPreview(meta)) continue
+          const identity = characterByIdentity(meta?.characterName, meta?.characterHash)
+          const characterTerms = [meta?.characterName, identity.name, identity.nameEn, identity.slug].filter(Boolean).map(value => String(value).toLowerCase())
+          if (!meta || (character && !characterTerms.some(value => value === character))) continue
+          if (query && !previewSearchText(meta).includes(query)) continue
+          items.push({
+            code, title: meta.title || '', characterName: lang === 'en' ? identity.nameEn : identity.name,
+            characterHash: meta.characterHash || identity.hash, characterSlug: identity.slug,
+            avatarPath: `/assets/avatars/${identity.iconFile}`, accent: identity.accent, weaponName: meta.preview?.weaponName || '',
+            preview: meta.preview || {}, createdAt: meta.createdAt || '',
+          })
         }
-        items.push({
-          code, title: meta.title || '', characterName: lang === 'en' ? identity.nameEn : identity.name,
-          characterHash: meta.characterHash || identity.hash, characterSlug: identity.slug,
-          avatarPath: `/assets/avatars/${identity.iconFile}`, accent: identity.accent, weaponName: meta.preview?.weaponName || '',
-          preview: meta.preview || {}, createdAt: meta.createdAt || '',
-        })
-      }
-      return jsonResponse({ items, truncated: Boolean(listed.truncated) }, 200, { 'Cache-Control': 'public, max-age=30' })
+        if (!filtered || !truncated || items.length >= requestedLimit || scanned >= 1000) break
+      } while (nextCursor)
+      return jsonResponse({ items, truncated, cursor: truncated ? nextCursor : '' }, 200, { 'Cache-Control': 'public, max-age=30' })
     }
 
     const apiMatch = url.pathname.match(/^\/api\/v1\/loadouts\/([^/]+)$/)

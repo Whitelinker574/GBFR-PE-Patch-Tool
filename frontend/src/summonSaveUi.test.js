@@ -39,7 +39,7 @@ test('generated binding exposes load, create-or-update, and output selection', (
   assert.match(source, /expected:\s*mode\.value === 'update' \? selected\.value : null/)
 })
 
-test('offline summon editor uses the shared offline save-source and write-mode composition', () => {
+test('offline summon editor uses the shared save source and writes only to the selected save', () => {
   assert.match(source, /import SaveSourcePicker from '\.\/SaveSourcePicker\.vue'/)
   assert.match(source, /<SaveSourcePicker[\s\S]*?:slots="saveSlots"[\s\S]*?@select="load"[\s\S]*?@browse="browseInput"/)
   assert.match(saveSource, /选择存档槽/)
@@ -48,8 +48,10 @@ test('offline summon editor uses the shared offline save-source and write-mode c
   assert.match(saveSource, /selected-save/)
   assert.match(saveSource, /repeat\(auto-fit,minmax\(118px,1fr\)\)/)
   assert.doesNotMatch(saveSource, />刷新</)
-  assert.match(source, /class="output-mode"/)
-  assert.match(source, /覆盖当前存档[\s\S]*?另存为新存档/)
+  assert.doesNotMatch(source, /另存为新存档|SelectOutputSave|const outputPath|v-model="outputPath"|output-mode|mode-choice/)
+  assert.match(source, /保存到当前存档/)
+  assert.match(source, /自动备份.*回读验证/)
+  assert.match(source, /Apply\([\s\S]*?inputPath\.value\.trim\(\)\)/)
   assert.doesNotMatch(source, /class="path-grid"/)
   assert.doesNotMatch(source, /<span class="ui-field-label">输入存档<\/span>/)
 })

@@ -452,7 +452,7 @@ onBeforeUnmount(() => {
   container-type:inline-size;
   gap:var(--space-3);
 }
-.sampler-toolbar { display:flex; align-items:flex-end; justify-content:space-between; gap:var(--space-4); }
+.sampler-toolbar { display:grid; grid-template-columns:minmax(260px,1.35fr) minmax(190px,.75fr) auto; align-items:end; gap:var(--space-4); }
 .character-picker { min-width:0; flex:1; display:grid; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
 .experiment-picker { min-width:180px; display:grid; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
 .character-select-shell { min-width:0; display:grid; grid-template-columns:38px minmax(0,1fr); align-items:center; gap:var(--space-2); }
@@ -521,11 +521,15 @@ onBeforeUnmount(() => {
 .sampler-actions button b { margin-left:var(--space-2); }
 
 @container formula-sampler (max-width:1000px) {
+  .sampler-toolbar { grid-template-columns:minmax(0,1fr) minmax(190px,.75fr); }
+  .toolbar-actions { grid-column:1 / -1; }
   .phase-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .phase-card { min-height:200px; }
 }
 @container formula-sampler (max-width:620px) {
-  .sampler-toolbar,.workflow-heading { align-items:stretch; flex-direction:column; }
+  .sampler-toolbar { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+  .toolbar-actions { grid-column:auto; }
+  .workflow-heading { align-items:stretch; flex-direction:column; }
   .toolbar-actions { justify-content:stretch; }
   .toolbar-actions > * { flex:1; justify-content:center; }
   .phase-grid { grid-template-columns:minmax(0,1fr); }

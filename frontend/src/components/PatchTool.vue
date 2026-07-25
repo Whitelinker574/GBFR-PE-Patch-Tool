@@ -93,6 +93,7 @@ const RUNTIME_PATCH_MODES = Object.freeze({
   patchQuest: 'quest',
 })
 const runtimePatchesMounted = ref(false)
+const runtimeMonitorMounted = ref(false)
 const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, pid: 0 })
 const lastRuntimePatchTab = ref('patchCombat')
 const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
@@ -100,6 +101,7 @@ const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || 
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const loadoutEditing = ref(false)
+const pendingRuntimeLoadout = ref(null)
 const manualPath = ref('')
 const isLoaded = ref(false)
 const isDetecting = ref(false)
@@ -111,6 +113,7 @@ const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdat
 let hasAttemptedGameDetection = false
 
 watch(activeTab, (value) => {
+  if (value === 'runtimeMonitor') runtimeMonitorMounted.value = true
   if (!RUNTIME_PATCH_MODES[value]) return
   runtimePatchesMounted.value = true
   lastRuntimePatchTab.value = value
@@ -207,11 +210,11 @@ const toolMeta = {
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   runtimeMonitor: {
-    group: 'monitor', title: '运行监测', eyebrow: '只读监测', status: '只读 · 需连接游戏', tone: 'live',
-    description: '只读展示玩家、三名队员、碧的小红龙，以及游戏列表当前选中的素材或关键物品。',
-    usage: ['启动游戏并进入稳定场景', '连接后读取队伍快照', '选中素材或关键物品后刷新并读取一次'],
-    caution: '页面不会写物品或存档；选中物品捕获 Hook 会在安全断开或离开页面时恢复原字节。',
-    speaker: '尤斯塔斯', note: '等数据稳定再读。地址变化就停一下——巡检只看证据，不靠猜。',
+    group: 'monitor', title: '角色配装检测', eyebrow: '只读后台检测', status: '只读 · 自动记录任务配装', tone: 'live',
+    description: '一次开启后常驻后台，自动识别每场任务的稳定队伍，并把角色配装按场次保存在本机。',
+    usage: ['开启角色配装检测', '正常进入任务并游玩', '在本地记录中预览、导出或部署配装'],
+    caution: '检测器只读游戏数据，可与其他连接功能同时使用；选中物品读取是同页的独立工具。',
+    speaker: '尤斯塔斯', note: '开启一次就够了。你继续执行任务，我会把每一场稳定出现的队伍配装归档。',
   },
   formulaSampler: {
     group: 'monitor', title: '角色公式采样', eyebrow: '严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
@@ -339,7 +342,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
   { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、怪物实验' },
-  { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '运行监测与角色公式采样；公式采样不安装 Hook、不写进程或存档' },
+  { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '角色配装检测与角色公式采样；均不安装 Hook、不写进程或存档' },
   { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
   { scope: '运行时补丁覆盖', status: '60 / 64', tone: 'ok', detail: '58 个目录功能 + 2 个已有安全实现；4 个证据不足项未作为可用开关暴露' },
   { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
@@ -487,6 +490,11 @@ function selectTool(id) {
   if (id !== 'loadoutPresets') loadoutEditing.value = false
   activeTab.value = id
   if (toolMeta[id]?.group === 'tools') ensureGameDetection()
+}
+
+function deployRuntimeLoadout(payload) {
+  pendingRuntimeLoadout.value = payload && payload.code ? { ...payload, requestId: Date.now() } : null
+  selectTool('loadoutPresets')
 }
 
 function toggleArt() {
@@ -677,13 +685,14 @@ function showStatus(message, type) {
               class="ui-tab"
               :class="{ active: activeTab === id, waiting: toolMeta[id].tone === 'waiting' }"
               :aria-current="activeTab === id ? 'page' : undefined"
-              :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
+              :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${id === 'runtimeMonitor' ? ' · 开启后自动后台检测' : toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
               @pointerenter="warmTool(id)"
               @focus="warmTool(id)"
               @click="selectTool(id)"
             >
               {{ toolMeta[id].title.replace(/（[^）]*）/g, '') }}
-              <span v-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
+              <span v-if="id === 'runtimeMonitor'" class="switcher-tag live">后台</span>
+              <span v-else-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
               <span v-else-if="toolMeta[id].tone === 'stable'" class="switcher-tag offline">离线</span>
               <span v-if="toolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
@@ -709,18 +718,23 @@ function showStatus(message, type) {
               @status="showStatus"
               @session-change="updateCTFeatureSession"
             />
+            <RuntimePatchMonitor
+              v-if="runtimeMonitorMounted"
+              v-show="activeTab === 'runtimeMonitor'"
+              @status="showStatus"
+              @deploy-loadout="deployRuntimeLoadout"
+            />
             <ProgressionEditor v-if="!isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
             <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
             <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
-            <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" @status="showStatus" @editing-change="loadoutEditing = $event" />
+            <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
             <WrightstoneMemoryGenerator v-else-if="activeTab === 'wrightstoneMemory'" @status="showStatus" />
             <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
             <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
             <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
-            <RuntimePatchMonitor v-else-if="activeTab === 'runtimeMonitor'" @status="showStatus" />
             <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />

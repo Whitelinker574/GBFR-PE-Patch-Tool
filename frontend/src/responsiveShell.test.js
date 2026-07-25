@@ -7,6 +7,7 @@ const homeJournal = readFileSync(new URL('./components/HomeJournal.vue', import.
 const wrightstoneMemory = readFileSync(new URL('./components/WrightstoneMemoryGenerator.vue', import.meta.url), 'utf8')
 const uiScaleSource = readFileSync(new URL('./utils/uiScale.js', import.meta.url), 'utf8')
 const appGo = readFileSync(new URL('../../internal/backend/app.go', import.meta.url), 'utf8')
+const globalStyle = readFileSync(new URL('./style.css', import.meta.url), 'utf8')
 
 function navigationIds(source, groupId) {
   const match = source.match(new RegExp(`\\{ id: '${groupId}',[^\\n]*items: \\[([^\\]]*)\\] \\}`))
@@ -58,6 +59,14 @@ test('ui scale keeps the app at the real viewport scale without inverse size com
   assert.equal(declarations.get('--ui-scale-inverse'), '1')
   assert.equal(typeof listeners.get('resize'), 'function')
   assert.doesNotMatch(uiScaleSource, /MIN_ZOOM|computeZoom|\b1\s*\/\s*z\b|\bw\s*\/\s*z\b|\bh\s*\/\s*z\b/)
+})
+
+test('application scrollbars use a transparent parchment track and brass thumb', () => {
+  assert.match(globalStyle, /scrollbar-color:\s*rgba\(126,\s*89,\s*40,\s*\.42\)\s+transparent/)
+  assert.match(globalStyle, /\*::-webkit-scrollbar-track\s*\{\s*background:\s*transparent;\s*\}/)
+  assert.match(globalStyle, /\*::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*rgba\(126,\s*89,\s*40,\s*\.42\)/is)
+  assert.match(globalStyle, /\*::-webkit-scrollbar-thumb:hover\s*\{\s*background-color:\s*rgba\(110,\s*78,\s*40,\s*\.62\)/)
+  assert.doesNotMatch(globalStyle, /scrollbar-thumb:hover[^}]*58,\s*169,\s*179/is)
 })
 
 test('frameless titlebar keeps only minimise, maximise or restore, and close on the right', () => {
@@ -122,13 +131,13 @@ test('home journal mirrors the common-first entry order and exposes live blessin
 })
 
 test('user-facing page titles omit historical source-version suffixes', () => {
-  assert.match(patchTool, /runtimeMonitor:\s*\{[\s\S]*?title:\s*'运行监测'[\s\S]*?eyebrow:\s*'只读监测'/)
+  assert.match(patchTool, /runtimeMonitor:\s*\{[\s\S]*?title:\s*'角色配装检测'[\s\S]*?eyebrow:\s*'只读后台检测'/)
   assert.match(patchTool, /patchCombat:\s*\{[\s\S]*?eyebrow:\s*'战斗补丁'/)
   assert.match(patchTool, /patchCharacters:\s*\{[\s\S]*?eyebrow:\s*'角色机制'/)
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.18"/)
+  assert.match(appGo, /appVersion\s*=\s*"v1\.91\.19"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -279,7 +280,7 @@ func TestLoadoutShareOnlinePublishAndFetchRoundTrip(t *testing.T) {
 	}))
 	defer server.Close()
 
-	published, err := publishLoadoutShareFrame(nil, server.Client(), server.URL, frame)
+	published, err := publishLoadoutShareFrame(context.Background(), server.Client(), server.URL, frame)
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -288,7 +289,7 @@ func TestLoadoutShareOnlinePublishAndFetchRoundTrip(t *testing.T) {
 		published.DownloadURL != server.URL+"/download/0123456789ABCDEF.gbfr-loadout" {
 		t.Fatalf("unexpected publish result: %+v", published)
 	}
-	received, err := fetchLoadoutShareFrame(nil, server.Client(), server.URL, published.URL)
+	received, err := fetchLoadoutShareFrame(context.Background(), server.Client(), server.URL, published.URL)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -301,7 +302,7 @@ func TestLoadoutShareOnlinePublishAndFetchRoundTrip(t *testing.T) {
 }
 
 func TestLoadoutShareOnlineRejectsOversizedAndServiceErrors(t *testing.T) {
-	if _, err := publishLoadoutShareFrame(nil, http.DefaultClient, "https://invalid.example", make([]byte, loadoutShareOnlineMaxFrameSize+1)); err == nil {
+	if _, err := publishLoadoutShareFrame(context.Background(), http.DefaultClient, "https://invalid.example", make([]byte, loadoutShareOnlineMaxFrameSize+1)); err == nil {
 		t.Fatal("oversized publish was accepted")
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -310,7 +311,7 @@ func TestLoadoutShareOnlineRejectsOversizedAndServiceErrors(t *testing.T) {
 		_, _ = response.Write([]byte(`{"error":"没有找到这套配装"}`))
 	}))
 	defer server.Close()
-	_, err := fetchLoadoutShareFrame(nil, server.Client(), server.URL, "0123-4567-89AB-CDEF")
+	_, err := fetchLoadoutShareFrame(context.Background(), server.Client(), server.URL, "0123-4567-89AB-CDEF")
 	if err == nil || !strings.Contains(err.Error(), "没有找到") {
 		t.Fatalf("unexpected service error: %v", err)
 	}
@@ -323,11 +324,11 @@ func TestLoadoutShareOnlineLive(t *testing.T) {
 	}
 	source := loadoutShareCodeFixture()
 	frame := encodedShareFrame(t, source)
-	published, err := publishLoadoutShareFrame(nil, loadoutShareHTTPClient(), endpoint, frame)
+	published, err := publishLoadoutShareFrame(context.Background(), loadoutShareHTTPClient(), endpoint, frame)
 	if err != nil {
 		t.Fatalf("publish live share: %v", err)
 	}
-	received, err := fetchLoadoutShareFrame(nil, loadoutShareHTTPClient(), endpoint, published.Code)
+	received, err := fetchLoadoutShareFrame(context.Background(), loadoutShareHTTPClient(), endpoint, published.Code)
 	if err != nil {
 		t.Fatalf("fetch live share %s: %v", published.Code, err)
 	}
@@ -349,7 +350,7 @@ func TestLoadoutShareOnlineLiveImportDraft(t *testing.T) {
 	if code == "" || !haveSave(testLoadoutSave) {
 		t.Skip("set GBFR_TEST_SHARE_CODE and GBFR_TEST_LOADOUT_SAVE to verify a live import draft")
 	}
-	frame, err := fetchLoadoutShareFrame(nil, loadoutShareHTTPClient(), loadoutShareServiceURL, code)
+	frame, err := fetchLoadoutShareFrame(context.Background(), loadoutShareHTTPClient(), loadoutShareServiceURL, code)
 	if err != nil {
 		t.Fatalf("fetch live share: %v", err)
 	}
@@ -378,7 +379,7 @@ func TestLoadoutShareOnlineLiveCatalogCoverage(t *testing.T) {
 	if code == "" {
 		t.Skip("set GBFR_TEST_SHARE_CODE to audit a live share against local catalogs")
 	}
-	frame, err := fetchLoadoutShareFrame(nil, loadoutShareHTTPClient(), loadoutShareServiceURL, code)
+	frame, err := fetchLoadoutShareFrame(context.Background(), loadoutShareHTTPClient(), loadoutShareServiceURL, code)
 	if err != nil {
 		t.Fatalf("fetch live share: %v", err)
 	}

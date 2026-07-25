@@ -6,6 +6,7 @@ import { uiTranslations } from './i18n-ui.js'
 
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 const home = readFileSync(new URL('./components/HomeJournal.vue', import.meta.url), 'utf8')
+const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
 
 test('runtime monitor is routed as its own read-only memory-monitoring category', () => {
   assert.match(shell, /import RuntimePatchMonitor from ['"]\.\/RuntimePatchMonitor\.vue['"]/)
@@ -16,13 +17,15 @@ test('runtime monitor is routed as its own read-only memory-monitoring category'
     assert.ok(match, `${group} navigation entry must exist`)
     assert.doesNotMatch(match[1], /['"]runtimeMonitor['"]/, `${group} must not contain the read-only monitor`)
   }
-  assert.match(shell, /<RuntimePatchMonitor\s+v-else-if="activeTab === 'runtimeMonitor'"\s+@status="showStatus"\s*\/>/)
+  assert.match(shell, /const runtimeMonitorMounted = ref\(false\)/)
+  assert.match(shell, /if \(value === 'runtimeMonitor'\) runtimeMonitorMounted\.value = true/)
+  assert.match(shell, /<RuntimePatchMonitor\s+v-if="runtimeMonitorMounted"\s+v-show="activeTab === 'runtimeMonitor'"\s+@status="showStatus"\s+@deploy-loadout="deployRuntimeLoadout"\s*\/>/)
 })
 
 test('the home journal exposes monitoring separately from injection and save editing', () => {
   assert.match(home, /id:\s*['"]monitor['"],\s*mark:\s*['"]测['"],\s*label:\s*['"]内存监测['"]/)
-  assert.match(home, /id:\s*['"]runtimeMonitor['"],\s*icon:\s*['"]测['"],\s*title:\s*['"]运行监测['"]/);
-  assert.match(home, /队伍快照、选中素材与关键物品/)
+  assert.match(home, /id:\s*['"]runtimeMonitor['"],\s*icon:\s*['"]测['"],\s*title:\s*['"]角色配装检测['"]/);
+  assert.match(home, /后台自动归档每场任务的队伍配装/)
 })
 
 test('read-only monitoring does not surface the save-backup drawer', () => {
@@ -54,12 +57,29 @@ test('new shell and home copy has exact English localization', () => {
   const expected = {
     '内存监测': 'Memory Monitoring',
     '只读读取运行中游戏数据，不修改物品或存档': 'Read live game data without modifying items or save data',
-    '运行监测': 'Runtime Monitor',
-    '队伍快照、选中素材与关键物品': 'Party snapshots, selected materials, and key items',
-    '只读监测': 'Read-Only Monitoring',
-    '只读 · 需连接游戏': 'Read Only · Game Connection Required',
+    '角色配装检测': 'Character Loadout Detection',
+    '后台自动归档每场任务的队伍配装': 'Automatically archive party loadouts for every quest',
+    '只读后台检测': 'Read-Only Background Detection',
+    '只读 · 自动记录任务配装': 'Read Only · Automatic Quest Loadout Archive',
+    '一次开启后常驻后台，自动识别每场任务的稳定队伍，并把角色配装按场次保存在本机。': 'Start once to continuously identify stable quest parties in the background and archive their character loadouts locally by quest.',
+    '开启角色配装检测': 'Start Character Loadout Detection',
+    '检测器只读游戏数据，可与其他连接功能同时使用；选中物品读取是同页的独立工具。': 'The detector reads game data only and can run alongside other connections. Selected-item reading is a separate tool on the same page.',
+    '开启后自动后台检测': 'Automatic background detection after start',
   }
   for (const [chinese, english] of Object.entries(expected)) {
     assert.equal(uiTranslations[chinese], english, `missing exact translation for ${chinese}`)
   }
+})
+
+test('loadout detection is a persistent background service with local quest history', () => {
+  assert.match(detector, /RuntimeLoadoutDetectorStart/)
+  assert.match(detector, /RuntimeLoadoutDetectorStatus/)
+  assert.match(detector, /RuntimeLoadoutDetectorHistory/)
+  assert.match(detector, /window\.setInterval\(\(\) => void readStatus\(\), 3000\)/)
+  assert.doesNotMatch(detector.match(/onBeforeUnmount\([\s\S]*?\n\}\)/)?.[0] || '', /RuntimeLoadoutDetectorStop/)
+  assert.match(detector, /record\.members/)
+  assert.match(detector, /RuntimeLoadoutDetectorPublish/)
+  assert.match(detector, /RuntimeLoadoutDetectorShare/)
+  assert.match(shell, /id === 'runtimeMonitor'[^\n]+开启后自动后台检测/)
+  assert.match(shell, /id === 'runtimeMonitor'[^\n]+class="switcher-tag live">后台/)
 })

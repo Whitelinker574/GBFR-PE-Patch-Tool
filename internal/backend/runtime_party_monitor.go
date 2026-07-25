@@ -12,10 +12,18 @@ import (
 // independently checked against the supplied 2.0.2 executable by the opt-in
 // local-EXE truth test.
 const (
-	runtimePatchPartyPointerAOB      = "488Bxxxxxxxxxx4885xx74xx488BxxFFxxxxxxxxxx4885xx74xx488Bxxxx488Bxxxx488Bxx488DxxxxxxFFxxxxxxxxxxEBxxC5xxxxxxxxxxxxxxC5xxxxxxxxxx488Bxx488D"
-	runtimePatchPartyPointerRVA      = uintptr(0x22CECA0)
-	runtimePatchPartySlotTableRVA    = uintptr(0x7036860)
-	runtimePatchPartySignatureLength = 69
+	runtimePatchPartyPointerAOB         = "488Bxxxxxxxxxx4885xx74xx488BxxFFxxxxxxxxxx4885xx74xx488Bxxxx488Bxxxx488Bxx488DxxxxxxFFxxxxxxxxxxEBxxC5xxxxxxxxxxxxxxC5xxxxxxxxxx488Bxx488D"
+	runtimePatchPartyPointerRVA         = uintptr(0x22CECA0)
+	runtimePatchPartySlotTableRVA       = uintptr(0x7036860)
+	runtimePatchPartySignatureLength    = 69
+	runtimePatchPartyHandleTableRVA     = uintptr(0x70367F0)
+	runtimePatchPartyHandleStride       = uintptr(0x18)
+	runtimePatchPartyEntityTableRVA     = uintptr(0x70214E8)
+	runtimePatchPartyHandleEntityOffset = uintptr(0x08)
+	runtimePatchPartyHandleIDOffset     = uintptr(0x10)
+	runtimePatchPartyEntityArrayOffset  = uintptr(0x20)
+	runtimePatchPartyIDArrayOffset      = uintptr(0x48)
+	runtimePatchPartyMaximumEntityIndex = uint32(1 << 20)
 
 	runtimePatchPartyHPOffset            = uintptr(0x160)
 	runtimePatchPartyMaxHPOffset         = uintptr(0x168)
@@ -50,6 +58,7 @@ type RuntimePatchPartyCapabilities struct {
 	Dodge          bool `json:"dodge"`
 	SBA            bool `json:"sba"`
 	DirectPosition bool `json:"directPosition"`
+	Loadout        bool `json:"loadout"`
 }
 
 // RuntimePatchPartyEntity mirrors only fields proven by the bounded read-only
@@ -67,6 +76,7 @@ type RuntimePatchPartyEntity struct {
 	MaxSBA         *float32                      `json:"maxSba,omitempty"`
 	Position       RuntimePatchVector3           `json:"position"`
 	DirectPosition *RuntimePatchVector3          `json:"directPosition,omitempty"`
+	Loadout        *RuntimePatchPartyLoadout     `json:"loadout,omitempty"`
 	Capabilities   RuntimePatchPartyCapabilities `json:"capabilities"`
 }
 
@@ -84,15 +94,27 @@ type RuntimePatchPartyMonitor struct {
 }
 
 type runtimePatchPartyTopology struct {
-	Root               uintptr
-	Entities           [5]uintptr
-	TransformNodes     [5][2]uintptr
-	CompanionContainer uintptr
+	Root                  uintptr
+	EntityTable           uintptr
+	Entities              [5]uintptr
+	TransformNodes        [5][2]uintptr
+	LoadoutHandleEntities [4]uintptr
+	LoadoutHandleIDs      [4]uint64
+	LoadoutBases          [4]uintptr
+	LoadoutFingerprints   [4][32]byte
+	CompanionContainer    uintptr
 }
 
 type runtimePatchPartySnapshot struct {
 	Topology runtimePatchPartyTopology
 	Result   RuntimePatchPartyMonitor
+}
+
+type runtimePatchPartyResolvedHandle struct {
+	EntityTable uintptr
+	Entity      uintptr
+	ID          uint64
+	Specified   uintptr
 }
 
 type runtimePatchPartyMemory interface {
@@ -158,6 +180,16 @@ func readStableRuntimePatchPartySnapshots(readSnapshot func() (runtimePatchParty
 		))
 	}
 	result := frames[len(frames)-1].Result
+	for index := 0; index < 4 && index < len(result.Entities); index++ {
+		if loadout := result.Entities[index].Loadout; loadout != nil && loadout.Available {
+			loadout.Stable = true
+			loadout.SnapshotCount = runtimePatchPartySnapshotCount
+			loadout.Evidence = runtimePatchMonitorText(
+				"连续三快照内容一致；2.0.2 候选布局，仍需现场逐项对照",
+				"Content matched across three snapshots; candidate 2.0.2 layout pending live field-by-field comparison",
+			)
+		}
+	}
 	result.RootAddress = uint64(frames[len(frames)-1].Topology.Root)
 	result.Source = "game_runtime_patch_2.0.2"
 	result.Verification = runtimePatchMonitorText("连续三快照拓扑验证", "three-snapshot topology verification")
@@ -192,12 +224,39 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 			snapshot.Result.Entities = append(snapshot.Result.Entities, emptyRuntimePatchPartyEntity(role))
 			continue
 		}
-		result, nodes, readErr := readRuntimePatchPartyEntity(memory, entity, role, true, false)
+		result, nodes, _, _, readErr := readRuntimePatchPartyEntity(memory, entity, role, true, false)
 		if readErr != nil {
 			return runtimePatchPartySnapshot{}, readErr
 		}
+		resolved, resolveErr := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, index)
+		if resolveErr == nil && resolved.Entity != entity {
+			resolveErr = fmt.Errorf("party loadout handle does not belong to the current root slot")
+		}
+		var loadoutBase uintptr
+		var loadoutFingerprint [32]byte
+		if resolveErr == nil {
+			loadout, fingerprint, loadoutErr := readRuntimePatchPartyLoadoutAtWithModule(memory, moduleBase, resolved.Specified, "validated party handle -> entity+0x70 -> instance+2.0.2 player record")
+			if loadoutErr == nil {
+				result.Loadout = &loadout
+				result.Capabilities.Loadout = true
+				loadoutBase = resolved.Specified
+				loadoutFingerprint = fingerprint
+			} else {
+				result.Loadout = unavailableRuntimePatchPartyLoadout(loadoutErr)
+			}
+			snapshot.Topology.EntityTable = resolved.EntityTable
+			snapshot.Topology.LoadoutHandleEntities[index] = resolved.Entity
+			snapshot.Topology.LoadoutHandleIDs[index] = resolved.ID
+		} else {
+			result.Loadout = unavailableRuntimePatchPartyLoadout(resolveErr)
+		}
+		if validationErr := validateRuntimePatchPartyEntity(result); validationErr != nil {
+			return runtimePatchPartySnapshot{}, fmt.Errorf("%s: %w", runtimePatchPartyRoleName(role), validationErr)
+		}
 		snapshot.Topology.Entities[index] = entity
 		snapshot.Topology.TransformNodes[index] = nodes
+		snapshot.Topology.LoadoutBases[index] = loadoutBase
+		snapshot.Topology.LoadoutFingerprints[index] = loadoutFingerprint
 		snapshot.Result.Entities = append(snapshot.Result.Entities, result)
 	}
 
@@ -218,7 +277,7 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 		snapshot.Result.Entities = append(snapshot.Result.Entities, emptyRuntimePatchPartyEntity("companion"))
 		return snapshot, nil
 	}
-	companionResult, companionNodes, err := readRuntimePatchPartyEntity(memory, companion, "companion", false, true)
+	companionResult, companionNodes, _, _, err := readRuntimePatchPartyEntity(memory, companion, "companion", false, true)
 	if err != nil {
 		return runtimePatchPartySnapshot{}, err
 	}
@@ -226,6 +285,74 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 	snapshot.Topology.TransformNodes[4] = companionNodes
 	snapshot.Result.Entities = append(snapshot.Result.Entities, companionResult)
 	return snapshot, nil
+}
+
+func unavailableRuntimePatchPartyLoadout(err error) *RuntimePatchPartyLoadout {
+	reason := runtimePatchMonitorText("运行时配装实例不可用", "Runtime loadout instance is unavailable")
+	if err != nil {
+		reason = err.Error()
+	}
+	return &RuntimePatchPartyLoadout{
+		Available: false, Verification: "unavailable",
+		Evidence:          runtimePatchMonitorText("未通过受限布局校验", "Bounded layout validation did not pass"),
+		UnavailableReason: reason,
+	}
+}
+
+func resolveRuntimePatchPartyLoadoutHandle(memory runtimePatchPartyMemory, moduleBase uintptr, slot int) (runtimePatchPartyResolvedHandle, error) {
+	if memory == nil || moduleBase == 0 || slot < 0 || slot >= 4 {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party loadout handle parameters are invalid")
+	}
+	entityTableSlot, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyEntityTableRVA)
+	if !ok {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table address overflow")
+	}
+	entityTable, err := readRuntimePatchPointer(memory, entityTableSlot)
+	if err != nil || !plausibleRuntimePatchPartyPointer(entityTable) {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table pointer is unavailable or invalid")
+	}
+	handleTable, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyHandleTableRVA)
+	if !ok || uintptr(slot) > ^uintptr(0)/runtimePatchPartyHandleStride {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle address overflow")
+	}
+	handle, ok := checkedRuntimePatchMonitorAddress(handleTable, uintptr(slot)*runtimePatchPartyHandleStride)
+	if !ok {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle address overflow")
+	}
+	indexPlusOne, err := readRuntimePatchU32At(memory, handle)
+	if err != nil || indexPlusOne == 0 || indexPlusOne > runtimePatchPartyMaximumEntityIndex {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle entity index is unavailable or invalid")
+	}
+	entity, err := readRuntimePatchPointer(memory, handle+runtimePatchPartyHandleEntityOffset)
+	if err != nil || !plausibleRuntimePatchPartyPointer(entity) {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle entity pointer is unavailable or invalid")
+	}
+	id, err := readRuntimePatchU64At(memory, handle+runtimePatchPartyHandleIDOffset)
+	if err != nil {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle ID is unavailable: %w", err)
+	}
+	entityArray, err := readRuntimePatchPointer(memory, entityTable+runtimePatchPartyEntityArrayOffset)
+	if err != nil || !plausibleRuntimePatchPartyPointer(entityArray) {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table entity array is unavailable or invalid")
+	}
+	idArray, err := readRuntimePatchPointer(memory, entityTable+runtimePatchPartyIDArrayOffset)
+	if err != nil || !plausibleRuntimePatchPartyPointer(idArray) {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table ID array is unavailable or invalid")
+	}
+	indexOffset := uintptr(indexPlusOne-1) * 8
+	tableEntity, err := readRuntimePatchPointer(memory, entityArray+indexOffset)
+	if err != nil || tableEntity != entity {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle entity does not match entity table")
+	}
+	tableID, err := readRuntimePatchU64At(memory, idArray+indexOffset)
+	if err != nil || tableID != id {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle ID does not match entity table")
+	}
+	specified, err := readRuntimePatchPointer(memory, entity+runtimePatchPartySpecifiedInstanceOffset)
+	if err != nil || !plausibleRuntimePatchPartyPointer(specified) {
+		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party specified instance pointer is unavailable or invalid")
+	}
+	return runtimePatchPartyResolvedHandle{EntityTable: entityTable, Entity: entity, ID: id, Specified: specified}, nil
 }
 
 func emptyRuntimePatchPartyEntity(role string) RuntimePatchPartyEntity {
@@ -269,27 +396,28 @@ func verifyRuntimePatchPartyPointerSignature(memory runtimePatchPartyMemory, mod
 	return resolved, nil
 }
 
-func readRuntimePatchPartyEntity(memory runtimePatchPartyMemory, address uintptr, role string, supportsCombat, supportsDirectPosition bool) (RuntimePatchPartyEntity, [2]uintptr, error) {
+func readRuntimePatchPartyEntity(memory runtimePatchPartyMemory, address uintptr, role string, supportsCombat, supportsDirectPosition bool) (RuntimePatchPartyEntity, [2]uintptr, uintptr, [32]byte, error) {
 	var nodes [2]uintptr
+	var loadoutFingerprint [32]byte
 	hp, err := readRuntimePatchU64At(memory, address+runtimePatchPartyHPOffset)
 	if err != nil {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s HP: %w", runtimePatchPartyRoleName(role), err)
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s HP: %w", runtimePatchPartyRoleName(role), err)
 	}
 	maxHP, err := readRuntimePatchU64At(memory, address+runtimePatchPartyMaxHPOffset)
 	if err != nil {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s max HP: %w", runtimePatchPartyRoleName(role), err)
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s max HP: %w", runtimePatchPartyRoleName(role), err)
 	}
 	nodes[0], err = readRuntimePatchPointer(memory, address+runtimePatchPartyTransformRootOffset)
 	if err != nil || nodes[0] == 0 {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s transform root: %w", runtimePatchPartyRoleName(role), normalizeRuntimePatchPartyReadError(err))
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s transform root: %w", runtimePatchPartyRoleName(role), normalizeRuntimePatchPartyReadError(err))
 	}
 	nodes[1], err = readRuntimePatchPointer(memory, nodes[0]+runtimePatchPartyTransformNodeOffset)
 	if err != nil || nodes[1] == 0 {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s transform node: %w", runtimePatchPartyRoleName(role), normalizeRuntimePatchPartyReadError(err))
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s transform node: %w", runtimePatchPartyRoleName(role), normalizeRuntimePatchPartyReadError(err))
 	}
 	position, err := readRuntimePatchVector3(memory, nodes[1], runtimePatchPartyPositionXOffset, runtimePatchPartyPositionYOffset, runtimePatchPartyPositionZOffset)
 	if err != nil {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s position: %w", runtimePatchPartyRoleName(role), err)
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s position: %w", runtimePatchPartyRoleName(role), err)
 	}
 	result := RuntimePatchPartyEntity{
 		Role:         role,
@@ -301,18 +429,19 @@ func readRuntimePatchPartyEntity(memory runtimePatchPartyMemory, address uintptr
 		Position:     position,
 		Capabilities: RuntimePatchPartyCapabilities{Dodge: supportsCombat, SBA: supportsCombat, DirectPosition: supportsDirectPosition},
 	}
+	loadoutBase := uintptr(0)
 	if supportsCombat {
 		dodge, readErr := readRuntimePatchU32At(memory, address+runtimePatchPartyDodgeOffset)
 		if readErr != nil {
-			return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s dodge count: %w", runtimePatchPartyRoleName(role), readErr)
+			return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s dodge count: %w", runtimePatchPartyRoleName(role), readErr)
 		}
 		sba, readErr := readRuntimePatchF32At(memory, address+runtimePatchPartySBAOffset)
 		if readErr != nil {
-			return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s SBA: %w", runtimePatchPartyRoleName(role), readErr)
+			return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s SBA: %w", runtimePatchPartyRoleName(role), readErr)
 		}
 		maxSBA, readErr := readRuntimePatchF32At(memory, address+runtimePatchPartyMaxSBAOffset)
 		if readErr != nil {
-			return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s max SBA: %w", runtimePatchPartyRoleName(role), readErr)
+			return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s max SBA: %w", runtimePatchPartyRoleName(role), readErr)
 		}
 		result.DodgeCount = &dodge
 		result.SBA = &sba
@@ -321,19 +450,19 @@ func readRuntimePatchPartyEntity(memory runtimePatchPartyMemory, address uintptr
 	if supportsDirectPosition {
 		direct, readErr := readRuntimePatchVector3(memory, address, runtimePatchPartyCompanionDirectXOffset, runtimePatchPartyCompanionDirectYOffset, runtimePatchPartyCompanionDirectZOffset)
 		if readErr != nil {
-			return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s direct position: %w", runtimePatchPartyRoleName(role), readErr)
+			return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s direct position: %w", runtimePatchPartyRoleName(role), readErr)
 		}
 		result.DirectPosition = &direct
 	}
 	if err := validateRuntimePatchPartyEntity(result); err != nil {
-		return RuntimePatchPartyEntity{}, nodes, fmt.Errorf("%s: %w", runtimePatchPartyRoleName(role), err)
+		return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s: %w", runtimePatchPartyRoleName(role), err)
 	}
-	return result, nodes, nil
+	return result, nodes, loadoutBase, loadoutFingerprint, nil
 }
 
 func validateRuntimePatchPartyEntity(entity RuntimePatchPartyEntity) error {
 	if !entity.Present {
-		if entity.Address != 0 || entity.HP != 0 || entity.MaxHP != 0 || entity.DodgeCount != nil || entity.SBA != nil || entity.MaxSBA != nil || entity.DirectPosition != nil || entity.Capabilities != (RuntimePatchPartyCapabilities{}) || entity.Position != (RuntimePatchVector3{}) {
+		if entity.Address != 0 || entity.HP != 0 || entity.MaxHP != 0 || entity.DodgeCount != nil || entity.SBA != nil || entity.MaxSBA != nil || entity.DirectPosition != nil || entity.Loadout != nil || entity.Capabilities != (RuntimePatchPartyCapabilities{}) || entity.Position != (RuntimePatchVector3{}) {
 			return fmt.Errorf("absent party slot contains runtime entity data")
 		}
 		return nil
@@ -349,6 +478,9 @@ func validateRuntimePatchPartyEntity(entity RuntimePatchPartyEntity) error {
 	}
 	if entity.Capabilities.DirectPosition != (entity.DirectPosition != nil) {
 		return fmt.Errorf("direct-position capability and value availability disagree")
+	}
+	if entity.Capabilities.Loadout != (entity.Loadout != nil && entity.Loadout.Available) {
+		return fmt.Errorf("loadout capability and value availability disagree")
 	}
 	if entity.SBA != nil {
 		current, maximum := *entity.SBA, *entity.MaxSBA

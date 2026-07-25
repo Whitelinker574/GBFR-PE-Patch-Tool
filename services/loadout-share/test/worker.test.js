@@ -25,6 +25,7 @@ function makeFrame(compressed = new Uint8Array([1, 2, 3, 4]), version = 1) {
 
 function makeR2() {
   const objects = new Map()
+  let getCalls = 0
   const wrap = entry => entry && {
     customMetadata: entry.customMetadata,
     httpEtag: `"${entry.customMetadata.sha256}"`,
@@ -36,6 +37,7 @@ function makeR2() {
       return wrap(objects.get(key))
     },
     async get(key) {
+      getCalls += 1
       return wrap(objects.get(key))
     },
     async put(key, value, options) {
@@ -46,11 +48,14 @@ function makeR2() {
     },
     async list(options = {}) {
       const prefix = options.prefix || ''
-      const items = [...objects.keys()]
-        .filter(key => key.startsWith(prefix))
-        .map(key => ({ key }))
-      return { objects: items, truncated: false }
+      const keys = [...objects.keys()].filter(key => key.startsWith(prefix)).sort()
+      const start = Math.max(0, Number(options.cursor) || 0)
+      const limit = Number.isFinite(options.limit) ? Math.max(0, options.limit) : keys.length
+      const selected = keys.slice(start, start + limit)
+      const next = start + selected.length
+      return { objects: selected.map(key => ({ key })), truncated: next < keys.length, cursor: next < keys.length ? String(next) : undefined }
     },
+    getCalls: () => getCalls,
   }
 }
 
@@ -87,6 +92,49 @@ test('v10 JSON conversion preserves dense enhancement nodes in the GBLC v2 wire 
   assert.deepEqual(wire[12][9], [[0, 7], [1, 31], [2, 1]])
   assert.equal(wire[7][0][4], 0x318d12e9)
   assert.equal(result.preview.characterName, '伊欧')
+})
+
+test('partial v11 runtime JSON uploads only captured scopes', async () => {
+  let packed
+  const source = {
+    format: 'gbfr-loadout', version: 11, charaHash: '0D21B430', charaName: '泽塔', ownerCode: 'PL1600', name: '实时毕业配装',
+    weaponHash: '02352554', weaponName: '阿尔贝斯之枪',
+    sigils: [{ index: 0, hash: '2D7F2E70', name: '攻击力 V+', level: 15, primaryTraitHash: '50079A1C', primaryTraitLevel: 15, secondaryTraitHash: 'DC584F60', secondaryTraitLevel: 15 }],
+    weaponSkillHashes: ['7EDD69D0', '887AE0B0', '887AE0B0', '887AE0B0', '020DB733'],
+    weapon: { storedHash: '02352554', xp: 162540, uncap: 6, mirage: 99, awakening: 10, transcendence: 7, skillHashes: ['7EDD69D0', '887AE0B0', '887AE0B0', '887AE0B0', '020DB733'] },
+    overLimit: Array.from({ length: 4 }, (_, index) => ({ index, attributeHash: index === 0 ? '52A207B5' : '', level: index === 0 ? 10 : 0 })),
+    sourceKind: 'runtime', capturedFields: ['stats', 'sigils', 'weapon', 'weaponSkills', 'overLimit'], progressionPolicy: 'endgame-max',
+  }
+  const result = await loadoutJSONToFrame(JSON.stringify(source), bytes => { packed = bytes; return new Uint8Array([1, 2, 3]) })
+  const wire = decode(packed)
+  assert.equal(wire[0], 11)
+  assert.equal(wire[8].length, 0)
+  assert.equal(wire[9].length, 0)
+  assert.equal(wire[11].length, 0)
+  assert.equal(wire[12], null)
+  assert.equal(wire[13][2], 6)
+  assert.equal(wire[15], 'runtime')
+  assert.deepEqual(wire[16], source.capturedFields)
+  assert.equal(result.preview.weaponName, '阿尔贝斯之枪')
+})
+
+test('partial v11 JSON rejects unknown provenance and undeclared payloads', async () => {
+  const base = {
+    format: 'gbfr-loadout', version: 11, charaHash: '0D21B430', charaName: '泽塔', ownerCode: 'PL1600', name: '实时配装',
+    sigils: [{ index: 0, hash: '2D7F2E70', name: '攻击力 V+', level: 15, primaryTraitHash: '50079A1C', primaryTraitLevel: 15 }],
+    sourceKind: 'runtime', capturedFields: ['sigils'], progressionPolicy: 'endgame-max',
+  }
+  for (const mutate of [
+    source => { source.sourceKind = 'other' },
+    source => { source.progressionPolicy = 'exact' },
+    source => { source.capturedFields = ['sigils', 'sigils'] },
+    source => { source.skills = [{ hash: '12345678', name: '测试', key: 'test' }] },
+    source => { source.weaponHash = '02352554' },
+  ]) {
+    const source = structuredClone(base)
+    mutate(source)
+    await assert.rejects(() => loadoutJSONToFrame(JSON.stringify(source)), /来源|策略|捕获字段|未声明/)
+  }
 })
 
 test('JSON import route rejects old exports and publishes a valid v10 file', async () => {
@@ -167,6 +215,72 @@ test('publish, load, download and landing routes round-trip one immutable frame'
   assert.deepEqual(catalog.items, [], 'a frame without a valid preview must not enter the public catalog')
 })
 
+test('landing page escapes untrusted titles before server-side HTML rendering', async () => {
+  const env = { LOADOUTS: makeR2() }
+  const payload = '</title><img src=x onerror=alert(document.domain)>'
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Title': payload },
+    body: makeFrame(),
+  }), env).then(response => response.json())
+  const html = await worker.fetch(new Request(`https://share.example/s/${published.compactCode}`), env).then(response => response.text())
+  assert.equal(html.includes(payload), false)
+  assert.match(html, /&lt;\/title&gt;&lt;img src=x onerror=alert\(document\.domain\)&gt;/)
+})
+
+test('catalog search respects the requested bounded page and reports an R2 cursor', async () => {
+  const r2 = makeR2()
+  const env = { LOADOUTS: r2 }
+  for (let index = 0; index < 60; index += 1) {
+    const code = index.toString(32).toUpperCase().padStart(16, '0')
+    const metadata = {
+      code,
+      title: `搜索配装 ${index}`,
+      characterHash: '4D0A60C3',
+      characterName: '伊欧',
+      preview: { characterHash: '4D0A60C3', characterName: '伊欧', weaponName: '星晶武器', sigils: [{ name: '快速冷却 V+' }] },
+    }
+    await r2.put(`meta/v1/${code}.json`, JSON.stringify(metadata), { customMetadata: { sha256: code } })
+  }
+
+  const result = await worker.fetch(new Request('https://share.example/api/v1/loadouts?q=快速冷却&limit=12'), env).then(response => response.json())
+  assert.equal(result.items.length, 12)
+  assert.equal(result.truncated, true)
+  assert.equal(result.cursor, '12')
+  assert.equal(r2.getCalls(), 12)
+})
+
+test('filtered catalogs scan beyond the first R2 page for Io and DLC characters', async () => {
+  const r2 = makeR2()
+  const env = { LOADOUTS: r2 }
+  for (let index = 0; index < 30; index += 1) {
+    const code = index.toString(32).toUpperCase().padStart(16, '0')
+    await r2.put(`meta/v1/${code}.json`, JSON.stringify({
+      code, title: `古兰配装 ${index}`, characterHash: '2A26B1B2', characterName: '古兰',
+      preview: { characterHash: '2A26B1B2', characterName: '古兰', weaponName: '旅行者之剑', sigils: [{ name: '攻击力 V+' }] },
+    }), { customMetadata: { sha256: code } })
+  }
+  await r2.put('meta/v1/ZZZZZZZZZZZZZZZY.json', JSON.stringify({
+    code: 'ZZZZZZZZZZZZZZZY', title: '伊欧常规毕业配装', characterHash: '4D0A60C3', characterName: '伊欧',
+    preview: { characterHash: '4D0A60C3', characterName: '伊欧', weaponName: '星晶武器', sigils: [{ name: '迅捷能力 V+' }] },
+  }), { customMetadata: { sha256: 'io' } })
+  await r2.put('meta/v1/ZZZZZZZZZZZZZZYX.json', JSON.stringify({
+    code: 'ZZZZZZZZZZZZZZYX', title: '卡莉奥丝特罗配装', characterHash: 'E7053919', characterName: '卡莉奥丝特罗',
+    preview: { characterHash: 'E7053919', characterName: '卡莉奥丝特罗', weaponName: '真典', sigils: [{ name: '迅捷能力 V+' }] },
+  }), { customMetadata: { sha256: 'cagliostro' } })
+  await r2.put('meta/v1/ZZZZZZZZZZZZZZZZ.json', JSON.stringify({
+    code: 'ZZZZZZZZZZZZZZZZ', title: '菲迪埃尔常规毕业配装', characterHash: '74DD4C79', characterName: '菲迪埃尔',
+    preview: { characterHash: '74DD4C79', characterName: '菲迪埃尔', weaponName: 'DLC 武器', sigils: [{ name: '伤害上限 V+' }] },
+  }), { customMetadata: { sha256: 'dlc' } })
+
+  const io = await worker.fetch(new Request('https://share.example/api/v1/loadouts?character=io&limit=24'), env).then(response => response.json())
+  assert.equal(io.items.length, 1)
+  assert.equal(io.items[0].title, '伊欧常规毕业配装')
+  const dlc = await worker.fetch(new Request('https://share.example/api/v1/loadouts?character=%E8%8F%B2%E8%BF%AA%E5%9F%83%E5%B0%94&limit=24'), env).then(response => response.json())
+  assert.equal(dlc.items.length, 1)
+  assert.equal(dlc.items[0].title, '菲迪埃尔常规毕业配装')
+})
+
 test('the service rejects arbitrary paste content and unknown codes', async () => {
   const env = { LOADOUTS: makeR2() }
   const invalid = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
@@ -180,7 +294,7 @@ test('the service rejects arbitrary paste content and unknown codes', async () =
   assert.equal(missing.status, 404)
 })
 
-test('publishing stores a sanitized complete preview and refreshes it when the same code is republished', async () => {
+test('publishing stores a sanitized complete preview and keeps first metadata immutable on replay', async () => {
   const env = { LOADOUTS: makeR2() }
   const frame = makeFrame()
   const preview = {
@@ -211,6 +325,7 @@ test('publishing stores a sanitized complete preview and refreshes it when the s
   const meta = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${result.compactCode}/meta`), env)
   assert.equal(meta.status, 200)
   const metadata = await meta.json()
+  const originalMetadata = structuredClone(metadata)
   assert.equal(metadata.title, '训练场测试')
   assert.equal(metadata.preview.sigils[0].level, 15)
   assert.equal(metadata.preview.sigils[1].name, '怒发冲冠 V+')
@@ -256,8 +371,20 @@ test('publishing stores a sanitized complete preview and refreshes it when the s
   assert.equal(republish.status, 200)
   const refreshedMeta = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${result.compactCode}/meta`), env)
   const refreshedMetadata = await refreshedMeta.json()
-  assert.equal(refreshedMetadata.preview.sigils[0].name, '快速冷却+')
-  assert.equal(refreshedMetadata.preview.combinedSkills[0].rawLevel, 60)
+  assert.deepEqual(refreshedMetadata, originalMetadata)
+})
+
+test('upload routes reject oversized streamed bodies before parsing', async () => {
+  const env = { LOADOUTS: makeR2() }
+  const raw = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: new Uint8Array(8 * 1024 + 1),
+  }), env)
+  assert.equal(raw.status, 413)
+
+  const json = await worker.fetch(new Request('https://share.example/api/v1/loadouts/import', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: new Uint8Array(1024 * 1024 + 1),
+  }), env)
+  assert.equal(json.status, 413)
 })
 
 test('source-less merged skills rebuild their recorded sources from the loadout preview', async () => {
@@ -437,6 +564,13 @@ test('catalog and character routes expose all 29 unique character pages without 
   assert.match(pageHtml, /scrollIntoView\(\{block:'nearest',inline:'center'\}\)/)
   assert.doesNotMatch(pageHtml, /Fediel|CHARACTER LOADOUTS/)
   assert.doesNotMatch(pageHtml, /assets\/characters\//)
+})
+
+test('public pages use a transparent track and parchment-brass vertical scrollbar', async () => {
+  const html = await worker.fetch(new Request('https://share.example/'), { LOADOUTS: makeR2() }).then(response => response.text())
+  assert.match(html, /html\{scrollbar-width:thin;scrollbar-color:rgba\(126,89,40,\.42\) transparent\}/)
+  assert.match(html, /::-webkit-scrollbar-track\{background:transparent\}/)
+  assert.match(html, /::-webkit-scrollbar-thumb\{[^}]*background:rgba\(126,89,40,\.42\)/)
 })
 
 test('detail actions share one fixed button box and old previews inherit trait levels', async () => {

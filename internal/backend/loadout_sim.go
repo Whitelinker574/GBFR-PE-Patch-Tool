@@ -110,7 +110,7 @@ func loadTraitValues() map[string]*traitValueDef {
 			return values
 		}
 		attackCategory := 1
-		traitValuesByID["SKILL_143_10"] = &traitValueDef{
+		terminusDefinition := &traitValueDef{
 			Name: "浩劫", Cat: &attackCategory, CatLabel: "攻击类", MaxLevel: 35,
 			Format: "最大HP不超过{4:.1f}时\n攻击力+{0:.1f}%\n普通攻击伤害上限+{1:.1f}% / 能力伤害上限+{2:.1f}% / 奥义伤害上限+{3:.1f}%",
 			Placeholders: []traitPlaceholder{
@@ -121,6 +121,8 @@ func loadTraitValues() map[string]*traitValueDef {
 				{Ph: 4, Col: 5, Unit: "flat", Values: levelValues(45000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000)},
 			},
 		}
+		traitValuesByID["SKILL_143_10"] = terminusDefinition
+		traitValuesByID["1E1CECCE"] = terminusDefinition
 		// The local trait/summon catalogs spell this verified Io trait 伶俐;
 		// retain its skill_status values while fixing the older text typo.
 		if mageSavvy := traitValuesByID["SKILL_117_01"]; mageSavvy != nil {

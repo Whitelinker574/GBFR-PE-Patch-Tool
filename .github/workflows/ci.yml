@@ -26,10 +26,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            services/loadout-share/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
+        run: npm ci
+
+      - name: Install loadout-share dependencies
+        working-directory: services/loadout-share
         run: npm ci
 
       - name: Generate Wails bindings
@@ -61,6 +67,10 @@ jobs:
 
       - name: Test frontend
         run: node --test frontend/src/*.test.js
+
+      - name: Test loadout-share worker
+        working-directory: services/loadout-share
+        run: npm test
 
       - name: Test maintainer tooling
         run: node --test tools/*.test.js

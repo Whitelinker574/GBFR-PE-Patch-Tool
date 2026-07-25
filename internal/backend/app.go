@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.18"
+	appVersion  = "v1.91.19"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -58,9 +58,10 @@ type UpdateInfo struct {
 }
 
 type AppConfig struct {
-	LastSavePath string `json:"lastSavePath"`
-	WindowWidth  int    `json:"windowWidth"`
-	WindowHeight int    `json:"windowHeight"`
+	LastSavePath                 string `json:"lastSavePath"`
+	WindowWidth                  int    `json:"windowWidth"`
+	WindowHeight                 int    `json:"windowHeight"`
+	RuntimeLoadoutDetectorActive bool   `json:"runtimeLoadoutDetectorActive,omitempty"`
 }
 
 const (
@@ -154,8 +155,14 @@ type App struct {
 	formulaSamplerMu         sync.Mutex
 	formulaSamplerSession    *formulaSamplerSession
 	formulaSamplerGeneration uint64
+	// The loadout detector owns a separate query/read-only process handle. It is
+	// deliberately independent from every editor and patch ownership token.
+	runtimeLoadoutDetectorMu sync.Mutex
+	runtimeLoadoutDetector   *runtimeLoadoutDetectorSession
+	configMu                 sync.Mutex
 	config                   AppConfig
 	configLoaded             bool
+	configPathOverride       string
 }
 
 var (
@@ -170,10 +177,14 @@ func NewApp() *App { return &App{} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	if err := a.loadConfig(); err != nil {
+	config, err := a.configSnapshot()
+	if err != nil {
 		return
 	}
-	width, height := a.config.windowSize()
+	if config.RuntimeLoadoutDetectorActive {
+		_, _ = a.startRuntimeLoadoutDetector(false)
+	}
+	width, height := config.windowSize()
 	if width > 0 && height > 0 {
 		runtime.WindowSetSize(ctx, width, height)
 	}
@@ -181,7 +192,14 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	_ = a.closeFormulaSampler()
+	a.runtimeLoadoutDetectorMu.Lock()
+	detectorWasRunning := a.runtimeLoadoutDetector != nil
+	a.runtimeLoadoutDetectorMu.Unlock()
+	_ = a.closeRuntimeLoadoutDetector(false)
 	if handleDetachBeforeClose(ctx, a.CharaDetach()) {
+		if detectorWasRunning {
+			_, _ = a.startRuntimeLoadoutDetector(false)
+		}
 		return true
 	}
 	a.saveWindowSize(ctx)
@@ -191,6 +209,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 func (a *App) shutdown(ctx context.Context) {
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
+	_ = a.closeRuntimeLoadoutDetector(false)
 	if err := a.CharaDetach(); err != nil {
 		logPath := appendDiagnosticError("shutdown hook restoration", err)
 		runtime.LogErrorf(ctx, "关闭时恢复运行时 Hook 失败；诊断日志：%s；错误：%v", logPath, err)
@@ -220,12 +239,10 @@ func (a *App) saveWindowSize(ctx context.Context) {
 	if width <= 0 || height <= 0 {
 		return
 	}
-	if err := a.loadConfig(); err != nil {
-		return
-	}
-	a.config.WindowWidth = width
-	a.config.WindowHeight = height
-	_ = a.saveConfig()
+	_ = a.updateConfig(func(config *AppConfig) {
+		config.WindowWidth = width
+		config.WindowHeight = height
+	})
 }
 
 func (c AppConfig) windowSize() (int, int) {
@@ -236,6 +253,9 @@ func (c AppConfig) windowSize() (int, int) {
 }
 
 func (a *App) configFilePath() (string, error) {
+	if a.configPathOverride != "" {
+		return a.configPathOverride, nil
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
@@ -244,6 +264,12 @@ func (a *App) configFilePath() (string, error) {
 }
 
 func (a *App) loadConfig() error {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	return a.loadConfigLocked()
+}
+
+func (a *App) loadConfigLocked() error {
 	if a.configLoaded {
 		return nil
 	}
@@ -272,6 +298,12 @@ func (a *App) loadConfig() error {
 }
 
 func (a *App) saveConfig() error {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	return a.saveConfigLocked()
+}
+
+func (a *App) saveConfigLocked() error {
 	path, err := a.configFilePath()
 	if err != nil {
 		return err
@@ -283,14 +315,64 @@ func (a *App) saveConfig() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	replaced := false
+	defer func() {
+		_ = tmp.Close()
+		if !replaced {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := replaceFileAtomic(tmpPath, path); err != nil {
+		return err
+	}
+	replaced = true
+	return nil
+}
+
+func (a *App) configSnapshot() (AppConfig, error) {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	if err := a.loadConfigLocked(); err != nil {
+		return AppConfig{}, err
+	}
+	return a.config, nil
+}
+
+func (a *App) updateConfig(update func(*AppConfig)) error {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	if err := a.loadConfigLocked(); err != nil {
+		return err
+	}
+	previous := a.config
+	update(&a.config)
+	if err := a.saveConfigLocked(); err != nil {
+		a.config = previous
+		return err
+	}
+	return nil
 }
 
 func (a *App) GetLastSavePath() (string, error) {
-	if err := a.loadConfig(); err != nil {
+	config, err := a.configSnapshot()
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(a.config.LastSavePath), nil
+	return strings.TrimSpace(config.LastSavePath), nil
 }
 
 func (a *App) SetLastSavePath(path string) error {
@@ -298,11 +380,7 @@ func (a *App) SetLastSavePath(path string) error {
 	if path == "" {
 		return nil
 	}
-	if err := a.loadConfig(); err != nil {
-		return err
-	}
-	a.config.LastSavePath = path
-	return a.saveConfig()
+	return a.updateConfig(func(config *AppConfig) { config.LastSavePath = path })
 }
 
 func (a *App) GetAppVersion() string {
@@ -3573,6 +3651,17 @@ func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
+	resume, err := suspendRemoteProcessForCodeWrite(h)
+	if err != nil {
+		return err
+	}
+	if resume != nil {
+		defer func() {
+			if resume != nil {
+				_ = resume()
+			}
+		}()
+	}
 	var oldProtect uint32
 	if err := windows.VirtualProtectEx(h, addr, uintptr(len(data)), windows.PAGE_EXECUTE_READWRITE, &oldProtect); err != nil {
 		return err
@@ -3589,7 +3678,40 @@ func writeCodeMemory(h windows.Handle, addr uintptr, data []byte) error {
 	}
 	var restoreProtect uint32
 	restoreErr := windows.VirtualProtectEx(h, addr, uintptr(len(data)), oldProtect, &restoreProtect)
+	if resume != nil {
+		resumeErr := resume()
+		if resumeErr == nil {
+			resume = nil
+		}
+		return errors.Join(writeErr, restoreErr, resumeErr)
+	}
 	return errors.Join(writeErr, restoreErr)
+}
+
+func suspendRemoteProcessForCodeWrite(h windows.Handle) (func() error, error) {
+	pid, err := windows.GetProcessId(h)
+	if err != nil {
+		return nil, fmt.Errorf("读取代码补丁目标进程失败: %w", err)
+	}
+	if pid == uint32(os.Getpid()) {
+		return nil, nil
+	}
+	status, _, callErr := procNtSuspendProcess.Call(uintptr(h))
+	if status != 0 {
+		return nil, fmt.Errorf("暂停代码补丁目标进程失败: NTSTATUS 0x%X: %w", status, callErr)
+	}
+	resumed := false
+	return func() error {
+		if resumed {
+			return nil
+		}
+		status, _, callErr := procNtResumeProcess.Call(uintptr(h))
+		if status != 0 {
+			return fmt.Errorf("恢复代码补丁目标进程失败: NTSTATUS 0x%X: %w", status, callErr)
+		}
+		resumed = true
+		return nil
+	}, nil
 }
 
 var (
@@ -3601,6 +3723,8 @@ var (
 	procLoadLibraryW          = modKernel32.NewProc("LoadLibraryW")
 	procGetExitCodeThread     = modKernel32.NewProc("GetExitCodeThread")
 	procCreateRemoteThread    = modKernel32.NewProc("CreateRemoteThread")
+	procNtSuspendProcess      = modNtdll.NewProc("NtSuspendProcess")
+	procNtResumeProcess       = modNtdll.NewProc("NtResumeProcess")
 )
 
 type memoryBasicInformation struct {

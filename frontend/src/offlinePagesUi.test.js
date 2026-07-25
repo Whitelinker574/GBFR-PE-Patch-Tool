@@ -61,10 +61,16 @@ test('offline pages remove permanent backup slogans and keep supporting type rea
   }
 })
 
-test('offline generators do not repeat backup or output-safety notices beside the write controls', () => {
+test('offline generators save only to the selected save with automatic backup and readback', () => {
   for (const source of [sigil, wrightstone]) {
     assert.doesNotMatch(source, /建议先备份|安全提示：只写入输出存档/)
+    assert.doesNotMatch(source, /另存为新存档|Select(?:Sigil|Wrightstone)OutputSave|outputPath|output-mode|mode-choice/)
+    assert.match(source, /保存到当前存档/)
+    assert.match(source, /自动备份.*回读验证/)
+    assert.match(source, /ApplyQueue\(inputPath\.value\.trim\(\)\)/)
   }
+  assert.match(sigil, /DeleteSelectedSigils\(ids, inputPath\.value\.trim\(\)\)/)
+  assert.match(sigil, /RemoveAllSigils\(inputPath\.value\.trim\(\), inputPath\.value\.trim\(\)\)/)
 })
 
 test('offline selectors and save loaders reject stale async responses', () => {

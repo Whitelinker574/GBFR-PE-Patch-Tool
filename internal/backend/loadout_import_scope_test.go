@@ -84,9 +84,9 @@ func TestMasterProgressSelectionPreservesSourceTotalOrUsesAuditedThreshold(t *te
 	}
 }
 
-func TestLoadoutShareVersionTenCarriesExactRuntimeSnapshots(t *testing.T) {
-	if loadoutShareVersion != 10 {
-		t.Fatalf("loadout share version=%d, want 10", loadoutShareVersion)
+func TestLoadoutShareVersionElevenCarriesCaptureProvenance(t *testing.T) {
+	if loadoutShareVersion != 11 {
+		t.Fatalf("loadout share version=%d, want 11", loadoutShareVersion)
 	}
 	payload := LoadoutImportApplyPayload{}
 	if payload.ApplyCharacterLevel || payload.ApplyMasteryConfiguration || payload.ApplyMasterProgress || payload.ApplyCharacterGrowth || payload.ApplyCharacterWeaponCollection || payload.ApplyCharacterWeaponWrightstones ||

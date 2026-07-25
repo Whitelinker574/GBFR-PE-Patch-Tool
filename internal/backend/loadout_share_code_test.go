@@ -76,6 +76,8 @@ func loadoutShareCodeFixture() *LoadoutShare {
 		Format: loadoutShareFormat, Version: loadoutShareVersion,
 		CharaHash: "4D0A60C3", CharaName: "伊欧", OwnerCode: "PL0400", Name: "装备方案06",
 		WeaponHash: "26E7CCB1", WeaponName: "测试武器",
+		SourceKind: loadoutShareSourceSave, ProgressionPolicy: loadoutProgressionExact,
+		CapturedFields: []string{"sigils", "summons", "skills", "weapon", "weaponSkills", "wrightstone", "mastery", "character", "overLimit"},
 		Character: &LoadoutShareCharacterProgression{
 			CharacterLevel: 100, BaseHP: 3156, BaseATK: 666, BaseStunBits: math.Float32bits(8),
 			BaseCritRate: 5, CharacterBaseCaptured: true, MasterTotalMSP: 562575, LegacyProgress: 100,

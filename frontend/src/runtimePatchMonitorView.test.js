@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const viewURL = new URL('./runtimePatchMonitorView.js', import.meta.url)
 const view = existsSync(viewURL) ? await import(viewURL) : null
+const component = readFileSync(new URL('./components/RuntimePatchMonitor.vue', import.meta.url), 'utf8')
+const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
 
 const ownerToken = 'runtime-monitor-owner'
 const processInfo = { pid: 2468 }
@@ -20,7 +22,7 @@ function combatEntity(role, index) {
     sba: 25 + index,
     maxSba: 100,
     position: { x: 1.25 + index, y: -2.5, z: 3.75 },
-    capabilities: { dodge: true, sba: true, directPosition: false },
+    capabilities: { dodge: true, sba: true, directPosition: false, loadout: false },
   }
 }
 
@@ -44,7 +46,7 @@ function validPartySnapshot() {
         maxHp: 1000,
         position: { x: 8, y: 9, z: 10 },
         directPosition: { x: 8.5, y: 9.5, z: 10.5 },
-        capabilities: { dodge: false, sba: false, directPosition: true },
+        capabilities: { dodge: false, sba: false, directPosition: true, loadout: false },
       },
     ],
     source: 'game_runtime_patch_2.0.2',
@@ -82,6 +84,16 @@ function validSelectedStatus() {
   }
 }
 
+test('party monitoring exposes persistent quest history as the primary workflow', () => {
+  assert.equal(view.runtimeMonitorText('tabParty', 'zh'), '任务配装记录')
+  assert.match(component, /<RuntimeLoadoutDetector/)
+  assert.match(detector, /开启后台检测/)
+  assert.match(detector, /window\.setInterval/)
+  for (const action of ['copy', 'export', 'publish', 'deploy']) {
+    assert.match(detector, new RegExp(`runAction\\(preview\\.record, preview\\.member, '${action}'\\)`))
+  }
+})
+
 test('party snapshots accept only the verified five-entity 2.0.2 contract', () => {
   assert.ok(view, 'runtimePatchMonitorView.js must exist')
   const normalized = view.normalizeRuntimePatchPartySnapshot(validPartySnapshot(), ownerToken, processInfo.pid)
@@ -106,7 +118,7 @@ test('solo training snapshots preserve empty slots without fabricating zero-valu
       hp: 0,
       maxHp: 0,
       position: { x: 0, y: 0, z: 0 },
-      capabilities: { dodge: false, sba: false, directPosition: false },
+      capabilities: { dodge: false, sba: false, directPosition: false, loadout: false },
     }
   }
   const normalized = view.normalizeRuntimePatchPartySnapshot(snapshot, ownerToken, processInfo.pid)
@@ -115,6 +127,92 @@ test('solo training snapshots preserve empty slots without fabricating zero-valu
   assert.throws(
     () => view.normalizeRuntimePatchPartySnapshot({ ...snapshot, entities: snapshot.entities.map((entity, index) => index === 1 ? { ...entity, hp: 1 } : entity) }, ownerToken, processInfo.pid),
     /absent|empty|present/i,
+  )
+})
+
+test('stable candidate teammate loadouts preserve weapon, two-trait sigils, and panel values', () => {
+  assert.ok(view, 'runtimePatchMonitorView.js must exist')
+  const snapshot = validPartySnapshot()
+  snapshot.entities[1].capabilities.loadout = true
+  snapshot.entities[1].loadout = {
+    available: true,
+    stable: true,
+    snapshotCount: 3,
+    verification: 'candidate',
+    evidence: 'three matching snapshots pending live comparison',
+    layout: 'entity+0x70 -> instance+{0x15030,0x15080,0x1AE90}',
+    characterCode: 'PL1600',
+    characterHash: '0D21B430',
+    characterName: 'Zeta',
+    runtimeLabel: 'PL1600',
+    online: true,
+    partyIndex: 1,
+    stats: { level: 100, totalHp: 50000, totalAttack: 20000, stunPower: 250, criticalRate: 100, totalPower: 30000 },
+    weapon: {
+      hash: 0x02352554,
+      hashHex: '02352554',
+      name: 'Brionac',
+      level: 150,
+      starLevel: 5,
+      plusMarks: 99,
+      awakeningLevel: 10,
+      wrightstoneId: 1234,
+      hp: 500,
+      attack: 3000,
+      traits: [{ hash: 0x7EDD69D0, hashHex: '7EDD69D0', name: 'ATK', level: 15 }],
+	  skills: [{ hash: 0xDC584F60, hashHex: 'DC584F60', name: 'Damage Cap', level: 15 }],
+    },
+    sigils: [{
+      index: 0,
+      hash: 0x2D7F2E70,
+      hashHex: '2D7F2E70',
+      name: 'Attack Power V+',
+      level: 15,
+      primaryTraitHash: 0x50079A1C,
+      primaryTraitHashHex: '50079A1C',
+      primaryTraitName: 'ATK',
+      primaryTraitLevel: 15,
+      secondaryTraitHash: 0xDC584F60,
+      secondaryTraitHashHex: 'DC584F60',
+      secondaryTraitName: 'Damage Cap',
+      secondaryTraitLevel: 15,
+    }],
+	overLimit: [
+	  { index: 0, attributeHash: 0x52A207B5, hashHex: '52A207B5', name: 'Attack', flags: 0x200, level: 10, value: 1000 },
+	  { index: 1, attributeHash: 0, flags: 0, level: 0, value: 0 },
+	  { index: 2, attributeHash: 0, flags: 0, level: 0, value: 0 },
+	  { index: 3, attributeHash: 0, flags: 0, level: 0, value: 0 },
+	],
+  }
+  const member = view.normalizeRuntimePatchPartySnapshot(snapshot, ownerToken, processInfo.pid).entities[1]
+  assert.equal(member.loadout.characterCode, 'PL1600')
+  assert.equal(member.loadout.weapon.hashHex, '02352554')
+  assert.equal(member.loadout.sigils[0].secondaryTraitLevel, 15)
+  assert.equal(member.loadout.stats.criticalRate, 100)
+	assert.equal(member.loadout.weapon.skills[0].level, 15)
+	assert.equal(member.loadout.overLimit[0].level, 10)
+})
+
+test('unavailable teammate loadouts remain explicit and cannot masquerade as candidates', () => {
+  assert.ok(view, 'runtimePatchMonitorView.js must exist')
+  const snapshot = validPartySnapshot()
+  snapshot.entities[2].loadout = {
+    available: false,
+    stable: false,
+    snapshotCount: 0,
+    verification: 'unavailable',
+    evidence: 'bounded validation failed',
+    unavailableReason: 'weapon hash is unknown',
+  }
+  const member = view.normalizeRuntimePatchPartySnapshot(snapshot, ownerToken, processInfo.pid).entities[2]
+  assert.equal(member.capabilities.loadout, false)
+  assert.equal(member.loadout.available, false)
+  assert.match(member.loadout.unavailableReason, /weapon/i)
+
+  snapshot.entities[2].capabilities.loadout = true
+  assert.throws(
+    () => view.normalizeRuntimePatchPartySnapshot(snapshot, ownerToken, processInfo.pid),
+    /loadout availability/i,
   )
 })
 

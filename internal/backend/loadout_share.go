@@ -14,7 +14,7 @@ import (
 const (
 	loadoutShareFormat        = "gbfr-loadout"
 	loadoutShareLegacyVersion = 1
-	loadoutShareVersion       = 10
+	loadoutShareVersion       = 11
 	loadoutShareMaxSize       = 1024 * 1024
 )
 
@@ -169,6 +169,87 @@ type LoadoutShare struct {
 	Character         *LoadoutShareCharacterProgression `json:"character,omitempty"`
 	Weapon            *LoadoutShareWeaponState          `json:"weapon,omitempty"`
 	OverLimit         []LoadoutShareOverLimit           `json:"overLimit,omitempty"`
+	SourceKind        string                            `json:"sourceKind,omitempty"`
+	CapturedFields    []string                          `json:"capturedFields,omitempty"`
+	ProgressionPolicy string                            `json:"progressionPolicy,omitempty"`
+}
+
+const (
+	loadoutShareSourceSave    = "save"
+	loadoutShareSourceRuntime = "runtime"
+	loadoutShareSourceLogsDB  = "logs-db"
+	loadoutProgressionExact   = "exact"
+	loadoutProgressionEndgame = "endgame-max"
+)
+
+var loadoutShareCapturedFields = map[string]bool{
+	"stats": true, "sigils": true, "summons": true, "skills": true,
+	"weapon": true, "weaponSkills": true, "wrightstone": true,
+	"mastery": true, "character": true, "overLimit": true,
+}
+
+func validateLoadoutShareProvenance(share *LoadoutShare) error {
+	if share == nil || share.Version < 11 {
+		return nil
+	}
+	partial := false
+	switch share.SourceKind {
+	case loadoutShareSourceSave:
+		if share.ProgressionPolicy != loadoutProgressionExact {
+			return fmt.Errorf("存档配装需要 exact 养成策略")
+		}
+	case loadoutShareSourceRuntime, loadoutShareSourceLogsDB:
+		partial = true
+		if share.ProgressionPolicy != loadoutProgressionEndgame {
+			return fmt.Errorf("%s 配装需要 endgame-max 养成策略", share.SourceKind)
+		}
+	default:
+		return fmt.Errorf("v11 配装来源 %q 无效", share.SourceKind)
+	}
+	if len(share.CapturedFields) == 0 {
+		return fmt.Errorf("v11 配装缺少捕获字段声明")
+	}
+	seen := make(map[string]bool, len(share.CapturedFields))
+	for _, field := range share.CapturedFields {
+		if !loadoutShareCapturedFields[field] || seen[field] {
+			return fmt.Errorf("v11 配装捕获字段 %q 未知或重复", field)
+		}
+		seen[field] = true
+	}
+	if !partial {
+		return nil
+	}
+	if !seen["sigils"] || len(share.Sigils) == 0 {
+		return fmt.Errorf("部分配装需要至少一个已捕获因子")
+	}
+	if (!seen["summons"] && len(share.Summons) != 0) || (!seen["skills"] && len(share.Skills) != 0) ||
+		(!seen["weaponSkills"] && len(share.WeaponSkillHashes) != 0) || (!seen["mastery"] && len(share.MasteryHashes) != 0) ||
+		(!seen["character"] && share.Character != nil) || (!seen["overLimit"] && len(share.OverLimit) != 0) {
+		return fmt.Errorf("部分配装包含未声明为已捕获的字段")
+	}
+	if !seen["weapon"] && (share.Weapon != nil || share.WeaponHash != "" || share.WeaponName != "") {
+		return fmt.Errorf("部分配装包含未声明为已捕获的武器")
+	}
+	if !seen["wrightstone"] && share.Weapon != nil && share.Weapon.Wrightstone != nil {
+		return fmt.Errorf("部分配装包含未声明为已捕获的武器祝福")
+	}
+	return nil
+}
+
+func loadoutShareHasCapturedField(share *LoadoutShare, field string) bool {
+	if share == nil || len(share.CapturedFields) == 0 {
+		return strings.TrimSpace(share.SourceKind) == "" || share.SourceKind == loadoutShareSourceSave
+	}
+	for _, item := range share.CapturedFields {
+		if item == field {
+			return true
+		}
+	}
+	return false
+}
+
+func loadoutShareIsPartial(share *LoadoutShare) bool {
+	return share != nil && share.Version >= 11 && share.SourceKind != "" && share.SourceKind != loadoutShareSourceSave
 }
 
 type LoadoutImportCapabilities struct {
@@ -188,6 +269,9 @@ type LoadoutImportCapabilities struct {
 // LoadoutImportDraft 是导入文件在当前存档中解析后的“草稿”，不会自动写档。
 type LoadoutImportDraft struct {
 	Name              string                     `json:"name"`
+	SourceKind        string                     `json:"sourceKind,omitempty"`
+	ProgressionPolicy string                     `json:"progressionPolicy,omitempty"`
+	CapturedFields    []string                   `json:"capturedFields,omitempty"`
 	WeaponSlotID      uint32                     `json:"weaponSlotId"`
 	SigilSlotIDs      []uint32                   `json:"sigilSlotIds"`
 	ConstructedSigils []LoadoutConstructedSigil  `json:"constructedSigils,omitempty"`
@@ -341,6 +425,8 @@ func buildLoadoutShare(path string, unitID uint32) (*LoadoutShare, error) {
 		CharaHash: source.CharaHash, CharaName: source.CharaName,
 		OwnerCode: ix.deriveOwnerCode(save, charaHash), Name: source.Name,
 		WeaponHash: source.WeaponHash, WeaponName: source.WeaponName,
+		SourceKind: loadoutShareSourceSave, ProgressionPolicy: loadoutProgressionExact,
+		CapturedFields:    []string{"sigils", "summons", "skills", "weapon", "weaponSkills", "wrightstone", "mastery", "character", "overLimit"},
 		Skills:            append([]LoadoutSkill(nil), source.Skills...),
 		WeaponSkillHashes: append([]string(nil), source.WeaponSkillHashes...),
 	}
@@ -575,16 +661,20 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	if share == nil || share.Format != loadoutShareFormat || share.Version < loadoutShareLegacyVersion || share.Version > loadoutShareVersion {
 		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d..v%d）", loadoutShareFormat, loadoutShareLegacyVersion, loadoutShareVersion)
 	}
+	if err := validateLoadoutShareProvenance(share); err != nil {
+		return nil, err
+	}
 	if err := normalizeEnhancementNodeValues(share.Character); err != nil {
 		return nil, err
 	}
 	if len(share.Summons) > 0 && len(share.Summons) != 4 {
 		return nil, fmt.Errorf("分享文件的召唤石指纹需要恰好 4 个，得到 %d 个", len(share.Summons))
 	}
-	if share.Version >= 4 && len(share.OverLimit) != 4 {
+	partial := loadoutShareIsPartial(share)
+	if share.Version >= 4 && (!partial || loadoutShareHasCapturedField(share, "overLimit")) && len(share.OverLimit) != 4 {
 		return nil, fmt.Errorf("v4 配装的上限突破配置需要恰好 4 个槽，得到 %d 个", len(share.OverLimit))
 	}
-	if share.Version >= 5 {
+	if share.Version >= 5 && (!partial || loadoutShareHasCapturedField(share, "weaponSkills")) {
 		if len(share.WeaponSkillHashes) != 5 {
 			return nil, fmt.Errorf("v%d 配装的武器技能快照需要恰好 5 槽", share.Version)
 		}
@@ -593,7 +683,7 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 				return nil, fmt.Errorf("v%d 配装的武器技能槽 %d 无效: %w", share.Version, index+1, err)
 			}
 		}
-		if share.Character == nil || len(share.Character.EnhancementPanel) != 2 {
+		if !partial && (share.Character == nil || len(share.Character.EnhancementPanel) != 2) {
 			return nil, fmt.Errorf("v%d 配装缺少角色强化双槽快照", share.Version)
 		}
 	}
@@ -608,7 +698,7 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 			return nil, fmt.Errorf("v5 配装缺少完整的 2813/2815 武器状态标记")
 		}
 	}
-	if share.Version >= 6 {
+	if share.Version >= 6 && !partial {
 		if share.Character == nil || len(share.Character.EnhancementNodes) == 0 {
 			return nil, fmt.Errorf("v%d 配装缺少 1602 角色强化节点快照", share.Version)
 		}
@@ -620,10 +710,10 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 			seenNodes[node.Index] = true
 		}
 	}
-	if share.Version >= 8 && (share.Character == nil || !share.Character.WeaponWrightstonesCaptured) {
+	if share.Version >= 8 && !partial && (share.Character == nil || !share.Character.WeaponWrightstonesCaptured) {
 		return nil, fmt.Errorf("v%d 配装缺少整组武器祝福快照", share.Version)
 	}
-	if share.Version >= 9 && (share.Character == nil || !share.Character.CharacterBaseCaptured) {
+	if share.Version >= 9 && !partial && (share.Character == nil || !share.Character.CharacterBaseCaptured) {
 		return nil, fmt.Errorf("v%d 配装缺少角色等级基础快照", share.Version)
 	}
 	if share.Version >= 4 {
@@ -677,6 +767,9 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 	}
 	draft := &LoadoutImportDraft{
 		Name:              share.Name,
+		SourceKind:        share.SourceKind,
+		ProgressionPolicy: share.ProgressionPolicy,
+		CapturedFields:    append([]string(nil), share.CapturedFields...),
 		WeaponSkillHashes: append([]string(nil), share.WeaponSkillHashes...),
 		Capabilities: LoadoutImportCapabilities{
 			TargetCharacterLevel: statContext.Level, TargetFateDataAvailable: statContext.PermanentGrowth.FateDataAvailable,
@@ -685,6 +778,11 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 			TargetSummonSystem: statContext.SummonSystemAvailable, SourceMasterProgressIndex: sourceMaster.ProgressIndex,
 			SourceMasterLevel: sourceMaster.MasterLevel,
 		},
+	}
+	if loadoutShareIsPartial(share) && share.ProgressionPolicy == loadoutProgressionEndgame {
+		draft.Capabilities.SourceCharacterLevel = 100
+		draft.Capabilities.SourceMasterProgressIndex = 55
+		draft.Capabilities.SourceMasterLevel = 55
 	}
 	if len(draft.WeaponSkillHashes) == 0 && share.Weapon != nil && len(share.Weapon.SkillHashes) == 5 {
 		// v3/v4 没有独立导出 3005；旧文件以源武器 2818 作为兼容快照。
@@ -699,6 +797,13 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 		if share.Version >= 4 {
 			draft.ApplyPayload.OverLimit = append([]LoadoutShareOverLimit(nil), share.OverLimit...)
 		}
+	}
+	if partial && share.ProgressionPolicy == loadoutProgressionEndgame &&
+		loadoutShareHasCapturedField(share, "mastery") && share.Character == nil && draft.ApplyPayload != nil {
+		// Runtime capture proves the specialization layout and MLv. It does not
+		// prove level-base or enhancement-panel fields, so expose only the audited
+		// MLv55 threshold to the import scope.
+		draft.ApplyPayload.Character = &LoadoutShareCharacterProgression{MasterTotalMSP: characterMasterExpThresholds[55]}
 	}
 	if share.Version < 7 && share.Weapon != nil && share.Weapon.Wrightstone != nil {
 		draft.addMissing("wrightstone", "旧版配装文件没有保存武器实际生效的祝福词条；请用新版从源存档重新导出")

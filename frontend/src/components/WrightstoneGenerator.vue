@@ -3,8 +3,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/backend/App'
 import { GetWrightstoneList, GetTraitList, GetTraitLevels, GetDefaultTrait,
          LoadSaveFile, GetQueue, AddToQueue, RemoveFromQueue, ClearQueue,
-         ApplyQueue, ApplyItems, CheckLegality, FileExists, SelectWrightstoneInputSave,
-         SelectWrightstoneOutputSave } from '../../wailsjs/go/backend/WrightstoneGen'
+         ApplyQueue, ApplyItems, CheckLegality, SelectWrightstoneInputSave } from '../../wailsjs/go/backend/WrightstoneGen'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
@@ -26,13 +25,11 @@ const slots = ref([])
 const saveLoaded = ref(false)
 const saveInfo = reactive({ path: '', occupiedWrightstones: 0, maxSlotId: 0 })
 const isApplying = ref(false)
-const inPlaceEdit = ref(false)
 const applyFlash = ref(false)
 const confirmDialog = ref(null)
 let applyFlashTimer = 0
 
 const inputPath = ref('')
-const outputPath = ref('')
 const selectedWrightstoneID = ref('')
 const selectedTraits = reactive([
   { id: '', level: 0, levels: [] },
@@ -52,7 +49,7 @@ const currentSelectionValid = computed(() => {
   return !!selectedWrightstoneID.value && selectedTraits.every(t => !!t.id && !!t.level) && quantity.value > 0
 })
 const displayedLegalityMessage = computed(() => isolatedError(legality.message, 'This configuration is not legal.'))
-const canApply = computed(() => saveLoaded.value && !!outputPath.value.trim() && (queue.value.length > 0 || (currentSelectionValid.value && legality.writable)))
+const canApply = computed(() => saveLoaded.value && !!inputPath.value.trim() && (queue.value.length > 0 || (currentSelectionValid.value && legality.writable)))
 
 function naturalTraitMax(slot) {
   if (slot === 0) return 20
@@ -82,7 +79,6 @@ onMounted(async () => {
     const lastPath = await GetLastSavePath()
     if (lastPath) {
       inputPath.value = lastPath
-      outputPath.value = defaultOutputPath(lastPath)
     }
   } catch (e) {
     dataError.value = language.value === 'en'
@@ -90,20 +86,6 @@ onMounted(async () => {
       : '加载祝福数据失败: ' + String(e)
   } finally {
     dataLoading.value = false
-  }
-})
-
-function defaultOutputPath(path) {
-  if (!path) return ''
-  if (/\.dat$/i.test(path)) return path.replace(/(\.dat)$/i, '_wrightstones.dat')
-  return `${path}_wrightstones.dat`
-}
-
-watch(inPlaceEdit, (enabled) => {
-  if (enabled) {
-    outputPath.value = inputPath.value.trim()
-  } else if (outputPath.value.trim() === inputPath.value.trim()) {
-    outputPath.value = defaultOutputPath(inputPath.value.trim())
   }
 })
 
@@ -127,20 +109,13 @@ function saveSlotLabel(slot) {
   return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
 }
 
-async function browseOutput() {
-  try {
-    const path = await SelectWrightstoneOutputSave(outputPath.value.trim() || defaultOutputPath(inputPath.value.trim()))
-    if (path) outputPath.value = path
-  } catch (e) { showStatus(isolatedError(e, 'Failed to choose the output location.'), 'error') }
-}
-
 async function loadSave() {
   if (!inputPath.value.trim()) { showStatus(text('请输入存档路径', 'Enter a save path.'), 'error'); return }
   try {
     const info = await LoadSaveFile(inputPath.value.trim())
     Object.assign(saveInfo, info)
     saveLoaded.value = true
-    outputPath.value = inPlaceEdit.value ? info.path : defaultOutputPath(info.path)
+    inputPath.value = info.path
     await SetLastSavePath(info.path)
     showStatus(language.value === 'en' ? `Save loaded: ${info.occupiedWrightstones} wrightstones` : `已加载存档: ${info.occupiedWrightstones} 个祝福`, 'success')
   } catch (e) {
@@ -271,29 +246,16 @@ function flashApplySuccess() {
 
 async function applyQueueToSave() {
   if (!saveLoaded.value) { showStatus(text('请先加载存档', 'Load a save first.'), 'error'); return }
-  if (!outputPath.value.trim()) { showStatus(text('请输入输出路径', 'Enter an output path.'), 'error'); return }
+  if (!inputPath.value.trim()) { showStatus(text('请先选择存档', 'Select a save first.'), 'error'); return }
   if (!queue.value.length && !validateCurrentSelection()) return
 
   isApplying.value = true
   try {
-    const output = outputPath.value.trim()
-    const exists = await FileExists(output)
-    if (exists) {
-      const confirmed = await confirmDialog.value?.ask({
-        title: text('覆盖已有存档', 'Overwrite Existing Save'),
-        message: text('输出位置已经存在同名文件，是否覆盖？', 'A file with the same name already exists at the output location. Overwrite it?'),
-        detail: output,
-        tone: 'danger',
-        confirmLabel: text('确认覆盖', 'Confirm Overwrite'),
-      })
-      if (!confirmed) return
-    }
-
     const result = queue.value.length
-      ? await ApplyQueue(output)
-      : await ApplyItems([buildCurrentItem()], output)
+      ? await ApplyQueue(inputPath.value.trim())
+      : await ApplyItems([buildCurrentItem()], inputPath.value.trim())
     queue.value = []
-    if (inPlaceEdit.value) await loadSave()
+    await loadSave()
     flashApplySuccess()
     showStatus(language.value === 'en'
       ? `Wrote ${result.createdCount} wrightstones (${result.verifiedCount} verified).`
@@ -387,17 +349,10 @@ async function applyQueueToSave() {
     </div>
 
     <div class="section ui-card apply-section" :class="{ 'apply-flash': applyFlash }">
-      <div class="section-title ui-section-title"><span>写入方式</span><small>覆盖或另存为，两种方式任选</small></div>
-      <div class="output-mode">
-        <button class="mode-choice ui-btn" :class="{ on: inPlaceEdit }" @click="inPlaceEdit = true"><b>覆盖当前存档</b><small>自动备份后写回所选槽位</small></button>
-        <button class="mode-choice ui-btn" :class="{ on: !inPlaceEdit }" @click="inPlaceEdit = false"><b>另存为新存档</b><small>保留原文件并生成副本</small></button>
-      </div>
-      <div class="input-row output-target">
-        <div v-if="inPlaceEdit" class="selected-save overwrite flex-1">{{ inputPath || '请先选择存档槽' }}</div>
-        <input v-else v-model="outputPath" type="text" class="text-input flex-1 ui-input" placeholder="新存档输出路径..." />
-        <button v-if="!inPlaceEdit" class="btn-action btn-cyan ui-btn" @click="browseOutput">选择位置</button>
+      <div class="section-title ui-section-title"><span>保存到当前存档</span><small>自动备份，写入后回读验证</small></div>
+      <div class="save-action-row">
         <button class="btn-action btn-cyan ui-btn is-primary" @click="applyQueueToSave" :disabled="isApplying || !canApply">
-          {{ isApplying ? '写入中...' : '应用写入' }}
+          {{ isApplying ? '保存中...' : '保存祝福修改' }}
         </button>
       </div>
     </div>
@@ -447,7 +402,6 @@ async function applyQueueToSave() {
   white-space:nowrap;
 }
 .selected-save.empty { color:var(--text-secondary); }
-.selected-save.overwrite { border-color:var(--warning); background:var(--warning-bg); color:var(--warning-ink); }
 .save-info { margin-top:var(--space-2); color:var(--success-ink); font-size:var(--fs-sm); }
 .info-dot {
   display:inline-grid;
@@ -552,34 +506,7 @@ async function applyQueueToSave() {
 }
 .btn-icon { flex:0 0 auto; }
 
-.output-mode {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:var(--space-3);
-}
-.mode-choice {
-  height:auto;
-  min-height:62px;
-  flex-direction:column;
-  align-items:flex-start;
-  justify-content:center;
-  white-space:normal;
-}
-.mode-choice b { color:inherit; font-size:var(--fs-md); }
-.mode-choice small { color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
-.mode-choice.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
-.mode-choice.on small { color:var(--selected-fg); }
-.input-row {
-  display:flex;
-  align-items:center;
-  gap:var(--space-2);
-  margin-top:var(--space-4);
-}
-.output-target .selected-save { margin-top:0; }
+.save-action-row { display:flex; justify-content:flex-end; }
 .apply-section .danger-hint,
 .apply-section .warning-hint { margin:var(--space-3) 0 0; }
 .apply-flash { animation:apply-confirm var(--dur-base) var(--ease-out) 2 alternate; }
@@ -601,10 +528,7 @@ input[type="checkbox"] { accent-color:var(--accent); }
   .compact-save-bar { padding:var(--space-4); }
   .section-title { align-items:flex-start; }
   .section-title > small { width:100%; margin-left:0; text-align:left; }
-  .output-mode { grid-template-columns:1fr; }
-  .input-row { align-items:stretch; flex-direction:column; }
-  .input-row > * { width:100%; }
-  .output-target .selected-save { box-sizing:border-box; }
+  .save-action-row .ui-btn { width:100%; }
 }
 
 @container (max-width:440px) {

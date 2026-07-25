@@ -18,7 +18,6 @@
 /.playwright-cli/
 /.tmp-gocache-*/
 /output/
-/({height
 
 # Wails generated bindings
 /frontend/wailsjs/

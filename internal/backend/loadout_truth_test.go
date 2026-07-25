@@ -35,7 +35,7 @@ func TestLoadoutSigilAccessFailsClosedForUnknownHashes(t *testing.T) {
 		t.Fatalf("有本角色先例的角色因子应放行但不得标为通用: generic=%v allowed=%v", generic, allowed)
 	}
 
-	const unknown = uint32(0x6CBA6B0D) // 实档中出现、目录未收录的因子 hash
+	const unknown = uint32(0xDEADC0DE)
 	if cat.LookupSigilByHash(unknown) != nil {
 		t.Fatalf("测试前提失效：%08X 已进入目录", unknown)
 	}
@@ -99,7 +99,7 @@ func TestLoadoutSigilNameUsesOnlyVerifiedItemIdentity(t *testing.T) {
 			t.Errorf("主词条 %q、副词条 %q 的因子名=%q，期望 %q", test.primary, test.secondary, got, test.want)
 		}
 	}
-	if got := loadoutSigilDisplayNameFromTraits(0x6CBA6B0D, "不存在的主词条", "攻击力"); got != "不存在的主词条 V+" {
+	if got := loadoutSigilDisplayNameFromTraits(0xDEADC0DE, "不存在的主词条", "攻击力"); got != "不存在的主词条 V+" {
 		t.Fatalf("无法匹配目录时也应按主副词条形态显示，不应显示占位语: %q", got)
 	}
 	if got := loadoutSigilDisplayNameFromTraits(0xDEADBEEF, "", ""); got != "因子" {

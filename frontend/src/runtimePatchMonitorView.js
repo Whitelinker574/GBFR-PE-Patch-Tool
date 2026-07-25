@@ -5,8 +5,8 @@ const SELECTED_RVAS = Object.freeze({ material: 0x3F4BAC3, keyItem: 0x3F2061C })
 const COPY = Object.freeze({
   memoryMonitoring: ['内存监测', 'Memory Monitoring'],
   sourceLabel: ['游戏 2.0.2', 'Game 2.0.2'],
-  pageTitle: ['运行监测', 'Runtime Monitor'],
-  pageSummary: ['读取当前队伍与游戏列表中选中的物品；所有结果都来自本次游戏进程。', 'Read the current party and the item selected in an in-game list. Every result comes from this game process.'],
+  pageTitle: ['角色配装检测', 'Character Loadout Detection'],
+  pageSummary: ['后台自动记录每场任务的队伍配装，并保留选中物品只读工具。', 'Automatically archive party loadouts for every quest while retaining the read-only selected-item tool.'],
   readOnly: ['只读', 'Read Only'],
   notConnected: ['未连接', 'Not Connected'],
   connected: ['已连接', 'Connected'],
@@ -17,10 +17,16 @@ const COPY = Object.freeze({
   refresh: ['刷新', 'Refresh'],
   refreshing: ['刷新中…', 'Refreshing…'],
   working: ['处理中…', 'Working…'],
-  tabParty: ['队伍快照', 'Party Snapshot'],
+  tabParty: ['任务配装记录', 'Quest Loadout History'],
   tabItems: ['选中物品', 'Selected Item'],
-  partyTitle: ['玩家与队伍实时数值', 'Live Player and Party Values'],
-  partySummary: ['连续读取三次并验证指针拓扑稳定后，才展示最后一次快照。', 'Values appear only after three consecutive reads verify stable pointer topology.'],
+  partyTitle: ['队伍数值与配装捕获', 'Party Values & Loadout Capture'],
+  partySummary: ['点击“读取队伍与配装”后连续读取三次；稳定时会在每个角色卡片底部出现配装操作。', 'Select Read Party & Loadouts to take three consecutive reads. Stable captures expose loadout actions at the bottom of each character card.'],
+  readPartyLoadouts: ['读取队伍与配装', 'Read Party & Loadouts'],
+  readingPartyLoadouts: ['正在读取队伍与配装…', 'Reading Party & Loadouts…'],
+  loadoutGuideTitle: ['配装捕获步骤', 'Loadout Capture Steps'],
+  loadoutGuideConnect: ['连接游戏进程', 'Connect to the game'],
+  loadoutGuideRead: ['进入稳定场景后读取队伍与配装', 'Enter a stable scene and read party loadouts'],
+  loadoutGuideOpen: ['展开角色卡片中的配装操作', 'Open the loadout actions in a character card'],
   partyEmptyTitle: ['尚无队伍快照', 'No Party Snapshot Yet'],
   partyEmptyCopy: ['连接游戏并进入稳定场景后刷新；切换场景时请稍候再试。', 'Connect to the game, enter a stable scene, then refresh. Wait briefly after changing scenes.'],
   partyReadyTitle: ['三快照拓扑验证通过', 'Three-Snapshot Topology Verified'],
@@ -35,6 +41,45 @@ const COPY = Object.freeze({
   position: ['位置', 'Position'],
   directPosition: ['直接坐标', 'Direct Position'],
   entityAddress: ['实体地址', 'Entity Address'],
+  loadout: ['队友配装', 'Party Loadout'],
+  loadoutCandidate: ['稳定候选', 'Stable Candidate'],
+  loadoutUnavailable: ['本次未定位', 'Unavailable This Read'],
+  loadoutEvidence: ['证据边界', 'Evidence Boundary'],
+  loadoutCandidateCopy: ['武器与因子连续三次内容一致，但仍需 2.0.2 实机逐项对照后才能升级为已验证布局。', 'Weapon and sigil content matched across three reads, but the layout remains a candidate until field-by-field 2.0.2 live comparison.'],
+  character: ['角色', 'Character'],
+  level: ['等级', 'Level'],
+  attack: ['攻击力', 'Attack'],
+  stunPower: ['昏厥值', 'Stun Power'],
+  criticalRate: ['暴击率', 'Critical Rate'],
+  totalPower: ['战力', 'Power'],
+  weapon: ['武器', 'Weapon'],
+  weaponLevel: ['武器等级', 'Weapon Level'],
+  awakeningLevel: ['觉醒', 'Awakening'],
+  plusMarks: ['强化', 'Plus Marks'],
+  weaponTraits: ['武器祝福附加技能', 'Wrightstone Traits'],
+  weaponSkills: ['武器可替换技能', 'Replaceable Weapon Skills'],
+  overLimit: ['上限突破', 'Overmastery'],
+  emptySlot: ['空槽', 'Empty'],
+  loadoutTitle: ['分享名称', 'Share Title'],
+  runtimeCapture: ['实时捕获配装', 'Runtime Capture'],
+  runtimePreviewTitle: ['运行时完整配装预览', 'Full Runtime Loadout Preview'],
+  previewLoadout: ['预览配装', 'Preview Loadout'],
+  backToRuntimeMonitor: ['返回运行监测', 'Back to Runtime Monitor'],
+  loadoutOpenActions: ['展开配装操作', 'Open Loadout Actions'],
+  loadoutNotCaptured: ['尚未捕获配装', 'Loadout Not Captured Yet'],
+  loadoutNotCapturedCopy: ['连接后点击上方“读取队伍与配装”；稳定读取成功后，这里会出现复制、导出、上传和部署按钮。', 'After connecting, select Read Party & Loadouts above. A stable capture will expose copy, export, upload, and deploy actions here.'],
+  copyLoadoutCode: ['复制配装码', 'Copy Loadout Code'],
+  exportLoadout: ['导出 JSON', 'Export JSON'],
+  uploadLoadout: ['上传并复制链接', 'Upload and Copy Link'],
+  deployLoadout: ['部署到存档', 'Deploy to Save'],
+  loadoutCodeCopied: ['已复制完整配装码', 'Full loadout code copied'],
+  loadoutExported: ['已导出实时配装：{output}', 'Runtime loadout exported: {output}'],
+  loadoutPublished: ['已上传配装并复制链接：{code}', 'Loadout uploaded and link copied: {code}'],
+  loadoutDeployReady: ['已转到配装预设；选择目标存档后会打开分项导入。', 'Opened loadout presets; select a target save to continue selective import.'],
+  sigils: ['因子', 'Sigils'],
+  noWeaponTraits: ['未读取到武器技能', 'No weapon traits read'],
+  noSigils: ['未装备因子', 'No sigils equipped'],
+  runtimeLayout: ['相对访问链', 'Relative Access Path'],
   fieldUnavailable: ['此实体无该字段', 'This entity does not have this field'],
   player: ['玩家', 'Player'],
   party1: ['队伍成员 1', 'Party Member 1'],
@@ -153,17 +198,25 @@ function normalizePartyEntity(value, expectedRole) {
     dodge: booleanValue(capabilities.dodge, `${expectedRole} dodge capability`),
     sba: booleanValue(capabilities.sba, `${expectedRole} SBA capability`),
     directPosition: booleanValue(capabilities.directPosition, `${expectedRole} direct-position capability`),
+    loadout: booleanValue(capabilities.loadout, `${expectedRole} loadout capability`),
   }
   const hasDodge = isPresent(entity.dodgeCount)
   const hasSBA = isPresent(entity.sba) || isPresent(entity.maxSba)
   const hasCompleteSBA = isPresent(entity.sba) && isPresent(entity.maxSba)
   const hasDirectPosition = isPresent(entity.directPosition)
+  const hasLoadout = isPresent(entity.loadout)
   if (hasDodge !== normalizedCapabilities.dodge) throw new TypeError(`${expectedRole} dodge is unavailable but a value was supplied`)
   if (hasSBA !== normalizedCapabilities.sba || (normalizedCapabilities.sba && !hasCompleteSBA)) {
     throw new TypeError(`${expectedRole} SBA availability does not match its capability`)
   }
   if (hasDirectPosition !== normalizedCapabilities.directPosition) {
     throw new TypeError(`${expectedRole} direct position availability does not match its capability`)
+  }
+  if (hasLoadout) {
+    const available = booleanValue(objectValue(entity.loadout, `${expectedRole} loadout`).available, `${expectedRole} loadout available`)
+    if (available !== normalizedCapabilities.loadout) throw new TypeError(`${expectedRole} loadout availability does not match its capability`)
+  } else if (normalizedCapabilities.loadout) {
+    throw new TypeError(`${expectedRole} loadout capability requires a loadout record`)
   }
 
   if (!present) {
@@ -180,6 +233,7 @@ function normalizePartyEntity(value, expectedRole) {
       || hasDodge
       || hasSBA
       || hasDirectPosition
+      || hasLoadout
     if (hasRuntimeData) throw new TypeError(`${expectedRole} absent slot must not contain runtime entity data`)
     return {
       role: expectedRole,
@@ -218,7 +272,137 @@ function normalizePartyEntity(value, expectedRole) {
   if (normalizedCapabilities.directPosition) {
     normalized.directPosition = normalizePosition(entity.directPosition, `${expectedRole} direct position`)
   }
+  if (hasLoadout) normalized.loadout = normalizePartyLoadout(entity.loadout, expectedRole)
   return normalized
+}
+
+function normalizeRuntimeTrait(value, label) {
+  const trait = objectValue(value, label)
+  const hash = unsignedInteger(trait.hash, `${label} hash`, 0xFFFFFFFF, false)
+  const hashHex = stringValue(trait.hashHex, `${label} hash hex`)
+  if (hashHex !== hash.toString(16).toUpperCase().padStart(8, '0')) throw new TypeError(`${label} hash hex does not match hash`)
+  return {
+    hash,
+    hashHex,
+    name: stringValue(trait.name, `${label} name`),
+    level: unsignedInteger(trait.level, `${label} level`, 999),
+  }
+}
+
+function normalizePartyLoadout(value, role) {
+  const loadout = objectValue(value, `${role} loadout`)
+  const available = booleanValue(loadout.available, `${role} loadout available`)
+  const evidence = stringValue(loadout.evidence, `${role} loadout evidence`)
+  const verification = stringValue(loadout.verification, `${role} loadout verification`)
+  if (!available) {
+    return {
+      available: false,
+      stable: false,
+      snapshotCount: 0,
+      verification,
+      evidence,
+      unavailableReason: stringValue(loadout.unavailableReason, `${role} loadout unavailable reason`),
+    }
+  }
+  if (loadout.stable !== true || loadout.snapshotCount !== 3 || verification !== 'candidate') {
+    throw new TypeError(`${role} loadout must be a stable three-snapshot candidate`)
+  }
+  const stats = objectValue(loadout.stats, `${role} loadout stats`)
+  const normalizedStats = {
+    level: unsignedInteger(stats.level, `${role} level`, 999, false),
+    totalHp: unsignedInteger(stats.totalHp, `${role} total HP`, 1_000_000_000, false),
+    totalAttack: unsignedInteger(stats.totalAttack, `${role} total attack`, 1_000_000_000),
+    stunPower: finiteNumber(stats.stunPower, `${role} stun power`),
+    criticalRate: finiteNumber(stats.criticalRate, `${role} critical rate`),
+    totalPower: unsignedInteger(stats.totalPower, `${role} total power`, 100_000_000, false),
+  }
+  const weapon = objectValue(loadout.weapon, `${role} weapon`)
+  const weaponHash = unsignedInteger(weapon.hash, `${role} weapon hash`, 0xFFFFFFFF, false)
+  const weaponHashHex = stringValue(weapon.hashHex, `${role} weapon hash hex`)
+  if (weaponHashHex !== weaponHash.toString(16).toUpperCase().padStart(8, '0')) throw new TypeError(`${role} weapon hash hex does not match hash`)
+  if (!Array.isArray(weapon.traits) || weapon.traits.length > 3) throw new TypeError(`${role} weapon traits are invalid`)
+  const normalizedWeapon = {
+    hash: weaponHash,
+    hashHex: weaponHashHex,
+    name: stringValue(weapon.name, `${role} weapon name`),
+    level: unsignedInteger(weapon.level, `${role} weapon level`, 999, false),
+    starLevel: unsignedInteger(weapon.starLevel, `${role} weapon star level`, 20),
+    plusMarks: unsignedInteger(weapon.plusMarks, `${role} weapon plus marks`, 9999),
+    awakeningLevel: unsignedInteger(weapon.awakeningLevel, `${role} weapon awakening level`, 100),
+    wrightstoneId: unsignedInteger(weapon.wrightstoneId, `${role} wrightstone ID`, 0xFFFFFFFF),
+    hp: unsignedInteger(weapon.hp, `${role} weapon HP`, 100_000_000),
+    attack: unsignedInteger(weapon.attack, `${role} weapon attack`, 100_000_000),
+    traits: weapon.traits.map((trait, index) => normalizeRuntimeTrait(trait, `${role} weapon trait ${index + 1}`)),
+    skills: Array.isArray(weapon.skills) ? weapon.skills.map((trait, index) => normalizeRuntimeTrait(trait, `${role} weapon skill ${index + 1}`)) : [],
+  }
+	if (normalizedWeapon.skills.length > 5) throw new TypeError(`${role} weapon skills are invalid`)
+  if (!Array.isArray(loadout.sigils) || loadout.sigils.length > 12) throw new TypeError(`${role} sigils are invalid`)
+  const seenIndices = new Set()
+  const sigils = loadout.sigils.map((value, entryIndex) => {
+    const sigil = objectValue(value, `${role} sigil ${entryIndex + 1}`)
+    const index = unsignedInteger(sigil.index, `${role} sigil index`, 11)
+    if (seenIndices.has(index)) throw new TypeError(`${role} sigil index is duplicated`)
+    seenIndices.add(index)
+    const hash = unsignedInteger(sigil.hash, `${role} sigil hash`, 0xFFFFFFFF, false)
+    const hashHex = stringValue(sigil.hashHex, `${role} sigil hash hex`)
+    if (hashHex !== hash.toString(16).toUpperCase().padStart(8, '0')) throw new TypeError(`${role} sigil hash hex does not match hash`)
+    const primaryHash = unsignedInteger(sigil.primaryTraitHash, `${role} sigil primary hash`, 0xFFFFFFFF, false)
+    const normalized = {
+      index,
+      hash,
+      hashHex,
+      name: stringValue(sigil.name, `${role} sigil name`),
+      level: unsignedInteger(sigil.level, `${role} sigil level`, 999),
+      primaryTraitHash: primaryHash,
+      primaryTraitHashHex: stringValue(sigil.primaryTraitHashHex, `${role} sigil primary hash hex`),
+      primaryTraitName: stringValue(sigil.primaryTraitName, `${role} sigil primary name`),
+      primaryTraitLevel: unsignedInteger(sigil.primaryTraitLevel, `${role} sigil primary level`, 999),
+    }
+    if (normalized.primaryTraitHashHex !== primaryHash.toString(16).toUpperCase().padStart(8, '0')) throw new TypeError(`${role} sigil primary hash hex does not match hash`)
+    if (sigil.secondaryTraitHash) {
+      const secondaryHash = unsignedInteger(sigil.secondaryTraitHash, `${role} sigil secondary hash`, 0xFFFFFFFF, false)
+      normalized.secondaryTraitHash = secondaryHash
+      normalized.secondaryTraitHashHex = stringValue(sigil.secondaryTraitHashHex, `${role} sigil secondary hash hex`)
+      normalized.secondaryTraitName = stringValue(sigil.secondaryTraitName, `${role} sigil secondary name`)
+      normalized.secondaryTraitLevel = unsignedInteger(sigil.secondaryTraitLevel, `${role} sigil secondary level`, 999)
+      if (normalized.secondaryTraitHashHex !== secondaryHash.toString(16).toUpperCase().padStart(8, '0')) throw new TypeError(`${role} sigil secondary hash hex does not match hash`)
+    }
+    return normalized
+  })
+	if (!Array.isArray(loadout.overLimit) || loadout.overLimit.length !== 4) throw new TypeError(`${role} overmastery slots are invalid`)
+	const overLimit = loadout.overLimit.map((value, slotIndex) => {
+	  const slot = objectValue(value, `${role} overmastery ${slotIndex + 1}`)
+	  const index = unsignedInteger(slot.index, `${role} overmastery index`, 3)
+	  if (index !== slotIndex) throw new TypeError(`${role} overmastery slots are out of order`)
+	  const attributeHash = unsignedInteger(slot.attributeHash, `${role} overmastery hash`, 0xFFFFFFFF)
+	  return {
+	    index,
+	    attributeHash,
+	    hashHex: typeof slot.hashHex === 'string' ? slot.hashHex : '',
+	    name: typeof slot.name === 'string' ? slot.name : '',
+	    flags: unsignedInteger(slot.flags, `${role} overmastery flags`, 0xFFFFFFFF),
+	    level: unsignedInteger(slot.level, `${role} overmastery level`, 10),
+	    value: finiteNumber(slot.value, `${role} overmastery value`),
+	  }
+	})
+  return {
+    available: true,
+    stable: true,
+    snapshotCount: 3,
+    verification,
+    evidence,
+    layout: stringValue(loadout.layout, `${role} loadout layout`),
+    characterCode: stringValue(loadout.characterCode, `${role} character code`),
+    characterHash: stringValue(loadout.characterHash, `${role} character hash`),
+    characterName: stringValue(loadout.characterName, `${role} character name`),
+    runtimeLabel: typeof loadout.runtimeLabel === 'string' ? loadout.runtimeLabel : '',
+    online: booleanValue(loadout.online, `${role} online flag`),
+    partyIndex: unsignedInteger(loadout.partyIndex, `${role} party index`, 0xFF),
+    stats: normalizedStats,
+    weapon: normalizedWeapon,
+    sigils,
+		overLimit,
+  }
 }
 
 function verifyOwnerAndProcess(value, expectedOwnerToken, expectedPID, label) {

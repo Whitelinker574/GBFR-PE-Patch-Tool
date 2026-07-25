@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.18</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v1.91.19</strong></a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
 </p>
@@ -32,6 +32,7 @@
 | View or write a character's saved loadout presets | `Save Editing (Offline)` → `Loadout Presets` | **Game fully closed** |
 | Edit the sigil, wrightstone, or summon currently selected in game | `Live Injection` | **Game running and save loaded** |
 | Enable guard, character-mechanic, or quest-convenience patches | `Live Injection` → the matching patch page | **Single-player content loaded** |
+| Archive party loadouts for every quest or import GBFR Logs records | `Memory Monitoring (Read Only)` → `Runtime Monitor` | **Enter quests in game, or select a Logs database** |
 | Inspect party state or sample final character stats | `Memory Monitoring (Read Only)` | **Game running in a stable scene** |
 | Check versions, back up an EXE, or restore it | `Tools & Settings` | Follow the page instructions |
 
@@ -93,7 +94,7 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 
 | Page | What it does | Basic flow |
 | --- | --- | --- |
-| Runtime Monitor | Inspect the player, three party members, Vyrn, and the currently selected material or key item | Connect in a stable scene; selected-item capture restores its hook on safe disconnect or page exit |
+| Runtime Monitor | Keep background loadout detection active, archive each quest party, batch-read a GBFR Logs database, and inspect the party, Vyrn, or selected material/key item | Detection may remain active after leaving the page; each character can be previewed, exported, published, or deployed to a chosen save slot; selected-item capture restores its hook on safe disconnect or page exit |
 | Character Formula Sampler | Continuously read final HP, attack, critical rate, and stun; record one-variable A/B/A/B evidence | Change one item per round and wait for stable values; no process or save writes |
 
 ### Tools & Settings · 3 pages
@@ -122,6 +123,15 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 ![Online short codes and offline long codes](docs/screenshots/loadout-share-v19116-annotated.png)
 
 **Share a build:** `Share Code` creates a 16-character code and link. Online publishing is enabled by default, but it can be disabled to create only an offline long code. Receiving a code still opens selective import confirmation.
+
+### Archive party loadouts automatically
+
+1. Open `Memory Monitoring (Read Only)` → `Runtime Monitor`, then start `Character Loadout Detection`. It stays active in the background and reconnects automatically; no per-quest refresh is required.
+2. Enter quests normally. Once the party is stable, the player and teammate builds are archived locally as one quest. Teammates discovered later in the same quest update that record instead of creating a duplicate.
+3. Preview any captured character, then export it, copy its code, publish it to the atlas, or open Loadout Presets to choose a save and destination slot.
+4. If you use GBFR Logs, select its `logs.db` to batch-read historical character builds. The database is opened read-only and is never modified.
+
+Runtime and Logs imports expose only scopes that were actually captured; missing scopes are disabled in the import dialog. Captured builds normalize character, weapon, sigil, wrightstone, and summon progression for endgame use while preserving the observed sigil composition, mastery route, weapon skills, and character abilities.
 
 ### Use a live editor or single-player patch
 

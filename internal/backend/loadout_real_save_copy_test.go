@@ -300,6 +300,135 @@ func TestIsolatedRealSaveConstructAndReadback(t *testing.T) {
 	t.Logf("verified isolated save integration: %s; output=%s", fmt.Sprintf("new factor SlotID %d", first.SlotID), result.OutputPath)
 }
 
+func TestIsolatedRealSavePartialEndgameMasteryReadback(t *testing.T) {
+	fixture := requireIsolatedSaveQA(t)
+	payload, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(t.TempDir(), "SaveData2.dat")
+	if err := os.WriteFile(work, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "appdata"))
+
+	app := &App{}
+	group, source := isolatedIoLoadout(t, work)
+	var target LoadoutEntry
+	for _, candidate := range group.Loadouts {
+		if !candidate.IsParty && candidate.UnitID != source.UnitID {
+			target = candidate
+			break
+		}
+	}
+	if target.UnitID == 0 {
+		t.Fatal("isolated real save has no second character loadout slot")
+	}
+	exact, err := buildLoadoutShare(work, source.UnitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := &LoadoutShare{
+		Format: loadoutShareFormat, Version: loadoutShareVersion,
+		CharaHash: exact.CharaHash, CharaName: exact.CharaName, OwnerCode: exact.OwnerCode, Name: "运行捕获专精回读",
+		SourceKind: loadoutShareSourceRuntime, ProgressionPolicy: loadoutProgressionEndgame,
+		CapturedFields: []string{"sigils", "mastery"}, Sigils: append([]LoadoutShareSigil(nil), exact.Sigils...),
+		MasteryHashes: append([]string(nil), exact.MasteryHashes...),
+	}
+
+	save, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	charaHash, err := ParseHashHex(group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	characterUnitID, err := loadoutCharacterUnitForHash(save, charaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := save.patchInt(1323, characterUnitID, characterMasterExpThresholds[10]); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.FixChecksums(); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.Write(work); err != nil {
+		t.Fatal(err)
+	}
+	beforeGrowth, err := app.LoadoutStatContext(work, group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeSave, err := LoadSave(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePanel := readFixedVec(beforeSave, 1503, characterUnitID, 2)
+	nodeBase := uint32(10000000) + (characterUnitID-10000)*1000
+	beforeNodes := make([]LoadoutShareEnhancementNode, 0, 1000)
+	for index := uint32(0); index < 1000; index++ {
+		entry, ok := beforeSave.findUnitExact(1602, nodeBase+index)
+		if ok && entry.ValueCnt == 1 {
+			beforeNodes = append(beforeNodes, LoadoutShareEnhancementNode{Index: int(index), Value: int(entry.Int32())})
+		}
+	}
+
+	draft, err := resolveLoadoutShare(work, group.CharaHash, partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.ApplyPayload == nil || draft.ApplyPayload.Character == nil || draft.ApplyPayload.Character.CharacterBaseCaptured {
+		t.Fatalf("partial runtime draft did not expose only its audited mastery progress: %+v", draft.ApplyPayload)
+	}
+	draft.ApplyPayload.ApplyMasteryConfiguration = true
+	draft.ApplyPayload.ApplyMasterProgress = true
+	draft.ApplyPayload.MasterProgressIndex = 55
+	_, targetSkills, _ := loadoutVectors(target)
+	targetSigils, _, _ := loadoutVectors(target)
+	output := filepath.Join(t.TempDir(), "SaveData2.dat")
+	result, err := app.LoadoutApplyWithResources(work, output, LoadoutApplyRequest{
+		Changes: []LoadoutWrite{{
+			UnitID: target.UnitID, ExpectCharaHash: group.CharaHash, Op: "write", Name: draft.Name,
+			WeaponSlotID: target.WeaponSlotID, SigilSlotIDs: targetSigils, ConstructedSigils: draft.ConstructedSigils,
+			SkillHashes: targetSkills, MasteryHashes: draft.MasteryHashes, SummonSlotIDs: beforeGrowth.EquippedSummonSlotIDs,
+		}},
+		ImportPayload: draft.ApplyPayload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CreatedCount != loadoutMaxSigils || result.SlotsWritten != 1 {
+		t.Fatalf("partial runtime deployment did not create the selected factor set: %+v", result)
+	}
+	afterGrowth, err := app.LoadoutStatContext(output, group.CharaHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterGrowth.PermanentGrowth.MasterProgressIndex != 55 {
+		t.Fatalf("runtime MLv readback=%d, want 55", afterGrowth.PermanentGrowth.MasterProgressIndex)
+	}
+	afterSave, err := LoadSave(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPanel := readFixedVec(afterSave, 1503, characterUnitID, 2)
+	afterNodes := make([]LoadoutShareEnhancementNode, 0, len(beforeNodes))
+	for index := uint32(0); index < 1000; index++ {
+		entry, ok := afterSave.findUnitExact(1602, nodeBase+index)
+		if ok && entry.ValueCnt == 1 {
+			afterNodes = append(afterNodes, LoadoutShareEnhancementNode{Index: int(index), Value: int(entry.Int32())})
+		}
+	}
+	if afterGrowth.Level != beforeGrowth.Level ||
+		afterGrowth.PermanentGrowth.FateEpisodeMask != beforeGrowth.PermanentGrowth.FateEpisodeMask ||
+		afterGrowth.PermanentGrowth.LegacyProgress != beforeGrowth.PermanentGrowth.LegacyProgress ||
+		!reflect.DeepEqual(afterPanel, beforePanel) || !reflect.DeepEqual(afterNodes, beforeNodes) {
+		t.Fatalf("partial runtime deployment changed uncaptured character progression: before=%+v after=%+v", beforeGrowth.PermanentGrowth, afterGrowth.PermanentGrowth)
+	}
+}
+
 func TestIsolatedRealSaveImportCreatesIndependentCompleteFactorSet(t *testing.T) {
 	fixture := requireIsolatedSaveQA(t)
 	payload, err := os.ReadFile(fixture)

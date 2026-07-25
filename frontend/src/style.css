@@ -115,18 +115,18 @@ input[type="number"]::-webkit-outer-spin-button { margin:0; -webkit-appearance:n
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(149, 116, 61, .36) rgba(236, 222, 190, .62);
+  scrollbar-color: rgba(126, 89, 40, .42) transparent;
 }
 
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-track { background: rgba(236, 222, 190, .62); }
+*::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 8px;
-  background: rgba(149, 116, 61, .36);
+  background: rgba(126, 89, 40, .42);
   background-clip: content-box;
 }
-*::-webkit-scrollbar-thumb:hover { background-color: rgba(58, 169, 179, .58); }
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(110, 78, 40, .62); }
 *::-webkit-scrollbar-corner { background: transparent; }
 
 /*

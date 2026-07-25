@@ -1,11 +1,13 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, LoadoutPreviewList, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { FindSaveFiles, LoadoutList, LoadoutPreviewList, SelectLogsLoadoutShares, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import skillIconFiles from '../loadoutSkillIcons.json'
+import CapturedLoadoutPreview from './CapturedLoadoutPreview.vue'
 import LoadoutEditor from './LoadoutEditor.vue'
 
-const emit = defineEmits(['status', 'editing-change'])
+const props = defineProps({ pendingImport: { type: Object, default: null } })
+const emit = defineEmits(['status', 'editing-change', 'import-consumed'])
 
 const slots = ref([])
 const savePath = ref('')
@@ -13,9 +15,14 @@ const loading = ref(false)
 const groups = ref([])
 const selectedChara = ref('')
 const expanded = ref(new Set())
-const mode = ref('view') // view | edit
+const mode = ref('view') // view | edit | logs | logs-preview
 const previews = ref(new Map())
 const previewLoading = ref(false)
+const logsCandidates = ref([])
+const logsLoading = ref(false)
+const selectedLogsCandidate = ref(null)
+const viewerRoot = ref(null)
+const logsPendingImport = ref(null)
 let previewRequestId = 0
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
@@ -33,6 +40,13 @@ function traitIcon(name, hash = '') { return traitAssetIcon({ name, hash }) }
 
 const currentGroup = computed(() => groups.value.find(g => g.charaName === selectedChara.value) || null)
 const isEditing = computed(() => mode.value === 'edit' && !!currentGroup.value)
+const effectivePendingImport = computed(() => props.pendingImport || logsPendingImport.value)
+const pendingCodeForEditor = computed(() => {
+  if (!effectivePendingImport.value?.code || !currentGroup.value) return ''
+  return String(currentGroup.value.charaHash).toUpperCase() === String(effectivePendingImport.value.charaHash || '').toUpperCase()
+    ? effectivePendingImport.value.code
+    : ''
+})
 const presetCount = computed(() => {
   let n = 0
   for (const g of groups.value) for (const lo of g.loadouts) if (!lo.isParty) n++
@@ -101,6 +115,74 @@ function leaveEdit() {
   mode.value = 'view'
 }
 
+async function activatePendingImport() {
+  const pending = effectivePendingImport.value
+  if (!pending?.code) return
+  if (!savePath.value || !groups.value.length) {
+	selectedLogsCandidate.value = null
+	mode.value = 'view'
+	emit('status', `已暂存 ${pending.charaName || '角色'} 配装，请先选择目标存档`, 'info')
+	return
+  }
+  const target = groups.value.find(group => String(group.charaHash).toUpperCase() === String(pending.charaHash || '').toUpperCase())
+  if (!target) {
+    emit('status', `目标存档没有 ${pending.charaName || pending.charaHash} 的配装槽`, 'error')
+    return
+  }
+  selectedChara.value = target.charaName
+  mode.value = 'edit'
+  await nextTick()
+}
+
+async function browseLogsLoadouts() {
+	if (logsLoading.value) return
+	logsLoading.value = true
+	try {
+		logsCandidates.value = await SelectLogsLoadoutShares() || []
+		mode.value = 'logs'
+	} catch (error) {
+		emit('status', String(error), 'error')
+	} finally {
+		logsLoading.value = false
+	}
+}
+
+function openLogsLibrary() {
+	selectedLogsCandidate.value = null
+	mode.value = 'logs'
+}
+
+function closeLogsLibrary() {
+	selectedLogsCandidate.value = null
+	mode.value = 'view'
+}
+
+function previewLogsCandidate(candidate) {
+	selectedLogsCandidate.value = candidate
+	mode.value = 'logs-preview'
+	nextTick(() => viewerRoot.value?.closest('.tool-center-scroll,.workspace-scroll')?.scrollTo({ top: 0 }))
+}
+
+function leaveLogsPreview() {
+	selectedLogsCandidate.value = null
+	mode.value = 'logs'
+}
+
+async function deployLogsCandidate(candidate) {
+	logsPendingImport.value = {
+		code: candidate.compatibilityCode,
+		charaHash: candidate.characterHash,
+		charaName: candidate.characterName,
+		requestId: Date.now(),
+	}
+	await activatePendingImport()
+}
+
+function consumePendingImport() {
+	if (logsPendingImport.value) logsPendingImport.value = null
+	else emit('import-consumed')
+}
+
 watch(isEditing, value => emit('editing-change', value), { immediate: true })
 watch(currentGroup, value => {
   if (!value && mode.value === 'edit') mode.value = 'view'
@@ -130,6 +212,7 @@ async function load(path) {
       selectedChara.value = richest?.charaName || ''
     }
     emit('status', `已读取 ${groups.value.length} 个角色、${presetCount.value} 套配装预设`, 'success')
+		await activatePendingImport()
   } catch (err) {
     emit('status', String(err), 'error')
   } finally {
@@ -152,10 +235,12 @@ onMounted(async () => {
   } catch { /* 找不到默认存档目录时静默，仍可手动浏览 */ }
 })
 
+watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImport() })
+
 </script>
 
 <template>
-  <div class="loadout-viewer ui-page is-wide ui-page-stack" :class="{ editing: isEditing }">
+  <div ref="viewerRoot" class="loadout-viewer ui-page is-wide ui-page-stack" :class="{ editing: isEditing }">
     <section v-if="isEditing" class="editor-workspace ui-page is-fluid" aria-label="配装编辑工作区">
       <header class="editor-workspace-bar ui-card">
         <button type="button" class="back-button ui-btn" @click="leaveEdit">
@@ -173,12 +258,52 @@ onMounted(async () => {
       </header>
       <div class="editor-workspace-content">
         <LoadoutEditor :save-path="savePath" :chara-hash="currentGroup.charaHash" :chara-name="currentGroup.charaName"
-          :loadouts="currentGroup.loadouts"
-          @status="(m, t) => emit('status', m, t)" @reload="load(savePath)" />
+          :loadouts="currentGroup.loadouts" :pending-import-code="pendingCodeForEditor"
+          @import-consumed="consumePendingImport" @status="(m, t) => emit('status', m, t)" @reload="load(savePath)" />
       </div>
     </section>
 
+	<section v-else-if="mode === 'logs-preview' && selectedLogsCandidate" class="logs-workspace" aria-label="Logs 配装预览">
+	  <header class="subpage-bar ui-card">
+		<button type="button" class="back-button ui-btn" @click="leaveLogsPreview"><span aria-hidden="true">←</span> 返回 Logs 配装库</button>
+		<div><small>GBFR Logs 配装预览</small><strong>{{ selectedLogsCandidate.characterName }} · {{ selectedLogsCandidate.playerName || '未记录玩家名' }}</strong></div>
+	  </header>
+	  <CapturedLoadoutPreview :loadout="selectedLogsCandidate.preview" source-label="GBFR Logs v1 · 最终导入预览">
+		<template #actions>
+		  <button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(selectedLogsCandidate)">选择存档并导入</button>
+		</template>
+	  </CapturedLoadoutPreview>
+	</section>
+
+	<section v-else-if="mode === 'logs'" class="logs-workspace" aria-label="GBFR Logs 配装库">
+	  <header class="subpage-bar logs-library-bar ui-card">
+		<button type="button" class="back-button logs-back-button ui-btn is-ghost" @click="closeLogsLibrary"><span aria-hidden="true">←</span> 返回配装预设</button>
+		<div class="logs-header-copy"><small>多角色配装导入</small><strong>GBFR Logs 配装库</strong><span>一次读取日志中的全部队员；先预览每名角色，再选择是否部署到存档。</span></div>
+		<button type="button" class="logs-source-button ui-btn is-primary" :disabled="logsLoading" @click="browseLogsLoadouts">{{ logsLoading ? '正在解析…' : logsCandidates.length ? '更换 Logs 数据库' : '选择 Logs 数据库' }}</button>
+	  </header>
+	  <div v-if="logsCandidates.length" class="logs-candidate-grid">
+		<article v-for="candidate in logsCandidates" :key="`${candidate.logTime}-${candidate.playerName}-${candidate.ownerCode}`" class="logs-candidate-card ui-card is-flat">
+		  <header>
+			<img v-if="characterAssetIcon(candidate.characterHash)" :src="characterAssetIcon(candidate.characterHash)" alt="" />
+			<span v-else class="logs-character-fallback" aria-hidden="true">◇</span>
+			<div><small>{{ candidate.playerName || '未记录玩家名' }}</small><strong>{{ candidate.characterName }}</strong><span>{{ new Date(candidate.logTime).toLocaleString('zh-CN') }}</span></div>
+		  </header>
+		  <dl>
+			<div><dt>武器</dt><dd>{{ candidate.weaponName || '未记录' }}</dd></div>
+			<div><dt>因子</dt><dd>{{ candidate.sigilCount }} / 12</dd></div>
+			<div><dt>上限突破</dt><dd>{{ candidate.overLimitCount }} / 4</dd></div>
+		  </dl>
+		  <div class="logs-card-actions">
+			<button type="button" class="ui-btn" @click="previewLogsCandidate(candidate)">预览实际配装</button>
+			<button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(candidate)">导入到存档</button>
+		  </div>
+		</article>
+	  </div>
+	  <div v-else class="logs-empty ui-empty"><strong>选择一个 GBFR Logs 数据库</strong><span>数据库中的不同场次与角色会分别解析成可预览的配装卡片。</span></div>
+	</section>
+
     <template v-else>
+	  <section v-if="effectivePendingImport?.code" class="section ui-notice is-info"><strong>已捕获 {{ effectivePendingImport.charaName || '角色' }} 配装</strong><span>选择目标存档后将自动进入分项导入，不会直接写档。</span></section>
       <section class="section ui-card ui-panel">
         <div class="section-title ui-section-title"><span>选择存档</span><small>读取游戏内保存的配装预设（每角色 15 槽）</small></div>
         <div class="save-row ui-actions">
@@ -188,6 +313,12 @@ onMounted(async () => {
         </div>
         <div v-if="savePath" class="path-line ui-hint ui-truncate" :title="savePath">{{ savePath }}</div>
       </section>
+
+	  <button type="button" class="logs-library-entry ui-card" @click="openLogsLibrary">
+		<span class="logs-entry-mark" aria-hidden="true">L</span>
+		<span><small>外部战斗记录</small><strong>从 GBFR Logs 批量获取队伍配装</strong><em>独立解析数据库中的多名角色，可逐个预览后再导入。</em></span>
+		<b aria-hidden="true">→</b>
+	  </button>
 
       <section v-if="groups.length" class="section ui-card ui-panel">
         <div class="section-title ui-section-title">
@@ -367,6 +498,41 @@ onMounted(async () => {
 .loadout-stat-strip small { color:var(--text-muted); font-size:10px; }
 .loadout-stat-strip b { overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .empty { margin:0; }
+.logs-library-entry { width:100%; min-width:0; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:var(--space-3); padding:var(--space-4); border:1px solid var(--border-strong); border-left:4px solid var(--accent); background:var(--surface-card-pop); color:inherit; text-align:left; cursor:pointer; box-shadow:var(--shadow-1); }
+.logs-library-entry:hover { border-color:var(--accent); background:var(--accent-soft); }
+.logs-library-entry > span:nth-child(2) { min-width:0; display:grid; gap:2px; }
+.logs-library-entry small,.logs-library-entry strong,.logs-library-entry em { min-width:0; overflow-wrap:anywhere; }
+.logs-library-entry small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
+.logs-library-entry strong { color:var(--text-primary); font-size:var(--fs-md); }
+.logs-library-entry em { color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; }
+.logs-library-entry > b { color:var(--accent-hover); font-size:var(--fs-xl); }
+.logs-entry-mark { width:42px; height:42px; display:grid; place-items:center; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-sunken); color:var(--accent-hover); font-family:var(--font-display); font-size:var(--fs-lg); font-weight:var(--fw-bold); }
+.logs-workspace { width:100%; min-width:0; display:grid; gap:var(--space-4); }
+.subpage-bar { position:sticky; z-index:10; top:0; min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:var(--space-4); padding:var(--space-4); background:var(--surface-card-pop); box-shadow:var(--shadow-2); }
+.subpage-bar > div { min-width:0; display:grid; gap:2px; }
+.subpage-bar small,.subpage-bar strong,.subpage-bar span { min-width:0; overflow-wrap:anywhere; }
+.subpage-bar small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
+.subpage-bar strong { color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
+.subpage-bar span { color:var(--text-muted); font-size:var(--fs-xs); }
+.logs-library-bar { grid-template-areas:"back back" "copy action"; grid-template-columns:minmax(0,1fr) auto; align-items:end; row-gap:var(--space-2); }
+.logs-back-button { grid-area:back; justify-self:start; width:auto; }
+.logs-header-copy { grid-area:copy; align-self:center; }
+.logs-source-button { grid-area:action; justify-self:end; width:max-content; max-width:100%; }
+.logs-candidate-grid { min-width:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:var(--space-4); align-items:stretch; }
+.logs-candidate-card { min-width:0; display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--accent); background:var(--surface-card-pop); }
+.logs-candidate-card > header { min-width:0; display:grid; grid-template-columns:52px minmax(0,1fr); gap:var(--space-3); align-items:center; }
+.logs-candidate-card > header img,.logs-character-fallback { width:52px; height:52px; display:grid; place-items:center; overflow:hidden; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-sunken); object-fit:cover; }
+.logs-candidate-card > header div { min-width:0; display:grid; gap:2px; }
+.logs-candidate-card > header small,.logs-candidate-card > header strong,.logs-candidate-card > header span { min-width:0; overflow-wrap:anywhere; }
+.logs-candidate-card > header small,.logs-candidate-card > header span { color:var(--text-muted); font-size:var(--fs-xs); }
+.logs-candidate-card > header strong { color:var(--text-primary); font-size:var(--fs-lg); }
+.logs-candidate-card dl { min-width:0; display:grid; grid-template-columns:minmax(0,1.5fr) repeat(2,minmax(72px,.65fr)); gap:var(--space-2); margin:0; }
+.logs-candidate-card dl > div { min-width:0; padding:var(--space-2); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-sunken); }
+.logs-candidate-card dt { color:var(--text-muted); font-size:var(--fs-2xs); }
+.logs-candidate-card dd { min-width:0; margin:2px 0 0; overflow-wrap:anywhere; color:var(--text-secondary); font-size:var(--fs-xs); }
+.logs-card-actions { min-width:0; display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:auto; }
+.logs-card-actions .ui-btn { flex:1 1 132px; min-width:0; }
+.logs-empty { min-height:220px; display:flex; flex-direction:column; justify-content:center; gap:var(--space-2); }
 @container loadout-viewer (max-width:900px) {
   .section-title .edit-launch { width:100%; margin-left:0; }
   .editor-workspace-bar { grid-template-columns:1fr auto; }
@@ -382,5 +548,17 @@ onMounted(async () => {
   .loadout-card-toggle .expand-mark { grid-column:4; grid-row:1/4; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
   .loadout-stat-strip { grid-template-columns:repeat(2,minmax(70px,1fr)); }
+}
+@container loadout-viewer (max-width:560px) {
+	.logs-library-entry { grid-template-columns:36px minmax(0,1fr); }
+	.logs-entry-mark { width:36px; height:36px; }
+	.logs-library-entry > b { display:none; }
+	.subpage-bar:not(.logs-library-bar) { grid-template-columns:minmax(0,1fr); }
+	.subpage-bar:not(.logs-library-bar) > .back-button,.subpage-bar:not(.logs-library-bar) > div { grid-column:1; }
+	.subpage-bar:not(.logs-library-bar) > .back-button { grid-row:1; justify-self:start; width:auto; }
+	.subpage-bar:not(.logs-library-bar) > div { grid-row:2; width:100%; }
+	.logs-library-bar { grid-template-areas:"back" "copy" "action"; grid-template-columns:minmax(0,1fr); }
+	.logs-source-button { justify-self:start; }
+	.logs-candidate-card dl { grid-template-columns:minmax(0,1fr); }
 }
 </style>

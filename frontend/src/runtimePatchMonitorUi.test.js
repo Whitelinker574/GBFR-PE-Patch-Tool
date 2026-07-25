@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const componentURL = new URL('./components/RuntimePatchMonitor.vue', import.meta.url)
 const source = existsSync(componentURL) ? readFileSync(componentURL, 'utf8') : ''
+const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
 
 test('runtime monitor is a dedicated two-tab memory-monitoring page', () => {
   assert.ok(source, 'RuntimePatchMonitor.vue must exist')
@@ -11,7 +12,7 @@ test('runtime monitor is a dedicated two-tab memory-monitoring page', () => {
   assert.match(source, /role="tablist"/)
   assert.match(source, /role="tab"[\s\S]*?:aria-selected=/)
   assert.match(source, /role="tabpanel"/)
-  assert.match(source, /data-monitor-panel="party"/)
+  assert.match(detector, /data-monitor-panel="party"/)
   assert.match(source, /data-monitor-panel="selected-items"/)
   assert.match(source, /t\('memoryMonitoring'\)/)
 })
@@ -43,21 +44,18 @@ test('all async page actions share one epoch-aware operation gate', () => {
   assert.match(source, /createOperationGate\(\)/)
   assert.match(source, /lifecycleEpoch/)
   assert.match(source, /operationIsCurrent\(/)
-  for (const operation of ['connect', 'disconnect', 'party', 'capture-enable', 'capture-disable', 'capture-refresh', 'item-read']) {
+  for (const operation of ['connect', 'disconnect', 'capture-enable', 'capture-disable', 'capture-refresh', 'item-read']) {
     assert.ok(source.includes(`beginOperation('${operation}'`), `${operation} must enter the shared operation gate`)
   }
 })
 
-test('party cards render capabilities honestly instead of coercing absent values to zero', () => {
-  assert.ok(source, 'RuntimePatchMonitor.vue must exist')
-  assert.match(source, /partyOptionalMetric\(entity, 'dodge'/)
-  assert.match(source, /partyOptionalMetric\(entity, 'sba'/)
-  assert.match(source, /t\('fieldUnavailable'\)/)
-  assert.doesNotMatch(source, /(?:dodgeCount|sba|maxSba)\s*\|\|\s*0/)
-  assert.match(source, /v-for="entity in partySnapshot\.entities"/)
-  assert.match(source, /formatPosition\(entity\.position\)/)
-  assert.match(source, /entity\.present/)
-  assert.match(source, /t\('notInParty'\)/)
+test('quest history groups every stable party as one local record', () => {
+  assert.match(detector, /v-for="record in records"/)
+  assert.match(detector, /v-for="member in record\.members"/)
+  assert.match(detector, /RuntimeLoadoutDetectorStatus/)
+  assert.match(detector, /RuntimeLoadoutDetectorHistory/)
+  assert.match(detector, /RuntimeLoadoutDetectorDelete/)
+  assert.doesNotMatch(detector, /RuntimePatchPartyMonitorOwned|readPartyLoadouts/)
 })
 
 test('selected-item reading binds ExpectedSelectedAddr and becomes reselect-required after one read', () => {
@@ -68,10 +66,11 @@ test('selected-item reading binds ExpectedSelectedAddr and becomes reselect-requ
   assert.match(source, /consumeRuntimePatchSelectedCapture\(/)
   assert.match(source, /consumedSelections\[kind\]\s*=\s*true/)
   assert.match(source, /t\('needsReselection'\)/)
-  assert.match(source, /record\.hashHex/)
-  assert.match(source, /record\.name/)
-  assert.match(source, /record\.quantity/)
-  assert.match(source, /record\.flagsHex/)
+  assert.match(source, /selectedRecords\[kind\] = Object\.freeze\(\{ \.\.\.record \}\)/)
+  assert.match(source, /selectedRecords\[kind\]\.hashHex/)
+  assert.match(source, /selectedRecords\[kind\]\.name/)
+  assert.match(source, /selectedRecords\[kind\]\.quantity/)
+  assert.match(source, /selectedRecords\[kind\]\.flagsHex/)
 })
 
 test('the item panel is conspicuously read-only and exposes no inventory writer controls', () => {
@@ -87,18 +86,17 @@ test('the page keeps the parchment atom system responsive from narrow to ultra-w
   assert.ok(source, 'RuntimePatchMonitor.vue must exist')
   assert.match(source, /class="[^"]*ui-card/)
   assert.match(source, /class="[^"]*ui-btn/)
-  assert.match(source, /container-name:\s*runtime-monitor/)
-  assert.match(source, /@container runtime-monitor \(min-width:\s*760px\)/)
-  assert.match(source, /@container runtime-monitor \(min-width:\s*1500px\)/)
-  assert.match(source, /@container runtime-monitor \(max-width:\s*480px\)/)
-  assert.match(source, /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*260px\),\s*1fr\)\)/)
-  assert.match(source, /@media \(prefers-reduced-motion:\s*reduce\)/)
+  assert.match(source, /container:runtime-monitor\s*\/\s*inline-size/)
+  assert.match(source, /@container runtime-monitor \(max-width:720px\)/)
+  assert.match(detector, /@container loadout-detector \(max-width:860px\)/)
+  assert.match(detector, /grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,220px\),1fr\)\)/)
+  assert.match(detector, /@media \(prefers-reduced-motion:reduce\)/)
 })
 
 test('the embedded page does not repeat the shell heading and keeps the narrow status badge intact', () => {
   assert.doesNotMatch(source, /<header class="monitor-hero/)
-  assert.match(source, /data-page="runtime-patch-runtime-monitor"[^>]*>\s*<section class="monitor-connection/)
-  assert.match(source, /\.connection-summary > \.ui-tag\s*\{[^}]*flex:\s*none[^}]*white-space:\s*nowrap/s)
+  assert.match(source, /data-page="runtime-patch-runtime-monitor"[^>]*>\s*<nav class="monitor-tabs/)
+  assert.match(source, /\.connection-summary > \.ui-tag\s*\{[^}]*flex:none/s)
 })
 
 test('tabs and live status expose keyboard and screen-reader state', () => {

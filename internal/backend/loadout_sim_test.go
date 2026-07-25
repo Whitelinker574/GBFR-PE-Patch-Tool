@@ -143,6 +143,20 @@ func TestDLC2TerminusSkillUsesIndependentAuditedLevel30Definition(t *testing.T) 
 			t.Fatalf("SKILL_143_10 Lv%d does not match local skill_status.tbl: %+v", check.level, edge)
 		}
 	}
+	if got := canonicalTraitValueID("1E1CECCE"); got != "SKILL_143_10" {
+		t.Fatalf("DLC terminus raw hash resolved to %q, want SKILL_143_10", got)
+	}
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bonuses := simulateTraits([]struct {
+		hash  uint32
+		level int
+	}{{hash: 0x1E1CECCE, level: 35}}, traitHashMapWithRawKeys(catalog))
+	if len(bonuses) != 1 || bonuses[0].TraitID != "SKILL_143_10" || bonuses[0].Name != "浩劫" || bonuses[0].Effect == "" {
+		t.Fatalf("DLC terminus runtime hash lost its audited definition: %+v", bonuses)
+	}
 }
 
 func TestMageSavvyUsesVerifiedIoTraitIDAndLevel15GlobalCap(t *testing.T) {

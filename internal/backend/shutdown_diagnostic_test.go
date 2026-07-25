@@ -35,6 +35,9 @@ func TestBeforeCloseFailsClosedOnDetachError(t *testing.T) {
 	if detachPosition, savePosition := firstSelectorCallPosition(body, "a", "CharaDetach"), firstSelectorCallPosition(body, "a", "saveWindowSize"); detachPosition > savePosition {
 		t.Fatal("beforeClose performs ordinary shutdown work before restoring runtime hooks")
 	}
+	if got := countCallsSelector(body, "a", "startRuntimeLoadoutDetector"); got == 0 {
+		t.Fatal("beforeClose does not resume background loadout detection when a failed detach blocks closing")
+	}
 }
 
 func TestDetachWithoutConnectionIsNotAnError(t *testing.T) {

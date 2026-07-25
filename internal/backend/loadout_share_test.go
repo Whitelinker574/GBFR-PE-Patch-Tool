@@ -194,8 +194,8 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	if strings.Contains(string(encoded), `"enhancementNodes"`) || !strings.Contains(string(encoded), `"enhancementNodeValues"`) {
 		t.Fatalf("真实配装没有使用 v10 固定位置强化数组: %s", encoded)
 	}
-	t.Logf("真实配装 v10 JSON 大小=%d bytes", len(encoded))
-	filePath := filepath.Join(t.TempDir(), "real-v10.gbfr-loadout.json")
+	t.Logf("真实配装 v%d JSON 大小=%d bytes", share.Version, len(encoded))
+	filePath := filepath.Join(t.TempDir(), fmt.Sprintf("real-v%d.gbfr-loadout.json", share.Version))
 	if err := os.WriteFile(filePath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -757,6 +757,48 @@ func TestLoadoutShareV3PicksOneEquivalentDuplicateSummon(t *testing.T) {
 	}
 	if len(draft.Missing) != 0 {
 		t.Fatalf("字段完全相同的重复实例不应阻止导入: %v", draft.Missing)
+	}
+}
+
+func TestPartialEndgameImportReportsNormalizedProgressionWithoutCharacterSnapshot(t *testing.T) {
+	path, exact := actualLoadoutShareFixture(t)
+	share := &LoadoutShare{
+		Format: loadoutShareFormat, Version: loadoutShareVersion,
+		CharaHash: exact.CharaHash, CharaName: exact.CharaName, OwnerCode: exact.OwnerCode, Name: "毕业归一化测试",
+		SourceKind: loadoutShareSourceRuntime, ProgressionPolicy: loadoutProgressionEndgame,
+		CapturedFields: []string{"sigils"}, Sigils: append([]LoadoutShareSigil(nil), exact.Sigils...),
+	}
+	draft, err := resolveLoadoutShare(path, share.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Capabilities.SourceCharacterLevel != 100 || draft.Capabilities.SourceMasterProgressIndex != 55 || draft.Capabilities.SourceMasterLevel != 55 {
+		t.Fatalf("partial endgame capabilities=%+v", draft.Capabilities)
+	}
+	if draft.Capabilities.SourceCharacterBaseCaptured || draft.ApplyPayload == nil || draft.ApplyPayload.Character != nil {
+		t.Fatalf("partial endgame import fabricated an exact character snapshot: %+v", draft)
+	}
+}
+
+func TestPartialEndgameMasteryExposesOnlyAuditedMasterProgress(t *testing.T) {
+	path, exact := actualLoadoutShareFixture(t)
+	share := &LoadoutShare{
+		Format: loadoutShareFormat, Version: loadoutShareVersion,
+		CharaHash: exact.CharaHash, CharaName: exact.CharaName, OwnerCode: exact.OwnerCode, Name: "运行专精部署测试",
+		SourceKind: loadoutShareSourceRuntime, ProgressionPolicy: loadoutProgressionEndgame,
+		CapturedFields: []string{"sigils", "mastery"}, Sigils: append([]LoadoutShareSigil(nil), exact.Sigils...),
+		MasteryHashes: append([]string(nil), exact.MasteryHashes...),
+	}
+	draft, err := resolveLoadoutShare(path, share.CharaHash, share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	character := draft.ApplyPayload.Character
+	if character == nil || character.MasterTotalMSP != characterMasterExpThresholds[55] {
+		t.Fatalf("runtime mastery did not expose audited MLv55 threshold: %+v", character)
+	}
+	if character.CharacterBaseCaptured || character.CharacterLevel != 0 || len(character.EnhancementPanel) != 0 || len(character.EnhancementNodes) != 0 || len(character.Weapons) != 0 {
+		t.Fatalf("runtime mastery fabricated unrelated character progression: %+v", character)
 	}
 }
 

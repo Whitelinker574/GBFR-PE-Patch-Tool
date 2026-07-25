@@ -5,6 +5,8 @@ import overLimitCurves from '../../../internal/backend/data/overlimit_curves.jso
 const MAX_JSON_BYTES = 1024 * 1024
 const MAX_FRAME_BYTES = 8 * 1024
 const HASH_PATTERN = /^(?:0x)?[0-9a-f]{8}$/i
+const SOURCE_KINDS = new Set(['save', 'runtime', 'logs-db'])
+const CAPTURED_FIELDS = new Set(['stats', 'sigils', 'summons', 'skills', 'weapon', 'weaponSkills', 'wrightstone', 'mastery', 'character', 'overLimit'])
 const OVER_LIMIT = Object.fromEntries(overLimitCurves.entries.map(entry => [entry.hash, [entry.name, entry.nameEn, entry.unit, entry.rawValues.map(value => value * entry.displayScale)]]))
 const OVER_LIMIT_ALIASES = Object.fromEntries(overLimitCurves.entries.flatMap(entry => (entry.aliases || []).map(alias => [alias, entry.hash])))
 
@@ -92,9 +94,9 @@ function compactWeapon(value) {
     integer(value.awakening, '当前武器觉醒', 0, 99),
     integer(value.transcendence, '当前武器超凡', 0, 99),
     Boolean(value.exactState),
-    integer(value.flags, '当前武器标志', 0, 0xffffffff),
+    integer(value.flags ?? 0, '当前武器标志', 0, 0xffffffff),
     hash(value.wrightstoneReference, '当前武器祝福引用', true),
-    integer(value.state, '当前武器状态', -0x80000000, 0x7fffffff),
+    integer(value.state ?? 0, '当前武器状态', -0x80000000, 0x7fffffff),
     list(value.skillHashes, '当前武器技能', 5, 5).map(item => hash(item, '当前武器技能哈希')),
     wrightstone(value.wrightstone, '当前武器祝福'),
   ]
@@ -103,15 +105,38 @@ function compactWeapon(value) {
 function compactLoadout(source) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('文件内容不是配装对象')
   if (source.format !== 'gbfr-loadout') throw new Error('不是 GBFR 单套配装文件')
-  if (source.version !== 10) throw new Error(`网页上传需要 v10 配装文件，当前为 v${source.version || 0}；请用最新版应用重新导出`)
-  const sigils = list(source.sigils, '因子配置', 12)
-  const summons = list(source.summons, '召唤石配置', 4, 4)
-  const skills = list(source.skills, '角色技能', 4)
-  const weaponSkills = list(source.weaponSkillHashes, '武器技能快照', 5, 5)
-  const mastery = list(source.masteryHashes, '专精快照', 50, 50)
-  const overLimit = list(source.overLimit, '上限突破配置', 4, 4)
-  return [
-    10,
+  if (![10, 11].includes(source.version)) throw new Error(`网页上传需要 v10 或 v11 配装文件，当前为 v${source.version || 0}；请用最新版应用重新导出`)
+  const sourceKind = source.version >= 11 ? text(source.sourceKind || 'save', '配装来源', 24) : 'save'
+  const capturedFields = source.version >= 11
+    ? list(source.capturedFields || [], '捕获字段', 24).map(item => text(item, '捕获字段', 32))
+    : []
+  const partial = source.version >= 11 && sourceKind !== 'save'
+  if (!SOURCE_KINDS.has(sourceKind)) throw new Error(`配装来源 ${sourceKind} 无效`)
+  if (new Set(capturedFields).size !== capturedFields.length || capturedFields.some(field => !CAPTURED_FIELDS.has(field))) throw new Error('捕获字段包含未知或重复项目')
+  const progressionPolicy = text(source.progressionPolicy || 'exact', '养成策略', 24)
+  if ((sourceKind === 'save' && progressionPolicy !== 'exact') || (partial && progressionPolicy !== 'endgame-max')) throw new Error('配装来源与养成策略不匹配')
+  if (source.version >= 11 && capturedFields.length === 0) throw new Error('v11 配装缺少捕获字段声明')
+  const captured = field => !partial || capturedFields.includes(field)
+  const sigils = captured('sigils') ? list(source.sigils || [], '因子配置', 12) : []
+  const summons = captured('summons') ? list(source.summons || [], '召唤石配置', 4, 4) : []
+  const skills = captured('skills') ? list(source.skills || [], '角色技能', 4) : []
+  const weaponSkills = captured('weaponSkills') ? list(source.weaponSkillHashes || [], '武器技能快照', 5, 5) : []
+  const mastery = captured('mastery') ? list(source.masteryHashes || [], '专精快照', 50, 50) : []
+  const overLimit = captured('overLimit') ? list(source.overLimit || [], '上限突破配置', 4, 4) : []
+  if (partial && (!captured('sigils') || sigils.length === 0)) throw new Error('部分配装需要至少一个已捕获因子')
+  const rejectedPayload = [
+    !captured('summons') && (source.summons || []).length,
+    !captured('skills') && (source.skills || []).length,
+    !captured('weaponSkills') && (source.weaponSkillHashes || []).length,
+    !captured('mastery') && (source.masteryHashes || []).length,
+    !captured('character') && source.character,
+    !captured('overLimit') && (source.overLimit || []).length,
+    !captured('weapon') && (source.weapon || source.weaponHash || source.weaponName),
+    !captured('wrightstone') && source.weapon?.wrightstone,
+  ]
+  if (partial && rejectedPayload.some(Boolean)) throw new Error('部分配装包含未声明为已捕获的字段')
+  const compact = [
+    source.version,
     hash(source.charaHash, '角色哈希'),
     text(source.charaName, '角色名称', 48),
     text(source.ownerCode, '角色所有者代码', 24),
@@ -140,14 +165,22 @@ function compactLoadout(source) {
     skills.map(skill => [hash(skill.hash, '角色技能哈希'), text(skill.name, '角色技能名称', 80), text(skill.key, '角色技能键', 48)]),
     weaponSkills.map(item => hash(item, '武器技能哈希')),
     mastery.map(item => hash(item, '专精节点哈希')),
-    compactCharacter(source.character),
-    compactWeapon(source.weapon),
+    captured('character') ? compactCharacter(source.character) : null,
+    captured('weapon') ? compactWeapon(source.weapon) : null,
     overLimit.map(slot => [
       integer(slot.index, '上限突破槽位', 0, 3),
       hash(slot.attributeHash, '上限突破属性哈希', true),
       integer(slot.level, '上限突破等级', 0, 999),
     ]),
   ]
+  if (source.version >= 11) {
+    compact.push(
+      sourceKind,
+      capturedFields,
+      progressionPolicy,
+    )
+  }
+  return compact
 }
 
 function crc32(bytes) {
@@ -195,7 +228,7 @@ export function previewFromLoadout(source) {
 
 async function compressBrotli(bytes) {
   return new Uint8Array(brotliCompressSync(bytes, {
-    params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
+    params: { [constants.BROTLI_PARAM_QUALITY]: 6 },
   }))
 }
 

@@ -284,6 +284,20 @@ func assertWrightstoneGeneratorState(t *testing.T, gen *WrightstoneGen, wantData
 	}
 }
 
+func assertTimestampedSaveBackup(t *testing.T, path string) {
+	t.Helper()
+	backups, err := filepath.Glob(path + ".pre-edit-*.bak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) == 0 {
+		t.Fatalf("in-place write did not create a timestamped backup for %q", path)
+	}
+	if _, err := LoadSave(backups[len(backups)-1]); err != nil {
+		t.Fatalf("in-place backup cannot be reopened: %v", err)
+	}
+}
+
 func TestSigilApplyQueueRestoresStateAfterWriteFailureAndRetryDoesNotDuplicate(t *testing.T) {
 	gen, _, _ := queuedSigilGeneratorOnSaveCopy(t)
 	wantData := append([]byte(nil), gen.save.data...)
@@ -344,6 +358,7 @@ func TestSigilApplyQueueRestoresStateAfterReadbackFailureAndRetryDoesNotDuplicat
 	if got := written.GetOccupiedGemCount(); got != beforeCount+1 {
 		t.Fatalf("same-path retry appended duplicate sigils: count=%d want=%d", got, beforeCount+1)
 	}
+	assertTimestampedSaveBackup(t, work)
 }
 
 func TestWrightstoneApplyQueueRestoresStateAfterWriteFailureAndRetryDoesNotDuplicate(t *testing.T) {
@@ -406,6 +421,7 @@ func TestWrightstoneApplyQueueRestoresStateAfterReadbackFailureAndRetryDoesNotDu
 	if got := written.GetOccupiedWrightstoneCount(); got != beforeCount+1 {
 		t.Fatalf("same-path retry appended duplicate wrightstones: count=%d want=%d", got, beforeCount+1)
 	}
+	assertTimestampedSaveBackup(t, work)
 }
 
 func TestSigilGeneratorSerializesQueueMutationWithApply(t *testing.T) {

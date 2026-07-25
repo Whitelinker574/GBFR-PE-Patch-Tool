@@ -20,8 +20,9 @@ const props = defineProps({
   charaHash: { type: String, default: '' },
   charaName: { type: String, default: '' },
   loadouts: { type: Array, default: () => [] },
+  pendingImportCode: { type: String, default: '' },
 })
-const emit = defineEmits(['status', 'reload'])
+const emit = defineEmits(['status', 'reload', 'import-consumed'])
 
 const confirmDialog = ref(null)
 const ctx = ref(null)
@@ -39,6 +40,7 @@ const shareAutoPublish = ref(true)
 const shareTitle = ref('')
 const sharePublishing = ref(false)
 const shareCodeError = ref('')
+const consumedPendingImportCode = ref('')
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -123,7 +125,7 @@ const nameTooLong = computed(() => nameBytes.value > 63)
 const stagedImportLabels = computed(() => {
   const choices = importSelection.value || {}
   return [choices.factors && '因子', choices.skills && '技能', choices.mastery && '专精配置', choices.masterProgress && '专精等级',
-    choices.weapon && '装备武器', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
+    choices.weapon && '装备武器', choices.weaponSkills && '武器替换技能', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
     choices.overLimit && '上限突破', choices.characterGrowth && '角色强化进度', choices.characterWeaponCollection && '整组角色武器收藏',
 		choices.characterWeaponWrightstones && '全部武器祝福'].filter(Boolean)
 })
@@ -781,13 +783,15 @@ function setMasteryHashes(hashes) {
   }
 }
 
-function hydrateFromTarget() {
+function hydrateFromTarget({ preserveImport = false } = {}) {
   importMissing.value = []
-  importApplyPayload.value = null
-  importDraft.value = null
-  importSelection.value = null
-  importedMasterySnapshot.value = []
-  importedWeaponSkillSnapshot.value = []
+  if (!preserveImport) {
+    importApplyPayload.value = null
+    importDraft.value = null
+    importSelection.value = null
+    importedMasterySnapshot.value = []
+    importedWeaponSkillSnapshot.value = []
+  }
   const loadout = selectedLoadout.value
   pendingSkillHash.value = ''
   form.value = {
@@ -808,6 +812,12 @@ function selectTarget(unitId) {
   if (targetSlot.value === unitId) return
   targetSlot.value = unitId
   hydrateFromTarget()
+}
+
+function selectImportTarget(unitId) {
+  if (targetSlot.value === unitId) return
+  targetSlot.value = unitId
+  hydrateFromTarget({ preserveImport: true })
 }
 
 async function loadCtx() {
@@ -1089,23 +1099,35 @@ async function publishShareCode() {
 }
 
 async function importShareCode(rawCode) {
-  if (sharing.value || sharePublishing.value) return
+  if (sharing.value || sharePublishing.value) return false
   sharing.value = true
   shareCodeError.value = ''
   try {
     const draft = isOfflineLoadoutShareCode(rawCode)
       ? await LoadoutImportCode(props.savePath, props.charaHash, compatibleLoadoutShareCode(rawCode))
       : await LoadoutImportShortCode(props.savePath, props.charaHash, rawCode)
-    if (!draft) return
+    if (!draft) return false
     importDraft.value = draft
     shareCodeOpen.value = false
     emit('status', '配装校验通过，请选择要导入的内容。', 'success')
+		return true
   } catch (err) {
     shareCodeError.value = String(err)
   } finally {
     sharing.value = false
   }
+	return false
 }
+
+async function consumePendingImportCode() {
+	const code = String(props.pendingImportCode || '').trim()
+	if (!code || !ctx.value || consumedPendingImportCode.value === code || sharing.value) return
+	consumedPendingImportCode.value = code
+	if (await importShareCode(code)) emit('import-consumed')
+	else consumedPendingImportCode.value = ''
+}
+
+watch(() => [props.pendingImportCode, ctx.value], consumePendingImportCode)
 
 function stageImportedFactors(draft) {
   factorSlots.value = createFactorSlots(draft.sigilSlotIds || [])
@@ -1137,7 +1159,7 @@ function applyImportChoices(choices) {
   const sourcePayload = draft.applyPayload || {}
   form.value.name = draft.name || form.value.name
   if (choices.weapon) form.value.weaponSlotId = sourcePayload.constructedWeapon ? 0 : Number(draft.weaponSlotId || 0)
-  if (choices.weapon) importedWeaponSkillSnapshot.value = [...(draft.weaponSkillHashes || [])]
+  importedWeaponSkillSnapshot.value = choices.weaponSkills ? [...(draft.weaponSkillHashes || [])] : []
   if (choices.factors) stageImportedFactors(draft)
   if (choices.skills) {
     form.value.skillHashes = [...(draft.skillHashes || [])]
@@ -1180,7 +1202,7 @@ function applyImportChoices(choices) {
 
   const byScope = draft.missingByScope || {}
   const scopes = []
-	if (choices.weapon || choices.weaponEnhancement) scopes.push('weapon')
+	if (choices.weapon || choices.weaponSkills || choices.weaponEnhancement) scopes.push('weapon')
 	if (choices.wrightstone) scopes.push('wrightstone')
   if (choices.skills) scopes.push('skills')
 	if (choices.mastery) scopes.push('mastery')
@@ -1192,7 +1214,7 @@ function applyImportChoices(choices) {
   const labels = [
     choices.characterLevel && `角色等级 Lv${draft.capabilities?.sourceCharacterLevel || 0}`,
     choices.factors && '因子', choices.skills && '技能', choices.mastery && '专精配置', choices.masterProgress && `专精进度 ${choices.masterProgressIndex}`,
-    choices.weapon && '装备武器', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
+    choices.weapon && '装备武器', choices.weaponSkills && '武器替换技能', choices.weaponEnhancement && '武器强化', choices.wrightstone && '武器祝福', choices.summons && '召唤石',
     choices.overLimit && '上限突破', choices.characterGrowth && '角色强化进度', choices.characterWeaponCollection && '整组角色武器收藏',
 		choices.characterWeaponWrightstones && '全部武器祝福',
   ].filter(Boolean)
@@ -1882,7 +1904,7 @@ async function apply() {
       @update:auto-publish="shareAutoPublish = $event"
       @update:share-title="shareTitle = $event"
     />
-    <LoadoutImportDialog :draft="importDraft" @cancel="importDraft = null" @apply="applyImportChoices" />
+    <LoadoutImportDialog :draft="importDraft" :slots="slots" :target-slot="targetSlot" @select-slot="selectImportTarget" @cancel="importDraft = null" @apply="applyImportChoices" />
     <ConfirmDialog ref="confirmDialog" />
   </div>
 </template>

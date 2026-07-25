@@ -6,6 +6,8 @@
 #include <libmem/libmem.h>
 #include <cstdio>
 #include <cstring>
+#include <TlHelp32.h>
+#include <vector>
 
 static LONG g_autoOverdrivePhase = 0;
 
@@ -89,8 +91,84 @@ static bool BytesEqual(const lm_byte_t* a, const lm_byte_t* b, lm_size_t size)
     return true;
 }
 
+class ScopedOtherThreadSuspension
+{
+public:
+    ScopedOtherThreadSuspension()
+    {
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) return;
+
+        const DWORD processId = GetCurrentProcessId();
+        const DWORD currentThreadId = GetCurrentThreadId();
+        THREADENTRY32 entry{};
+        entry.dwSize = sizeof(entry);
+        bool openFailed = false;
+        if (!Thread32First(snapshot, &entry))
+        {
+            CloseHandle(snapshot);
+            return;
+        }
+        do
+        {
+            if (entry.th32OwnerProcessID != processId || entry.th32ThreadID == currentThreadId) continue;
+            HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, entry.th32ThreadID);
+            if (thread)
+            {
+                threads_.push_back(thread);
+            }
+            else if (GetLastError() != ERROR_INVALID_PARAMETER)
+            {
+                openFailed = true;
+                break;
+            }
+        } while (Thread32Next(snapshot, &entry));
+        CloseHandle(snapshot);
+        if (openFailed)
+        {
+            CloseThreads();
+            return;
+        }
+
+        for (size_t index = 0; index < threads_.size(); ++index)
+        {
+            if (SuspendThread(threads_[index]) == static_cast<DWORD>(-1))
+            {
+                for (size_t restore = 0; restore < index; ++restore) ResumeThread(threads_[restore]);
+                CloseThreads();
+                return;
+            }
+        }
+        active_ = true;
+    }
+
+    ~ScopedOtherThreadSuspension()
+    {
+        if (active_)
+        {
+            for (HANDLE thread : threads_) ResumeThread(thread);
+        }
+        CloseThreads();
+    }
+
+    bool Active() const { return active_; }
+
+private:
+    void CloseThreads()
+    {
+        for (HANDLE thread : threads_) CloseHandle(thread);
+        threads_.clear();
+    }
+
+    std::vector<HANDLE> threads_;
+    bool active_ = false;
+};
+
 static bool PatchBytes(lm_address_t target, const lm_byte_t* patch, lm_size_t size)
 {
+    ScopedOtherThreadSuspension suspension;
+    if (!suspension.Active()) return false;
+
     lm_prot_t oldProt{};
     if (!LM_ProtMemory(target, size, LM_PROT_XRW, &oldProt)) return false;
 
@@ -498,6 +576,7 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     size_t i = 0;
     if (autoMode)
     {
+        code[i++] = 0x41; code[i++] = 0x53; // push r11
         code[i++] = 0x8B; code[i++] = 0x46; code[i++] = 0x10;
         code[i++] = 0x49; code[i++] = 0xBB;
         uintptr_t phaseAddr = reinterpret_cast<uintptr_t>(&g_autoOverdrivePhase);
@@ -519,6 +598,7 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
         code[jmpReadActive] = static_cast<lm_byte_t>(readOffset - (jmpReadActive + 1));
         code[jeRefill] = static_cast<lm_byte_t>(refillOffset - (jeRefill + 1));
         code[jneReadWaiting] = static_cast<lm_byte_t>(readOffset - (jneReadWaiting + 1));
+        code[i++] = 0x41; code[i++] = 0x5B; // pop r11
     }
     else
     {
@@ -546,7 +626,7 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     }
     if (!StampMonsterCave(cave, 128, message, messageSize)) return false;
 
-    lm_byte_t jmp[sizeof(kOverdriveExpected)]{ 0xE9 };
+    lm_byte_t jmp[6]{ 0xE9 };
     memset(jmp + 5, 0x90, sizeof(jmp) - 5);
     int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
     if (hookDelta < INT32_MIN || hookDelta > INT32_MAX)

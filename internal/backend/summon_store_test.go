@@ -2,6 +2,7 @@ package backend
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -210,7 +211,7 @@ func TestUpdateSummonRecordRebuildsTypeWithFreshSlotAndEquippedReference(t *test
 	}
 }
 
-func TestSummonSaveGeneratorWritesReopensAndVerifies(t *testing.T) {
+func TestSummonSaveGeneratorWritesInPlaceBacksUpReopensAndVerifies(t *testing.T) {
 	path := copyStatsSave(t)
 	save, err := LoadSave(path)
 	if err != nil {
@@ -225,15 +226,29 @@ func TestSummonSaveGeneratorWritesReopensAndVerifies(t *testing.T) {
 	if _, err := gen.LoadSaveFile(path); err != nil {
 		t.Fatal(err)
 	}
-	output := filepath.Join(t.TempDir(), "SaveData2_summons.dat")
-	result, err := gen.Apply(SummonSaveWriteRequest{Operation: "create", Draft: draft}, output)
+	result, err := gen.Apply(SummonSaveWriteRequest{Operation: "create", Draft: draft}, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.OutputPath == "" || result.Inventory.Occupied != before.Occupied+1 || result.Record.SlotID != before.MaxSlotID+1 {
 		t.Fatalf("summon save apply result = %+v", result)
 	}
-	verify, err := LoadSave(output)
+	if result.BackupPath == "" {
+		t.Fatal("in-place summon write did not report a backup")
+	}
+	backupPath := result.BackupPath
+	backupInfo, err := os.Stat(backupPath)
+	if err != nil {
+		t.Fatalf("summon backup does not exist: %v", err)
+	}
+	if backupInfo.IsDir() {
+		backupPath = filepath.Join(backupPath, filepath.Base(path))
+	}
+	if _, err := LoadSave(backupPath); err != nil {
+		t.Fatalf("summon backup cannot be reopened: %v", err)
+	}
+	assertTimestampedSaveBackup(t, path)
+	verify, err := LoadSave(path)
 	if err != nil {
 		t.Fatal(err)
 	}

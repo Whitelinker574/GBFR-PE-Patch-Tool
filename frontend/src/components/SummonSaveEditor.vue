@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { FindSaveFiles, GetLastSavePath, SetLastSavePath } from '../../wailsjs/go/backend/App'
-import { Apply, GetOptions, LoadSaveFile, SelectInputSave, SelectOutputSave } from '../../wailsjs/go/backend/SummonSaveGen'
+import { Apply, GetOptions, LoadSaveFile, SelectInputSave } from '../../wailsjs/go/backend/SummonSaveGen'
 import { summonAssetIcon, traitAssetIcon } from '../gameAssetIcons'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SaveSourcePicker from './SaveSourcePicker.vue'
@@ -11,8 +11,6 @@ const confirmDialog = ref(null)
 const loading = ref(false)
 const writing = ref(false)
 const inputPath = ref('')
-const outputPath = ref('')
-const inPlace = ref(true)
 const saveSlots = ref([])
 const info = reactive({ path: '', inventory: { unlocked: false, capacity: 0, occupied: 0, maxSlotId: 0, records: [] } })
 const options = reactive({ types: [], traits: [], subParams: [] })
@@ -22,7 +20,6 @@ const selectedUnitID = ref(-1)
 const form = reactive({ typeHash: 0, mainTraitHash: 0, subParamHash: 0, mainTraitLevel: 1, subParamLevel: 0, rank: 2 })
 
 function hex(value) { return `0x${(Number(value || 0) >>> 0).toString(16).toUpperCase().padStart(8, '0')}` }
-function defaultOutput(path) { return path ? path.replace(/\.dat$/i, '_summons.dat') : '' }
 function typeName(hash) { return options.types.find(item => (item.hash >>> 0) === (hash >>> 0))?.name || hex(hash) }
 function traitName(hash) { return options.traits.find(item => (item.hash >>> 0) === (hash >>> 0))?.name || hex(hash) }
 function subName(hash) { return options.subParams.find(item => (item.hash >>> 0) === (hash >>> 0))?.name || hex(hash) }
@@ -60,7 +57,7 @@ const validation = computed(() => {
   if (!Number.isInteger(Number(form.mainTraitLevel)) || Number(form.mainTraitLevel) < 0 || Number(form.mainTraitLevel) > 0xFFFFFFFF) return '主加护等级无法编码为 uint32。'
   if (!Number.isInteger(Number(form.subParamLevel)) || Number(form.subParamLevel) < 0 || Number(form.subParamLevel) > 0xFFFFFFFF) return '副词条等级无法编码为 uint32。'
   if (!Number.isInteger(Number(form.rank)) || Number(form.rank) < 0 || Number(form.rank) > 0xFFFFFFFF) return '原始状态值（字段 1460）无法编码为 uint32。'
-  if (!outputPath.value.trim()) return '请选择输出存档。'
+  if (!inputPath.value.trim()) return '请选择存档。'
   return ''
 })
 
@@ -112,7 +109,6 @@ async function load(path = inputPath.value) {
   try {
     const next = await LoadSaveFile(String(path).trim())
     inputPath.value = next.path
-    outputPath.value = inPlace.value ? next.path : defaultOutput(next.path)
     applyInfo(next)
     await SetLastSavePath(next.path)
     emit('status', next.inventory.unlocked
@@ -126,18 +122,12 @@ async function load(path = inputPath.value) {
 async function browseInput() {
   try { const path = await SelectInputSave(); if (path) await load(path) } catch (error) { emit('status', String(error), 'error') }
 }
-async function browseOutput() {
-  try { const path = await SelectOutputSave(outputPath.value || defaultOutput(inputPath.value)); if (path) { outputPath.value = path; inPlace.value = path === inputPath.value } } catch (error) { emit('status', String(error), 'error') }
-}
-function toggleInPlace() { outputPath.value = inPlace.value ? inputPath.value : defaultOutput(inputPath.value) }
-function setWriteMode(value) { inPlace.value = value; toggleInPlace() }
-
 async function write() {
   if (validation.value || writing.value) { if (validation.value) emit('status', validation.value, 'error'); return }
   const operationLabel = mode.value === 'create' ? '新增召唤石' : `修改 SlotID ${selected.value.slotId}`
   const confirmed = await confirmDialog.value?.ask({
     title: operationLabel,
-    message: `将${inPlace.value ? '覆盖当前存档（自动备份）' : '写入新存档'}。`,
+    message: '将自动备份并保存到当前存档，写入后重新打开验证。',
     detail: mode.value === 'create'
       ? '种类、主加护、副词条、等级和原始状态字段会作为一条新记录写入；天然规则只作提醒，写后逐字段回读。'
       : (form.typeHash >>> 0) === (selected.value.state.typeHash >>> 0)
@@ -156,9 +146,8 @@ async function write() {
       subParamLevel: Number(form.subParamLevel),
       rank: Number(form.rank),
     }
-    const result = await Apply({ operation: mode.value, expected: mode.value === 'update' ? selected.value : null, draft }, outputPath.value.trim())
+    const result = await Apply({ operation: mode.value, expected: mode.value === 'update' ? selected.value : null, draft }, inputPath.value.trim())
     inputPath.value = result.outputPath
-    outputPath.value = inPlace.value ? result.outputPath : defaultOutput(result.outputPath)
     applyInfo({ path: result.outputPath, inventory: result.inventory })
     selectRecord(result.record)
     emit('status', `${operationLabel}完成，已回读验证${result.backupPath ? `；备份：${result.backupPath}` : ''}`, 'success')
@@ -217,15 +206,7 @@ onMounted(async () => {
           <label class="ui-field"><span class="ui-field-label">原始状态值（字段 1460）</span><input v-model.number="form.rank" class="ui-input" type="number" min="0" max="4294967295" /><small>不是稀有度；修改已有记录时默认继承原值，当前实存档常见值为 2。</small></label>
         </div>
         <div class="write-panel">
-          <div class="ui-section-title"><span>写入方式</span><small>覆盖或另存为，两种方式任选</small></div>
-          <div class="output-mode">
-            <button class="mode-choice ui-btn" :class="{ on: inPlace }" @click="setWriteMode(true)"><b>覆盖当前存档</b><small>自动备份后写回所选槽位</small></button>
-            <button class="mode-choice ui-btn" :class="{ on: !inPlace }" @click="setWriteMode(false)"><b>另存为新存档</b><small>保留原文件并生成副本</small></button>
-          </div>
-          <div class="output-target">
-            <div v-if="inPlace" class="selected-save overwrite" :title="inputPath">{{ inputPath }}</div>
-            <span v-else class="ui-control-group"><input v-model="outputPath" class="ui-input" placeholder="新存档输出路径…" /><button class="ui-btn" @click="browseOutput">选择位置</button></span>
-          </div>
+          <div class="ui-section-title"><span>保存到当前存档</span><small>自动备份，写入后回读验证</small></div>
         </div>
         <div class="write-row"><p :class="validation ? 'validation-error' : 'validation-ok'">{{ validation || '可编码字段检查通过；写后会重新打开存档逐字段验证。' }}</p><button class="ui-btn is-primary" :disabled="!!validation || writing" @click="write">{{ writing ? '写入并验证中…' : mode === 'create' ? '新增到存档' : '保存修改' }}</button></div>
       </section>
@@ -251,19 +232,9 @@ onMounted(async () => {
 .write-panel { display:grid; gap:var(--space-3); padding-top:var(--space-4); border-top:1px solid var(--line-soft); }
 .write-panel .ui-section-title { display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-3); }
 .write-panel .ui-section-title small { color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--weight-regular); }
-.output-mode { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); }
-.mode-choice { height:auto; min-height:62px; flex-direction:column; align-items:flex-start; justify-content:center; white-space:normal; }
-.mode-choice b { color:inherit; font-size:var(--fs-md); }
-.mode-choice small { color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
-.mode-choice.on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); }
-.mode-choice.on small { color:var(--selected-fg); }
-.output-target .ui-control-group { width:100%; }
-.output-target .ui-input { min-width:0; flex:1; }
-.selected-save { min-width:0; padding:8px 10px; overflow:hidden; border:1px solid var(--line-soft); border-radius:var(--radius-sm); font-family:var(--font-data); font-size:var(--fs-xs); text-overflow:ellipsis; white-space:nowrap; }
-.selected-save.overwrite { border-color:var(--warning); background:var(--warning-bg); color:var(--warning-ink); }
 .write-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); }
 .write-row p { margin:0; }
 .validation-error { color:var(--danger); }.validation-ok { color:var(--success); }
 @container ui-page (max-width:800px) { .workspace { grid-template-columns:minmax(0,1fr); }.record-list { max-height:280px; } }
-@container ui-page (max-width:520px) { .output-mode { grid-template-columns:1fr; }.write-row { align-items:stretch; flex-direction:column; }.write-row .ui-btn { width:100%; } }
+@container ui-page (max-width:520px) { .write-row { align-items:stretch; flex-direction:column; }.write-row .ui-btn { width:100%; } }
 </style>

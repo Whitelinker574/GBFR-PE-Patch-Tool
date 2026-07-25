@@ -122,6 +122,62 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 	}
 }
 
+func TestPatchCoreOverdriveHookPreservesOriginalBranchAndR11(t *testing.T) {
+	sourceBytes, err := os.ReadFile(filepath.Join("..", "..", "src_dll", "patch_core", "dllmain.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(sourceBytes)
+	start := strings.Index(source, "static bool PatchOverdriveHook")
+	if start < 0 {
+		t.Fatal("PatchOverdriveHook source block was not found")
+	}
+	end := strings.Index(source[start:], "static bool PatchInventorySetQuantityHook")
+	if end < 0 {
+		t.Fatal("PatchOverdriveHook source block was not found")
+	}
+	body := source[start : start+end]
+	for _, required := range []string{
+		`code[i++] = 0x41; code[i++] = 0x53; // push r11`,
+		`code[i++] = 0x41; code[i++] = 0x5B; // pop r11`,
+		`target + 6`,
+		`lm_byte_t jmp[6]{ 0xE9 }`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Errorf("overdrive hook is missing %q", required)
+		}
+	}
+	if strings.Contains(body, `lm_byte_t jmp[sizeof(kOverdriveExpected)]`) {
+		t.Fatal("overdrive entry still overwrites the original conditional branch")
+	}
+	if strings.Index(body, "push r11") > strings.Index(body, "pop r11") {
+		t.Fatal("overdrive auto path restores r11 before saving it")
+	}
+}
+
+func TestCodePatchPublishersSuspendAndResumeTargetExecution(t *testing.T) {
+	cppBytes, err := os.ReadFile(filepath.Join("..", "..", "src_dll", "patch_core", "dllmain.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cpp := string(cppBytes)
+	for _, required := range []string{"ScopedOtherThreadSuspension", "SuspendThread(", "ResumeThread(", "if (!suspension.Active()) return false"} {
+		if !strings.Contains(cpp, required) {
+			t.Errorf("patch_core code publisher is missing %q", required)
+		}
+	}
+	goBytes, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	goSource := string(goBytes)
+	for _, required := range []string{"suspendRemoteProcessForCodeWrite(h)", `NewProc("NtSuspendProcess")`, `NewProc("NtResumeProcess")`} {
+		if !strings.Contains(goSource, required) {
+			t.Errorf("Go code publisher is missing %q", required)
+		}
+	}
+}
+
 func TestRetiredDamageOverlayBackendIsRemoved(t *testing.T) {
 	if _, err := os.Stat("damage_overlay_windows.go"); !os.IsNotExist(err) {
 		t.Fatalf("retired damage overlay backend still exists: %v", err)

@@ -7,7 +7,7 @@ import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits, GetAllowedLev
          GetQueue, AddToQueue, RemoveFromQueue, ClearQueue, CheckLegality,
          ApplyQueue, RemoveAllSigils,
          GetExistingSigils, DeleteSelectedSigils,
-         SelectSigilInputSave, SelectSigilOutputSave } from '../../wailsjs/go/backend/SigilGen'
+         SelectSigilInputSave } from '../../wailsjs/go/backend/SigilGen'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'
@@ -24,7 +24,6 @@ const slots = ref([])
 const saveLoaded = ref(false)
 const saveInfo = reactive({ path: '', occupiedSigils: 0, maxSlotId: 0 })
 const isApplying = ref(false)
-const inPlaceEdit = ref(false)
 const applyFlash = ref(false)
 const confirmDialog = ref(null)
 let applyFlashTimer = 0
@@ -37,7 +36,6 @@ const selectedPrimaryLevel = ref(0)
 const selectedSecondaryTraitID = ref('')
 const selectedSecondaryLevel = ref(0)
 const quantity = ref(1)
-const outputPath = ref('')
 
 // 下拉选项
 const sigilLevels = ref([])
@@ -134,7 +132,6 @@ onMounted(async () => {
     const lastPath = await GetLastSavePath()
     if (lastPath) {
       inputPath.value = lastPath
-      outputPath.value = defaultOutputPath(lastPath)
     }
   } catch (e) {
     dataError.value = '加载因子数据失败: ' + String(e)
@@ -145,20 +142,6 @@ onMounted(async () => {
 
 // ── 存档 ──
 const inputPath = ref('')
-
-function defaultOutputPath(path) {
-  if (!path) return ''
-  if (/\.dat$/i.test(path)) return path.replace(/(\.dat)$/i, '_modified.dat')
-  return `${path}_modified.dat`
-}
-
-watch(inPlaceEdit, (enabled) => {
-  if (enabled) {
-    outputPath.value = inputPath.value.trim()
-  } else if (outputPath.value.trim() === inputPath.value.trim()) {
-    outputPath.value = defaultOutputPath(inputPath.value.trim())
-  }
-})
 
 async function browseInput() {
   try {
@@ -180,20 +163,13 @@ function saveSlotLabel(slot) {
   return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
 }
 
-async function browseOutput() {
-  try {
-    const path = await SelectSigilOutputSave(outputPath.value.trim() || defaultOutputPath(inputPath.value.trim()))
-    if (path) outputPath.value = path
-  } catch (e) { showStatus(String(e), 'error') }
-}
-
 async function loadSave() {
   if (!inputPath.value.trim()) { showStatus('请输入存档路径', 'error'); return }
   try {
     const info = await LoadSaveFile(inputPath.value.trim())
     Object.assign(saveInfo, info)
     saveLoaded.value = true
-    outputPath.value = inPlaceEdit.value ? info.path : defaultOutputPath(info.path)
+    inputPath.value = info.path
     await SetLastSavePath(info.path)
     showExisting.value = true
     await refreshExisting()
@@ -229,13 +205,13 @@ async function deleteSelected() {
   if (selectedForDelete.value.size === 0) {
     showStatus('未选中任何因子', 'error'); return
   }
-  if (!outputPath.value.trim()) {
-    showStatus('请填写输出路径', 'error'); return
+  if (!inputPath.value.trim()) {
+    showStatus('请先选择存档', 'error'); return
   }
   const confirmed = await confirmDialog.value?.ask({
     title: '删除所选因子',
     message: `确定删除选中的 ${selectedForDelete.value.size} 个因子？`,
-    detail: '该操作会写入目标存档，删除后无法从当前结果中撤销。',
+    detail: '保存前会自动备份当前存档，写入后会重新读取验证。',
     tone: 'danger',
     confirmLabel: '确认删除',
   })
@@ -243,12 +219,8 @@ async function deleteSelected() {
   isDeleting.value = true
   try {
     const ids = Array.from(selectedForDelete.value)
-    const result = await DeleteSelectedSigils(ids, outputPath.value.trim())
-    if (inPlaceEdit.value) {
-      await loadSave()
-    } else {
-      await refreshExisting()
-    }
+    const result = await DeleteSelectedSigils(ids, inputPath.value.trim())
+    await loadSave()
     showStatus(`已删除 ${result.createdCount} 个因子`, 'success')
   } catch (e) {
     showStatus(String(e), 'error')
@@ -397,12 +369,12 @@ function flashApplySuccess() {
 }
 
 async function applyQueueToSave() {
-  if (!outputPath.value.trim()) { showStatus('请输入输出路径', 'error'); return }
+  if (!inputPath.value.trim()) { showStatus('请先选择存档', 'error'); return }
   isApplying.value = true
   try {
-    const result = await ApplyQueue(outputPath.value.trim())
+    const result = await ApplyQueue(inputPath.value.trim())
     queue.value = []
-    if (inPlaceEdit.value) await loadSave()
+    await loadSave()
     flashApplySuccess()
     showStatus(`已写入 ${result.createdCount} 个因子 (验证 ${result.verifiedCount})`, 'success')
   } catch (e) { showStatus(String(e), 'error') }
@@ -410,22 +382,20 @@ async function applyQueueToSave() {
 }
 
 async function removeAll() {
-  if (!inputPath.value.trim() || !outputPath.value.trim()) {
-    showStatus('请先填写输入和输出路径', 'error'); return
+  if (!inputPath.value.trim()) {
+    showStatus('请先选择存档', 'error'); return
   }
   const confirmed = await confirmDialog.value?.ask({
     title: '清除全部因子',
-    message: '这将清除输出存档中的全部因子。',
-    detail: outputPath.value.trim(),
+    message: '这将清除当前存档中的全部因子。',
+    detail: '保存前会自动备份当前存档，写入后会重新读取验证。',
     tone: 'danger',
     confirmLabel: '清除全部',
   })
   if (!confirmed) return
   try {
-    const result = await RemoveAllSigils(inputPath.value.trim(), outputPath.value.trim())
-    if (inPlaceEdit.value) {
-      await loadSave()
-    }
+    const result = await RemoveAllSigils(inputPath.value.trim(), inputPath.value.trim())
+    await loadSave()
     showStatus(`已清除 ${result.createdCount} 个因子 (剩余 ${result.verifiedCount})`, 'success')
   } catch (e) { showStatus(String(e), 'error') }
 }
@@ -583,20 +553,13 @@ async function removeAll() {
       </div>
     </div>
 
-    <!-- 输出 + 应用 -->
+    <!-- 保存 -->
     <div class="section ui-card apply-section" :class="{ 'apply-flash': applyFlash }">
-      <div class="section-title ui-section-title"><span>写入方式</span><small>覆盖或另存为，两种方式任选</small></div>
-      <div class="output-mode">
-        <button class="mode-choice ui-btn" :class="{ on: inPlaceEdit }" @click="inPlaceEdit = true"><b>覆盖当前存档</b><small>自动备份后写回所选槽位</small></button>
-        <button class="mode-choice ui-btn" :class="{ on: !inPlaceEdit }" @click="inPlaceEdit = false"><b>另存为新存档</b><small>保留原文件并生成副本</small></button>
-      </div>
-      <div class="input-row output-target">
-        <div v-if="inPlaceEdit" class="selected-save overwrite flex-1">{{ inputPath || '请先选择存档槽' }}</div>
-        <input v-else v-model="outputPath" type="text" class="text-input flex-1 ui-input" placeholder="新存档输出路径..." />
-        <button v-if="!inPlaceEdit" class="btn-action btn-cyan ui-btn" @click="browseOutput">选择位置</button>
+      <div class="section-title ui-section-title"><span>保存到当前存档</span><small>自动备份，写入后回读验证</small></div>
+      <div class="save-action-row">
         <button class="btn-action btn-cyan ui-btn is-primary" @click="applyQueueToSave"
-          :disabled="isApplying || !queue.length">
-          {{ isApplying ? '写入中...' : '应用写入' }}
+          :disabled="isApplying || !queue.length || !inputPath.trim()">
+          {{ isApplying ? '保存中...' : '保存因子修改' }}
         </button>
       </div>
     </div>
@@ -607,8 +570,8 @@ async function removeAll() {
       <summary class="section-title ui-section-title">危险操作</summary>
       <div class="danger-body">
         <button class="btn-action btn-red ui-btn is-danger" @click="removeAll"
-          :disabled="!inputPath.trim() || !outputPath.trim()">
-          清除输出存档中所有因子
+          :disabled="!inputPath.trim()">
+          清除当前存档中所有因子
         </button>
       </div>
     </details>
@@ -661,7 +624,6 @@ async function removeAll() {
   white-space:nowrap;
 }
 .selected-save.empty { color:var(--text-secondary); }
-.selected-save.overwrite { border-color:var(--warning); background:var(--warning-bg); color:var(--warning-ink); }
 .save-info { margin-top:var(--space-2); color:var(--success-ink); font-size:var(--fs-sm); }
 .loading-hint,
 .warning-hint,
@@ -783,35 +745,7 @@ async function removeAll() {
 }
 .btn-icon { flex:0 0 auto; }
 
-.output-mode {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:var(--space-3);
-}
-.mode-choice {
-  height:auto;
-  min-height:62px;
-  flex-direction:column;
-  align-items:flex-start;
-  justify-content:center;
-  white-space:normal;
-}
-.mode-choice b { color:inherit; font-size:var(--fs-md); }
-.mode-choice small { color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
-.mode-choice.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
-.mode-choice.on small { color:var(--selected-fg); }
-.input-row {
-  display:flex;
-  align-items:center;
-  gap:var(--space-2);
-  margin-top:var(--space-4);
-}
-.flex-1 { min-width:0; flex:1; }
-.output-target .selected-save { margin-top:0; }
+.save-action-row { display:flex; justify-content:flex-end; }
 .danger-hint {
   margin-top:var(--space-3);
   padding:var(--space-3) var(--space-4);
@@ -862,10 +796,7 @@ input[type="checkbox"] { accent-color:var(--accent); }
   .section-title > small { width:100%; margin-left:0; text-align:left; }
   .existing-table { overflow-x:auto; }
   .existing-row { min-width:620px; }
-  .output-mode { grid-template-columns:1fr; }
-  .input-row { align-items:stretch; flex-direction:column; }
-  .input-row > * { width:100%; }
-  .output-target .selected-save { box-sizing:border-box; }
+  .save-action-row .ui-btn { width:100%; }
 }
 
 @container (max-width:440px) {

@@ -3,15 +3,20 @@ import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   draft: { type: Object, default: null },
+  slots: { type: Array, default: () => [] },
+  targetSlot: { type: Number, default: 0 },
 })
-const emit = defineEmits(['cancel', 'apply'])
+const emit = defineEmits(['cancel', 'apply', 'select-slot'])
 
 const choices = ref({})
 const masteryProgress = ref(1)
+const missingSourceDescription = '当前配装未记录此内容，目标存档保持不变'
 
 const source = computed(() => props.draft?.applyPayload || {})
 const caps = computed(() => props.draft?.capabilities || {})
 const constructsWeapon = computed(() => !!source.value.constructedWeapon)
+const usesEndgameProgression = computed(() => props.draft?.progressionPolicy === 'endgame-max')
+const selectedTargetSlot = computed(() => props.slots.find(slot => Number(slot.unitId) === Number(props.targetSlot)) || null)
 const targetFateLabel = computed(() => caps.value.targetFateDataAvailable
   ? `${Number(caps.value.targetCharacterLevel || 0) >= 100 ? '可解锁 11/11' : '解锁上限待定'} · 已完成 ${Number(caps.value.targetFateEpisodeCount || 0)}/11`
   : '未建立')
@@ -19,19 +24,21 @@ const has = computed(() => ({
   characterLevel: !!source.value.character?.characterBaseCaptured,
   factors: (props.draft?.constructedSigils || []).length > 0,
   skills: (props.draft?.skillHashes || []).length > 0,
-  mastery: (props.draft?.masteryHashes || []).length > 0,
+  mastery: (props.draft?.masteryHashes || []).some(hash => !['', '00000000', '887AE0B0'].includes(String(hash || '').toUpperCase())),
   masterProgress: !!source.value.character,
   weapon: Number(props.draft?.weaponSlotId || 0) > 0 || !!source.value.constructedWeapon,
+  weaponSkills: (props.draft?.weaponSkillHashes || []).length === 5,
   weaponEnhancement: !!source.value.weapon,
   wrightstone: !!source.value.weapon?.wrightstone,
   summons: (props.draft?.summonSlotIds || []).length === 4,
   overLimit: (source.value.overLimit || []).length > 0,
-  characterGrowth: !!source.value.character,
+  characterGrowth: (source.value.character?.enhancementPanel || []).length === 2 &&
+    (source.value.character?.enhancementNodes || []).length > 0,
   characterWeaponCollection: (source.value.character?.weapons || []).length > 0,
 	characterWeaponWrightstones: !!source.value.character?.weaponWrightstonesCaptured && (source.value.character?.weapons || []).length > 0,
 }))
 
-const categoryKeys = ['characterLevel', 'factors', 'skills', 'mastery', 'masterProgress', 'weapon', 'weaponEnhancement', 'wrightstone', 'summons', 'overLimit', 'characterGrowth', 'characterWeaponCollection', 'characterWeaponWrightstones']
+const categoryKeys = ['characterLevel', 'factors', 'skills', 'mastery', 'masterProgress', 'weapon', 'weaponSkills', 'weaponEnhancement', 'wrightstone', 'summons', 'overLimit', 'characterGrowth', 'characterWeaponCollection', 'characterWeaponWrightstones']
 const targetNeedsLevel100 = computed(() => Number(caps.value.targetCharacterLevel || 0) < 100)
 const needsLevel100Selection = computed(() => targetNeedsLevel100.value &&
   !!(choices.value.mastery || choices.value.masterProgress || choices.value.characterGrowth))
@@ -48,7 +55,7 @@ const selectedCount = computed(() => availableKeys.value.filter(key => choices.v
 const selectedMissing = computed(() => {
   const byScope = props.draft?.missingByScope || {}
   const scopes = []
-  if (choices.value.weapon || choices.value.weaponEnhancement) scopes.push('weapon')
+  if (choices.value.weapon || choices.value.weaponSkills || choices.value.weaponEnhancement) scopes.push('weapon')
   if (choices.value.wrightstone) scopes.push('wrightstone')
   if (choices.value.skills) scopes.push('skills')
   if (choices.value.mastery) scopes.push('mastery')
@@ -69,7 +76,8 @@ function reset() {
     mastery: has.value.mastery && !masteryBlocked.value,
     masterProgress: has.value.masterProgress && !masteryBlocked.value,
     weapon: has.value.weapon,
-    weaponEnhancement: has.value.weaponEnhancement && constructsWeapon.value,
+    weaponSkills: has.value.weaponSkills,
+    weaponEnhancement: has.value.weaponEnhancement && (constructsWeapon.value || usesEndgameProgression.value),
     wrightstone: has.value.wrightstone,
     summons: has.value.summons && !summonBlocked.value,
     overLimit: has.value.overLimit,
@@ -99,19 +107,27 @@ function toggleAll() {
 }
 
 function toggle(key) {
-  if (key === 'weaponEnhancement' && constructsWeapon.value && choices.value.weapon) return
+  if (!has.value[key]) return
+  if (masteryBlocked.value && ['mastery', 'masterProgress'].includes(key)) return
+  if (characterGrowthBlocked.value && key === 'characterGrowth') return
+  if (summonBlocked.value && key === 'summons') return
+  if (['weaponSkills', 'weaponEnhancement'].includes(key) && constructsWeapon.value && choices.value.weapon) return
   if (key === 'characterLevel' && needsLevel100Selection.value) return
   choices.value = { ...choices.value, [key]: !choices.value[key] }
   if (targetNeedsLevel100.value && ['mastery', 'masterProgress', 'characterGrowth'].includes(key) && choices.value[key]) {
     choices.value.characterLevel = true
   }
-  if (['weaponEnhancement', 'wrightstone'].includes(key) && choices.value[key]) choices.value.weapon = true
+  if (['weaponSkills', 'weaponEnhancement', 'wrightstone'].includes(key) && choices.value[key]) choices.value.weapon = true
 	if (key === 'characterWeaponWrightstones' && choices.value[key]) choices.value.characterWeaponCollection = true
   if (key === 'weapon' && !choices.value.weapon) {
+    choices.value.weaponSkills = false
     choices.value.weaponEnhancement = false
     choices.value.wrightstone = false
   }
-  if (key === 'weapon' && choices.value.weapon && constructsWeapon.value) choices.value.weaponEnhancement = true
+  if (key === 'weapon' && choices.value.weapon && constructsWeapon.value) {
+    choices.value.weaponSkills = true
+    choices.value.weaponEnhancement = true
+  }
 	if (key === 'characterWeaponCollection' && !choices.value.characterWeaponCollection) choices.value.characterWeaponWrightstones = false
 }
 
@@ -140,46 +156,66 @@ function submit() {
           <button type="button" :class="{ on: allSelected }" @click="toggleAll">{{ allSelected ? '取消全选' : '全部导入' }}</button>
         </div>
 
+        <section class="import-target-slots" aria-label="选择写入槽位">
+          <div class="import-target-heading">
+            <small>写入位置</small>
+            <b>先选目标预设槽，切换不会丢失当前导入内容</b>
+          </div>
+          <div class="import-slot-grid">
+            <button v-for="slot in slots" :key="slot.unitId" type="button" :class="{ on: targetSlot === slot.unitId, occupied: slot.occupied }" :title="slot.occupied ? slot.name || '已有配装' : '空槽'" @click="emit('select-slot', slot.unitId)">
+              <span>{{ String(slot.slot).padStart(2, '0') }}</span><small>{{ slot.occupied ? '已有' : '空槽' }}</small>
+            </button>
+          </div>
+          <p v-if="selectedTargetSlot?.occupied">该槽已有配装「{{ selectedTargetSlot.name || '未命名配装' }}」，保存时会覆盖该槽；其他槽位不变。</p>
+        </section>
+
+        <div v-if="usesEndgameProgression" class="import-normalization-note">
+          <b>毕业归一化 Lv100 · MLv55</b><span>因子、武器、祝福与上限突破按当前目录最高有效等级准备；没有真实角色基础快照时，不会伪造或强写角色基础字段。</span>
+        </div>
+
         <div class="import-grid">
-          <button v-if="has.characterLevel" type="button" class="import-choice risk" :class="{ on: choices.characterLevel, locked: needsLevel100Selection }" @click="toggle('characterLevel')">
-            <i class="import-choice-icon" aria-hidden="true">↥</i><span><b>角色等级</b><small>同步到 Lv{{ caps.sourceCharacterLevel || 0 }}，并覆盖对应的基础 HP、攻击、昏厥与暴击快照</small></span><em>{{ needsLevel100Selection ? '联动升至 Lv100' : choices.characterLevel ? '将覆盖' : '默认不改' }}</em>
+          <button type="button" class="import-choice risk" :class="{ on: choices.characterLevel, locked: needsLevel100Selection, unavailable: !has.characterLevel }" :disabled="!has.characterLevel" @click="toggle('characterLevel')">
+            <i class="import-choice-icon" aria-hidden="true">↥</i><span><b>角色等级</b><small>{{ has.characterLevel ? `同步到 Lv${caps.sourceCharacterLevel || 0}，并覆盖对应的基础 HP、攻击、昏厥与暴击快照` : missingSourceDescription }}</small></span><em>{{ !has.characterLevel ? '未记录' : needsLevel100Selection ? '联动升至 Lv100' : choices.characterLevel ? '将覆盖' : '默认不改' }}</em>
           </button>
-          <button v-if="has.factors" type="button" class="import-choice" :class="{ on: choices.factors }" @click="toggle('factors')">
-            <i class="import-choice-icon" aria-hidden="true">◇</i><span><b>因子配置</b><small>创建 {{ draft.constructedSigils.length }} 枚独立因子，不复用来源实例</small></span><em>{{ choices.factors ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.factors, unavailable: !has.factors }" :disabled="!has.factors" @click="toggle('factors')">
+            <i class="import-choice-icon" aria-hidden="true">◇</i><span><b>因子配置</b><small>{{ has.factors ? `创建 ${draft.constructedSigils.length} 枚独立因子，不复用来源实例` : missingSourceDescription }}</small></span><em>{{ !has.factors ? '未记录' : choices.factors ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.skills" type="button" class="import-choice" :class="{ on: choices.skills }" @click="toggle('skills')">
-            <i class="import-choice-icon" aria-hidden="true">✦</i><span><b>主动技能</b><small>{{ draft.skillHashes.length }} 个角色技能</small></span><em>{{ choices.skills ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.skills, unavailable: !has.skills }" :disabled="!has.skills" @click="toggle('skills')">
+            <i class="import-choice-icon" aria-hidden="true">✦</i><span><b>主动技能</b><small>{{ has.skills ? `${draft.skillHashes.length} 个角色技能` : missingSourceDescription }}</small></span><em>{{ !has.skills ? '未记录' : choices.skills ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.mastery" type="button" class="import-choice" :class="{ on: choices.mastery, blocked: masteryBlocked }" :disabled="masteryBlocked" @click="toggle('mastery')">
-            <i class="import-choice-icon" aria-hidden="true">◎</i><span><b>专精配置</b><small>{{ draft.masteryHashes.length }} 个节点；按目标专精容量复核</small></span><em>{{ masteryBlocked ? '需角色 Lv100' : choices.mastery ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.mastery, unavailable: !has.mastery, blocked: has.mastery && masteryBlocked }" :disabled="!has.mastery || masteryBlocked" @click="toggle('mastery')">
+            <i class="import-choice-icon" aria-hidden="true">◎</i><span><b>专精配置</b><small>{{ has.mastery ? `${draft.masteryHashes.length} 个节点；按目标专精容量复核` : missingSourceDescription }}</small></span><em>{{ !has.mastery ? '未记录' : masteryBlocked ? '需角色 Lv100' : choices.mastery ? '已选择' : '保留目标' }}</em>
           </button>
-          <article v-if="has.masterProgress" class="import-choice mastery-level" :class="{ on: choices.masterProgress, blocked: masteryBlocked }">
-            <button type="button" :disabled="masteryBlocked" @click="toggle('masterProgress')"><i class="import-choice-icon" aria-hidden="true">★</i><span><b>专精等级</b><small>来源进度 {{ caps.sourceMasterProgressIndex || 1 }}；可单独调整</small></span><em>{{ masteryBlocked ? '需角色 Lv100' : choices.masterProgress ? '同步' : '保留目标' }}</em></button>
-            <label v-if="choices.masterProgress && !masteryBlocked"><span>导入进度</span><input v-model.number="masteryProgress" type="range" min="1" max="55" /><strong>MLv{{ masteryProgress }} <i>{{ masteryStars(masteryProgress) }}</i></strong></label>
+          <article class="import-choice mastery-level" :class="{ on: choices.masterProgress, unavailable: !has.masterProgress, blocked: has.masterProgress && masteryBlocked }">
+            <button type="button" :disabled="!has.masterProgress || masteryBlocked" @click="toggle('masterProgress')"><i class="import-choice-icon" aria-hidden="true">★</i><span><b>专精等级</b><small>{{ has.masterProgress ? `来源进度 ${caps.sourceMasterProgressIndex || 1}；可单独调整` : missingSourceDescription }}</small></span><em>{{ !has.masterProgress ? '未记录' : masteryBlocked ? '需角色 Lv100' : choices.masterProgress ? '同步' : '保留目标' }}</em></button>
+            <label v-if="has.masterProgress && choices.masterProgress && !masteryBlocked"><span>导入进度</span><input v-model.number="masteryProgress" type="range" min="1" max="55" /><strong>MLv{{ masteryProgress }} <i>{{ masteryStars(masteryProgress) }}</i></strong></label>
           </article>
-          <button v-if="has.weapon" type="button" class="import-choice" :class="{ on: choices.weapon }" @click="toggle('weapon')">
-            <i class="import-choice-icon" aria-hidden="true">⚔</i><span><b>装备武器</b><small v-if="source.constructedWeapon">目标存档缺少同款；导入时新增来源武器并绑定，不覆盖其他武器</small><small v-else>切换到目标存档已有的同类武器</small></span><em>{{ choices.weapon ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.weapon, unavailable: !has.weapon }" :disabled="!has.weapon" @click="toggle('weapon')">
+            <i class="import-choice-icon" aria-hidden="true">⚔</i><span><b>装备武器</b><small v-if="!has.weapon">{{ missingSourceDescription }}</small><small v-else-if="source.constructedWeapon">目标存档缺少同款；导入时新增来源武器并绑定，不覆盖其他武器</small><small v-else>切换到目标存档已有的同类武器</small></span><em>{{ !has.weapon ? '未记录' : choices.weapon ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.weaponEnhancement" type="button" class="import-choice risk" :class="{ on: choices.weaponEnhancement }" @click="toggle('weaponEnhancement')">
-            <i class="import-choice-icon" aria-hidden="true">↗</i><span><b>同步武器强化</b><small v-if="constructsWeapon">新实例按来源初始化经验、等级、突破、幻晶、觉醒、超凡与五技能</small><small v-else>经验、等级、突破、幻晶、觉醒、超凡与五技能</small></span><em>{{ constructsWeapon ? '随新武器同步' : choices.weaponEnhancement ? '将覆盖' : '默认不改' }}</em>
+          <button type="button" class="import-choice nested" :class="{ on: choices.weaponSkills, unavailable: !has.weaponSkills }" :disabled="!has.weaponSkills" @click="toggle('weaponSkills')">
+            <i class="import-choice-icon" aria-hidden="true">✦</i><span><b>武器替换技能</b><small>{{ has.weaponSkills ? '同步当前武器五个位置敏感技能槽；不改变武器等级、突破或觉醒' : missingSourceDescription }}</small></span><em>{{ !has.weaponSkills ? '未记录' : constructsWeapon ? '随新武器同步' : choices.weaponSkills ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.wrightstone" type="button" class="import-choice nested" :class="{ on: choices.wrightstone }" @click="toggle('wrightstone')">
-            <i class="import-choice-icon" aria-hidden="true">✧</i><span><b>只导入武器祝福</b><small>写入目标武器实际生效的祝福类型与三条附加技能；不改变武器等级</small></span><em>{{ choices.wrightstone ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice risk" :class="{ on: choices.weaponEnhancement, unavailable: !has.weaponEnhancement }" :disabled="!has.weaponEnhancement" @click="toggle('weaponEnhancement')">
+            <i class="import-choice-icon" aria-hidden="true">↗</i><span><b>同步武器强化</b><small v-if="!has.weaponEnhancement">{{ missingSourceDescription }}</small><small v-else-if="constructsWeapon">新实例按来源初始化经验、等级、突破、幻晶、觉醒与超凡</small><small v-else>经验、等级、突破、幻晶、觉醒与超凡；不包含上方五个替换技能</small></span><em>{{ !has.weaponEnhancement ? '未记录' : constructsWeapon ? '随新武器同步' : choices.weaponEnhancement ? (usesEndgameProgression ? '补到毕业值' : '将覆盖') : '保留目标' }}</em>
           </button>
-          <button v-if="has.summons" type="button" class="import-choice" :class="{ on: choices.summons, blocked: summonBlocked }" :disabled="summonBlocked" @click="toggle('summons')">
-            <i class="import-choice-icon" aria-hidden="true">☾</i><span><b>召唤石配置</b><small>匹配已有实例；缺少时自动新增并登记</small></span><em>{{ summonBlocked ? '系统未开放' : choices.summons ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice nested" :class="{ on: choices.wrightstone, unavailable: !has.wrightstone }" :disabled="!has.wrightstone" @click="toggle('wrightstone')">
+            <i class="import-choice-icon" aria-hidden="true">✧</i><span><b>只导入武器祝福</b><small>{{ has.wrightstone ? '写入目标武器实际生效的祝福类型与三条附加技能；不改变武器等级' : missingSourceDescription }}</small></span><em>{{ !has.wrightstone ? '未记录' : choices.wrightstone ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.overLimit" type="button" class="import-choice" :class="{ on: choices.overLimit }" @click="toggle('overLimit')">
-            <i class="import-choice-icon" aria-hidden="true">◆</i><span><b>上限突破</b><small>四槽属性与等级，可选择不覆盖</small></span><em>{{ choices.overLimit ? '已选择' : '保留目标' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.summons, unavailable: !has.summons, blocked: has.summons && summonBlocked }" :disabled="!has.summons || summonBlocked" @click="toggle('summons')">
+            <i class="import-choice-icon" aria-hidden="true">☾</i><span><b>召唤石配置</b><small>{{ has.summons ? '匹配已有实例；缺少时自动新增并登记' : missingSourceDescription }}</small></span><em>{{ !has.summons ? '未记录' : summonBlocked ? '系统未开放' : choices.summons ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.characterGrowth" type="button" class="import-choice risk" :class="{ on: choices.characterGrowth, blocked: characterGrowthBlocked }" :disabled="characterGrowthBlocked" @click="toggle('characterGrowth')">
-            <i class="import-choice-icon" aria-hidden="true">▦</i><span><b>角色强化进度</b><small>只补足攻击与 HP·抗性强化页的未完成节点；不会让已点满的目标降级，也不改命运篇章或任何武器</small></span><em>{{ characterGrowthBlocked ? '缺少等级快照' : choices.characterGrowth ? '只增不减' : '默认不改' }}</em>
+          <button type="button" class="import-choice" :class="{ on: choices.overLimit, unavailable: !has.overLimit }" :disabled="!has.overLimit" @click="toggle('overLimit')">
+            <i class="import-choice-icon" aria-hidden="true">◆</i><span><b>上限突破</b><small>{{ has.overLimit ? '四槽属性与等级，可选择不覆盖' : missingSourceDescription }}</small></span><em>{{ !has.overLimit ? '未记录' : choices.overLimit ? '已选择' : '保留目标' }}</em>
           </button>
-          <button v-if="has.characterWeaponCollection" type="button" class="import-choice risk" :class="{ on: choices.characterWeaponCollection }" @click="toggle('characterWeaponCollection')">
-            <i class="import-choice-icon" aria-hidden="true">▤</i><span><b>整组角色武器收藏</b><small>同步该角色全部武器的等级、突破、幻晶、觉醒与超凡；会影响武器收集加成</small></span><em>{{ choices.characterWeaponCollection ? '将覆盖全部' : '默认不改' }}</em>
+          <button type="button" class="import-choice risk" :class="{ on: choices.characterGrowth, unavailable: !has.characterGrowth, blocked: has.characterGrowth && characterGrowthBlocked }" :disabled="!has.characterGrowth || characterGrowthBlocked" @click="toggle('characterGrowth')">
+            <i class="import-choice-icon" aria-hidden="true">▦</i><span><b>角色强化进度</b><small>{{ has.characterGrowth ? '只补足攻击与 HP·抗性强化页的未完成节点；不会让已点满的目标降级，也不改命运篇章或任何武器' : missingSourceDescription }}</small></span><em>{{ !has.characterGrowth ? '未记录' : characterGrowthBlocked ? '缺少等级快照' : choices.characterGrowth ? '只增不减' : '默认不改' }}</em>
           </button>
-			<button v-if="has.characterWeaponWrightstones" type="button" class="import-choice nested risk" :class="{ on: choices.characterWeaponWrightstones }" @click="toggle('characterWeaponWrightstones')">
-				<i class="import-choice-icon" aria-hidden="true">✧</i><span><b>同步全部武器祝福</b><small>逐把复制祝福类型与实际生效的三条附加技能；未佩戴祝福的源武器会清空目标对应武器</small></span><em>{{ choices.characterWeaponWrightstones ? '将覆盖全部' : '默认不改' }}</em>
+          <button type="button" class="import-choice risk" :class="{ on: choices.characterWeaponCollection, unavailable: !has.characterWeaponCollection }" :disabled="!has.characterWeaponCollection" @click="toggle('characterWeaponCollection')">
+            <i class="import-choice-icon" aria-hidden="true">▤</i><span><b>整组角色武器收藏</b><small>{{ has.characterWeaponCollection ? '同步该角色全部武器的等级、突破、幻晶、觉醒与超凡；会影响武器收集加成' : missingSourceDescription }}</small></span><em>{{ !has.characterWeaponCollection ? '未记录' : choices.characterWeaponCollection ? '将覆盖全部' : '默认不改' }}</em>
+          </button>
+          <button type="button" class="import-choice nested risk" :class="{ on: choices.characterWeaponWrightstones, unavailable: !has.characterWeaponWrightstones }" :disabled="!has.characterWeaponWrightstones" @click="toggle('characterWeaponWrightstones')">
+            <i class="import-choice-icon" aria-hidden="true">✧</i><span><b>同步全部武器祝福</b><small>{{ has.characterWeaponWrightstones ? '逐把复制祝福类型与实际生效的三条附加技能；未佩戴祝福的源武器会清空目标对应武器' : missingSourceDescription }}</small></span><em>{{ !has.characterWeaponWrightstones ? '未记录' : choices.characterWeaponWrightstones ? '将覆盖全部' : '默认不改' }}</em>
 			</button>
         </div>
 
@@ -210,6 +246,19 @@ function submit() {
 .import-source-strip .import-fate-summary b { overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; line-height:1.35; }
 .import-source-strip button { min-height:34px; padding:0 15px; border:1px solid #9a7440; border-radius:18px; background:transparent; color:#765126; font-weight:800; cursor:pointer; }
 .import-source-strip button.on { background:#8b6737; color:#fff9e9; }
+.import-target-slots { margin:12px 28px 0; padding:12px; border:1px solid rgba(132,94,45,.22); border-radius:8px; background:rgba(255,253,247,.62); }
+.import-target-heading { display:flex; min-width:0; align-items:baseline; justify-content:space-between; gap:12px; }
+.import-target-heading small { color:#8b6737; font-weight:800; }
+.import-target-heading b { min-width:0; color:#4a3925; font-size:.78rem; text-align:right; }
+.import-slot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(52px,1fr)); gap:6px; margin-top:9px; }
+.import-slot-grid button { min-width:0; min-height:46px; display:grid; place-items:center; gap:1px; border:1px solid rgba(132,94,45,.24); border-radius:6px; background:#fffdf7; color:#70522d; cursor:pointer; }
+.import-slot-grid button span { font-family:var(--font-data); font-weight:800; }
+.import-slot-grid button small { color:#9b8160; font-size:.62rem; }
+.import-slot-grid button.occupied { box-shadow:inset 0 -2px rgba(153,108,45,.28); }
+.import-slot-grid button.on { border-color:#9a6a2c; background:#ede0c5; box-shadow:0 0 0 2px rgba(154,106,44,.14); color:#432f18; }
+.import-target-slots p { margin:8px 0 0; color:#9a542f; font-size:.72rem; line-height:1.45; }
+.import-normalization-note { display:flex; gap:8px; margin:10px 28px 0; padding:9px 11px; border-left:3px solid #9a6a2c; background:rgba(236,224,197,.52); color:#6d5536; font-size:.72rem; line-height:1.5; }
+.import-normalization-note b { flex:none; color:#50391f; }
 .import-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:20px 28px; }
 .import-choice { min-width:0; display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:10px; align-items:center; padding:12px 13px; border:1px solid rgba(139,103,55,.2); border-radius:11px; background:rgba(255,255,255,.52); color:inherit; text-align:left; cursor:pointer; transition:transform .16s ease,border-color .16s ease,background .16s ease; }
 button.import-choice:hover:not(:disabled) { transform:translateY(-1px); border-color:#9a7440; }
@@ -218,6 +267,10 @@ button.import-choice:hover:not(:disabled) { transform:translateY(-1px); border-c
 .import-choice.risk.on { border-color:#b66b4a; background:rgba(182,107,74,.08); box-shadow:inset 3px 0 #b66b4a; }
 .import-choice.nested { margin-left:24px; }
 .import-choice.blocked { opacity:.48; cursor:not-allowed; }
+.import-choice.unavailable { border-style:solid; border-color:rgba(119,105,84,.17); background:rgba(210,203,189,.28); color:#8d8476; opacity:.58; cursor:not-allowed; box-shadow:none; }
+.import-choice.unavailable:hover { transform:none; border-color:rgba(119,105,84,.17); }
+.import-choice.unavailable > i,.import-choice.unavailable > button > i { background:#e1dcd1; color:#958b7c; }
+.import-choice.unavailable small,.import-choice.unavailable em { color:#91887b; }
 .import-choice > i,.import-choice > button > i { width:30px; height:30px; display:grid; place-items:center; border-radius:50%; background:#eee0c5; color:#7e5b2f; font-style:normal; font-size:.72rem; font-weight:900; }
 .import-choice-icon { font-family:var(--font-display); font-size:1rem !important; line-height:1; }
 .import-choice > span,.import-choice > button > span { min-width:0; display:flex; flex-direction:column; gap:2px; }
@@ -226,6 +279,7 @@ button.import-choice:hover:not(:disabled) { transform:translateY(-1px); border-c
 .import-choice em { color:#8b6737; font-size:.72rem; font-style:normal; font-weight:800; white-space:nowrap; }
 .mastery-level { display:block; padding:0; }
 .mastery-level > button { width:100%; display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:10px; align-items:center; padding:12px 13px; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.mastery-level > button:disabled { cursor:not-allowed; }
 .mastery-level label { display:grid; grid-template-columns:auto minmax(120px,1fr) auto; gap:10px; align-items:center; padding:0 14px 12px 57px; color:#756854; font-size:.76rem; }
 .mastery-level input { accent-color:#765126; }
 .mastery-level strong { min-width:112px; color:#765126; font-variant-numeric:tabular-nums; }
@@ -234,6 +288,6 @@ button.import-choice:hover:not(:disabled) { transform:translateY(-1px); border-c
 .import-alert.danger { border-left-color:#b35b4d; background:rgba(179,91,77,.1); color:#8e4338; }
 .import-dialog footer { position:sticky; bottom:0; display:flex; align-items:center; justify-content:flex-end; gap:9px; padding:14px 28px; border-top:1px solid rgba(139,103,55,.2); background:rgba(253,247,234,.96); backdrop-filter:blur(8px); }
 .import-dialog footer > span { margin-right:auto; color:#786a57; font-size:.8rem; }
-@media (max-width:720px) { .import-backdrop{padding:8px}.import-dialog{width:100%;max-height:96vh;border-radius:12px}.import-grid{grid-template-columns:1fr;padding:14px}.import-hero,.import-source-strip,.import-dialog footer{padding-left:16px;padding-right:16px}.import-source-strip{grid-template-columns:1fr auto}.import-source-strip span:nth-child(2){grid-column:1/-1;grid-row:2}.import-choice.nested{margin-left:12px} }
+@media (max-width:720px) { .import-backdrop{padding:8px}.import-dialog{width:100%;max-height:96vh;border-radius:12px}.import-grid{grid-template-columns:1fr;padding:14px}.import-hero,.import-source-strip,.import-dialog footer{padding-left:16px;padding-right:16px}.import-target-slots,.import-normalization-note{margin-left:16px;margin-right:16px}.import-source-strip{grid-template-columns:1fr auto}.import-source-strip span:nth-child(2){grid-column:1/-1;grid-row:2}.import-target-heading,.import-normalization-note{align-items:flex-start;flex-direction:column}.import-target-heading b{text-align:left}.import-choice.nested{margin-left:12px} }
 @media (max-width:1600px) and (min-width:721px) { .import-grid{grid-template-columns:1fr}.import-source-strip{grid-template-columns:1fr}.import-source-strip button{justify-self:start} }
 </style>

@@ -1,3 +1,5 @@
+//lint:file-ignore U1000 MessagePack array markers are consumed through reflection.
+
 package backend
 
 import (
@@ -52,6 +54,9 @@ type loadoutShareCodePayload struct {
 	Character         *loadoutShareCodeCharacter
 	Weapon            *loadoutShareCodeWeapon
 	OverLimit         []loadoutShareCodeOverLimit
+	SourceKind        string
+	CapturedFields    []string
+	ProgressionPolicy string
 }
 
 type loadoutShareCodePayloadV1 struct {
@@ -69,6 +74,27 @@ type loadoutShareCodePayloadV1 struct {
 	WeaponSkillHashes []uint32
 	MasteryHashes     []uint32
 	Character         *loadoutShareCodeCharacterV1
+	Weapon            *loadoutShareCodeWeapon
+	OverLimit         []loadoutShareCodeOverLimit
+}
+
+// loadoutShareCodePayloadV10 keeps the exact pre-v11 array width so existing
+// GBLC v2 codes remain readable after capture provenance was appended.
+type loadoutShareCodePayloadV10 struct {
+	_msgpack          struct{} `msgpack:",as_array"`
+	ShareVersion      int
+	CharaHash         uint32
+	CharaName         string
+	OwnerCode         string
+	Name              string
+	WeaponHash        uint32
+	WeaponName        string
+	Sigils            []loadoutShareCodeSigil
+	Summons           []loadoutShareCodeSummon
+	Skills            []loadoutShareCodeSkill
+	WeaponSkillHashes []uint32
+	MasteryHashes     []uint32
+	Character         *loadoutShareCodeCharacter
 	Weapon            *loadoutShareCodeWeapon
 	OverLimit         []loadoutShareCodeOverLimit
 }
@@ -243,6 +269,9 @@ func compactLoadoutShare(source *LoadoutShare) (*loadoutShareCodePayload, error)
 	if source == nil || source.Format != loadoutShareFormat || source.Version != loadoutShareVersion {
 		return nil, fmt.Errorf("只能为当前 v%d 单套配装生成分享码", loadoutShareVersion)
 	}
+	if err := validateLoadoutShareProvenance(source); err != nil {
+		return nil, err
+	}
 	charaHash, err := loadoutShareCodeHash(source.CharaHash, "角色哈希", false)
 	if err != nil {
 		return nil, err
@@ -254,6 +283,7 @@ func compactLoadoutShare(source *LoadoutShare) (*loadoutShareCodePayload, error)
 	result := &loadoutShareCodePayload{
 		ShareVersion: source.Version, CharaHash: charaHash, CharaName: source.CharaName,
 		OwnerCode: source.OwnerCode, Name: source.Name, WeaponHash: weaponHash, WeaponName: source.WeaponName,
+		SourceKind: source.SourceKind, CapturedFields: append([]string(nil), source.CapturedFields...), ProgressionPolicy: source.ProgressionPolicy,
 	}
 	for _, sigil := range source.Sigils {
 		if sigil.Index == nil {
@@ -327,9 +357,7 @@ func compactLoadoutShare(source *LoadoutShare) (*loadoutShareCodePayload, error)
 			LegacyProgress:             source.Character.LegacyProgress,
 			WeaponWrightstonesCaptured: source.Character.WeaponWrightstonesCaptured,
 		}
-		for _, value := range source.Character.EnhancementPanel {
-			character.EnhancementPanel = append(character.EnhancementPanel, value)
-		}
+		character.EnhancementPanel = append(character.EnhancementPanel, source.Character.EnhancementPanel...)
 		for _, node := range source.Character.EnhancementNodes {
 			character.EnhancementNodes = append(character.EnhancementNodes, loadoutShareCodeEnhancementNode{
 				Index: node.Index, Value: node.Value,
@@ -403,6 +431,7 @@ func expandLoadoutShare(source *loadoutShareCodePayload) *LoadoutShare {
 		Format: loadoutShareFormat, Version: int(source.ShareVersion), CharaHash: hashText(source.CharaHash),
 		CharaName: source.CharaName, OwnerCode: source.OwnerCode, Name: source.Name,
 		WeaponHash: loadoutShareCodeOptionalHash(source.WeaponHash), WeaponName: source.WeaponName,
+		SourceKind: source.SourceKind, CapturedFields: append([]string(nil), source.CapturedFields...), ProgressionPolicy: source.ProgressionPolicy,
 	}
 	for _, sigil := range source.Sigils {
 		index := int(sigil.Index)
@@ -536,32 +565,46 @@ func validateCompactLoadoutShare(source *loadoutShareCodePayload, expectedVersio
 	if len(source.Sigils) > loadoutMaxSigils {
 		return fmt.Errorf("分享码包含 %d 个因子，超过 %d 格上限", len(source.Sigils), loadoutMaxSigils)
 	}
-	if len(source.Summons) != 4 {
+	partial := source.SourceKind == loadoutShareSourceRuntime || source.SourceKind == loadoutShareSourceLogsDB
+	hasField := func(field string) bool {
+		if !partial || len(source.CapturedFields) == 0 {
+			return !partial
+		}
+		for _, item := range source.CapturedFields {
+			if item == field {
+				return true
+			}
+		}
+		return false
+	}
+	if (!partial || hasField("summons")) && len(source.Summons) != 4 {
 		return fmt.Errorf("分享码的召唤石配置需要恰好 4 槽")
 	}
 	if len(source.Skills) > loadoutMaxSkills {
 		return fmt.Errorf("分享码包含 %d 个角色技能，超过 %d 格上限", len(source.Skills), loadoutMaxSkills)
 	}
-	if len(source.WeaponSkillHashes) != 5 {
+	if (!partial || hasField("weaponSkills")) && len(source.WeaponSkillHashes) != 5 {
 		return fmt.Errorf("分享码的武器技能快照需要恰好 5 槽")
 	}
-	if len(source.MasteryHashes) != loadoutMaxMastery {
+	if (!partial || hasField("mastery")) && len(source.MasteryHashes) != loadoutMaxMastery {
 		return fmt.Errorf("分享码的专精快照需要恰好 %d 槽", loadoutMaxMastery)
 	}
-	if len(source.OverLimit) != 4 {
+	if (!partial || hasField("overLimit")) && len(source.OverLimit) != 4 {
 		return fmt.Errorf("分享码的上限突破配置需要恰好 4 槽")
 	}
-	if source.Character == nil || len(source.Character.EnhancementPanel) != 2 ||
+	if !partial && (source.Character == nil || len(source.Character.EnhancementPanel) != 2 ||
 		len(source.Character.EnhancementNodes) == 0 || len(source.Character.EnhancementNodes) > 1000 ||
-		len(source.Character.Weapons) > 128 {
+		len(source.Character.Weapons) > 128) {
 		return fmt.Errorf("分享码的角色强化快照结构无效")
 	}
-	if requireCharacterBase && !source.Character.CharacterBaseCaptured {
+	if requireCharacterBase && !partial && !source.Character.CharacterBaseCaptured {
 		return fmt.Errorf("分享码缺少角色等级基础快照")
 	}
-	for _, weapon := range source.Character.Weapons {
-		if weapon.Wrightstone != nil && len(weapon.Wrightstone.Traits) > 3 {
-			return fmt.Errorf("分享码的角色武器祝福超过 3 个词条槽")
+	if source.Character != nil {
+		for _, weapon := range source.Character.Weapons {
+			if weapon.Wrightstone != nil && len(weapon.Wrightstone.Traits) > 3 {
+				return fmt.Errorf("分享码的角色武器祝福超过 3 个词条槽")
+			}
 		}
 	}
 	if source.Weapon != nil {
@@ -595,6 +638,20 @@ func upgradeLoadoutShareCodePayloadV1(source *loadoutShareCodePayloadV1) *loadou
 		}
 	}
 	return result
+}
+
+func upgradeLoadoutShareCodePayloadV10(source *loadoutShareCodePayloadV10) *loadoutShareCodePayload {
+	if source == nil {
+		return nil
+	}
+	return &loadoutShareCodePayload{
+		ShareVersion: source.ShareVersion, CharaHash: source.CharaHash, CharaName: source.CharaName,
+		OwnerCode: source.OwnerCode, Name: source.Name, WeaponHash: source.WeaponHash, WeaponName: source.WeaponName,
+		Sigils: source.Sigils, Summons: source.Summons, Skills: source.Skills,
+		WeaponSkillHashes: source.WeaponSkillHashes, MasteryHashes: source.MasteryHashes,
+		Character: source.Character, Weapon: source.Weapon, OverLimit: source.OverLimit,
+		SourceKind: loadoutShareSourceSave, ProgressionPolicy: loadoutProgressionExact,
+	}
 }
 
 func decodeLoadoutShareCode(code string) (*LoadoutShare, error) {
@@ -651,13 +708,24 @@ func decodeLoadoutShareCode(code string) (*LoadoutShare, error) {
 	} else {
 		compact = &loadoutShareCodePayload{}
 		if err := msgpack.Unmarshal(packed, compact); err != nil {
-			return nil, fmt.Errorf("解析紧凑配装失败: %w", err)
+			var legacyV10 loadoutShareCodePayloadV10
+			if legacyErr := msgpack.Unmarshal(packed, &legacyV10); legacyErr != nil {
+				return nil, fmt.Errorf("解析紧凑配装失败: %w", err)
+			}
+			compact = upgradeLoadoutShareCodePayloadV10(&legacyV10)
 		}
-		if err := validateCompactLoadoutShare(compact, loadoutShareVersion, true); err != nil {
+		if compact.ShareVersion == 10 {
+			if err := validateCompactLoadoutShare(compact, 10, true); err != nil {
+				return nil, err
+			}
+		} else if err := validateCompactLoadoutShare(compact, loadoutShareVersion, true); err != nil {
 			return nil, err
 		}
 	}
 	share := expandLoadoutShare(compact)
+	if err := validateLoadoutShareProvenance(share); err != nil {
+		return nil, err
+	}
 	return share, nil
 }
 

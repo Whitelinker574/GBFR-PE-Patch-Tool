@@ -1,6 +1,13 @@
 package backend
 
-import "testing"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+)
 
 func TestWindowSizePreservesRealDesktopPreferences(t *testing.T) {
 	tests := []struct {
@@ -22,5 +29,46 @@ func TestWindowSizePreservesRealDesktopPreferences(t *testing.T) {
 				t.Fatalf("windowSize() = %dx%d, want %dx%d", width, height, test.wantWidth, test.wantHeight)
 			}
 		})
+	}
+}
+
+func TestAppConfigConcurrentUpdatesPreserveIndependentFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	app := &App{configPathOverride: path}
+	var wait sync.WaitGroup
+	for index := 0; index < 64; index++ {
+		wait.Add(2)
+		go func(value int) {
+			defer wait.Done()
+			if err := app.SetLastSavePath(fmt.Sprintf("save-%03d.dat", value)); err != nil {
+				t.Errorf("set save path: %v", err)
+			}
+		}(index)
+		go func() {
+			defer wait.Done()
+			if err := app.setRuntimeLoadoutDetectorPreference(true); err != nil {
+				t.Errorf("set detector preference: %v", err)
+			}
+		}()
+	}
+	wait.Wait()
+
+	config, err := app.configSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.LastSavePath == "" || !config.RuntimeLoadoutDetectorActive {
+		t.Fatalf("concurrent updates clobbered config fields: %+v", config)
+	}
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored AppConfig
+	if err := json.Unmarshal(payload, &stored); err != nil {
+		t.Fatalf("atomic config file is invalid: %v", err)
+	}
+	if stored != config {
+		t.Fatalf("memory and disk config differ: memory=%+v disk=%+v", config, stored)
 	}
 }
