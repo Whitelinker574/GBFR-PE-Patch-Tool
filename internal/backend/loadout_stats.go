@@ -404,15 +404,15 @@ func readOverLimit(data *SaveDataBinary, charaUnitID uint32, warnings *[]string)
 // LoadoutStatContext reads character base fields, the complete summon
 // inventory, equipped summon order, and the character's four over-limit slots.
 func (a *App) LoadoutStatContext(path, charaHex string) (*LoadoutStatContext, error) {
-	parsed, err := LoadSaveFile(path)
+	snapshot, err := loadLoadoutReadSnapshot(path)
 	if err != nil {
 		return nil, err
 	}
-	editableSave, err := LoadSave(path)
+	parsed, err := snapshot.parsedSave()
 	if err != nil {
 		return nil, err
 	}
-	return a.loadoutStatContextFromLoaded(path, charaHex, parsed, editableSave, true)
+	return a.loadoutStatContextFromLoaded(path, charaHex, parsed, snapshot.save, true)
 }
 
 func (a *App) loadoutStatContextFromLoaded(path, charaHex string, parsed *SaveGameFile, editableSave *SaveData, allowRuntime bool) (*LoadoutStatContext, error) {
@@ -773,19 +773,19 @@ func (a *App) LoadoutSimulateBuild(path, charaHex string, weaponSlotID uint32, s
 	if err != nil {
 		return nil, err
 	}
-	save, err := LoadSave(path)
+	snapshot, err := loadLoadoutReadSnapshot(path)
 	if err != nil {
 		return nil, err
 	}
-	parsed, err := LoadSaveFile(path)
+	parsed, err := snapshot.parsedSave()
 	if err != nil {
 		return nil, err
 	}
-	context, err := a.loadoutStatContextFromLoaded(path, charaHex, parsed, save, true)
+	context, err := a.loadoutStatContextFromLoaded(path, charaHex, parsed, snapshot.save, true)
 	if err != nil {
 		return nil, err
 	}
-	return a.loadoutSimulateBuildFromLoaded(path, charaHex, weaponSlotID, sigilSlotIDs, constructed, masteryHexes, summonSlotIDs, cat, save, context, true)
+	return a.loadoutSimulateBuildFromLoaded(path, charaHex, weaponSlotID, sigilSlotIDs, constructed, masteryHexes, summonSlotIDs, cat, snapshot.save, context, true)
 }
 
 func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID uint32, sigilSlotIDs []uint32, constructed []LoadoutConstructedSigil, masteryHexes []string, summonSlotIDs []uint32, cat *Catalog, save *SaveData, context *LoadoutStatContext, allowRuntimeWeapon bool) (*LoadoutSimulation, error) {

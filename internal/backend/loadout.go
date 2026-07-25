@@ -344,14 +344,18 @@ func loadoutSlotOf(u uint32) (slot int, isParty bool) {
 
 // LoadoutList 读出存档里全部已保存的配装预设，按角色分组。
 func (a *App) LoadoutList(path string) ([]CharacterLoadouts, error) {
+	snapshot, err := loadLoadoutReadSnapshot(path)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadoutListFromLoaded(snapshot.save)
+}
+
+func (a *App) loadoutListFromLoaded(save *SaveData) ([]CharacterLoadouts, error) {
 	if _, err := loadProgressionCatalog(); err != nil {
 		return nil, err
 	}
 	cat, err := LoadCatalog()
-	if err != nil {
-		return nil, err
-	}
-	save, err := LoadSave(path)
 	if err != nil {
 		return nil, err
 	}

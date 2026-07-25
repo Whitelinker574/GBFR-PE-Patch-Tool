@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 //go:embed data/sigils.json data/traits.json data/secondary-trait-rules.json
@@ -78,7 +79,20 @@ type Catalog struct {
 	traitByHash map[uint32]*TraitDef
 }
 
+var (
+	catalogOnce sync.Once
+	catalogData *Catalog
+	catalogErr  error
+)
+
 func LoadCatalog() (*Catalog, error) {
+	catalogOnce.Do(func() {
+		catalogData, catalogErr = loadCatalog()
+	})
+	return catalogData, catalogErr
+}
+
+func loadCatalog() (*Catalog, error) {
 	c := &Catalog{}
 
 	sigils, err := loadJSON[struct {

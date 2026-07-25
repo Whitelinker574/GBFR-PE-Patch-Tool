@@ -18,7 +18,11 @@ type LoadoutPreviewStats struct {
 // three-read-stable fixed growth replaces the save-derived fallback for all
 // presets; the current weapon and factors remain specific to each preset.
 func (a *App) LoadoutPreviewList(path, charaHex string) ([]LoadoutPreviewStats, error) {
-	groups, err := a.LoadoutList(path)
+	snapshot, err := loadLoadoutReadSnapshot(path)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := a.loadoutListFromLoaded(snapshot.save)
 	if err != nil {
 		return nil, err
 	}
@@ -26,15 +30,11 @@ func (a *App) LoadoutPreviewList(path, charaHex string) ([]LoadoutPreviewStats, 
 	if err != nil {
 		return nil, err
 	}
-	save, err := LoadSave(path)
+	parsed, err := snapshot.parsedSave()
 	if err != nil {
 		return nil, err
 	}
-	parsed, err := LoadSaveFile(path)
-	if err != nil {
-		return nil, err
-	}
-	context, err := a.loadoutStatContextFromLoaded(path, charaHex, parsed, save, true)
+	context, err := a.loadoutStatContextFromLoaded(path, charaHex, parsed, snapshot.save, true)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (a *App) LoadoutPreviewList(path, charaHex string) ([]LoadoutPreviewStats, 
 		}
 		simulation, simulationErr := a.loadoutSimulateBuildFromLoaded(
 			path, charaHex, loadout.WeaponSlotID, sigilSlots, nil, mastery, context.EquippedSummonSlotIDs,
-			cat, save, context, false,
+			cat, snapshot.save, context, false,
 		)
 		if simulationErr != nil {
 			entry.Error = simulationErr.Error()

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -41,6 +43,7 @@ var hashSections = []struct{ start, subSize int }{
 type unitEntry struct {
 	IDType   uint32
 	UnitID   uint32
+	TableOff int // relative table offset inside SlotData; used to merge scan strategies
 	ValueOff int // absolute offset in data where ValueData[0] lives
 	ValueCnt int // number of elements in ValueData vector
 	data     []byte
@@ -138,7 +141,10 @@ type SaveData struct {
 	slotLen        int64
 	path           string
 	lastBackupPath string
+	unitsMu        sync.Mutex
 	unitsByType    map[uint32][]*unitEntry
+	alignedUnits   map[uint32][]*unitEntry
+	alignedScanned bool
 }
 
 func LoadSave(path string) (*SaveData, error) {
@@ -146,6 +152,10 @@ func LoadSave(path string) (*SaveData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取存档失败: %w", err)
 	}
+	return newSaveData(path, data)
+}
+
+func newSaveData(path string, data []byte) (*SaveData, error) {
 	if len(data) < 0x34 {
 		return nil, fmt.Errorf("存档文件太小")
 	}
@@ -184,6 +194,8 @@ func (s *SaveData) findUnit(idType, unitID uint32) (*unitEntry, bool) {
 
 // findAllUnitsByType finds all FlatBuffer unit entries matching a specific IDType.
 func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
+	s.unitsMu.Lock()
+	defer s.unitsMu.Unlock()
 	if cached, ok := s.unitsByType[idType]; ok {
 		return cached
 	}
@@ -195,12 +207,15 @@ func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
 	idBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(idBytes, idType)
 
-	// Strategy 1: raw byte scan for IDType value, then locate table start nearby
-	for i := 0; i < len(slot)-16; i++ {
-		if slot[i] != idBytes[0] || slot[i+1] != idBytes[1] ||
-			slot[i+2] != idBytes[2] || slot[i+3] != idBytes[3] {
-			continue
+	// Strategy 1: use the standard library's optimized byte search for the
+	// IDType value, then locate the owning FlatBuffer table nearby.
+	for searchAt := 0; searchAt <= len(slot)-4; {
+		relative := bytes.Index(slot[searchAt:], idBytes)
+		if relative < 0 {
+			break
 		}
+		i := searchAt + relative
+		searchAt = i + 1
 		// Found IDType at slot[i], search backward up to 20 bytes for table start
 		searchStart := i - 20
 		if searchStart < 0 {
@@ -221,17 +236,14 @@ func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
 		}
 	}
 
-	// Strategy 2: fallback 4-byte aligned scan (for entries missed by strategy 1)
-	for off := 4; off < len(slot)-16; off += 4 {
-		if seen[off] {
+	// Strategy 2 used to repeat a full aligned scan for every requested IDType.
+	// Build that fallback index once per loaded save and merge only this type.
+	s.ensureAlignedUnitIndexLocked()
+	for _, entry := range s.alignedUnits[idType] {
+		if seen[entry.TableOff] {
 			continue
 		}
-		entry, ok := tryReadUnitEntry(slot, off, idType, 0)
-		if !ok || entry.IDType != idType {
-			continue
-		}
-		entry.ValueOff += slotBase
-		entry.data = s.data
+		seen[entry.TableOff] = true
 		results = append(results, entry)
 	}
 	if s.unitsByType == nil {
@@ -239,6 +251,25 @@ func (s *SaveData) findAllUnitsByType(idType uint32) []*unitEntry {
 	}
 	s.unitsByType[idType] = results
 	return results
+}
+
+func (s *SaveData) ensureAlignedUnitIndexLocked() {
+	if s.alignedScanned {
+		return
+	}
+	s.alignedScanned = true
+	s.alignedUnits = make(map[uint32][]*unitEntry)
+	slot := s.slotSpan()
+	slotBase := int(s.slotOff)
+	for off := 4; off < len(slot)-16; off += 4 {
+		entry, ok := tryReadAnyUnitEntry(slot, off)
+		if !ok {
+			continue
+		}
+		entry.ValueOff += slotBase
+		entry.data = s.data
+		s.alignedUnits[entry.IDType] = append(s.alignedUnits[entry.IDType], entry)
+	}
 }
 
 // findUnitExact also distinguishes UnitID 0 from "no UnitID filter". Item
@@ -256,6 +287,17 @@ func (s *SaveData) findUnitExact(idType, unitID uint32) (*unitEntry, bool) {
 // tryReadUnitEntry attempts to read a FlatBuffer UIntSaveDataUnit/IntSaveDataUnit at off.
 // If unitID is non-zero, also filters by UnitID. Returns the entry and whether it matched.
 func tryReadUnitEntry(slot []byte, off int, idType, unitID uint32) (*unitEntry, bool) {
+	entry, ok := tryReadAnyUnitEntry(slot, off)
+	if !ok || entry.IDType != idType || unitID != 0 && entry.UnitID != unitID {
+		return nil, false
+	}
+	return entry, true
+}
+
+func tryReadAnyUnitEntry(slot []byte, off int) (*unitEntry, bool) {
+	if off < 0 || off > len(slot)-4 {
+		return nil, false
+	}
 	vtableDist := int32(binary.LittleEndian.Uint32(slot[off:]))
 	if vtableDist == 0 {
 		return nil, false
@@ -282,9 +324,6 @@ func tryReadUnitEntry(slot []byte, off int, idType, unitID uint32) (*unitEntry, 
 		}
 
 		foundID := binary.LittleEndian.Uint32(slot[off+int(idField):])
-		if foundID != idType {
-			continue
-		}
 
 		// UnitID field is optional — check if it exists (vtable offset != 0)
 		var foundUnitID uint32
@@ -295,11 +334,6 @@ func tryReadUnitEntry(slot []byte, off int, idType, unitID uint32) (*unitEntry, 
 			}
 			foundUnitID = binary.LittleEndian.Uint32(slot[off+int(unitField):])
 		}
-		// If filtering by a specific unitID, check match
-		if unitID != 0 && foundUnitID != unitID {
-			continue
-		}
-
 		vectorFieldOff := off + int(dataField)
 		relVectorOff := binary.LittleEndian.Uint32(slot[vectorFieldOff:])
 		vectorOff := vectorFieldOff + int(relVectorOff)
@@ -314,6 +348,7 @@ func tryReadUnitEntry(slot []byte, off int, idType, unitID uint32) (*unitEntry, 
 		return &unitEntry{
 			IDType:   foundID,
 			UnitID:   foundUnitID,
+			TableOff: off,
 			ValueOff: vectorOff + 4,
 			ValueCnt: int(count),
 		}, true

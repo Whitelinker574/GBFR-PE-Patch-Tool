@@ -1664,6 +1664,14 @@ func (a *App) LoadoutApplyWithResources(inputPath, outputPath string, request Lo
 // LoadoutEditContext 给前端一份「该角色可安全引用的资源池」，杜绝前端瞎猜引用。
 // charaHex 是 8 位十六进制的角色 hash（= LoadoutList 返回的 CharaHash）。
 func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, error) {
+	snapshot, err := loadLoadoutReadSnapshot(path)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadoutEditContextFromLoaded(snapshot.save, charaHex)
+}
+
+func (a *App) loadoutEditContextFromLoaded(save *SaveData, charaHex string) (*LoadoutEditContext, error) {
 	if _, err := loadProgressionCatalog(); err != nil {
 		return nil, err
 	}
@@ -1674,10 +1682,6 @@ func (a *App) LoadoutEditContext(path, charaHex string) (*LoadoutEditContext, er
 	charaHash, err := ParseHashHex(charaHex)
 	if err != nil {
 		return nil, fmt.Errorf("角色 hash 无效: %v", err)
-	}
-	save, err := LoadSave(path)
-	if err != nil {
-		return nil, err
 	}
 	ix := buildLoadoutIndex(save)
 
