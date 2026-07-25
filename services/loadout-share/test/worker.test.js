@@ -162,6 +162,9 @@ test('publish, load, download and landing routes round-trip one immutable frame'
   const download = await worker.fetch(new Request(`https://share.example/download/${result.compactCode}.gbfr-loadout`), env)
   assert.equal(download.status, 200)
   assert.match(download.headers.get('Content-Disposition'), /\.gbfr-loadout/)
+
+  const catalog = await worker.fetch(new Request('https://share.example/api/v1/loadouts'), env).then(response => response.json())
+  assert.deepEqual(catalog.items, [], 'a frame without a valid preview must not enter the public catalog')
 })
 
 test('the service rejects arbitrary paste content and unknown codes', async () => {
@@ -255,6 +258,28 @@ test('publishing stores a sanitized complete preview and refreshes it when the s
   const refreshedMetadata = await refreshedMeta.json()
   assert.equal(refreshedMetadata.preview.sigils[0].name, '快速冷却+')
   assert.equal(refreshedMetadata.preview.combinedSkills[0].rawLevel, 60)
+})
+
+test('source-less merged skills rebuild their recorded sources from the loadout preview', async () => {
+  const env = { LOADOUTS: makeR2() }
+  const preview = {
+    characterHash: '4D0A60C3', characterName: '伊欧', weaponHash: '02352554', weaponName: '星晶武器',
+    sigils: [{ name: '体力 V+', level: 15, primaryHash: 'F372F096', primary: '体力', primaryLevel: 15, secondaryHash: 'DC584F60', secondary: '伤害上限', secondaryLevel: 15 }],
+    weaponSkills: [{ hash: 'DC584F60', name: '伤害上限', level: 5 }],
+    wrightstone: { name: '隔绝之祝福', traits: [{ hash: 'DC584F60', name: '伤害上限', level: 10 }] },
+    summons: [{ typeHash: '0033943A', name: '巴哈姆特', mainTraitHash: 'DC584F60', mainTrait: '伤害上限', mainTraitLevel: 15 }],
+    combinedSkills: [{ hash: 'SKILL_020_00', name: '伤害上限', level: 45, rawLevel: 45, sources: [] }],
+  }
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Preview': Buffer.from(JSON.stringify(preview)).toString('base64url') }, body: makeFrame(),
+  }), env).then(response => response.json())
+  const metadata = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/meta`), env).then(response => response.json())
+  assert.deepEqual(metadata.preview.combinedSkills[0].sources, [
+    '因子01 · 伤害上限 Lv15',
+    '武器 · [绝霸]布里欧纳克 · 伤害上限 Lv5',
+    '武器祝福 · 隔绝之祝福 · 伤害上限 Lv10',
+    '召唤石01 · 黑龙伊弗欧 · 传说 · 伤害 · 伤害上限 Lv15',
+  ])
 })
 
 test('detail page includes summon effects, mastery nodes, and merged skill sections', async () => {

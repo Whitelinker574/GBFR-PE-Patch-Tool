@@ -369,6 +369,70 @@ function decoratePreview(preview) {
   return preview
 }
 
+function skillIdentityKeys(hash, name) {
+  const keys = new Set()
+  const addName = value => {
+    const normalized = String(value || '').trim().toLocaleLowerCase().replace(/[\s·・|｜:：()（）\[\]【】]/g, '')
+    if (normalized) keys.add(`name:${normalized}`)
+  }
+  const hashKey = assetKey(hash)
+  if (hashKey) keys.add(`hash:${hashKey}`)
+  addName(name)
+  const catalog = gameNames?.traits?.[hashKey] || gameNames?.summonSkills?.[hashKey] || traitByName.get(String(name || '').trim())
+  addName(catalog?.zh)
+  addName(catalog?.en)
+  return keys
+}
+
+function rebuildCombinedSkillSources(preview, lang) {
+  const sourceIndex = new Map()
+  const remember = (hash, name, source) => {
+    if (!source || !String(name || '').trim()) return
+    for (const key of skillIdentityKeys(hash, name)) {
+      const sources = sourceIndex.get(key) || []
+      if (!sources.includes(source)) sources.push(source)
+      sourceIndex.set(key, sources)
+    }
+  }
+  const levelText = level => Number(level) > 0 ? ` Lv${Number(level)}` : ''
+  const sigilWord = lang === 'en' ? 'Sigil' : '因子'
+  const weaponWord = lang === 'en' ? 'Weapon' : '武器'
+  const wrightstoneWord = lang === 'en' ? 'Wrightstone' : '武器祝福'
+  const summonWord = lang === 'en' ? 'Summon' : '召唤石'
+  const masteryWord = lang === 'en' ? 'Mastery' : '专精'
+
+  for (const [index, sigil] of (preview.sigils || []).entries()) {
+    const slot = String(index + 1).padStart(2, '0')
+    remember(sigil.primaryHash, sigil.primary, `${sigilWord}${slot} · ${sigil.primary}${levelText(sigil.primaryLevel || sigil.level)}`)
+    remember(sigil.secondaryHash, sigil.secondary, `${sigilWord}${slot} · ${sigil.secondary}${levelText(sigil.secondaryLevel || sigil.level)}`)
+  }
+  for (const skill of preview.weaponSkills || []) {
+    remember(skill.hash, skill.name, `${weaponWord} · ${preview.weaponName || ''} · ${skill.name}${levelText(skill.level)}`)
+  }
+  for (const trait of preview.wrightstone?.traits || []) {
+    remember(trait.hash, trait.name, `${wrightstoneWord} · ${preview.wrightstone?.name || ''} · ${trait.name}${levelText(trait.level)}`)
+  }
+  for (const [index, summon] of (preview.summons || []).entries()) {
+    const slot = String(index + 1).padStart(2, '0')
+    remember(summon.mainTraitHash, summon.mainTrait, `${summonWord}${slot} · ${summon.name} · ${summon.mainTrait}${levelText(summon.mainTraitLevel)}`)
+  }
+  for (const node of preview.masterySkills || []) {
+    const count = Number(node.count) > 1 ? ` ×${Number(node.count)}` : ''
+    remember(node.hash, node.name, `${masteryWord} · ${node.rank || node.name}${count}`)
+  }
+
+  for (const skill of preview.combinedSkills || []) {
+    if ((skill.sources || []).length) continue
+    const sources = []
+    for (const key of skillIdentityKeys(skill.hash, skill.name)) {
+      for (const source of sourceIndex.get(key) || []) {
+        if (!sources.includes(source)) sources.push(source)
+      }
+    }
+    skill.sources = sources
+  }
+}
+
 function localizePreview(preview, lang) {
   if (!preview || typeof preview !== 'object') return preview
   const traitName = (hash, fallback = '') => localizedName(gameNames?.traits?.[assetKey(hash)] || gameNames?.summonSkills?.[assetKey(hash)] || traitByName.get(String(fallback || '').trim()), lang, fallback)
@@ -438,7 +502,22 @@ function localizePreview(preview, lang) {
   for (const skill of preview.combinedSkills || []) {
     skill.name = traitName(skill.hash, skill.name)
   }
+  rebuildCombinedSkillSources(preview, lang)
   return preview
+}
+
+function hasPublicCatalogPreview(metadata) {
+  const preview = metadata?.preview
+  if (!preview || typeof preview !== 'object') return false
+  const hash = assetKey(metadata.characterHash || preview.characterHash)
+  const name = String(metadata.characterName || preview.characterName || '').trim().toLocaleLowerCase()
+  const knownCharacter = CHARACTER_ROSTER.some(character => assetKey(character.hash) === hash || [character.name, character.nameEn, character.slug].some(value => String(value || '').trim().toLocaleLowerCase() === name))
+  if (!knownCharacter) return false
+  return Boolean(
+    preview.weaponHash || preview.weaponName ||
+    preview.sigils?.length || preview.weaponSkills?.length || preview.abilities?.length ||
+    preview.summons?.length || preview.masterySkills?.length || preview.combinedSkills?.length,
+  )
 }
 
 function headerText(request, name, encodedName) {
@@ -813,14 +892,14 @@ function detailScript(origin, code, lang = 'zh') {
     const t=${JSON.stringify(lang === 'en' ? {
       missing:'Not recorded', unnamedSkill:'Unnamed skill', skill:'Trait', levelMissing:'Level not recorded', sigil:'Sigil', sigilMissing:'Sigil level not recorded',
       primary:'Primary', secondary:'Secondary', subMissing:'Sub trait not recorded', rank:'Rank', summonMissing:'Summon data not recorded', mastery:'Mastery', masteryNode:'Mastery node',
-      sources:'recorded sources', invested:'Invested', effectMissing:'No value description at this level', mergedMissing:'Merged skill levels unavailable in this legacy preview',
+      sources:'recorded sources', sourceUnavailable:'Source details unavailable', invested:'Invested', effectMissing:'No value description at this level', mergedMissing:'Merged skill levels unavailable in this legacy preview',
       weapon:'Weapon', weaponSkills:'Weapon Traits', wrightstone:'Wrightstone', abilities:'Character Skills', summons:'Summons', summonMeta:'Main Aura / Sub Trait / Rank',
       sigils:'Sigils', slots:'12 slots', masterySkills:'Mastery Skills', direction:'Direction', nodes:'nodes', overLimit:'Over Mastery', overLimitMeta:'4 slots', merged:'Combined Skill Levels', mergedMeta:'Sigils / Weapon / Wrightstone / Summons',
       unknownWeapon:'Not recorded', oldWrightstone:'Not equipped or unavailable in this legacy preview', noMastery:'No selected mastery nodes', oldMastery:'Mastery nodes unavailable in this legacy preview', noDirection:'No primary direction', failed:'Failed to load loadout preview'
     } : {
       missing:'未记录', unnamedSkill:'未命名技能', skill:'技能', levelMissing:'等级未记录', sigil:'因子', sigilMissing:'因子等级未记录',
       primary:'主词条', secondary:'副词条', subMissing:'副词条未记录', rank:'阶级', summonMissing:'未记录召唤石配置', mastery:'专精', masteryNode:'专精节点',
-      sources:'个记录来源', invested:'投入', effectMissing:'当前等级暂无数值说明', mergedMissing:'这份旧摘要未记录合并技能等级',
+      sources:'个记录来源', sourceUnavailable:'来源明细未记录', invested:'投入', effectMissing:'当前等级暂无数值说明', mergedMissing:'这份旧摘要未记录合并技能等级',
       weapon:'装备武器', weaponSkills:'武器技能', wrightstone:'武器祝福', abilities:'角色技能', summons:'召唤石', summonMeta:'主加护 / 副词条 / 阶级',
       sigils:'因子配置', slots:'12 槽', masterySkills:'专精技能', direction:'方向', nodes:'节点', overLimit:'上限突破', overLimitMeta:'4 槽', merged:'合并技能等级', mergedMeta:'因子 / 武器 / 祝福 / 召唤石',
       unknownWeapon:'未标注', oldWrightstone:'未佩戴或旧摘要未记录', noMastery:'这套配装没有已选专精节点', oldMastery:'这份旧摘要未记录专精节点', noDirection:'未形成主方向', failed:'配装摘要读取失败'
@@ -850,7 +929,7 @@ function detailScript(origin, code, lang = 'zh') {
     const summons=items=>items.length?'<div class="summon-list">'+items.map(s=>{const sub=s.subParam?esc(s.subParam)+(s.subParamValue?' '+(s.subParamValue>0?'+':'')+esc(s.subParamValue)+(s.subParamUnit==='pct'?'%':''):'')+(s.subParamLevel?' · Lv'+esc(s.subParamLevel):''):t.subMissing;return '<article class="summon-row">'+icon(s.icon,s.name)+'<div class="summon-copy"><header><b>'+esc(s.name||t.summons)+'</b><em>'+t.rank+' '+esc(s.rank||0)+'</em></header><div class="summon-traits">'+traitPair(en?'Main Aura':'主加护',s.mainTrait,s.mainIcon,s.mainTraitLevel)+traitPair(t.secondary,s.subParam,s.subIcon,s.subParamLevel)+'</div>'+(s.subParam?'<p>'+sub+'</p>':'')+'</div></article>'}).join('')+'</div>':empty(t.summonMissing);
     const mastery=(items,emptyText)=>items.length?'<div class="mastery-list">'+items.map(x=>'<article class="mastery-row">'+icon(x.icon,x.name||x.effect)+'<div class="mastery-copy"><header><b>'+esc(x.name||x.effect||t.masteryNode)+'</b><em>'+esc(x.rank||t.mastery)+(x.count>1?' ×'+esc(x.count):'')+'</em></header>'+(x.name&&x.effect?'<p>'+esc(label(x.effect))+'</p>':'')+'</div></article>').join('')+'</div>':empty(emptyText);
     const overLimit=items=>items.length?'<div class="effect-rows">'+items.map((x,i)=>'<article class="effect-row">'+icon(x.icon,x.name)+'<div class="effect-copy"><header><b>'+(i+1)+'. '+esc(label(x.name)||x.attributeHash)+'</b><em>Lv'+esc(x.level||0)+'</em></header><p>+'+esc(x.value||0)+(x.unit==='pct'?'%':'')+'</p></div></article>').join('')+'</div>':empty();
-    const ledger=items=>items.length?'<div class="skill-ledger">'+items.map(x=>'<details class="skill-entry"><summary>'+icon(x.icon,x.name)+'<span><b>'+esc(label(x.name))+'</b><small>'+esc((x.sources||[]).length)+' '+t.sources+'</small></span><span class="skill-level"><strong>Lv'+esc(x.level||0)+'</strong>'+(x.rawLevel&&x.rawLevel!==x.level?'<small>'+t.invested+' '+esc(x.rawLevel)+'</small>':'')+'</span></summary><div class="skill-body">'+(x.effect?'<p>'+esc(label(x.effect))+'</p>':empty(t.effectMissing))+((x.sources||[]).length?'<div class="skill-sources">'+x.sources.map(source=>'<span>'+esc(label(source))+'</span>').join('')+'</div>':'')+'</div></details>').join('')+'</div>':empty(t.mergedMissing);
+    const ledger=items=>items.length?'<div class="skill-ledger">'+items.map(x=>{const sources=x.sources||[];return '<details class="skill-entry"><summary>'+icon(x.icon,x.name)+'<span><b>'+esc(label(x.name))+'</b><small>'+(sources.length?esc(sources.length)+' '+t.sources:t.sourceUnavailable)+'</small></span><span class="skill-level"><strong>Lv'+esc(x.level||0)+'</strong>'+(x.rawLevel&&x.rawLevel!==x.level?'<small>'+t.invested+' '+esc(x.rawLevel)+'</small>':'')+'</span></summary><div class="skill-body">'+(x.effect?'<p>'+esc(label(x.effect))+'</p>':empty(t.effectMissing))+(sources.length?'<div class="skill-sources">'+sources.map(source=>'<span>'+esc(label(source))+'</span>').join('')+'</div>':'')+'</div></details>'}).join('')+'</div>':empty(t.mergedMissing);
     try{
       const r=await fetch('${origin}/api/v1/loadouts/${code}/meta?lang='+lang);
       const m=await r.json();
@@ -929,6 +1008,7 @@ export default {
       for (const item of listed.objects || []) {
         const code = item.key.slice('meta/v1/'.length).replace(/\.json$/, '')
         const meta = await readMetadata(env, code, lang)
+        if (!hasPublicCatalogPreview(meta)) continue
         const identity = characterByIdentity(meta?.characterName, meta?.characterHash)
         const characterTerms = [meta?.characterName, identity.name, identity.nameEn, identity.slug].filter(Boolean).map(value => String(value).toLowerCase())
         if (!meta || (character && !characterTerms.some(value => value.includes(character)))) continue
