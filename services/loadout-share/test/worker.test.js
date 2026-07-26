@@ -59,6 +59,54 @@ function makeR2() {
   }
 }
 
+function makeCommunityDB() {
+  const loadouts = new Map()
+  const likes = new Set()
+  const comments = []
+  let catalogQueries = 0
+  return {
+    loadouts,
+    likes,
+    catalogQueries: () => catalogQueries,
+    prepare(sql) {
+      let values = []
+      const statement = {
+        bind(...args) { values = args; return statement },
+        async run() {
+          if (sql.startsWith('INSERT OR IGNORE INTO loadouts')) {
+            const [code, title, characterName, characterHash, createdAt] = values
+            if (!loadouts.has(code)) loadouts.set(code, { code, title, character_name: characterName, character_hash: characterHash, created_at: createdAt, likes_count: 0 })
+          } else if (sql.startsWith('INSERT OR IGNORE INTO likes')) {
+            likes.add(`${values[0]}\u0000${values[1]}`)
+          } else if (sql.startsWith('UPDATE loadouts SET likes_count')) {
+            const code = values[1]
+            const entry = loadouts.get(code)
+            if (entry) entry.likes_count = [...likes].filter(value => value.startsWith(`${code}\u0000`)).length
+          } else if (sql.startsWith('INSERT INTO comments')) {
+            comments.push({ code: values[0], author: values[1], body: values[2], visitor_key: values[3], created_at: values[4], deleted: 0 })
+          }
+          return { success: true }
+        },
+        async first() {
+          if (sql.startsWith('SELECT likes_count FROM loadouts')) return loadouts.get(values[0]) || null
+          return null
+        },
+        async all() {
+          if (sql.startsWith('SELECT code, likes_count FROM loadouts WHERE code IN')) {
+            catalogQueries += 1
+            return { results: values.map(code => loadouts.get(code)).filter(Boolean).map(({ code, likes_count }) => ({ code, likes_count })) }
+          }
+          if (sql.startsWith('SELECT id, author, body, created_at FROM comments')) {
+            return { results: comments.filter(item => item.code === values[0] && item.deleted === 0).map((item, index) => ({ id: index + 1, author: item.author, body: item.body, created_at: item.created_at })) }
+          }
+          return { results: [] }
+        },
+      }
+      return statement
+    },
+  }
+}
+
 function makeV10JSON() {
   return {
     format: 'gbfr-loadout', version: 10, charaHash: '4D0A60C3', charaName: '伊欧', ownerCode: 'PL0400', name: '网页上传测试',
@@ -234,6 +282,41 @@ test('publish, load, download and landing routes round-trip one immutable frame'
 
   const catalog = await worker.fetch(new Request('https://share.example/api/v1/loadouts'), env).then(response => response.json())
   assert.deepEqual(catalog.items, [], 'a frame without a valid preview must not enter the public catalog')
+})
+
+test('catalog cards show and update deduplicated likes without opening the detail link', async () => {
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: makeR2(), COMMUNITY_DB: community }
+  const preview = Buffer.from(JSON.stringify({ characterHash: '4D0A60C3', characterName: '伊欧', weaponName: '星晶武器', sigils: [{ name: '迅捷能力 V+' }] })).toString('base64url')
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Preview': preview }, body: makeFrame(),
+  }), env).then(response => response.json())
+
+  const firstCatalog = await worker.fetch(new Request('https://share.example/api/v1/loadouts'), env).then(response => response.json())
+  assert.equal(firstCatalog.items[0].likes, 0)
+  assert.deepEqual(Object.keys(firstCatalog.items[0].preview).sort(), ['masteryCount', 'masteryLabel', 'sigils', 'weaponSkills'])
+  assert.equal(community.catalogQueries(), 1, 'one catalog page should use one batched like query')
+
+  for (const visitorKey of ['visitor-alpha', 'visitor-alpha', 'visitor-beta']) {
+    const response = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/like`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitorKey }),
+    }), env)
+    assert.equal(response.status, 200)
+  }
+  assert.equal(community.likes.size, 2, 'the same anonymous visitor must not add two likes')
+  const refreshed = await worker.fetch(new Request('https://share.example/api/v1/loadouts'), env).then(response => response.json())
+  assert.equal(refreshed.items[0].likes, 2)
+
+  const page = await worker.fetch(new Request('https://share.example/'), env).then(response => response.text())
+  assert.match(page, /<article class="loadout-card"/)
+  assert.match(page, /class="loadout-card-main"/)
+  assert.match(page, /class="card-like"/)
+  assert.match(page, /event\.preventDefault\(\);event\.stopPropagation\(\);likeCard\(button\)/)
+  assert.match(page, /aria-pressed="false"/)
+  assert.match(page, /GitHub 下载应用/)
+  assert.match(page, /github\.com\/Whitelinker574\/GBFR-PE-Patch-Tool\/releases\/latest/)
+  assert.match(page, /content-visibility:auto/)
+  assert.match(page, /loading="lazy" decoding="async"/)
 })
 
 test('landing page escapes untrusted titles before server-side HTML rendering', async () => {
