@@ -4,55 +4,59 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
+const manifest = JSON.parse(readFileSync(new URL('../public/generated/function-assets/manifest.json', import.meta.url), 'utf8'))
 const assets = [
-  ['loadoutLiveArt', './assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'],
-  ['loadoutPresetsArt', './assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'],
-  ['wrightstoneMemoryArt', './assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'],
-  ['summonSaveArt', './assets/gbfr/cutouts/summon-save-official-edge-safe.webp'],
-  ['loadoutPresetsSticker', './assets/gbfr/stickers/loadout-presets.webp'],
-  ['wrightstoneMemorySticker', './assets/gbfr/stickers/wrightstone-memory.webp'],
-  ['summonSaveSticker', './assets/gbfr/stickers/summon-save.webp'],
+  ['loadout', 'art', './assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'],
+  ['loadoutPresets', 'art', './assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'],
+  ['wrightstoneMemory', 'art', './assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'],
+  ['summonSave', 'art', './assets/gbfr/cutouts/summon-save-official-edge-safe.webp'],
+  ['loadoutPresets', 'sticker', './assets/gbfr/stickers/loadout-presets.webp'],
+  ['wrightstoneMemory', 'sticker', './assets/gbfr/stickers/wrightstone-memory.webp'],
+  ['summonSave', 'sticker', './assets/gbfr/stickers/summon-save.webp'],
 ]
 
 const ctAssets = [
-  ['patchCombatArt', './assets/gbfr/cutouts/patch-combat-official-edge-safe.webp'],
-  ['patchCharactersArt', './assets/gbfr/cutouts/patch-characters-official-edge-safe.webp'],
-  ['patchQuestArt', './assets/gbfr/cutouts/patch-quest-official-edge-safe.webp'],
-  ['runtimeMonitorArt', './assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp'],
-  ['patchCombatSticker', './assets/gbfr/stickers/patch-combat.webp'],
-  ['patchCharactersSticker', './assets/gbfr/stickers/patch-characters.webp'],
-  ['patchQuestSticker', './assets/gbfr/stickers/patch-quest.webp'],
-  ['runtimeMonitorSticker', './assets/gbfr/stickers/runtime-monitor.webp'],
-  ['formulaSamplerArt', './assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp'],
-  ['formulaSamplerSticker', './assets/gbfr/stickers/formula-sampler.webp'],
+  ['patchCombat', 'art', './assets/gbfr/cutouts/patch-combat-official-edge-safe.webp'],
+  ['patchCharacters', 'art', './assets/gbfr/cutouts/patch-characters-official-edge-safe.webp'],
+  ['patchQuest', 'art', './assets/gbfr/cutouts/patch-quest-official-edge-safe.webp'],
+  ['runtimeMonitor', 'art', './assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp'],
+  ['patchCombat', 'sticker', './assets/gbfr/stickers/patch-combat.webp'],
+  ['patchCharacters', 'sticker', './assets/gbfr/stickers/patch-characters.webp'],
+  ['patchQuest', 'sticker', './assets/gbfr/stickers/patch-quest.webp'],
+  ['runtimeMonitor', 'sticker', './assets/gbfr/stickers/runtime-monitor.webp'],
+  ['formulaSampler', 'art', './assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp'],
+  ['formulaSampler', 'sticker', './assets/gbfr/stickers/formula-sampler.webp'],
 ]
 
+function assertGeneratedVariants(id, kind) {
+  const entry = manifest.assets[id]?.[kind]
+  assert.ok(entry, `${id}.${kind} must exist in the generated manifest`)
+  assert.match(entry.sourceHash, /^[0-9a-f]{12}$/)
+  for (const variant of ['thumb', 'display', 'full']) {
+    const current = entry.variants[variant]
+    assert.ok(current?.width > 0 && current?.height > 0, `${id}.${kind}.${variant} dimensions`)
+    assert.ok(existsSync(new URL(`../public${current.url}`, import.meta.url)), `${current.url} must be generated`)
+  }
+}
+
 test('pages that previously repeated portraits now own function-specific approved assets', () => {
-  for (const [binding, path] of assets) {
-    const relativePath = path.replace('./assets', '../assets')
-    assert.match(shell, new RegExp(`import ${binding} from '${relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`))
+  for (const [id, kind, path] of assets) {
     assert.ok(existsSync(new URL(path, import.meta.url)), `${path} must exist`)
+    assertGeneratedVariants(id, kind)
   }
 
-  assert.match(shell, /loadout:\s*loadoutLiveArt/)
-  assert.match(shell, /loadoutPresets:\s*loadoutPresetsArt/)
-  assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemoryArt/)
-  assert.match(shell, /summonSave:\s*summonSaveArt/)
-  assert.match(shell, /loadoutPresets:\s*loadoutPresetsSticker/)
-  assert.match(shell, /wrightstoneMemory:\s*wrightstoneMemorySticker/)
-  assert.match(shell, /summonSave:\s*summonSaveSticker/)
+  assert.equal(manifest.schemaVersion, 1)
+  assert.match(shell, /import \{ functionAssetManifest \} from ['"]\.\.\/generated\/functionAssetManifest\.js['"]/)
+  assert.match(shell, /asset\.art\.variants\.display\.url/)
+  assert.match(shell, /asset\.sticker\.variants\.display\.url/)
 })
 
 test('runtime patch pages ship their approved function-specific assets without repeated binaries', () => {
   const hashes = new Map()
-  for (const [binding, path] of ctAssets) {
-    const relativePath = path.replace('./assets', '../assets')
-    assert.match(
-      shell,
-      new RegExp(`const ${binding} = new URL\\('${relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}', import\\.meta\\.url\\)\\.href`),
-    )
+  for (const [id, kind, path] of ctAssets) {
     const url = new URL(path, import.meta.url)
     assert.ok(existsSync(url), `${path} must exist`)
+    assertGeneratedVariants(id, kind)
     const hash = createHash('sha256').update(readFileSync(url)).digest('hex')
     assert.equal(hashes.has(hash), false, `${path} repeats ${hashes.get(hash)}`)
     hashes.set(hash, path)
@@ -60,8 +64,8 @@ test('runtime patch pages ship their approved function-specific assets without r
 })
 
 test('character mechanics keeps its dedicated Vaseraga production assets and guidance', () => {
-  assert.match(shell, /patchCharactersArt.*patch-characters-official-edge-safe\.webp/)
-  assert.match(shell, /patchCharactersSticker.*patch-characters\.webp/)
+  assert.match(manifest.assets.patchCharacters.art.variants.full.url, /patch-characters-official-edge-safe\.full\./)
+  assert.match(manifest.assets.patchCharacters.sticker.variants.full.url, /patch-characters\.full\./)
   assert.match(shell, /patchCharacters:\s*\{[\s\S]*?speaker:\s*'巴萨拉卡'/)
   assert.match(shell, /note:\s*'冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。'/)
 })
@@ -79,8 +83,8 @@ test('offline summon save owns Sandalphon art instead of repeating the runtime s
   const runtimeSticker = readFileSync(new URL('./assets/gbfr/stickers/summon.webp', import.meta.url))
   assert.notEqual(createHash('sha256').update(portrait).digest('hex'), createHash('sha256').update(runtimePortrait).digest('hex'))
   assert.notEqual(createHash('sha256').update(sticker).digest('hex'), createHash('sha256').update(runtimeSticker).digest('hex'))
-  assert.match(shell, /summonSave:\s*summonSaveArt/)
-  assert.match(shell, /summonSave:\s*summonSaveSticker/)
+  assert.notEqual(manifest.assets.summonSave.art.sourceHash, manifest.assets.summon.art.sourceHash)
+  assert.notEqual(manifest.assets.summonSave.sticker.sourceHash, manifest.assets.summon.sticker.sourceHash)
 })
 
 test('formula sampler portrait caption matches Katalina', () => {

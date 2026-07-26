@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { reactive, ref, computed, defineAsyncComponent, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
@@ -12,71 +12,72 @@ import {
 import HomeJournal from './HomeJournal.vue'
 import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
-import progressionArt from '../assets/gbfr/cutouts/progression-official-edge-safe.webp'
-import sigilArt from '../assets/gbfr/cutouts/sigil-official-edge-safe.webp'
-import sigilMemoryArt from '../assets/gbfr/cutouts/sigil-memory-official-edge-safe.webp'
-import loadoutLiveArt from '../assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'
-import loadoutPresetsArt from '../assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'
-import wrightstoneArt from '../assets/gbfr/cutouts/wrightstone-official-edge-safe.webp'
-import wrightstoneMemoryArt from '../assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'
-import summonArt from '../assets/gbfr/cutouts/summon-official-edge-safe.webp'
-import summonSaveArt from '../assets/gbfr/cutouts/summon-save-official-edge-safe.webp'
-import overlimitArt from '../assets/gbfr/cutouts/overlimit-official-edge-safe.webp'
-import runtimeArt from '../assets/gbfr/cutouts/runtime-official-edge-safe.webp'
-import charaArt from '../assets/gbfr/cutouts/chara-official-edge-safe.webp'
-import saveArt from '../assets/gbfr/cutouts/save-official-edge-safe.webp'
-import compatibilityArt from '../assets/gbfr/cutouts/compatibility-official-edge-safe.webp'
-import monsterArt from '../assets/gbfr/cutouts/monster-official-edge-safe.webp'
-import patchArt from '../assets/gbfr/cutouts/patch-official-edge-safe.webp'
-import languageArt from '../assets/gbfr/cutouts/language-official-edge-safe.webp'
-import progressionSticker from '../assets/gbfr/stickers/progression.webp'
-import sigilSticker from '../assets/gbfr/stickers/sigil.webp'
-import sigilMemorySticker from '../assets/gbfr/stickers/sigil-memory.webp'
-import loadoutSticker from '../assets/gbfr/stickers/loadout.webp'
-import loadoutPresetsSticker from '../assets/gbfr/stickers/loadout-presets.webp'
-import wrightstoneSticker from '../assets/gbfr/stickers/wrightstone.webp'
-import wrightstoneMemorySticker from '../assets/gbfr/stickers/wrightstone-memory.webp'
-import summonSticker from '../assets/gbfr/stickers/summon.webp'
-import summonSaveSticker from '../assets/gbfr/stickers/summon-save.webp'
-import overlimitSticker from '../assets/gbfr/stickers/overlimit.webp'
-import runtimeSticker from '../assets/gbfr/stickers/runtime.webp'
-import charaSticker from '../assets/gbfr/stickers/chara.webp'
-import saveSticker from '../assets/gbfr/stickers/save.webp'
-import compatibilitySticker from '../assets/gbfr/stickers/compatibility.webp'
-import monsterSticker from '../assets/gbfr/stickers/monster.webp'
-import patchSticker from '../assets/gbfr/stickers/patch.webp'
-import languageSticker from '../assets/gbfr/stickers/language.webp'
+import { functionAssetManifest } from '../generated/functionAssetManifest.js'
 
-const patchCombatArt = new URL('../assets/gbfr/cutouts/patch-combat-official-edge-safe.webp', import.meta.url).href
-const patchCharactersArt = new URL('../assets/gbfr/cutouts/patch-characters-official-edge-safe.webp', import.meta.url).href
-const patchQuestArt = new URL('../assets/gbfr/cutouts/patch-quest-official-edge-safe.webp', import.meta.url).href
-const runtimeMonitorArt = new URL('../assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp', import.meta.url).href
-const formulaSamplerArt = new URL('../assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp', import.meta.url).href
-const patchCombatSticker = new URL('../assets/gbfr/stickers/patch-combat.webp', import.meta.url).href
-const patchCharactersSticker = new URL('../assets/gbfr/stickers/patch-characters.webp', import.meta.url).href
-const patchQuestSticker = new URL('../assets/gbfr/stickers/patch-quest.webp', import.meta.url).href
-const runtimeMonitorSticker = new URL('../assets/gbfr/stickers/runtime-monitor.webp', import.meta.url).href
-const formulaSamplerSticker = new URL('../assets/gbfr/stickers/formula-sampler.webp', import.meta.url).href
+const pageLoaders = Object.freeze({
+  progression: () => import('./ProgressionEditor.vue'),
+  sigil: () => import('./SigilGenerator.vue'),
+  sigilMemory: () => import('./SigilMemoryGenerator.vue'),
+  loadout: () => import('./SigilLoadoutRestore.vue'),
+  loadoutPresets: () => import('./LoadoutViewer.vue'),
+  wrightstone: () => import('./WrightstoneGenerator.vue'),
+  summonSave: () => import('./SummonSaveEditor.vue'),
+  wrightstoneMemory: () => import('./WrightstoneMemoryGenerator.vue'),
+  summon: () => import('./SummonEditor.vue'),
+  overlimit: () => import('./OverLimit.vue'),
+  runtime: () => import('./MiscTools.vue'),
+  chara: () => import('./CharaStats.vue'),
+  save: () => import('./SaveEditor.vue'),
+  monster: () => import('./MonsterEnhance.vue'),
+  patchCombat: () => import('./RuntimePatchFeatures.vue'),
+  patchCharacters: () => import('./RuntimePatchFeatures.vue'),
+  patchQuest: () => import('./RuntimePatchFeatures.vue'),
+  runtimeMonitor: () => import('./RuntimePatchMonitor.vue'),
+  formulaSampler: () => import('./FormulaSampler.vue'),
+  language: () => import('./LanguageSettings.vue'),
+})
 
-// 桌面应用将页面组件静态打入主包，切页时同步渲染。
-import ProgressionEditor from './ProgressionEditor.vue'
-import SigilGenerator from './SigilGenerator.vue'
-import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
-import SigilLoadoutRestore from './SigilLoadoutRestore.vue'
-import LoadoutViewer from './LoadoutViewer.vue'
-import WrightstoneGenerator from './WrightstoneGenerator.vue'
-import SummonSaveEditor from './SummonSaveEditor.vue'
-import WrightstoneMemoryGenerator from './WrightstoneMemoryGenerator.vue'
-import SummonEditor from './SummonEditor.vue'
-import OverLimit from './OverLimit.vue'
-import MiscTools from './MiscTools.vue'
-import CharaStats from './CharaStats.vue'
-import SaveEditor from './SaveEditor.vue'
-import MonsterEnhance from './MonsterEnhance.vue'
-import RuntimePatchFeatures from './RuntimePatchFeatures.vue'
-import RuntimePatchMonitor from './RuntimePatchMonitor.vue'
-import FormulaSampler from './FormulaSampler.vue'
-import LanguageSettings from './LanguageSettings.vue'
+const loadedPageModules = new Map()
+
+function loadPageModule(id) {
+  const loader = pageLoaders[id]
+  if (!loader) return Promise.resolve(null)
+  if (!loadedPageModules.has(id)) loadedPageModules.set(id, loader())
+  return loadedPageModules.get(id)
+}
+
+function asyncPage(id) {
+  return defineAsyncComponent({
+    loader: () => loadPageModule(id).then(module => module?.default || module),
+    delay: 0,
+    timeout: 15000,
+    suspensible: false,
+    onError(_error, retry, fail, attempts) {
+      loadedPageModules.delete(id)
+      if (attempts < 2) retry()
+      else fail()
+    },
+  })
+}
+
+const ProgressionEditor = asyncPage('progression')
+const SigilGenerator = asyncPage('sigil')
+const SigilMemoryGenerator = asyncPage('sigilMemory')
+const SigilLoadoutRestore = asyncPage('loadout')
+const LoadoutViewer = asyncPage('loadoutPresets')
+const WrightstoneGenerator = asyncPage('wrightstone')
+const SummonSaveEditor = asyncPage('summonSave')
+const WrightstoneMemoryGenerator = asyncPage('wrightstoneMemory')
+const SummonEditor = asyncPage('summon')
+const OverLimit = asyncPage('overlimit')
+const MiscTools = asyncPage('runtime')
+const CharaStats = asyncPage('chara')
+const SaveEditor = asyncPage('save')
+const MonsterEnhance = asyncPage('monster')
+const RuntimePatchFeatures = asyncPage('patchCombat')
+const RuntimePatchMonitor = asyncPage('runtimeMonitor')
+const FormulaSampler = asyncPage('formulaSampler')
+const LanguageSettings = asyncPage('language')
 
 const state = reactive({
   exePath: '',
@@ -379,60 +380,14 @@ const iconCoverageRows = computed(() => language.value === 'zh' ? [
 
 const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
 const isLoadoutWorkspace = computed(() => activeTab.value === 'loadoutPresets' && loadoutEditing.value)
-const functionArt = {
-  progression: progressionArt,
-  sigil: sigilArt,
-  sigilMemory: sigilMemoryArt,
-  loadout: loadoutLiveArt,
-  loadoutPresets: loadoutPresetsArt,
-  wrightstone: wrightstoneArt,
-  summonSave: summonSaveArt,
-  wrightstoneMemory: wrightstoneMemoryArt,
-  summon: summonArt,
-  overlimit: overlimitArt,
-  runtime: runtimeArt,
-  patchCombat: patchCombatArt,
-  patchCharacters: patchCharactersArt,
-  patchQuest: patchQuestArt,
-  runtimeMonitor: runtimeMonitorArt,
-  formulaSampler: formulaSamplerArt,
-  chara: charaArt,
-  save: saveArt,
-  compatibility: compatibilityArt,
-  monster: monsterArt,
-  patch: patchArt,
-  language: languageArt,
-}
+const functionArt = Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.art.variants.display.url]))
 const currentArt = computed(() => functionArt[activeTab.value] || '')
-const functionStickers = {
-  progression: progressionSticker,
-  sigil: sigilSticker,
-  sigilMemory: sigilMemorySticker,
-  loadout: loadoutSticker,
-  loadoutPresets: loadoutPresetsSticker,
-  wrightstone: wrightstoneSticker,
-  summonSave: summonSaveSticker,
-  wrightstoneMemory: wrightstoneMemorySticker,
-  summon: summonSticker,
-  overlimit: overlimitSticker,
-  runtime: runtimeSticker,
-  patchCombat: patchCombatSticker,
-  patchCharacters: patchCharactersSticker,
-  patchQuest: patchQuestSticker,
-  runtimeMonitor: runtimeMonitorSticker,
-  formulaSampler: formulaSamplerSticker,
-  chara: charaSticker,
-  save: saveSticker,
-  compatibility: compatibilitySticker,
-  monster: monsterSticker,
-  patch: patchSticker,
-  language: languageSticker,
-}
+const functionStickers = Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.sticker.variants.display.url]))
 const currentSticker = computed(() => functionStickers[activeTab.value] || '')
-const warmedTools = new Set()
 const warmedImages = new Map()
-const warmQueue = []
-let warmTimer = 0
+const warmedTools = new Map()
 
 function warmImage(src) {
   if (!src || warmedImages.has(src)) return warmedImages.get(src)
@@ -447,46 +402,35 @@ function warmImage(src) {
 }
 
 function warmTool(id) {
-  if (!id || warmedTools.has(id)) return
-  warmedTools.add(id)
-  warmImage(functionArt[id])
-  warmImage(functionStickers[id])
-}
-
-function drainWarmQueue() {
-  window.clearTimeout(warmTimer)
-  warmTimer = 0
-  const id = warmQueue.shift()
-  if (!id) return
-  warmTool(id)
-  warmTimer = window.setTimeout(drainWarmQueue, 90)
-}
-
-function queueWarmTools(ids = []) {
-  for (const id of ids) {
-    if (!warmedTools.has(id) && !warmQueue.includes(id)) warmQueue.push(id)
-  }
-  if (!warmTimer) drainWarmQueue()
+  if (!id) return Promise.resolve()
+  if (warmedTools.has(id)) return warmedTools.get(id)
+  const pending = Promise.all([
+    loadPageModule(id).catch(() => null),
+    warmImage(functionArt[id]),
+    warmImage(functionStickers[id]),
+  ]).then(() => undefined)
+  warmedTools.set(id, pending)
+  return pending
 }
 
 function warmGroup(group) {
-  if (!group?.items?.length) return
-  warmTool(group.items[0])
-  queueWarmTools(group.items.slice(1))
+  if (!group?.items?.length) return Promise.resolve()
+  return warmTool(group.items[0])
 }
 
 const activeGroup = computed(() => navigation.value.find(group => group.id === currentMeta.value.group) || navigation.value[0])
-function selectGroup(group) {
-  warmGroup(group)
+let navigationRequest = 0
+async function selectGroup(group) {
   if (!group.items.includes(activeTab.value)) {
-    loadoutEditing.value = false
-    activeTab.value = group.items[0]
+    await selectTool(group.items[0])
   }
   if (group.id === 'tools') ensureGameDetection()
 }
 
-function selectTool(id) {
-  warmTool(id)
+async function selectTool(id) {
+  const request = ++navigationRequest
+  await warmTool(id)
+  if (request !== navigationRequest) return
   if (id !== 'loadoutPresets') loadoutEditing.value = false
   activeTab.value = id
   if (toolMeta[id]?.group === 'tools') ensureGameDetection()
@@ -508,12 +452,6 @@ function toggleSidebar() {
 
 onMounted(() => {
   GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
-  window.setTimeout(() => warmTool(navigation.value[0]?.items[0]), 60)
-  const warmWorkshop = () => queueWarmTools((navigation.value[0]?.items || []).slice(1))
-  if ('requestIdleCallback' in window) window.requestIdleCallback(warmWorkshop, { timeout: 800 })
-  else window.setTimeout(warmWorkshop, 180)
-  // 第一屏完成后顺序预载其余插画，避免首次切页闪烁。
-  window.setTimeout(() => queueWarmTools(Object.keys(functionArt)), 1100)
 })
 
 function ensureGameDetection() {
@@ -650,6 +588,7 @@ function showStatus(message, type) {
             :aria-current="activeGroup.id === group.id ? 'page' : undefined"
             :title="`${group.label} · ${group.caption}`"
             @pointerenter="warmGroup(group)"
+            @pointerdown="warmGroup(group)"
             @focus="warmGroup(group)"
             @click="selectGroup(group)"
           >
@@ -687,6 +626,7 @@ function showStatus(message, type) {
               :aria-current="activeTab === id ? 'page' : undefined"
               :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${id === 'runtimeMonitor' ? ' · 开启后自动后台检测' : toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
               @pointerenter="warmTool(id)"
+              @pointerdown="warmTool(id)"
               @focus="warmTool(id)"
               @click="selectTool(id)"
             >

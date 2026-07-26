@@ -49,6 +49,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Enforce frontend performance budgets
+        working-directory: frontend
+        run: npm run check:bundle
+
       - name: Verify Go formatting
         shell: pwsh
         run: |

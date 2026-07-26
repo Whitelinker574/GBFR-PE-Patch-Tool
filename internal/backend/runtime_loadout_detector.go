@@ -23,6 +23,7 @@ const (
 	runtimeLoadoutDetectorStablePolls    = 2
 	runtimeLoadoutDetectorAbsentPolls    = 2
 	runtimeLoadoutDetectorMaximumHistory = 500
+	runtimeLoadoutDetectorStatusEvent    = "runtime-loadout-detector:status"
 )
 
 type RuntimeLoadoutDetectorMember struct {
@@ -83,6 +84,7 @@ type runtimeLoadoutDetectorSession struct {
 	currentTeamSize     int
 	sessionCaptured     int
 	nextSequence        int
+	emitStatus          func(RuntimeLoadoutDetectorStatus)
 }
 
 func (a *App) runtimeLoadoutDetectorHistoryPath() (string, error) {
@@ -216,6 +218,11 @@ func (a *App) startRuntimeLoadoutDetector(persistPreference bool) (RuntimeLoadou
 		lastCapture: runtimeLoadoutDetectorLastCapture(history), nextSequence: nextSequence,
 		restoredFingerprint: activeFingerprint,
 	}
+	if a.ctx != nil {
+		session.emitStatus = func(status RuntimeLoadoutDetectorStatus) {
+			runtime.EventsEmit(a.ctx, runtimeLoadoutDetectorStatusEvent, status)
+		}
+	}
 	if activeFingerprint != "" && len(history) > 0 {
 		session.activeRecordID = history[len(history)-1].ID
 	}
@@ -262,7 +269,11 @@ func (a *App) RuntimeLoadoutDetectorStop() (RuntimeLoadoutDetectorStatus, error)
 	if err != nil {
 		return RuntimeLoadoutDetectorStatus{}, err
 	}
-	return RuntimeLoadoutDetectorStatus{State: "stopped", HistoryCount: len(records)}, nil
+	status := RuntimeLoadoutDetectorStatus{State: "stopped", HistoryCount: len(records)}
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, runtimeLoadoutDetectorStatusEvent, status)
+	}
+	return status, nil
 }
 
 func loadRuntimeLoadoutDetectorHistoryFromApp(a *App) ([]RuntimeLoadoutDetectorRecord, int, string, error) {
@@ -310,6 +321,7 @@ func (a *App) RuntimeLoadoutDetectorHistory() ([]RuntimeLoadoutDetectorRecord, e
 func (session *runtimeLoadoutDetectorSession) run(ctx context.Context) {
 	defer close(session.done)
 	session.tick()
+	session.publishStatus()
 	ticker := time.NewTicker(runtimeLoadoutDetectorPollInterval)
 	defer ticker.Stop()
 	for {
@@ -324,7 +336,14 @@ func (session *runtimeLoadoutDetectorSession) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			session.tick()
+			session.publishStatus()
 		}
+	}
+}
+
+func (session *runtimeLoadoutDetectorSession) publishStatus() {
+	if session.emitStatus != nil {
+		session.emitStatus(session.status())
 	}
 }
 

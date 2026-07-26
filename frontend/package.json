@@ -4,8 +4,12 @@
   "version": "1.92.0",
   "type": "module",
   "scripts": {
+    "assets:generate": "node scripts/generate_function_assets.mjs",
+    "predev": "npm run assets:generate",
     "dev": "vite",
+    "prebuild": "npm run assets:generate",
     "build": "vite build",
+    "check:bundle": "node ../tools/measure_frontend_bundle.mjs --dist dist --budget ../tools/performance-budget.json --enforce",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -16,6 +20,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",
+    "sharp": "^0.35.3",
     "vite": "^8.1.5"
   }
 }

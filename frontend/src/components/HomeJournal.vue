@@ -56,7 +56,7 @@ const groups = [
           <section v-for="group in groups" :key="group.id" class="home-group">
             <div class="home-group-head"><span class="home-group-mark">{{ group.mark }}</span><div><strong>{{ group.label }}</strong><small>{{ group.hint }}</small></div></div>
             <div class="home-group-items">
-              <button v-for="item in group.items" :key="item.id" class="chapter-ribbon ui-card" @pointerenter="emit('warm', item.id)" @focus="emit('warm', item.id)" @click="emit('open', item.id)">
+              <button v-for="item in group.items" :key="item.id" class="chapter-ribbon ui-card" @pointerenter="emit('warm', item.id)" @pointerdown="emit('warm', item.id)" @focus="emit('warm', item.id)" @click="emit('open', item.id)">
                 <span class="chapter-icon">{{ item.icon }}</span>
                 <span><strong>{{ item.title }}</strong><small>{{ item.copy }}</small></span>
                 <b>›</b>
@@ -66,7 +66,7 @@ const groups = [
         </nav>
 
         <div class="small-tabs">
-          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'compatibility')" @focus="emit('warm', 'compatibility')" @click="emit('open', 'compatibility')"><i>⚙</i>工具与设置</button>
+          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'compatibility')" @pointerdown="emit('warm', 'compatibility')" @focus="emit('warm', 'compatibility')" @click="emit('open', 'compatibility')"><i>⚙</i>工具与设置</button>
           <span>工具版本 {{ version }}</span>
         </div>
       </div>

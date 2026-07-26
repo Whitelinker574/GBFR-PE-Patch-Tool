@@ -7,9 +7,11 @@ import { uiTranslations } from './i18n-ui.js'
 const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 const home = readFileSync(new URL('./components/HomeJournal.vue', import.meta.url), 'utf8')
 const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
+const assetManifest = JSON.parse(readFileSync(new URL('../public/generated/function-assets/manifest.json', import.meta.url), 'utf8'))
 
 test('runtime monitor is routed as its own read-only memory-monitoring category', () => {
-  assert.match(shell, /import RuntimePatchMonitor from ['"]\.\/RuntimePatchMonitor\.vue['"]/)
+  assert.match(shell, /runtimeMonitor:\s*\(\)\s*=>\s*import\(['"]\.\/RuntimePatchMonitor\.vue['"]\)/)
+  assert.match(shell, /const RuntimePatchMonitor = asyncPage\(['"]runtimeMonitor['"]\)/)
   assert.match(shell, /runtimeMonitor:\s*\{\s*group:\s*['"]monitor['"]/)
   assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]runtimeMonitor['"],\s*['"]formulaSampler['"]\]/)
   for (const group of ['save', 'memory']) {
@@ -33,10 +35,8 @@ test('read-only monitoring does not surface the save-backup drawer', () => {
 })
 
 test('runtime monitoring reserves unique function-specific portrait and sticker assets', () => {
-  assert.match(shell, /const runtimeMonitorArt = new URL\(['"]\.\.\/assets\/gbfr\/cutouts\/runtime-monitor-official-edge-safe\.webp['"], import\.meta\.url\)\.href/)
-  assert.match(shell, /const runtimeMonitorSticker = new URL\(['"]\.\.\/assets\/gbfr\/stickers\/runtime-monitor\.webp['"], import\.meta\.url\)\.href/)
-  assert.match(shell, /runtimeMonitor:\s*runtimeMonitorArt/)
-  assert.match(shell, /runtimeMonitor:\s*runtimeMonitorSticker/)
+  assert.match(assetManifest.assets.runtimeMonitor.art.variants.full.url, /runtime-monitor-official-edge-safe\.full\./)
+  assert.match(assetManifest.assets.runtimeMonitor.sticker.variants.full.url, /runtime-monitor\.full\./)
   assert.match(shell, /\.tool-stage\[data-tool="runtimeMonitor"\]\s*\{\s*--art-scale:/)
   assert.match(shell, /runtimeMonitor:\s*\{[\s\S]*?speaker:\s*'尤斯塔斯'/)
   assert.doesNotMatch(shell, /runtimeMonitor:\s*\{[\s\S]*?speaker:\s*'碧'/)
@@ -75,7 +75,10 @@ test('loadout detection is a persistent background service with local quest hist
   assert.match(detector, /RuntimeLoadoutDetectorStart/)
   assert.match(detector, /RuntimeLoadoutDetectorStatus/)
   assert.match(detector, /RuntimeLoadoutDetectorHistory/)
-  assert.match(detector, /window\.setInterval\(\(\) => void readStatus\(\), 3000\)/)
+  assert.match(detector, /EventsOn\(DETECTOR_STATUS_EVENT, next => \{ void acceptStatus\(next\) \}\)/)
+  assert.match(detector, /const DETECTOR_STATUS_EVENT = 'runtime-loadout-detector:status'/)
+  assert.doesNotMatch(detector, /setInterval|pollTimer/)
+  assert.match(detector, /onBeforeUnmount\(\(\) => \{[\s\S]*?stopStatusEvents\(\)/)
   assert.doesNotMatch(detector.match(/onBeforeUnmount\([\s\S]*?\n\}\)/)?.[0] || '', /RuntimeLoadoutDetectorStop/)
   assert.match(detector, /record\.members/)
   assert.match(detector, /RuntimeLoadoutDetectorPublish/)

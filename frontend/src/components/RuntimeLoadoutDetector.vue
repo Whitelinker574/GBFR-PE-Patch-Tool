@@ -10,6 +10,7 @@ import {
   RuntimeLoadoutDetectorStatus,
   RuntimeLoadoutDetectorStop,
 } from '../../wailsjs/go/backend/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import { language } from '../i18n.js'
 import { characterAssetIcon } from '../gameAssetIcons.js'
 import CapturedLoadoutPreview from './CapturedLoadoutPreview.vue'
@@ -23,8 +24,9 @@ const busy = ref('')
 const historyLoading = ref(false)
 const titles = reactive({})
 let disposed = false
-let pollTimer = null
+let stopStatusEvents = () => {}
 let knownHistoryCount = -1
+const DETECTOR_STATUS_EVENT = 'runtime-loadout-detector:status'
 
 const tx = (zh, en) => language.value === 'en' ? en : zh
 const isRunning = computed(() => detectorStatus.value?.enabled === true)
@@ -82,12 +84,16 @@ async function readHistory(force = false) {
 async function readStatus({ forceHistory = false } = {}) {
   try {
     const next = await RuntimeLoadoutDetectorStatus()
-    if (disposed) return
-    detectorStatus.value = next || { enabled: false, state: 'stopped', historyCount: 0 }
-    if (forceHistory || Number(detectorStatus.value.historyCount || 0) !== knownHistoryCount) await readHistory(false)
+    await acceptStatus(next, { forceHistory })
   } catch (error) {
     if (!disposed) announce(tx(`读取检测器状态失败：${errorMessage(error)}`, `Failed to read detector status: ${errorMessage(error)}`), 'danger')
   }
+}
+
+async function acceptStatus(next, { forceHistory = false } = {}) {
+  if (disposed) return
+  detectorStatus.value = next || { enabled: false, state: 'stopped', historyCount: 0 }
+  if (forceHistory || Number(detectorStatus.value.historyCount || 0) !== knownHistoryCount) await readHistory(false)
 }
 
 async function startDetector() {
@@ -178,13 +184,14 @@ async function deleteRecord(record) {
 }
 
 onMounted(async () => {
+  stopStatusEvents = EventsOn(DETECTOR_STATUS_EVENT, next => { void acceptStatus(next) })
   await readStatus({ forceHistory: true })
-  pollTimer = window.setInterval(() => void readStatus(), 3000)
 })
 
 onBeforeUnmount(() => {
   disposed = true
-  if (pollTimer !== null) window.clearInterval(pollTimer)
+  stopStatusEvents()
+  stopStatusEvents = () => {}
 })
 </script>
 

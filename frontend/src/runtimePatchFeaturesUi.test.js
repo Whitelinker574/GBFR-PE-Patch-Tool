@@ -11,6 +11,7 @@ const uiI18n = read('./i18n-ui.js')
 const patchCatalogBackend = read('../../internal/backend/runtime_patch_catalog.go')
 const patchRuntimeBackend = read('../../internal/backend/runtime_patch_runtime.go')
 const productionCatalog = JSON.parse(read('../../internal/backend/data/runtime_patch_catalog.json'))
+const assetManifest = JSON.parse(read('../public/generated/function-assets/manifest.json'))
 
 test('one runtime patch operation gate blocks writes and disconnects during a delayed refresh, then invalidates stale publication on reset', async () => {
   const { createRuntimePatchOperationGate } = await import(`./runtimePatchOperationGate.js?gate=${Date.now()}`)
@@ -75,15 +76,16 @@ test('a disconnect retry keeps runtime patch writes locked until its exact owner
 })
 
 test('the three live-patch routes share one persistent categorized session and unique art', () => {
-  assert.match(patchTool, /import RuntimePatchFeatures from ['"]\.\/RuntimePatchFeatures\.vue['"]/)
+  assert.match(patchTool, /patchCombat:\s*\(\)\s*=>\s*import\(['"]\.\/RuntimePatchFeatures\.vue['"]\)/)
+  assert.match(patchTool, /const RuntimePatchFeatures = asyncPage\(['"]patchCombat['"]\)/)
   for (const [id, mode] of [
     ['patchCombat', 'combat'],
     ['patchCharacters', 'characters'],
     ['patchQuest', 'quest'],
   ]) {
     assert.match(patchTool, new RegExp(`${id}: '${mode}'`))
-    assert.match(patchTool, new RegExp(`functionArt[\\s\\S]*?${id}: ${id}Art`))
-    assert.match(patchTool, new RegExp(`functionStickers[\\s\\S]*?${id}: ${id}Sticker`))
+    assert.ok(assetManifest.assets[id]?.art?.variants?.display?.url, `${id} display art`)
+    assert.ok(assetManifest.assets[id]?.sticker?.variants?.display?.url, `${id} display sticker`)
   }
 
   assert.equal((patchTool.match(/<RuntimePatchFeatures\b/g) || []).length, 1, 'all three tabs must use one component instance')
@@ -97,18 +99,8 @@ test('the three live-patch routes share one persistent categorized session and u
   assert.match(home, /id:\s*'patchCharacters'/)
   assert.match(home, /id:\s*'patchQuest'/)
 
-  assert.match(patchTool, /patch-combat-official-edge-safe\.webp/)
-  assert.match(patchTool, /patch-characters-official-edge-safe\.webp/)
-  assert.match(patchTool, /patch-quest-official-edge-safe\.webp/)
-  assert.match(patchTool, /stickers\/patch-combat\.webp/)
-  assert.match(patchTool, /stickers\/patch-characters\.webp/)
-  assert.match(patchTool, /stickers\/patch-quest\.webp/)
-
-  const artMap = patchTool.match(/const functionArt = \{([\s\S]*?)\n\}/)?.[1] || ''
-  const stickerMap = patchTool.match(/const functionStickers = \{([\s\S]*?)\n\}/)?.[1] || ''
   for (const id of ['patchCombat', 'patchCharacters', 'patchQuest']) {
-    assert.doesNotMatch(artMap, new RegExp(`${id}: progressionArt`))
-    assert.doesNotMatch(stickerMap, new RegExp(`${id}: progressionSticker`))
+    assert.match(assetManifest.assets[id].art.variants.full.url, new RegExp(`${id === 'patchCombat' ? 'patch-combat' : id === 'patchCharacters' ? 'patch-characters' : 'patch-quest'}-official-edge-safe\\.full\\.`))
   }
   assert.doesNotMatch(patchTool, /currentArt[^\n]*\|\|\s*progressionArt/)
   assert.doesNotMatch(patchTool, /currentSticker[^\n]*\|\|\s*progressionSticker/)

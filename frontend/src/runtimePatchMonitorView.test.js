@@ -88,7 +88,8 @@ test('party monitoring exposes persistent quest history as the primary workflow'
   assert.equal(view.runtimeMonitorText('tabParty', 'zh'), '任务配装记录')
   assert.match(component, /<RuntimeLoadoutDetector/)
   assert.match(detector, /开启后台检测/)
-  assert.match(detector, /window\.setInterval/)
+  assert.match(detector, /EventsOn\(DETECTOR_STATUS_EVENT/)
+  assert.doesNotMatch(detector, /setInterval|pollTimer/)
   for (const action of ['copy', 'export', 'publish', 'deploy']) {
     assert.match(detector, new RegExp(`runAction\\(preview\\.record, preview\\.member, '${action}'\\)`))
   }

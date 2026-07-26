@@ -121,7 +121,10 @@ test('sidebar and top-tab groups put common functions first in an exact stable o
   assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
   assert.deepEqual(navigationIds(patchTool, 'monitor'), ['runtimeMonitor', 'formulaSampler'])
   assert.deepEqual(navigationIds(patchTool, 'tools'), ['compatibility', 'language', 'patch'])
-  assert.match(patchTool, /window\.setTimeout\(\(\) => warmTool\(navigation\.value\[0\]\?\.items\[0\]\), 60\)/)
+  assert.match(patchTool, /@pointerenter="warmTool\(id\)"/)
+  assert.match(patchTool, /@pointerdown="warmTool\(id\)"/)
+  assert.match(patchTool, /await warmTool\(id\)/)
+  assert.doesNotMatch(patchTool, /queueWarmTools\(Object\.keys\(functionArt\)\)/)
 })
 
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {

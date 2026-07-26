@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "initialJsGzipBytes": 256000,
+  "initialCssGzipBytes": 25600,
+  "singleListIpcBytes": 262144
+}
