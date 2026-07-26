@@ -32,11 +32,12 @@
 | View or write a character's saved loadout presets | `Save Editing (Offline)` → `Loadout Presets` | **Game fully closed** |
 | Edit the sigil, wrightstone, or summon currently selected in game | `Live Injection` | **Game running and save loaded** |
 | Enable guard, character-mechanic, or quest-convenience patches | `Live Injection` → the matching patch page | **Single-player content loaded** |
-| Archive party loadouts for every quest or import GBFR Logs records | `Memory Monitoring (Read Only)` → `Runtime Monitor` | **Enter quests in game, or select a Logs database** |
+| Archive party loadouts automatically for every quest | `Memory Monitoring (Read Only)` → `Character Loadout Detection` | **Game running and a quest entered** |
+| Import a GBFR Logs database or Relink Logs character JSON | `Save Editing (Offline)` → `Loadout Presets` → `Import Party Loadouts from GBFR Logs` | **No game needed to read; close the game before writing a save** |
 | Inspect party state or sample final character stats | `Memory Monitoring (Read Only)` | **Game running in a stable scene** |
 | Check versions, back up an EXE, or restore it | `Tools & Settings` | Follow the page instructions |
 
-Offline, live, and read-only are separate workflows. Offline pages edit save files, live pages write to the current game process, and read-only pages do not change character, item, or save data. The formula sampler only queries and reads memory; selected-item capture in Runtime Monitor temporarily installs a read-only address hook and restores the original bytes on safe disconnect or page exit.
+Offline, live, and read-only are separate workflows. Offline pages edit save files, live pages write to the current game process, and read-only pages do not change character, item, or save data. The formula sampler only queries and reads memory; selected-item capture in Character Loadout Detection temporarily installs a capture hook and restores the original bytes on safe disconnect or page exit.
 
 ## Download and first run
 
@@ -63,7 +64,7 @@ Fully close the game before using these pages. The tool lists save slots 1 / 2 /
 
 | Page | What it does | Basic flow |
 | --- | --- | --- |
-| Loadout Presets | View and edit complete builds, selectively import components, and create online short codes or offline long codes | Import any combination of sigils, skills, mastery/level, weapon and five skills, wrightstone, summons, progression, and four Over Mastery slots; progression merges upward only |
+| Loadout Presets | View and edit complete builds, selectively import components, create share codes, and organize external party builds from a Logs database or character JSON | Import any combination of sigils, skills, mastery/level, weapon and five skills, wrightstone, summons, progression, and four Over Mastery slots; progression merges upward only |
 | Sigil Save Editor | Generate (add), batch-manage, and remove sigils | Configure the sigil and traits; combination checks warn but do not change your choice |
 | Items & Weapons | Edit items, materials, progression resources, and weapon levels | Use for batch changes; check the automatic backup and readback |
 | Wrightstone Save Editor | Generate (add) a wrightstone with three traits | Confirm all traits, level warnings, and the pending write |
@@ -94,7 +95,7 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 
 | Page | What it does | Basic flow |
 | --- | --- | --- |
-| Runtime Monitor | Keep background loadout detection active, archive each quest party, batch-read a GBFR Logs database, and inspect the party, Vyrn, or selected material/key item | Detection may remain active after leaving the page; each character can be previewed, exported, published, or deployed to a chosen save slot; selected-item capture restores its hook on safe disconnect or page exit |
+| Character Loadout Detection | Keep background detection active, archive each quest party automatically, and inspect the party, Vyrn, or selected material/key item | Detection may remain active after leaving the page; each character can be previewed, exported, published, or deployed to a chosen save slot; selected-item capture restores its hook on safe disconnect or page exit |
 | Character Formula Sampler | Continuously read final HP, attack, critical rate, and stun; record one-variable A/B/A/B evidence | Change one item per round and wait for stable values; no process or save writes |
 
 ### Tools & Settings · 3 pages
@@ -105,7 +106,7 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 | Language & Display | Change the interface language | The application refreshes; the preference is local only |
 | Game File Maintenance | Identify the game EXE, create a `.bak`, and restore it | Create an original backup before applying file patches |
 
-## Three common workflows
+## Common workflow tutorials
 
 ### Edit a save, sigil, or loadout
 
@@ -126,12 +127,37 @@ The combat, character, and quest patch pages share one persistent connection. Sw
 
 ### Archive party loadouts automatically
 
-1. Open `Memory Monitoring (Read Only)` → `Runtime Monitor`, then start `Character Loadout Detection`. It stays active in the background and reconnects automatically; no per-quest refresh is required.
+1. Open `Memory Monitoring (Read Only)` → `Character Loadout Detection`, then select `Start Detection`. It stays active in the background and reconnects automatically; no per-quest refresh is required.
 2. Enter quests normally. Once the party is stable, the player and teammate builds are archived locally as one quest. Teammates discovered later in the same quest update that record instead of creating a duplicate.
 3. Preview any captured character, then export it, copy its code, publish it to the atlas, or open Loadout Presets to choose a save and destination slot.
-4. If you use GBFR Logs, select its `logs.db` to batch-read historical character builds. The database is opened read-only and is never modified.
 
-Runtime and Logs imports expose only scopes that were actually captured; missing scopes are disabled in the import dialog. Captured builds normalize character, weapon, sigil, wrightstone, and summon progression for endgame use while preserving the observed sigil composition, mastery route, weapon skills, and character abilities.
+Background capture exposes only scopes that were actually observed; missing scopes are disabled in the import dialog. Captured builds normalize character, weapon, sigil, wrightstone, and summon progression for endgame use while preserving the observed sigil composition, mastery route, weapon skills, and character abilities.
+
+### Import GBFR Logs / Relink Logs builds
+
+Existing battle records can be parsed without launching the game. Open `Save Editing (Offline)` → `Loadout Presets`, then select `Import Party Loadouts from GBFR Logs` to enter the dedicated GBFR Logs Library.
+
+**Method 1: read a Logs database**
+
+1. Exit the Logs application first so its latest database transaction is complete.
+2. Select `Choose Logs Database` and open the actual `logs.db`; do not select `logs.db-wal` or `logs.db-shm`.
+3. For GBFR Logs, Endless, or Relink Logs, right-click the shortcut and choose `Open file location`, or open the extracted application folder. `logs.db` is normally beside the Logs executable.
+4. For SkyMeter, press `Win + R` and open `%APPDATA%\app.skymeter.relink`; older builds use `%APPDATA%\app.astralledger.relink`.
+5. The tool opens the database read-only and separates records by character. Every card lists which panel stats, sigils, abilities, summons, weapon, weapon skills, wrightstone, mastery, and Over Mastery fields were captured or missing.
+
+**Method 2: paste Relink Logs character JSON**
+
+1. In Relink Logs, open a battle record, enter the character's Equipment view, and select `Copy Character Data to Clipboard (JSON)`.
+2. In the GBFR Logs Library, select `Import Character JSON` → `Read Clipboard` → `Parse & Preview`. You can also paste the text or choose a saved `.json` file.
+3. A single character, a character array, and a party object containing `playerData` are supported. Unmapped characters and data outside the current catalog are reported or skipped instead of being guessed.
+
+After parsing, use `Preview Loadout` to verify the source and missing scopes, then choose an action:
+
+- `Publish`: enter a title, upload the sanitized single build, and copy its online link. Titles do not need to be unique.
+- `Import to Save`: choose the target save and preset slot, then confirm each import scope. Fields absent from the record remain disabled and cannot overwrite the target.
+- Fully close the game before deployment. The tool creates a backup first; external records do not overwrite uncaptured character progression, Fate Episodes, or unrelated save progress.
+
+Different Logs versions record different fields. The importer uses only data proven by the source file, never treats “not captured” as zero, and never modifies the Logs database.
 
 ### Use a live editor or single-player patch
 
