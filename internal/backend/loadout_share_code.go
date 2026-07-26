@@ -608,8 +608,11 @@ func validateCompactLoadoutShare(source *loadoutShareCodePayload, expectedVersio
 		}
 	}
 	if source.Weapon != nil {
-		if len(source.Weapon.SkillHashes) != 5 {
+		if (!partial || hasField("weaponSkills")) && len(source.Weapon.SkillHashes) != 5 {
 			return fmt.Errorf("分享码的当前武器技能快照需要恰好 5 槽")
+		}
+		if partial && !hasField("weaponSkills") && len(source.Weapon.SkillHashes) != 0 {
+			return fmt.Errorf("部分分享码包含未声明为已捕获的当前武器技能")
 		}
 		if source.Weapon.Wrightstone != nil && len(source.Weapon.Wrightstone.Traits) > 3 {
 			return fmt.Errorf("分享码的当前武器祝福超过 3 个词条槽")

@@ -26,7 +26,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.91.19"
+	appVersion  = "v1.91.20"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -263,12 +263,6 @@ func (a *App) configFilePath() (string, error) {
 	return filepath.Join(base, "gbfr-player-info-edit", "config.json"), nil
 }
 
-func (a *App) loadConfig() error {
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	return a.loadConfigLocked()
-}
-
 func (a *App) loadConfigLocked() error {
 	if a.configLoaded {
 		return nil
@@ -295,12 +289,6 @@ func (a *App) loadConfigLocked() error {
 		return nil
 	}
 	return nil
-}
-
-func (a *App) saveConfig() error {
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	return a.saveConfigLocked()
 }
 
 func (a *App) saveConfigLocked() error {

@@ -219,8 +219,8 @@ func validateLoadoutShareProvenance(share *LoadoutShare) error {
 	if !partial {
 		return nil
 	}
-	if !seen["sigils"] || len(share.Sigils) == 0 {
-		return fmt.Errorf("部分配装需要至少一个已捕获因子")
+	if seen["sigils"] != (len(share.Sigils) > 0) {
+		return fmt.Errorf("部分配装的因子内容与捕获字段声明不一致")
 	}
 	if (!seen["summons"] && len(share.Summons) != 0) || (!seen["skills"] && len(share.Skills) != 0) ||
 		(!seen["weaponSkills"] && len(share.WeaponSkillHashes) != 0) || (!seen["mastery"] && len(share.MasteryHashes) != 0) ||
@@ -230,8 +230,25 @@ func validateLoadoutShareProvenance(share *LoadoutShare) error {
 	if !seen["weapon"] && (share.Weapon != nil || share.WeaponHash != "" || share.WeaponName != "") {
 		return fmt.Errorf("部分配装包含未声明为已捕获的武器")
 	}
-	if !seen["wrightstone"] && share.Weapon != nil && share.Weapon.Wrightstone != nil {
+	if seen["weapon"] && share.Weapon == nil {
+		return fmt.Errorf("部分配装声明已捕获武器但缺少武器状态")
+	}
+	if (seen["weaponSkills"] || seen["wrightstone"]) && !seen["weapon"] {
+		return fmt.Errorf("部分配装的武器技能或祝福范围缺少武器主体")
+	}
+	if !seen["wrightstone"] && share.Weapon != nil && (share.Weapon.Wrightstone != nil || strings.TrimSpace(share.Weapon.WrightstoneReference) != "") {
 		return fmt.Errorf("部分配装包含未声明为已捕获的武器祝福")
+	}
+	if seen["wrightstone"] && (share.Weapon == nil || share.Weapon.Wrightstone == nil) {
+		return fmt.Errorf("部分配装声明已捕获武器祝福但缺少祝福状态")
+	}
+	if !seen["weaponSkills"] && share.Weapon != nil && len(share.Weapon.SkillHashes) != 0 {
+		return fmt.Errorf("部分配装包含未声明为已捕获的当前武器技能")
+	}
+	deployable := len(share.Sigils) > 0 || len(share.Summons) > 0 || len(share.Skills) > 0 ||
+		share.Weapon != nil || len(share.WeaponSkillHashes) > 0 || len(share.MasteryHashes) > 0 || len(share.OverLimit) > 0
+	if !deployable {
+		return fmt.Errorf("部分配装没有可部署的配装范围")
 	}
 	return nil
 }

@@ -904,8 +904,10 @@ function showcaseStyles() {
   @font-face{font-family:"GBFR UI Latin";src:url('/assets/fonts/gbfr-ui.woff2') format('woff2');font-style:normal;font-weight:400 800;font-display:swap}
   :root{font-family:"GBFR UI Latin","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif;color:#3f3932;background:#e9dfcc;color-scheme:light;--paper:#f7f0df;--paper-deep:#efe2c8;--ink:#3f3932;--ink-soft:#655b50;--brass:#896331;--line:rgba(105,76,37,.24)}
   *{box-sizing:border-box}::selection{background:rgba(167,123,57,.28)}
-  html{scrollbar-width:thin;scrollbar-color:rgba(126,89,40,.42) transparent}
-  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{border:2px solid transparent;border-radius:8px;background:rgba(126,89,40,.42);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:rgba(110,78,40,.62)}
+  html,body{scrollbar-width:thin;scrollbar-color:rgba(126,89,40,.38) transparent}
+  html{scrollbar-gutter:stable;background:#e9dfcc}
+  *{scrollbar-width:thin;scrollbar-color:rgba(126,89,40,.38) transparent}
+  ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{min-height:42px;border:3px solid transparent;border-radius:999px;background:rgba(126,89,40,.38);background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:rgba(110,78,40,.58)}::-webkit-scrollbar-corner{background:transparent}
   body{margin:0;min-height:100vh;background:#e9dfcc url('/assets/backgrounds/parchment-archive.webp') center/cover fixed;color:var(--ink)}
   body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(80,50,22,.1),transparent 13%,transparent 87%,rgba(80,50,22,.1));mix-blend-mode:multiply}
   a,button,input,textarea{font:inherit}a{color:inherit;text-decoration:none}button{cursor:pointer}.page{position:relative;width:min(1400px,100%);margin:auto;padding:18px clamp(14px,3vw,38px) 42px}

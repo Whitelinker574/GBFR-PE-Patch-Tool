@@ -118,6 +118,22 @@ test('partial v11 runtime JSON uploads only captured scopes', async () => {
   assert.equal(result.preview.weaponName, '阿尔贝斯之枪')
 })
 
+test('partial v11 JSON accepts a captured weapon without sigils', async () => {
+  const source = {
+    format: 'gbfr-loadout', version: 11, charaHash: '0D21B430', charaName: '泽塔', ownerCode: 'PL1600', name: '武器记录',
+    weaponHash: '02352554', weaponName: '阿尔贝斯之枪', sigils: [],
+    weapon: { storedHash: '02352554', xp: 162540, uncap: 6, mirage: 99, awakening: 10, transcendence: 7, skillHashes: [] },
+    sourceKind: 'logs-db', capturedFields: ['weapon'], progressionPolicy: 'endgame-max',
+  }
+  let packed
+  await loadoutJSONToFrame(JSON.stringify(source), bytes => { packed = bytes; return new Uint8Array([1, 2, 3]) })
+  const wire = decode(packed)
+  assert.equal(wire[7].length, 0)
+  assert.equal(wire[13][0], 0x02352554)
+  assert.equal(wire[13][10].length, 0)
+  assert.deepEqual(wire[16], ['weapon'])
+})
+
 test('partial v11 JSON rejects unknown provenance and undeclared payloads', async () => {
   const base = {
     format: 'gbfr-loadout', version: 11, charaHash: '0D21B430', charaName: '泽塔', ownerCode: 'PL1600', name: '实时配装',
@@ -130,10 +146,15 @@ test('partial v11 JSON rejects unknown provenance and undeclared payloads', asyn
     source => { source.capturedFields = ['sigils', 'sigils'] },
     source => { source.skills = [{ hash: '12345678', name: '测试', key: 'test' }] },
     source => { source.weaponHash = '02352554' },
+    source => { source.capturedFields = ['sigils', 'weapon'] },
+    source => { source.capturedFields = ['sigils', 'weaponSkills']; source.weaponSkillHashes = Array(5).fill('887AE0B0') },
+    source => { source.capturedFields = ['sigils', 'wrightstone'] },
+    source => { source.capturedFields = ['sigils', 'weapon']; source.weapon = { storedHash: '02352554', xp: 0, uncap: 0, mirage: 0, awakening: 0, transcendence: 0, skillHashes: ['7EDD69D0'] } },
+    source => { source.capturedFields = ['sigils', 'weapon']; source.weapon = { storedHash: '02352554', xp: 0, uncap: 0, mirage: 0, awakening: 0, transcendence: 0, skillHashes: [], wrightstoneReference: '09E6F629' } },
   ]) {
     const source = structuredClone(base)
     mutate(source)
-    await assert.rejects(() => loadoutJSONToFrame(JSON.stringify(source)), /来源|策略|捕获字段|未声明/)
+    await assert.rejects(() => loadoutJSONToFrame(JSON.stringify(source)), /来源|策略|捕获字段|未声明|武器/)
   }
 })
 
@@ -568,9 +589,12 @@ test('catalog and character routes expose all 29 unique character pages without 
 
 test('public pages use a transparent track and parchment-brass vertical scrollbar', async () => {
   const html = await worker.fetch(new Request('https://share.example/'), { LOADOUTS: makeR2() }).then(response => response.text())
-  assert.match(html, /html\{scrollbar-width:thin;scrollbar-color:rgba\(126,89,40,\.42\) transparent\}/)
+  assert.match(html, /html,body\{scrollbar-width:thin;scrollbar-color:rgba\(126,89,40,\.38\) transparent\}/)
+  assert.match(html, /html\{scrollbar-gutter:stable;background:#e9dfcc\}/)
+  assert.match(html, /\*\{scrollbar-width:thin;scrollbar-color:rgba\(126,89,40,\.38\) transparent\}/)
   assert.match(html, /::-webkit-scrollbar-track\{background:transparent\}/)
-  assert.match(html, /::-webkit-scrollbar-thumb\{[^}]*background:rgba\(126,89,40,\.42\)/)
+  assert.match(html, /::-webkit-scrollbar-thumb\{[^}]*border-radius:999px[^}]*background:rgba\(126,89,40,\.38\)/)
+  assert.match(html, /::-webkit-scrollbar-corner\{background:transparent\}/)
 })
 
 test('detail actions share one fixed button box and old previews inherit trait levels', async () => {

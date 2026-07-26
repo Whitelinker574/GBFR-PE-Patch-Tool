@@ -245,6 +245,34 @@ func TestLoadoutShareCodeRoundTrip(t *testing.T) {
 		encoded.JSONBytes, encoded.PackedBytes, encoded.CompressedBytes, encoded.FrameBytes, len(encoded.CompatibilityCode))
 }
 
+func TestLoadoutShareCodeRoundTripAllowsPartialLogsWithoutWeaponSkills(t *testing.T) {
+	source := loadoutShareCodeFixture()
+	source.SourceKind = loadoutShareSourceLogsDB
+	source.ProgressionPolicy = loadoutProgressionEndgame
+	source.CapturedFields = []string{"sigils", "weapon", "wrightstone"}
+	source.Summons = nil
+	source.Skills = nil
+	source.WeaponSkillHashes = nil
+	source.MasteryHashes = nil
+	source.Character = nil
+	source.OverLimit = nil
+	source.Weapon.SkillHashes = nil
+
+	encoded, err := encodeLoadoutShareCode(source)
+	if err != nil {
+		t.Fatalf("encode partial logs share without weapon skills: %v", err)
+	}
+	decoded, err := decodeLoadoutShareCode(encoded.CompatibilityCode)
+	if err != nil {
+		t.Fatalf("decode partial logs share without weapon skills: %v", err)
+	}
+	if decoded.SourceKind != loadoutShareSourceLogsDB ||
+		!reflect.DeepEqual(decoded.CapturedFields, source.CapturedFields) ||
+		len(decoded.WeaponSkillHashes) != 0 || decoded.Weapon == nil || len(decoded.Weapon.SkillHashes) != 0 {
+		t.Fatalf("partial logs share fabricated or lost fields: %+v", decoded)
+	}
+}
+
 func TestLoadoutShareCodeRejectsCorruptionAndAcceptsWrappedText(t *testing.T) {
 	source := loadoutShareCodeFixture()
 	encoded, err := encodeLoadoutShareCode(source)

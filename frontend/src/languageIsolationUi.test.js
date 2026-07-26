@@ -93,3 +93,41 @@ test('selective loadout import and first-sigil capture have exact English copy',
     assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
   }
 })
+
+test('GBFR Logs library copy has exact English translations', () => {
+  for (const text of [
+    'Logs 配装预览',
+    '返回 Logs 配装库',
+    'GBFR Logs 配装预览',
+    '未记录玩家名',
+    '选择存档并导入',
+    'GBFR Logs 配装库',
+    '返回配装预设',
+    '等待选择数据库',
+    '多角色配装导入',
+    '从战斗记录中整理队伍配装，预览确认后再部署到存档。',
+    '正在解析…',
+    '更换数据库',
+    '选择 Logs 数据库',
+    '导入特性',
+    '只读解析',
+    '本地处理',
+    '分项导入',
+    '预览实际配装',
+    '导入到存档',
+    '尚未载入战斗记录',
+    '选择 GBFR Logs 生成的 logs.db，队伍成员会分别列在这里。',
+    '数据库在哪里？',
+    'GBFR Logs、Endless、Relink Logs：右键程序快捷方式打开文件所在位置，或进入解压目录，选择与程序同目录的 logs.db。',
+    String.raw`SkyMeter：打开 %APPDATA%\\app.skymeter.relink；旧版目录为 app.astralledger.relink。`,
+    '先退出 Logs 再导入；不要选择 logs.db-wal 或 logs.db-shm。',
+    '外部战斗记录',
+    '从 GBFR Logs 批量获取队伍配装',
+    '独立解析数据库中的多名角色，可逐个预览后再导入。',
+  ]) {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = uiTranslations.match(new RegExp(`'${escaped}': '([^']+)'`))
+    assert.ok(match, `missing Logs translation: ${text}`)
+    assert.doesNotMatch(match[1], /[\u3400-\u9fff]/u)
+  }
+})

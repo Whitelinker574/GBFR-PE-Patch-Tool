@@ -144,6 +144,16 @@ func TestV11CaptureProvenanceRejectsUnknownSourcesAndUndeclaredPayloads(t *testi
 		},
 		"undeclared skills": func(share *LoadoutShare) { share.Skills = []LoadoutSkill{{Hash: "12345678"}} },
 		"undeclared weapon": func(share *LoadoutShare) { share.WeaponHash = "02352554" },
+		"captured weapon without payload": func(share *LoadoutShare) {
+			share.CapturedFields = []string{"sigils", "weapon"}
+		},
+		"weapon skills without weapon": func(share *LoadoutShare) {
+			share.CapturedFields = []string{"sigils", "weaponSkills"}
+			share.WeaponSkillHashes = []string{"887AE0B0", "887AE0B0", "887AE0B0", "887AE0B0", "887AE0B0"}
+		},
+		"wrightstone without weapon": func(share *LoadoutShare) {
+			share.CapturedFields = []string{"sigils", "wrightstone"}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			copyValue := *base

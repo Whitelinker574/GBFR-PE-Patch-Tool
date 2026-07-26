@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { FindSaveFiles, LoadoutList, LoadoutPreviewList, SelectLogsLoadoutShares, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
+import { language } from '../i18n.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import CapturedLoadoutPreview from './CapturedLoadoutPreview.vue'
 import LoadoutEditor from './LoadoutEditor.vue'
@@ -26,7 +27,12 @@ const logsPendingImport = ref(null)
 let previewRequestId = 0
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
+const LOGS_FIELD_LABELS = {
+  stats: ['面板', 'Panel'], sigils: ['因子', 'Sigils'], skills: ['角色技能', 'Abilities'], summons: ['召唤石', 'Summons'], weapon: ['武器', 'Weapon'],
+  weaponSkills: ['武器技能', 'Weapon Skills'], wrightstone: ['武器祝福', 'Wrightstone'], mastery: ['专精', 'Mastery'], overLimit: ['上限突破', 'Overmastery'],
+}
 
+const tx = (zh, en) => language.value === 'en' ? en : zh
 function catLabel(cat) { return CAT_LABELS[cat] || '基础盘' }
 function assetPath(folder, file) {
   if (!file) return ''
@@ -37,6 +43,15 @@ function skillIcon(skill) {
   return assetPath('skills', verifiedFile || 'Plain_Skill_Frame.png')
 }
 function traitIcon(name, hash = '') { return traitAssetIcon({ name, hash }) }
+function logsFieldLabel(field) {
+  const labels = LOGS_FIELD_LABELS[field]
+  return labels ? tx(labels[0], labels[1]) : field
+}
+function logsMissingText(fields) {
+  return `${tx('未记录', 'Not captured')}: ${(fields || []).map(logsFieldLabel).join(language.value === 'en' ? ', ' : '、')}`
+}
+function logsLoadedText(count) { return count ? tx(`已载入 ${count} 套配装`, `${count} loadouts loaded`) : tx('等待选择数据库', 'Waiting for a database') }
+function logsTime(value) { return new Date(value).toLocaleString(language.value === 'en' ? 'en-US' : 'zh-CN') }
 
 const currentGroup = computed(() => groups.value.find(g => g.charaName === selectedChara.value) || null)
 const isEditing = computed(() => mode.value === 'edit' && !!currentGroup.value)
@@ -263,43 +278,70 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
       </div>
     </section>
 
-	<section v-else-if="mode === 'logs-preview' && selectedLogsCandidate" class="logs-workspace" aria-label="Logs 配装预览">
+	<section v-else-if="mode === 'logs-preview' && selectedLogsCandidate" class="logs-workspace" :aria-label="tx('Logs 配装预览', 'Logs Loadout Preview')">
 	  <header class="subpage-bar ui-card">
-		<button type="button" class="back-button ui-btn" @click="leaveLogsPreview"><span aria-hidden="true">←</span> 返回 Logs 配装库</button>
-		<div><small>GBFR Logs 配装预览</small><strong>{{ selectedLogsCandidate.characterName }} · {{ selectedLogsCandidate.playerName || '未记录玩家名' }}</strong></div>
+		<button type="button" class="back-button ui-btn" @click="leaveLogsPreview"><span aria-hidden="true">←</span> {{ tx('返回 Logs 配装库', 'Back to Logs Library') }}</button>
+		<div><small>{{ tx('GBFR Logs 配装预览', 'GBFR Logs Loadout Preview') }}</small><strong>{{ selectedLogsCandidate.characterName }} · {{ selectedLogsCandidate.playerName || tx('未记录玩家名', 'Player Name Not Recorded') }}</strong></div>
 	  </header>
-	  <CapturedLoadoutPreview :loadout="selectedLogsCandidate.preview" source-label="GBFR Logs v1 · 最终导入预览">
+	  <div class="logs-preview-provenance ui-card is-flat">
+		<div><small>{{ tx('检测协议', 'Detected Protocol') }}</small><strong>{{ selectedLogsCandidate.protocolLabel }}</strong></div>
+		<div class="logs-capability-list" :aria-label="tx('日志已捕获范围', 'Captured Log Fields')"><span v-for="field in selectedLogsCandidate.capturedFields || []" :key="field">{{ logsFieldLabel(field) }}</span></div>
+		<p v-if="selectedLogsCandidate.missingFields?.length">{{ logsMissingText(selectedLogsCandidate.missingFields) }}</p>
+		<p v-for="warning in selectedLogsCandidate.warnings || []" :key="warning" class="is-warning">{{ warning }}</p>
+	  </div>
+	  <CapturedLoadoutPreview :loadout="selectedLogsCandidate.preview" :source-label="`${selectedLogsCandidate.protocolLabel} · ${tx('最终导入预览', 'Final Import Preview')}`">
 		<template #actions>
-		  <button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(selectedLogsCandidate)">选择存档并导入</button>
+		  <button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(selectedLogsCandidate)">{{ tx('选择存档并导入', 'Choose Save & Import') }}</button>
 		</template>
 	  </CapturedLoadoutPreview>
 	</section>
 
-	<section v-else-if="mode === 'logs'" class="logs-workspace" aria-label="GBFR Logs 配装库">
-	  <header class="subpage-bar logs-library-bar ui-card">
-		<button type="button" class="back-button logs-back-button ui-btn is-ghost" @click="closeLogsLibrary"><span aria-hidden="true">←</span> 返回配装预设</button>
-		<div class="logs-header-copy"><small>多角色配装导入</small><strong>GBFR Logs 配装库</strong><span>一次读取日志中的全部队员；先预览每名角色，再选择是否部署到存档。</span></div>
-		<button type="button" class="logs-source-button ui-btn is-primary" :disabled="logsLoading" @click="browseLogsLoadouts">{{ logsLoading ? '正在解析…' : logsCandidates.length ? '更换 Logs 数据库' : '选择 Logs 数据库' }}</button>
+	<section v-else-if="mode === 'logs'" class="logs-workspace" :aria-label="tx('GBFR Logs 配装库', 'GBFR Logs Library')">
+	  <header class="logs-library-header ui-card">
+		<div class="logs-library-nav">
+		  <button type="button" class="back-button logs-back-button ui-btn is-ghost is-sm" @click="closeLogsLibrary"><span aria-hidden="true">←</span> {{ tx('返回配装预设', 'Back to Loadout Presets') }}</button>
+		  <span class="logs-source-status" :class="{ ready: logsCandidates.length }"><i aria-hidden="true"></i>{{ logsLoadedText(logsCandidates.length) }}</span>
+		</div>
+		<div class="logs-library-main">
+		  <span class="logs-library-seal" aria-hidden="true">L</span>
+		  <div class="logs-header-copy"><small>{{ tx('多角色配装导入', 'Multi-Character Import') }}</small><strong>{{ tx('GBFR Logs 配装库', 'GBFR Logs Library') }}</strong><span>{{ tx('从战斗记录中整理队伍配装，预览确认后再部署到存档。', 'Organize party loadouts from battle logs, preview them, then deploy to a save.') }}</span></div>
+		  <button type="button" class="logs-source-button ui-btn is-primary" :disabled="logsLoading" @click="browseLogsLoadouts"><span aria-hidden="true">＋</span>{{ logsLoading ? tx('正在解析…', 'Parsing…') : logsCandidates.length ? tx('更换数据库', 'Change Database') : tx('选择 Logs 数据库', 'Choose Logs Database') }}</button>
+		</div>
+		<div class="logs-library-meta" :aria-label="tx('导入特性', 'Import Features')"><span>{{ tx('只读解析', 'Read-Only Parsing') }}</span><span>{{ tx('本地处理', 'Local Processing') }}</span><span>{{ tx('分项导入', 'Selective Import') }}</span></div>
 	  </header>
 	  <div v-if="logsCandidates.length" class="logs-candidate-grid">
-		<article v-for="candidate in logsCandidates" :key="`${candidate.logTime}-${candidate.playerName}-${candidate.ownerCode}`" class="logs-candidate-card ui-card is-flat">
+		<article v-for="(candidate, candidateIndex) in logsCandidates" :key="`${candidate.logTime}-${candidate.playerName}-${candidate.ownerCode}-${candidateIndex}`" class="logs-candidate-card ui-card is-flat">
 		  <header>
 			<img v-if="characterAssetIcon(candidate.characterHash)" :src="characterAssetIcon(candidate.characterHash)" alt="" />
 			<span v-else class="logs-character-fallback" aria-hidden="true">◇</span>
-			<div><small>{{ candidate.playerName || '未记录玩家名' }}</small><strong>{{ candidate.characterName }}</strong><span>{{ new Date(candidate.logTime).toLocaleString('zh-CN') }}</span></div>
+			<div><small>{{ candidate.protocolLabel }}</small><strong>{{ candidate.characterName }}</strong><span>{{ candidate.playerName || tx('未记录玩家名', 'Player Name Not Recorded') }} · {{ logsTime(candidate.logTime) }}</span></div>
 		  </header>
 		  <dl>
-			<div><dt>武器</dt><dd>{{ candidate.weaponName || '未记录' }}</dd></div>
-			<div><dt>因子</dt><dd>{{ candidate.sigilCount }} / 12</dd></div>
-			<div><dt>上限突破</dt><dd>{{ candidate.overLimitCount }} / 4</dd></div>
+			<div><dt>{{ tx('武器', 'Weapon') }}</dt><dd>{{ candidate.weaponName || tx('未记录', 'Not Recorded') }}</dd></div>
+			<div><dt>{{ tx('因子', 'Sigils') }}</dt><dd>{{ candidate.sigilCount }} / 12</dd></div>
+			<div><dt>{{ tx('上限突破', 'Overmastery') }}</dt><dd>{{ candidate.overLimitCount }} / 4</dd></div>
 		  </dl>
+		  <div class="logs-capability-list" :aria-label="tx('日志已捕获范围', 'Captured Log Fields')"><span v-for="field in candidate.capturedFields || []" :key="field">{{ logsFieldLabel(field) }}</span></div>
+		  <p v-if="candidate.missingFields?.length" class="logs-missing-fields">{{ logsMissingText(candidate.missingFields) }}</p>
 		  <div class="logs-card-actions">
-			<button type="button" class="ui-btn" @click="previewLogsCandidate(candidate)">预览实际配装</button>
-			<button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(candidate)">导入到存档</button>
+			<button type="button" class="ui-btn" @click="previewLogsCandidate(candidate)">{{ tx('预览实际配装', 'Preview Loadout') }}</button>
+			<button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(candidate)">{{ tx('导入到存档', 'Import to Save') }}</button>
 		  </div>
 		</article>
 	  </div>
-	  <div v-else class="logs-empty ui-empty"><strong>选择一个 GBFR Logs 数据库</strong><span>数据库中的不同场次与角色会分别解析成可预览的配装卡片。</span></div>
+	  <div v-else class="logs-empty ui-card is-flat">
+		<span class="logs-empty-index" aria-hidden="true">01</span>
+		<div>
+		  <strong>{{ tx('尚未载入战斗记录', 'No Battle Logs Loaded') }}</strong>
+		  <span>{{ tx('选择 GBFR Logs 生成的 logs.db，队伍成员会分别列在这里。', 'Choose a logs.db created by GBFR Logs to list each party member here.') }}</span>
+		  <div class="logs-database-location">
+			<b>{{ tx('数据库在哪里？', 'Where is the database?') }}</b>
+			<span>{{ tx('GBFR Logs、Endless、Relink Logs：右键程序快捷方式打开文件所在位置，或进入解压目录，选择与程序同目录的 logs.db。', 'GBFR Logs, Endless, and Relink Logs: right-click the app shortcut and open its file location, or open the extracted folder, then choose logs.db beside the app.') }}</span>
+			<span>{{ tx('SkyMeter：打开 %APPDATA%\\app.skymeter.relink；旧版目录为 app.astralledger.relink。', 'SkyMeter: open %APPDATA%\\app.skymeter.relink; older builds use app.astralledger.relink.') }}</span>
+			<span>{{ tx('先退出 Logs 再导入；不要选择 logs.db-wal 或 logs.db-shm。', 'Exit Logs before importing; do not choose logs.db-wal or logs.db-shm.') }}</span>
+		  </div>
+		</div>
+	  </div>
 	</section>
 
     <template v-else>
@@ -316,7 +358,7 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 
 	  <button type="button" class="logs-library-entry ui-card" @click="openLogsLibrary">
 		<span class="logs-entry-mark" aria-hidden="true">L</span>
-		<span><small>外部战斗记录</small><strong>从 GBFR Logs 批量获取队伍配装</strong><em>独立解析数据库中的多名角色，可逐个预览后再导入。</em></span>
+		<span><small>{{ tx('外部战斗记录', 'External Battle Logs') }}</small><strong>{{ tx('从 GBFR Logs 批量获取队伍配装', 'Import Party Loadouts from GBFR Logs') }}</strong><em>{{ tx('独立解析数据库中的多名角色，可逐个预览后再导入。', 'Parse every character in the database, preview each loadout, then import selectively.') }}</em></span>
 		<b aria-hidden="true">→</b>
 	  </button>
 
@@ -514,10 +556,24 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .subpage-bar small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
 .subpage-bar strong { color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
 .subpage-bar span { color:var(--text-muted); font-size:var(--fs-xs); }
-.logs-library-bar { grid-template-areas:"back back" "copy action"; grid-template-columns:minmax(0,1fr) auto; align-items:end; row-gap:var(--space-2); }
-.logs-back-button { grid-area:back; justify-self:start; width:auto; }
-.logs-header-copy { grid-area:copy; align-self:center; }
-.logs-source-button { grid-area:action; justify-self:end; width:max-content; max-width:100%; }
+.logs-library-header { position:relative; overflow:hidden; padding:0; border-color:var(--border-strong); background:linear-gradient(108deg,var(--surface-card-pop),var(--surface-card) 68%,var(--surface-sunken)); box-shadow:var(--shadow-2); }
+.logs-library-header::after { content:""; position:absolute; right:-34px; bottom:-62px; width:170px; height:170px; border:1px solid rgba(126,89,40,.14); border-radius:50%; box-shadow:0 0 0 18px rgba(126,89,40,.035),0 0 0 38px rgba(126,89,40,.025); pointer-events:none; }
+.logs-library-nav { position:relative; z-index:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-5); border-bottom:1px solid var(--border-soft); background:rgba(255,253,247,.38); }
+.logs-back-button { justify-self:start; width:auto; }
+.logs-source-status { min-width:0; display:inline-flex; align-items:center; gap:7px; color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--fw-semibold); text-align:right; }
+.logs-source-status i { width:7px; height:7px; flex:0 0 7px; border:1px solid var(--border-strong); border-radius:50%; background:var(--surface-sunken); box-shadow:0 0 0 3px rgba(126,89,40,.06); }
+.logs-source-status.ready { color:var(--success-ink); }
+.logs-source-status.ready i { border-color:var(--success-ink); background:var(--success); box-shadow:0 0 0 3px var(--success-bg); }
+.logs-library-main { position:relative; z-index:1; min-width:0; display:grid; grid-template-columns:56px minmax(0,1fr) auto; gap:var(--space-4); align-items:center; padding:var(--space-5); }
+.logs-library-seal { width:56px; height:56px; display:grid; place-items:center; border:1px solid var(--accent-border); border-radius:var(--radius-sm); background:var(--accent); box-shadow:inset 0 0 0 3px rgba(255,253,247,.23),var(--shadow-1); color:var(--text-on-accent); font-family:var(--font-display); font-size:var(--fs-xl); font-weight:var(--fw-bold); }
+.logs-header-copy { min-width:0; display:grid; gap:3px; align-self:center; }
+.logs-header-copy small { color:var(--accent); font-size:var(--fs-2xs); font-weight:var(--fw-bold); }
+.logs-header-copy strong { color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-xl); line-height:var(--lh-tight); }
+.logs-header-copy span { max-width:58ch; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); overflow-wrap:anywhere; }
+.logs-source-button { justify-self:end; width:max-content; max-width:100%; }
+.logs-source-button > span { font-size:var(--fs-lg); line-height:1; }
+.logs-library-meta { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:var(--space-2); padding:0 var(--space-5) var(--space-4) calc(var(--space-5) + 72px); }
+.logs-library-meta span { padding:2px 7px; border-left:2px solid rgba(126,89,40,.42); color:var(--text-muted); font-size:var(--fs-2xs); font-weight:var(--fw-semibold); }
 .logs-candidate-grid { min-width:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:var(--space-4); align-items:stretch; }
 .logs-candidate-card { min-width:0; display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--accent); background:var(--surface-card-pop); }
 .logs-candidate-card > header { min-width:0; display:grid; grid-template-columns:52px minmax(0,1fr); gap:var(--space-3); align-items:center; }
@@ -530,9 +586,25 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .logs-candidate-card dl > div { min-width:0; padding:var(--space-2); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-sunken); }
 .logs-candidate-card dt { color:var(--text-muted); font-size:var(--fs-2xs); }
 .logs-candidate-card dd { min-width:0; margin:2px 0 0; overflow-wrap:anywhere; color:var(--text-secondary); font-size:var(--fs-xs); }
+.logs-capability-list { min-width:0; display:flex; flex-wrap:wrap; gap:5px; }
+.logs-capability-list span { padding:3px 7px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--accent-soft); color:var(--accent-hover); font-size:var(--fs-2xs); font-weight:var(--fw-semibold); }
+.logs-missing-fields { margin:0; overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--fs-2xs); line-height:1.45; }
+.logs-preview-provenance { min-width:0; display:grid; gap:var(--space-2); padding:var(--space-3) var(--space-4); border-left:3px solid var(--accent); }
+.logs-preview-provenance > div:first-child { min-width:0; display:grid; gap:2px; }
+.logs-preview-provenance small { color:var(--text-muted); font-size:var(--fs-2xs); }
+.logs-preview-provenance strong { overflow-wrap:anywhere; color:var(--text-primary); font-size:var(--fs-sm); }
+.logs-preview-provenance p { margin:0; overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
+.logs-preview-provenance p.is-warning { color:var(--warning-ink,#7a5a19); }
 .logs-card-actions { min-width:0; display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:auto; }
 .logs-card-actions .ui-btn { flex:1 1 132px; min-width:0; }
-.logs-empty { min-height:220px; display:flex; flex-direction:column; justify-content:center; gap:var(--space-2); }
+.logs-empty { min-width:0; min-height:112px; display:grid; grid-template-columns:44px minmax(0,1fr); gap:var(--space-4); align-items:start; padding:var(--space-5); border-style:dashed; background:rgba(255,253,247,.42); }
+.logs-empty-index { width:44px; height:44px; display:grid; place-items:center; border-right:1px solid var(--border-strong); color:var(--accent); font-family:var(--font-data); font-size:var(--fs-lg); font-weight:var(--fw-bold); }
+.logs-empty > div { min-width:0; display:grid; gap:3px; }
+.logs-empty strong { color:var(--text-primary); font-size:var(--fs-md); }
+.logs-empty span:not(.logs-empty-index) { color:var(--text-muted); font-size:var(--fs-sm); line-height:var(--lh-normal); overflow-wrap:anywhere; }
+.logs-database-location { min-width:0; display:grid; gap:3px; margin-top:var(--space-3); padding:var(--space-3); border-left:3px solid var(--accent-border); background:var(--surface-sunken); }
+.logs-database-location b { color:var(--text-secondary); font-size:var(--fs-xs); }
+.logs-database-location span { font-family:var(--font-body); font-size:var(--fs-xs) !important; }
 @container loadout-viewer (max-width:900px) {
   .section-title .edit-launch { width:100%; margin-left:0; }
   .editor-workspace-bar { grid-template-columns:1fr auto; }
@@ -557,8 +629,12 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	.subpage-bar:not(.logs-library-bar) > .back-button,.subpage-bar:not(.logs-library-bar) > div { grid-column:1; }
 	.subpage-bar:not(.logs-library-bar) > .back-button { grid-row:1; justify-self:start; width:auto; }
 	.subpage-bar:not(.logs-library-bar) > div { grid-row:2; width:100%; }
-	.logs-library-bar { grid-template-areas:"back" "copy" "action"; grid-template-columns:minmax(0,1fr); }
-	.logs-source-button { justify-self:start; }
+	.logs-library-nav { align-items:flex-start; padding:var(--space-3) var(--space-4); }
+	.logs-source-status { max-width:44%; white-space:normal; }
+	.logs-library-main { grid-template-columns:42px minmax(0,1fr); padding:var(--space-4); }
+	.logs-library-seal { width:42px; height:42px; font-size:var(--fs-lg); }
+	.logs-source-button { grid-column:1/-1; justify-self:stretch; width:100%; }
+	.logs-library-meta { padding:0 var(--space-4) var(--space-4); }
 	.logs-candidate-card dl { grid-template-columns:minmax(0,1fr); }
 }
 </style>

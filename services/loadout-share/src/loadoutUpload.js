@@ -84,8 +84,9 @@ function compactCharacter(value) {
   ]
 }
 
-function compactWeapon(value) {
+function compactWeapon(value, weaponSkillsCaptured) {
   if (value == null) return null
+  const skillHashes = list(value.skillHashes || [], '当前武器技能', 5, weaponSkillsCaptured ? 5 : 0)
   return [
     hash(value.storedHash, '当前武器存储哈希'),
     integer(value.xp, '当前武器经验', 0, 0xffffffff),
@@ -97,7 +98,7 @@ function compactWeapon(value) {
     integer(value.flags ?? 0, '当前武器标志', 0, 0xffffffff),
     hash(value.wrightstoneReference, '当前武器祝福引用', true),
     integer(value.state ?? 0, '当前武器状态', -0x80000000, 0x7fffffff),
-    list(value.skillHashes, '当前武器技能', 5, 5).map(item => hash(item, '当前武器技能哈希')),
+    skillHashes.map(item => hash(item, '当前武器技能哈希')),
     wrightstone(value.wrightstone, '当前武器祝福'),
   ]
 }
@@ -123,7 +124,7 @@ function compactLoadout(source) {
   const weaponSkills = captured('weaponSkills') ? list(source.weaponSkillHashes || [], '武器技能快照', 5, 5) : []
   const mastery = captured('mastery') ? list(source.masteryHashes || [], '专精快照', 50, 50) : []
   const overLimit = captured('overLimit') ? list(source.overLimit || [], '上限突破配置', 4, 4) : []
-  if (partial && (!captured('sigils') || sigils.length === 0)) throw new Error('部分配装需要至少一个已捕获因子')
+  if (partial && captured('sigils') !== (sigils.length > 0)) throw new Error('部分配装的因子内容与捕获字段声明不一致')
   const rejectedPayload = [
     !captured('summons') && (source.summons || []).length,
     !captured('skills') && (source.skills || []).length,
@@ -132,9 +133,15 @@ function compactLoadout(source) {
     !captured('character') && source.character,
     !captured('overLimit') && (source.overLimit || []).length,
     !captured('weapon') && (source.weapon || source.weaponHash || source.weaponName),
-    !captured('wrightstone') && source.weapon?.wrightstone,
+    !captured('wrightstone') && (source.weapon?.wrightstone || source.weapon?.wrightstoneReference),
+    !captured('weaponSkills') && (source.weapon?.skillHashes || []).length,
   ]
   if (partial && rejectedPayload.some(Boolean)) throw new Error('部分配装包含未声明为已捕获的字段')
+  if (partial && captured('weapon') && !source.weapon) throw new Error('部分配装声明已捕获武器但缺少武器状态')
+  if (partial && (captured('weaponSkills') || captured('wrightstone')) && !captured('weapon')) throw new Error('部分配装的武器技能或祝福范围缺少武器主体')
+  if (partial && captured('wrightstone') && !source.weapon?.wrightstone) throw new Error('部分配装声明已捕获武器祝福但缺少祝福状态')
+  const deployable = sigils.length || summons.length || skills.length || weaponSkills.length || mastery.length || overLimit.length || (captured('weapon') && source.weapon)
+  if (partial && !deployable) throw new Error('部分配装没有可部署的配装范围')
   const compact = [
     source.version,
     hash(source.charaHash, '角色哈希'),
@@ -166,7 +173,7 @@ function compactLoadout(source) {
     weaponSkills.map(item => hash(item, '武器技能哈希')),
     mastery.map(item => hash(item, '专精节点哈希')),
     captured('character') ? compactCharacter(source.character) : null,
-    captured('weapon') ? compactWeapon(source.weapon) : null,
+    captured('weapon') ? compactWeapon(source.weapon, captured('weaponSkills')) : null,
     overLimit.map(slot => [
       integer(slot.index, '上限突破槽位', 0, 3),
       hash(slot.attributeHash, '上限突破属性哈希', true),
