@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, LoadoutPreviewList, SelectLogsLoadoutShares, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
@@ -21,9 +21,19 @@ const previews = ref(new Map())
 const previewLoading = ref(false)
 const logsCandidates = ref([])
 const logsLoading = ref(false)
+const logsSourceKind = ref('')
 const selectedLogsCandidate = ref(null)
 const viewerRoot = ref(null)
 const logsPendingImport = ref(null)
+const logsJSONOpen = ref(false)
+const logsJSONPayload = ref('')
+const logsJSONError = ref('')
+const logsJSONTextarea = ref(null)
+const logsPublishCandidate = ref(null)
+const logsPublishTitle = ref('')
+const logsPublishBusy = ref(false)
+const logsPublishError = ref('')
+const logsPublishResult = ref(null)
 let previewRequestId = 0
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
@@ -50,7 +60,7 @@ function logsFieldLabel(field) {
 function logsMissingText(fields) {
   return `${tx('未记录', 'Not captured')}: ${(fields || []).map(logsFieldLabel).join(language.value === 'en' ? ', ' : '、')}`
 }
-function logsLoadedText(count) { return count ? tx(`已载入 ${count} 套配装`, `${count} loadouts loaded`) : tx('等待选择数据库', 'Waiting for a database') }
+function logsLoadedText(count) { return count ? tx(`已载入 ${count} 套配装`, `${count} loadouts loaded`) : tx('等待导入来源', 'Waiting for an import source') }
 function logsTime(value) { return new Date(value).toLocaleString(language.value === 'en' ? 'en-US' : 'zh-CN') }
 
 const currentGroup = computed(() => groups.value.find(g => g.charaName === selectedChara.value) || null)
@@ -154,9 +164,75 @@ async function browseLogsLoadouts() {
 	logsLoading.value = true
 	try {
 		logsCandidates.value = await SelectLogsLoadoutShares() || []
+		logsSourceKind.value = 'database'
 		mode.value = 'logs'
 	} catch (error) {
 		emit('status', String(error), 'error')
+	} finally {
+		logsLoading.value = false
+	}
+}
+
+function openLogsJSONImport() {
+	logsJSONError.value = ''
+	logsJSONOpen.value = true
+	nextTick(() => logsJSONTextarea.value?.focus())
+}
+
+function closeLogsJSONImport() {
+	if (logsLoading.value) return
+	logsJSONOpen.value = false
+	logsJSONError.value = ''
+}
+
+function acceptLogsJSONCandidates(candidates) {
+	logsCandidates.value = candidates || []
+	logsSourceKind.value = 'json'
+	selectedLogsCandidate.value = null
+	mode.value = 'logs'
+	logsJSONOpen.value = false
+	logsJSONPayload.value = ''
+	logsJSONError.value = ''
+	emit('status', tx(`已解析 ${logsCandidates.value.length} 套 Relink Logs 角色配装`, `Parsed ${logsCandidates.value.length} Relink Logs character loadouts`), 'success')
+}
+
+async function readLogsJSONClipboard() {
+	logsJSONError.value = ''
+	try {
+		if (!navigator.clipboard?.readText) throw new Error(tx('当前系统不允许直接读取剪贴板，请手动粘贴。', 'Clipboard reading is unavailable; paste the JSON manually.'))
+		logsJSONPayload.value = await navigator.clipboard.readText()
+	} catch (error) {
+		logsJSONError.value = String(error)
+	}
+}
+
+async function browseLogsJSONFile() {
+	if (logsLoading.value) return
+	logsLoading.value = true
+	logsJSONError.value = ''
+	try {
+		const candidates = await SelectLogsLoadoutJSON()
+		if (candidates?.length) acceptLogsJSONCandidates(candidates)
+	} catch (error) {
+		logsJSONError.value = String(error)
+	} finally {
+		logsLoading.value = false
+	}
+}
+
+async function parseLogsJSON() {
+	if (logsLoading.value) return
+	if (!logsJSONPayload.value.trim()) {
+		logsJSONError.value = tx('请先粘贴角色 JSON，或从文件读取。', 'Paste character JSON or choose a file first.')
+		return
+	}
+	logsLoading.value = true
+	logsJSONError.value = ''
+	try {
+		logsCandidates.value = await ParseLogsLoadoutJSON(logsJSONPayload.value) || []
+		acceptLogsJSONCandidates(logsCandidates.value)
+	} catch (error) {
+		logsJSONError.value = String(error)
 	} finally {
 		logsLoading.value = false
 	}
@@ -191,6 +267,45 @@ async function deployLogsCandidate(candidate) {
 		requestId: Date.now(),
 	}
 	await activatePendingImport()
+}
+
+function openLogsPublish(candidate) {
+	logsPublishCandidate.value = candidate
+	logsPublishTitle.value = tx(`${candidate.characterName} · Logs 配装`, `${candidate.characterName} · Logs Loadout`)
+	logsPublishError.value = ''
+	logsPublishResult.value = null
+}
+
+function closeLogsPublish() {
+	if (logsPublishBusy.value) return
+	logsPublishCandidate.value = null
+	logsPublishError.value = ''
+	logsPublishResult.value = null
+}
+
+async function copyLogsPublishedLink() {
+	const value = logsPublishResult.value?.url
+	if (!value) return
+	try {
+		await navigator.clipboard.writeText(value)
+		emit('status', tx(`已复制配装链接：${logsPublishResult.value.code}`, `Copied loadout link: ${logsPublishResult.value.code}`), 'success')
+	} catch (error) {
+		logsPublishError.value = tx(`复制失败，请手动复制链接：${String(error)}`, `Copy failed; copy the link manually: ${String(error)}`)
+	}
+}
+
+async function publishLogsCandidate() {
+	if (!logsPublishCandidate.value || logsPublishBusy.value) return
+	logsPublishBusy.value = true
+	logsPublishError.value = ''
+	try {
+		logsPublishResult.value = await PublishLogsLoadoutShare(logsPublishCandidate.value, logsPublishTitle.value.trim())
+		await copyLogsPublishedLink()
+	} catch (error) {
+		logsPublishError.value = String(error)
+	} finally {
+		logsPublishBusy.value = false
+	}
 }
 
 function consumePendingImport() {
@@ -305,7 +420,10 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 		<div class="logs-library-main">
 		  <span class="logs-library-seal" aria-hidden="true">L</span>
 		  <div class="logs-header-copy"><small>{{ tx('多角色配装导入', 'Multi-Character Import') }}</small><strong>{{ tx('GBFR Logs 配装库', 'GBFR Logs Library') }}</strong><span>{{ tx('从战斗记录中整理队伍配装，预览确认后再部署到存档。', 'Organize party loadouts from battle logs, preview them, then deploy to a save.') }}</span></div>
-		  <button type="button" class="logs-source-button ui-btn is-primary" :disabled="logsLoading" @click="browseLogsLoadouts"><span aria-hidden="true">＋</span>{{ logsLoading ? tx('正在解析…', 'Parsing…') : logsCandidates.length ? tx('更换数据库', 'Change Database') : tx('选择 Logs 数据库', 'Choose Logs Database') }}</button>
+		  <div class="logs-source-actions">
+			<button type="button" class="ui-btn" :disabled="logsLoading" @click="openLogsJSONImport"><span aria-hidden="true">↓</span>{{ tx('导入角色 JSON', 'Import Character JSON') }}</button>
+			<button type="button" class="logs-source-button ui-btn is-primary" :disabled="logsLoading" @click="browseLogsLoadouts"><span aria-hidden="true">＋</span>{{ logsLoading ? tx('正在解析…', 'Parsing…') : logsSourceKind === 'database' ? tx('更换数据库', 'Change Database') : tx('选择 Logs 数据库', 'Choose Logs Database') }}</button>
+		  </div>
 		</div>
 		<div class="logs-library-meta" :aria-label="tx('导入特性', 'Import Features')"><span>{{ tx('只读解析', 'Read-Only Parsing') }}</span><span>{{ tx('本地处理', 'Local Processing') }}</span><span>{{ tx('分项导入', 'Selective Import') }}</span></div>
 	  </header>
@@ -325,6 +443,7 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 		  <p v-if="candidate.missingFields?.length" class="logs-missing-fields">{{ logsMissingText(candidate.missingFields) }}</p>
 		  <div class="logs-card-actions">
 			<button type="button" class="ui-btn" @click="previewLogsCandidate(candidate)">{{ tx('预览实际配装', 'Preview Loadout') }}</button>
+			<button type="button" class="ui-btn" @click="openLogsPublish(candidate)">{{ tx('上传分享', 'Publish') }}</button>
 			<button type="button" class="ui-btn is-primary" @click="deployLogsCandidate(candidate)">{{ tx('导入到存档', 'Import to Save') }}</button>
 		  </div>
 		</article>
@@ -332,8 +451,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	  <div v-else class="logs-empty ui-card is-flat">
 		<span class="logs-empty-index" aria-hidden="true">01</span>
 		<div>
-		  <strong>{{ tx('尚未载入战斗记录', 'No Battle Logs Loaded') }}</strong>
-		  <span>{{ tx('选择 GBFR Logs 生成的 logs.db，队伍成员会分别列在这里。', 'Choose a logs.db created by GBFR Logs to list each party member here.') }}</span>
+		  <strong>{{ tx('尚未载入外部配装', 'No External Loadouts Loaded') }}</strong>
+		  <span>{{ tx('可以粘贴 Relink Logs 复制的角色 JSON，也可以选择 Logs 生成的 logs.db；解析后的队伍成员会分别列在这里。', 'Paste character JSON copied from Relink Logs or choose a logs.db; parsed party members will be listed separately here.') }}</span>
 		  <div class="logs-database-location">
 			<b>{{ tx('数据库在哪里？', 'Where is the database?') }}</b>
 			<span>{{ tx('GBFR Logs、Endless、Relink Logs：右键程序快捷方式打开文件所在位置，或进入解压目录，选择与程序同目录的 logs.db。', 'GBFR Logs, Endless, and Relink Logs: right-click the app shortcut and open its file location, or open the extracted folder, then choose logs.db beside the app.') }}</span>
@@ -341,6 +460,45 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 			<span>{{ tx('先退出 Logs 再导入；不要选择 logs.db-wal 或 logs.db-shm。', 'Exit Logs before importing; do not choose logs.db-wal or logs.db-shm.') }}</span>
 		  </div>
 		</div>
+	  </div>
+	  <div v-if="logsJSONOpen" class="logs-json-backdrop" @click.self="closeLogsJSONImport" @keydown.esc="closeLogsJSONImport">
+		<section class="logs-json-dialog ui-card" role="dialog" aria-modal="true" :aria-label="tx('导入 Relink Logs 角色 JSON', 'Import Relink Logs Character JSON')">
+		  <header>
+			<div><small>{{ tx('Relink Logs 剪贴板接口', 'Relink Logs Clipboard Export') }}</small><strong>{{ tx('粘贴 Relink Logs 复制的角色 JSON', 'Paste character JSON copied from Relink Logs') }}</strong></div>
+			<button type="button" class="ui-btn is-ghost is-sm" :disabled="logsLoading" :aria-label="tx('关闭', 'Close')" @click="closeLogsJSONImport">×</button>
+		  </header>
+		  <p>{{ tx('在 Relink Logs 的战斗记录详情中打开“装备”，点击“复制角色数据到剪贴板 (JSON)”。可粘贴单个角色、角色数组，或选择已经保存的 JSON 文件。', 'Open Equipment in a Relink Logs battle record and click “Copy Character Data to Clipboard (JSON)”. Paste one character or an array, or choose a saved JSON file.') }}</p>
+		  <textarea ref="logsJSONTextarea" v-model="logsJSONPayload" class="ui-textarea logs-json-textarea" spellcheck="false" :placeholder="tx('在这里粘贴 characterType、sigils、weaponState 等角色数据…', 'Paste characterType, sigils, weaponState, and other character data here…')"></textarea>
+		  <p v-if="logsJSONError" class="logs-json-error" role="alert">{{ logsJSONError }}</p>
+		  <footer>
+			<button type="button" class="ui-btn" :disabled="logsLoading" @click="readLogsJSONClipboard">{{ tx('读取剪贴板', 'Read Clipboard') }}</button>
+			<button type="button" class="ui-btn" :disabled="logsLoading" @click="browseLogsJSONFile">{{ tx('选择 JSON 文件', 'Choose JSON File') }}</button>
+			<button type="button" class="ui-btn is-primary" :disabled="logsLoading" @click="parseLogsJSON">{{ logsLoading ? tx('正在解析…', 'Parsing…') : tx('解析并预览', 'Parse & Preview') }}</button>
+		  </footer>
+		</section>
+	  </div>
+	  <div v-if="logsPublishCandidate" class="logs-json-backdrop" @click.self="closeLogsPublish" @keydown.esc="closeLogsPublish">
+		<section class="logs-publish-dialog ui-card" role="dialog" aria-modal="true" :aria-label="tx('上传 Logs 配装', 'Publish Logs Loadout')">
+		  <header>
+			<div><small>{{ tx('社区配装图鉴', 'Community Loadout Archive') }}</small><strong>{{ tx('上传并复制分享链接', 'Publish & Copy Link') }}</strong></div>
+			<button type="button" class="ui-btn is-ghost is-sm" :disabled="logsPublishBusy" :aria-label="tx('关闭', 'Close')" @click="closeLogsPublish">×</button>
+		  </header>
+		  <div class="logs-publish-identity">
+			<img v-if="characterAssetIcon(logsPublishCandidate.characterHash)" :src="characterAssetIcon(logsPublishCandidate.characterHash)" alt="" />
+			<div><strong>{{ logsPublishCandidate.characterName }}</strong><span>{{ logsPublishCandidate.weaponName || tx('未记录武器', 'Weapon Not Recorded') }}</span></div>
+		  </div>
+		  <label class="logs-publish-title"><span>{{ tx('分享标题', 'Share Title') }}</span><input v-model="logsPublishTitle" class="ui-input" maxlength="80" :disabled="logsPublishBusy || !!logsPublishResult" :placeholder="tx('例如：泽塔常规毕业配装', 'For example: Zeta Endgame Loadout')" /></label>
+		  <p>{{ tx('标题可以与其他配装重复；完全相同的配装会沿用原短码和首次标题。线上只保存脱敏后的单套配装。', 'Titles may be reused. An identical loadout reuses its original code and first title. Only the sanitized loadout is stored online.') }}</p>
+		  <div v-if="logsPublishResult" class="logs-publish-result">
+			<div><small>{{ logsPublishResult.reused ? tx('已沿用现有短码', 'Existing Code Reused') : tx('短码已生成', 'Code Created') }}</small><strong>{{ logsPublishResult.code }}</strong><span>{{ logsPublishResult.url }}</span></div>
+			<button type="button" class="ui-btn is-primary" @click="copyLogsPublishedLink">{{ tx('复制链接', 'Copy Link') }}</button>
+		  </div>
+		  <p v-if="logsPublishError" class="logs-json-error" role="alert">{{ logsPublishError }}</p>
+		  <footer>
+			<button type="button" class="ui-btn" :disabled="logsPublishBusy" @click="closeLogsPublish">{{ logsPublishResult ? tx('完成', 'Done') : tx('取消', 'Cancel') }}</button>
+			<button v-if="!logsPublishResult" type="button" class="ui-btn is-primary" :disabled="logsPublishBusy" @click="publishLogsCandidate">{{ logsPublishBusy ? tx('正在上传…', 'Publishing…') : tx('上传并复制链接', 'Publish & Copy Link') }}</button>
+		  </footer>
+		</section>
 	  </div>
 	</section>
 
@@ -570,6 +728,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .logs-header-copy small { color:var(--accent); font-size:var(--fs-2xs); font-weight:var(--fw-bold); }
 .logs-header-copy strong { color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-xl); line-height:var(--lh-tight); }
 .logs-header-copy span { max-width:58ch; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); overflow-wrap:anywhere; }
+.logs-source-actions { min-width:0; justify-self:end; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:var(--space-2); }
+.logs-source-actions .ui-btn { min-width:0; white-space:nowrap; }
 .logs-source-button { justify-self:end; width:max-content; max-width:100%; }
 .logs-source-button > span { font-size:var(--fs-lg); line-height:1; }
 .logs-library-meta { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:var(--space-2); padding:0 var(--space-5) var(--space-4) calc(var(--space-5) + 72px); }
@@ -605,6 +765,36 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .logs-database-location { min-width:0; display:grid; gap:3px; margin-top:var(--space-3); padding:var(--space-3); border-left:3px solid var(--accent-border); background:var(--surface-sunken); }
 .logs-database-location b { color:var(--text-secondary); font-size:var(--fs-xs); }
 .logs-database-location span { font-family:var(--font-body); font-size:var(--fs-xs) !important; }
+.logs-json-backdrop { position:fixed; z-index:1200; inset:0; display:grid; place-items:center; padding:16px; overflow:auto; background:rgba(39,31,22,.56); backdrop-filter:blur(3px); }
+.logs-json-dialog { width:100%; max-width:min(680px,calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; gap:var(--space-4); overflow:auto; padding:var(--space-5); border-color:var(--accent-border); background:var(--surface-card-pop); box-shadow:var(--shadow-4); }
+.logs-json-dialog > header { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:start; padding-bottom:var(--space-3); border-bottom:1px solid var(--border-soft); }
+.logs-json-dialog > header > div { min-width:0; display:grid; gap:2px; }
+.logs-json-dialog > header small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
+.logs-json-dialog > header strong { overflow-wrap:anywhere; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
+.logs-json-dialog > p { margin:0; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
+.logs-json-textarea { min-height:220px; max-height:42vh; overflow:auto; font-family:var(--font-data); font-size:var(--fs-xs); line-height:1.5; }
+.logs-json-dialog > footer { min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:var(--space-2); }
+.logs-json-dialog > footer .ui-btn { flex:0 1 auto; }
+.logs-json-error { padding:var(--space-3); border-left:3px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink) !important; overflow-wrap:anywhere; }
+.logs-publish-dialog { width:100%; max-width:min(560px,calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; gap:var(--space-4); overflow:auto; padding:var(--space-5); border-color:var(--accent-border); background:var(--surface-card-pop); box-shadow:var(--shadow-4); }
+.logs-publish-dialog > header { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:start; padding-bottom:var(--space-3); border-bottom:1px solid var(--border-soft); }
+.logs-publish-dialog > header > div { min-width:0; display:grid; gap:2px; }
+.logs-publish-dialog > header small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
+.logs-publish-dialog > header strong { overflow-wrap:anywhere; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
+.logs-publish-dialog > p { margin:0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.logs-publish-identity { min-width:0; display:grid; grid-template-columns:52px minmax(0,1fr); gap:var(--space-3); align-items:center; }
+.logs-publish-identity img { width:52px; height:52px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-sunken); object-fit:cover; }
+.logs-publish-identity div { min-width:0; display:grid; gap:2px; }
+.logs-publish-identity strong,.logs-publish-identity span { min-width:0; overflow-wrap:anywhere; }
+.logs-publish-identity span { color:var(--text-muted); font-size:var(--fs-xs); }
+.logs-publish-title { min-width:0; display:grid; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
+.logs-publish-title input { width:100%; min-width:0; }
+.logs-publish-result { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:center; padding:var(--space-4); border-left:3px solid var(--success); background:var(--success-bg); }
+.logs-publish-result > div { min-width:0; display:grid; gap:3px; }
+.logs-publish-result small { color:var(--success-ink); font-size:var(--fs-2xs); }
+.logs-publish-result strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-lg); }
+.logs-publish-result span { min-width:0; overflow-wrap:anywhere; color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-2xs); }
+.logs-publish-dialog > footer { min-width:0; display:flex; justify-content:flex-end; gap:var(--space-2); }
 @container loadout-viewer (max-width:900px) {
   .section-title .edit-launch { width:100%; margin-left:0; }
   .editor-workspace-bar { grid-template-columns:1fr auto; }
@@ -620,6 +810,10 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
   .loadout-card-toggle .expand-mark { grid-column:4; grid-row:1/4; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
   .loadout-stat-strip { grid-template-columns:repeat(2,minmax(70px,1fr)); }
+  .logs-library-main { grid-template-columns:48px minmax(0,1fr); }
+  .logs-library-seal { width:48px; height:48px; }
+  .logs-source-actions { grid-column:1/-1; justify-self:stretch; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .logs-source-actions .ui-btn { width:100%; white-space:normal; }
 }
 @container loadout-viewer (max-width:560px) {
 	.logs-library-entry { grid-template-columns:36px minmax(0,1fr); }
@@ -633,8 +827,14 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	.logs-source-status { max-width:44%; white-space:normal; }
 	.logs-library-main { grid-template-columns:42px minmax(0,1fr); padding:var(--space-4); }
 	.logs-library-seal { width:42px; height:42px; font-size:var(--fs-lg); }
+	.logs-source-actions { grid-template-columns:minmax(0,1fr); }
 	.logs-source-button { grid-column:1/-1; justify-self:stretch; width:100%; }
 	.logs-library-meta { padding:0 var(--space-4) var(--space-4); }
 	.logs-candidate-card dl { grid-template-columns:minmax(0,1fr); }
+	.logs-json-dialog > footer { display:grid; grid-template-columns:minmax(0,1fr); }
+	.logs-json-dialog > footer .ui-btn { width:100%; }
+	.logs-publish-result { grid-template-columns:minmax(0,1fr); }
+	.logs-publish-result .ui-btn,.logs-publish-dialog > footer .ui-btn { width:100%; }
+	.logs-publish-dialog > footer { display:grid; grid-template-columns:minmax(0,1fr); }
 }
 </style>

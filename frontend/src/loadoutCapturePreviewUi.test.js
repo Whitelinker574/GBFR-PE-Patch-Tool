@@ -45,7 +45,8 @@ test('Logs library header keeps compact actions and a readable responsive hierar
   assert.doesNotMatch(viewer, /\.subpage-bar > \.back-button[^}]*width:\s*100%/is)
 })
 
-test('Logs empty state identifies each supported database location and the exact file to select', () => {
+test('Logs empty state explains both copied JSON and each supported database location', () => {
+  assert.match(viewer, /可以粘贴 Relink Logs 复制的角色 JSON/)
   assert.match(viewer, /数据库在哪里？/)
   assert.match(viewer, /GBFR Logs、Endless、Relink Logs：[\s\S]*?logs\.db/)
   assert.match(viewer, /%APPDATA%\\\\app\.skymeter\.relink/)

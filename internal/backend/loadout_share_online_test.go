@@ -301,6 +301,42 @@ func TestLoadoutShareOnlinePublishAndFetchRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPublishLogsLoadoutShareCandidateKeepsRichPreviewAndCustomTitle(t *testing.T) {
+	candidates, err := parseLogsLoadoutJSON([]byte(relinkLogsPlayerJSON))
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("parse Logs JSON: candidates=%d err=%v", len(candidates), err)
+	}
+	var receivedPreview loadoutSharePreview
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		encoded := request.Header.Get("X-Loadout-Preview")
+		payload, decodeErr := base64.RawURLEncoding.DecodeString(encoded)
+		if decodeErr != nil || json.Unmarshal(payload, &receivedPreview) != nil {
+			t.Errorf("decode preview header: %v", decodeErr)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(response).Encode(LoadoutPublishedShare{Code: "0123-4567-89AB-CDEF", CompactCode: "0123456789ABCDEF"})
+	}))
+	defer server.Close()
+
+	published, err := publishLogsLoadoutShareCandidate(context.Background(), server.Client(), server.URL, candidates[0], "  泽塔常规毕业配装  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.URL != server.URL+"/s/0123456789ABCDEF" || receivedPreview.Title != "泽塔常规毕业配装" {
+		t.Fatalf("published=%+v preview=%+v", published, receivedPreview)
+	}
+	if len(receivedPreview.WeaponSkills) == 0 || receivedPreview.Wrightstone == nil || len(receivedPreview.Summons) != 4 || len(receivedPreview.MasterySkills) == 0 || len(receivedPreview.CombinedSkills) == 0 {
+		t.Fatalf("Logs public preview lost captured fields: %+v", receivedPreview)
+	}
+
+	tampered := candidates[0]
+	tampered.CharacterHash = "4D0A60C3"
+	if _, err := publishLogsLoadoutShareCandidate(context.Background(), server.Client(), server.URL, tampered, ""); err == nil || !strings.Contains(err.Error(), "角色标识") {
+		t.Fatalf("tampered candidate error=%v", err)
+	}
+}
+
 func TestLoadoutShareOnlineRejectsOversizedAndServiceErrors(t *testing.T) {
 	if _, err := publishLoadoutShareFrame(context.Background(), http.DefaultClient, "https://invalid.example", make([]byte, loadoutShareOnlineMaxFrameSize+1)); err == nil {
 		t.Fatal("oversized publish was accepted")

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,49 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
 )
+
+const relinkLogsPlayerJSON = `{
+  "actorIndex": 2,
+  "displayName": "Clipboard Player",
+  "characterName": "Zeta",
+  "characterType": "Pl1600",
+  "sigils": [{
+    "firstTraitId": 1342675484,
+    "firstTraitLevel": 15,
+    "secondTraitId": 3696775008,
+    "secondTraitLevel": 15,
+    "sigilId": 763309680,
+    "equippedCharacter": 0,
+    "sigilLevel": 15,
+    "acquisitionCount": 1,
+    "notificationEnum": 0
+  }],
+  "summons": [
+    {"summonId":1071160378,"mainTraitId":1342675484,"mainTraitLevel":1,"bonusId":1513740315,"bonusLevel":0},
+    {"summonId":1071160378,"mainTraitId":1342675484,"mainTraitLevel":1,"bonusId":1513740315,"bonusLevel":0},
+    {"summonId":1071160378,"mainTraitId":1342675484,"mainTraitLevel":1,"bonusId":1513740315,"bonusLevel":0},
+    {"summonId":1071160378,"mainTraitId":1342675484,"mainTraitLevel":1,"bonusId":1513740315,"bonusLevel":0}
+  ],
+  "abilities": [2514750994,1730610451,2537767594,1390669521],
+  "weaponKey": "",
+  "masterLevel": 55,
+  "skillboard": [32406538],
+  "stats": {"level": 100, "hp": 20000, "attack": 30000, "unk50": 0, "stunPower": 300, "criticalRate": 100, "power": 40000},
+  "weaponState": {
+    "weaponId": 37037396,
+    "exp": 1234,
+    "starLevel": 6,
+    "plusMarks": 99,
+    "awakeningLevel": 10,
+    "wrightstoneId": 166131241,
+    "wrightstoneTraits": [{"id": 1342675484, "level": 20}],
+    "innateTraits": [{"id": 2128439760, "level": 25}]
+  },
+  "isOnline": true,
+  "weaponInfo": null,
+  "overmasteryInfo": {"overmasteries": [{"id": 1386350517, "flags": 512, "value": 20}]},
+  "playerStats": null
+}`
 
 const logsSourceSchema = `CREATE TABLE logs (
 	id INTEGER PRIMARY KEY,
@@ -544,5 +588,102 @@ func TestReadLogsLoadoutSharesEscapesDatabaseURICharacters(t *testing.T) {
 	}
 	if len(candidates) != 1 || candidates[0].OwnerCode != "PL1600" {
 		t.Fatalf("escaped path candidates=%+v", candidates)
+	}
+}
+
+func TestParseLogsLoadoutJSONAcceptsCopiedPlayerData(t *testing.T) {
+	candidates, err := parseLogsLoadoutJSON([]byte(relinkLogsPlayerJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("candidates=%d, want 1", len(candidates))
+	}
+	candidate := candidates[0]
+	if candidate.OwnerCode != "PL1600" || candidate.PlayerName != "Clipboard Player" || candidate.SigilCount != 1 {
+		t.Fatalf("JSON candidate identity=%+v", candidate)
+	}
+	if !strings.Contains(candidate.ProtocolLabel, "Relink Logs") || !strings.Contains(candidate.ProtocolLabel, "JSON") || candidate.Preview == nil || candidate.Preview.Evidence != candidate.ProtocolLabel {
+		t.Fatalf("JSON protocol metadata=%+v preview=%+v", candidate, candidate.Preview)
+	}
+	for _, field := range []string{"stats", "sigils", "skills", "summons", "weapon", "weaponSkills", "wrightstone", "mastery", "overLimit"} {
+		if !containsString(candidate.CapturedFields, field) {
+			t.Fatalf("JSON capture missed %s: %+v", field, candidate.CapturedFields)
+		}
+	}
+}
+
+func TestParseLogsLoadoutJSONAcceptsPlayerArrayAndEncounterWrapper(t *testing.T) {
+	for name, payload := range map[string]string{
+		"array":   `[ ` + relinkLogsPlayerJSON + `, ` + relinkLogsPlayerJSON + ` ]`,
+		"wrapper": `{"playerData":[` + relinkLogsPlayerJSON + `]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidates, err := parseLogsLoadoutJSON([]byte(payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if name == "array" {
+				want = 2
+			}
+			if len(candidates) != want {
+				t.Fatalf("candidates=%d, want %d", len(candidates), want)
+			}
+		})
+	}
+}
+
+func TestParseLogsLoadoutJSONReportsSkippedArrayMembers(t *testing.T) {
+	unknown := strings.Replace(relinkLogsPlayerJSON, `"characterType": "Pl1600"`, `"characterType": {"Unknown": 3735928559}`, 1)
+	candidates, err := parseLogsLoadoutJSON([]byte(`[` + unknown + `,` + relinkLogsPlayerJSON + `]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || len(candidates[0].Warnings) == 0 || !strings.Contains(candidates[0].Warnings[len(candidates[0].Warnings)-1], "3735928559") && !strings.Contains(candidates[0].Warnings[len(candidates[0].Warnings)-1], "DEADBEEF") {
+		t.Fatalf("partial JSON import did not report the skipped member: %+v", candidates)
+	}
+}
+
+func TestLogsCharacterTypeJSONAcceptsStringAndUnknownVariant(t *testing.T) {
+	known := strings.Replace(relinkLogsPlayerJSON, `"characterType": "Pl1600"`, `"characterType": "Pl1600"`, 1)
+	if candidates, err := parseLogsLoadoutJSON([]byte(known)); err != nil || len(candidates) != 1 {
+		t.Fatalf("string characterType: candidates=%d err=%v", len(candidates), err)
+	}
+	unknown := strings.Replace(relinkLogsPlayerJSON, `"characterType": "Pl1600"`, `"characterType": {"Unknown": 3735928559}`, 1)
+	if _, err := parseLogsLoadoutJSON([]byte(unknown)); err == nil || !strings.Contains(err.Error(), "无法映射") {
+		t.Fatalf("unknown characterType error=%v", err)
+	}
+}
+
+func TestParseLogsLoadoutJSONAcceptsWeaponOnlyAndDegradesUnknownOptionalData(t *testing.T) {
+	weaponOnly := `{"characterType":"Pl1600","weaponState":{"weaponId":37037396,"wrightstoneId":166131241,"wrightstoneTraits":[{"id":3735928559,"level":20}],"innateTraits":[]}}`
+	candidates, err := parseLogsLoadoutJSON([]byte(weaponOnly))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || !containsString(candidates[0].CapturedFields, "weapon") || containsString(candidates[0].CapturedFields, "wrightstone") || len(candidates[0].Warnings) == 0 {
+		t.Fatalf("weapon-only JSON candidate=%+v", candidates)
+	}
+}
+
+func TestParseLogsLoadoutJSONRejectsUnsafeOrUselessPayloads(t *testing.T) {
+	tooManyPlayers := "[" + strings.TrimSuffix(strings.Repeat(relinkLogsPlayerJSON+",", logsLoadoutJSONMaximumPlayers+1), ",") + "]"
+	tooManySigils := fmt.Sprintf(`{"characterType":"Pl1600","sigils":[%s]}`,
+		strings.TrimSuffix(strings.Repeat(`{"sigilId":763309680,"firstTraitId":1342675484},`, loadoutMaxSigils+1), ","))
+	for name, payload := range map[string][]byte{
+		"empty":            nil,
+		"malformed":        []byte(`{"characterType":`),
+		"trailing":         []byte(relinkLogsPlayerJSON + ` {}`),
+		"oversized":        []byte(strings.Repeat(" ", logsLoadoutJSONMaximumBytes+1)),
+		"too many players": []byte(tooManyPlayers),
+		"too many sigils":  []byte(tooManySigils),
+		"no deployable":    []byte(`{"characterType":"Pl1600","stats":{"level":100}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseLogsLoadoutJSON(payload); err == nil {
+				t.Fatal("payload was accepted")
+			}
+		})
 	}
 }

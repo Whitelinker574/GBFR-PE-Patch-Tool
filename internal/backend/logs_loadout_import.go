@@ -1,12 +1,17 @@
 package backend
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
@@ -15,8 +20,10 @@ import (
 )
 
 const (
-	logsLoadoutMaximumRecords = 200
-	logsLoadoutMaximumBlob    = 8 * 1024 * 1024
+	logsLoadoutMaximumRecords     = 200
+	logsLoadoutMaximumBlob        = 8 * 1024 * 1024
+	logsLoadoutJSONMaximumBytes   = 1024 * 1024
+	logsLoadoutJSONMaximumPlayers = 16
 )
 
 type LogsLoadoutShareCandidate struct {
@@ -37,26 +44,26 @@ type LogsLoadoutShareCandidate struct {
 }
 
 type logsLoadoutEncounter struct {
-	PlayerData [4]*logsLoadoutPlayer `cbor:"playerData"`
+	PlayerData [4]*logsLoadoutPlayer `cbor:"playerData" json:"playerData"`
 }
 
 type logsLoadoutPlayer struct {
-	ActorIndex      uint32                      `cbor:"actorIndex"`
-	DisplayName     string                      `cbor:"displayName"`
-	CharacterName   string                      `cbor:"characterName"`
-	CharacterType   logsCharacterType           `cbor:"characterType"`
-	Sigils          []logsLoadoutSigil          `cbor:"sigils"`
-	Summons         []logsLoadoutSummon         `cbor:"summons"`
-	Abilities       []uint32                    `cbor:"abilities"`
-	WeaponKey       string                      `cbor:"weaponKey"`
-	MasterLevel     uint32                      `cbor:"masterLevel"`
-	Skillboard      []uint32                    `cbor:"skillboard"`
-	Stats           *logsLoadoutRecordStats     `cbor:"stats"`
-	WeaponState     *logsLoadoutWeaponState     `cbor:"weaponState"`
-	IsOnline        bool                        `cbor:"isOnline"`
-	WeaponInfo      *logsLoadoutWeaponInfo      `cbor:"weaponInfo"`
-	OvermasteryInfo *logsLoadoutOvermasteryInfo `cbor:"overmasteryInfo"`
-	PlayerStats     *logsLoadoutPlayerStats     `cbor:"playerStats"`
+	ActorIndex      uint32                      `cbor:"actorIndex" json:"actorIndex"`
+	DisplayName     string                      `cbor:"displayName" json:"displayName"`
+	CharacterName   string                      `cbor:"characterName" json:"characterName"`
+	CharacterType   logsCharacterType           `cbor:"characterType" json:"characterType"`
+	Sigils          []logsLoadoutSigil          `cbor:"sigils" json:"sigils"`
+	Summons         []logsLoadoutSummon         `cbor:"summons" json:"summons"`
+	Abilities       []uint32                    `cbor:"abilities" json:"abilities"`
+	WeaponKey       string                      `cbor:"weaponKey" json:"weaponKey"`
+	MasterLevel     uint32                      `cbor:"masterLevel" json:"masterLevel"`
+	Skillboard      []uint32                    `cbor:"skillboard" json:"skillboard"`
+	Stats           *logsLoadoutRecordStats     `cbor:"stats" json:"stats"`
+	WeaponState     *logsLoadoutWeaponState     `cbor:"weaponState" json:"weaponState"`
+	IsOnline        bool                        `cbor:"isOnline" json:"isOnline"`
+	WeaponInfo      *logsLoadoutWeaponInfo      `cbor:"weaponInfo" json:"weaponInfo"`
+	OvermasteryInfo *logsLoadoutOvermasteryInfo `cbor:"overmasteryInfo" json:"overmasteryInfo"`
+	PlayerStats     *logsLoadoutPlayerStats     `cbor:"playerStats" json:"playerStats"`
 }
 
 type logsCharacterType struct {
@@ -85,6 +92,39 @@ func (value *logsCharacterType) UnmarshalCBOR(data []byte) error {
 	return fmt.Errorf("decode characterType: unsupported enum variant")
 }
 
+func (value *logsCharacterType) UnmarshalJSON(data []byte) error {
+	var code string
+	if err := json.Unmarshal(data, &code); err == nil {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			return fmt.Errorf("decode characterType: empty string")
+		}
+		value.Code = code
+		value.UnknownHash = 0
+		return nil
+	}
+	var variants map[string]json.RawMessage
+	if err := json.Unmarshal(data, &variants); err != nil {
+		return fmt.Errorf("decode characterType: %w", err)
+	}
+	if len(variants) != 1 {
+		return fmt.Errorf("decode characterType: unsupported enum variant")
+	}
+	for key, raw := range variants {
+		if !strings.EqualFold(key, "Unknown") {
+			return fmt.Errorf("decode characterType: unsupported enum variant %q", key)
+		}
+		var hash uint32
+		if err := json.Unmarshal(raw, &hash); err != nil {
+			return fmt.Errorf("decode characterType Unknown: %w", err)
+		}
+		value.Code = ""
+		value.UnknownHash = hash
+		return nil
+	}
+	return fmt.Errorf("decode characterType: unsupported enum variant")
+}
+
 func (value logsCharacterType) MarshalCBOR() ([]byte, error) {
 	if strings.TrimSpace(value.Code) != "" {
 		return cbor.Marshal(value.Code)
@@ -103,55 +143,55 @@ func (value logsCharacterType) String() string {
 }
 
 type logsLoadoutSummon struct {
-	SummonID       uint32 `cbor:"summonId"`
-	MainTraitID    uint32 `cbor:"mainTraitId"`
-	MainTraitLevel uint32 `cbor:"mainTraitLevel"`
-	BonusID        uint32 `cbor:"bonusId"`
-	BonusLevel     uint32 `cbor:"bonusLevel"`
+	SummonID       uint32 `cbor:"summonId" json:"summonId"`
+	MainTraitID    uint32 `cbor:"mainTraitId" json:"mainTraitId"`
+	MainTraitLevel uint32 `cbor:"mainTraitLevel" json:"mainTraitLevel"`
+	BonusID        uint32 `cbor:"bonusId" json:"bonusId"`
+	BonusLevel     uint32 `cbor:"bonusLevel" json:"bonusLevel"`
 }
 
 type logsLoadoutSigil struct {
-	FirstTraitID     uint32 `cbor:"firstTraitId"`
-	FirstTraitLevel  uint32 `cbor:"firstTraitLevel"`
-	SecondTraitID    uint32 `cbor:"secondTraitId"`
-	SecondTraitLevel uint32 `cbor:"secondTraitLevel"`
-	SigilID          uint32 `cbor:"sigilId"`
-	SigilLevel       uint32 `cbor:"sigilLevel"`
+	FirstTraitID     uint32 `cbor:"firstTraitId" json:"firstTraitId"`
+	FirstTraitLevel  uint32 `cbor:"firstTraitLevel" json:"firstTraitLevel"`
+	SecondTraitID    uint32 `cbor:"secondTraitId" json:"secondTraitId"`
+	SecondTraitLevel uint32 `cbor:"secondTraitLevel" json:"secondTraitLevel"`
+	SigilID          uint32 `cbor:"sigilId" json:"sigilId"`
+	SigilLevel       uint32 `cbor:"sigilLevel" json:"sigilLevel"`
 }
 
 type logsLoadoutTrait struct {
-	ID    uint32 `cbor:"id"`
-	Level uint32 `cbor:"level"`
+	ID    uint32 `cbor:"id" json:"id"`
+	Level uint32 `cbor:"level" json:"level"`
 }
 
 type logsLoadoutWeaponState struct {
-	WeaponID          uint32             `cbor:"weaponId"`
-	EXP               uint32             `cbor:"exp"`
-	StarLevel         uint32             `cbor:"starLevel"`
-	PlusMarks         uint32             `cbor:"plusMarks"`
-	AwakeningLevel    uint32             `cbor:"awakeningLevel"`
-	WrightstoneID     uint32             `cbor:"wrightstoneId"`
-	WrightstoneTraits []logsLoadoutTrait `cbor:"wrightstoneTraits"`
-	InnateTraits      []logsLoadoutTrait `cbor:"innateTraits"`
+	WeaponID          uint32             `cbor:"weaponId" json:"weaponId"`
+	EXP               uint32             `cbor:"exp" json:"exp"`
+	StarLevel         uint32             `cbor:"starLevel" json:"starLevel"`
+	PlusMarks         uint32             `cbor:"plusMarks" json:"plusMarks"`
+	AwakeningLevel    uint32             `cbor:"awakeningLevel" json:"awakeningLevel"`
+	WrightstoneID     uint32             `cbor:"wrightstoneId" json:"wrightstoneId"`
+	WrightstoneTraits []logsLoadoutTrait `cbor:"wrightstoneTraits" json:"wrightstoneTraits"`
+	InnateTraits      []logsLoadoutTrait `cbor:"innateTraits" json:"innateTraits"`
 }
 
 type logsLoadoutWeaponInfo struct {
-	WeaponID          uint32             `cbor:"weaponId"`
-	StarLevel         uint32             `cbor:"starLevel"`
-	PlusMarks         uint32             `cbor:"plusMarks"`
-	AwakeningLevel    uint32             `cbor:"awakeningLevel"`
-	LegacyTrait1ID    uint32             `cbor:"trait1Id"`
-	LegacyTrait1Level uint32             `cbor:"trait1Level"`
-	LegacyTrait2ID    uint32             `cbor:"trait2Id"`
-	LegacyTrait2Level uint32             `cbor:"trait2Level"`
-	LegacyTrait3ID    uint32             `cbor:"trait3Id"`
-	LegacyTrait3Level uint32             `cbor:"trait3Level"`
-	WrightstoneTraits []logsLoadoutTrait `cbor:"wrightstoneTraits"`
-	InnateTraits      []logsLoadoutTrait `cbor:"innateTraits"`
-	WrightstoneID     uint32             `cbor:"wrightstoneId"`
-	WeaponLevel       uint32             `cbor:"weaponLevel"`
-	WeaponHP          uint32             `cbor:"weaponHp"`
-	WeaponAttack      uint32             `cbor:"weaponAttack"`
+	WeaponID          uint32             `cbor:"weaponId" json:"weaponId"`
+	StarLevel         uint32             `cbor:"starLevel" json:"starLevel"`
+	PlusMarks         uint32             `cbor:"plusMarks" json:"plusMarks"`
+	AwakeningLevel    uint32             `cbor:"awakeningLevel" json:"awakeningLevel"`
+	LegacyTrait1ID    uint32             `cbor:"trait1Id" json:"trait1Id"`
+	LegacyTrait1Level uint32             `cbor:"trait1Level" json:"trait1Level"`
+	LegacyTrait2ID    uint32             `cbor:"trait2Id" json:"trait2Id"`
+	LegacyTrait2Level uint32             `cbor:"trait2Level" json:"trait2Level"`
+	LegacyTrait3ID    uint32             `cbor:"trait3Id" json:"trait3Id"`
+	LegacyTrait3Level uint32             `cbor:"trait3Level" json:"trait3Level"`
+	WrightstoneTraits []logsLoadoutTrait `cbor:"wrightstoneTraits" json:"wrightstoneTraits"`
+	InnateTraits      []logsLoadoutTrait `cbor:"innateTraits" json:"innateTraits"`
+	WrightstoneID     uint32             `cbor:"wrightstoneId" json:"wrightstoneId"`
+	WeaponLevel       uint32             `cbor:"weaponLevel" json:"weaponLevel"`
+	WeaponHP          uint32             `cbor:"weaponHp" json:"weaponHp"`
+	WeaponAttack      uint32             `cbor:"weaponAttack" json:"weaponAttack"`
 }
 
 func (source *logsLoadoutWeaponInfo) effectiveWrightstoneTraits() []logsLoadoutTrait {
@@ -176,32 +216,32 @@ func (source *logsLoadoutWeaponInfo) effectiveWrightstoneTraits() []logsLoadoutT
 }
 
 type logsLoadoutOvermastery struct {
-	ID    uint32  `cbor:"id"`
-	Flags uint32  `cbor:"flags"`
-	Value float32 `cbor:"value"`
+	ID    uint32  `cbor:"id" json:"id"`
+	Flags uint32  `cbor:"flags" json:"flags"`
+	Value float32 `cbor:"value" json:"value"`
 }
 
 type logsLoadoutOvermasteryInfo struct {
-	Overmasteries []logsLoadoutOvermastery `cbor:"overmasteries"`
+	Overmasteries []logsLoadoutOvermastery `cbor:"overmasteries" json:"overmasteries"`
 }
 
 type logsLoadoutPlayerStats struct {
-	Level        uint32  `cbor:"level"`
-	TotalHP      uint32  `cbor:"totalHp"`
-	TotalAttack  uint32  `cbor:"totalAttack"`
-	StunPower    float32 `cbor:"stunPower"`
-	CriticalRate float32 `cbor:"criticalRate"`
-	TotalPower   uint32  `cbor:"totalPower"`
+	Level        uint32  `cbor:"level" json:"level"`
+	TotalHP      uint32  `cbor:"totalHp" json:"totalHp"`
+	TotalAttack  uint32  `cbor:"totalAttack" json:"totalAttack"`
+	StunPower    float32 `cbor:"stunPower" json:"stunPower"`
+	CriticalRate float32 `cbor:"criticalRate" json:"criticalRate"`
+	TotalPower   uint32  `cbor:"totalPower" json:"totalPower"`
 }
 
 type logsLoadoutRecordStats struct {
-	Level        uint32  `cbor:"level"`
-	HP           uint32  `cbor:"hp"`
-	Attack       uint32  `cbor:"attack"`
-	Unknown50    uint32  `cbor:"unk50"`
-	StunPower    float32 `cbor:"stunPower"`
-	CriticalRate float32 `cbor:"criticalRate"`
-	Power        uint32  `cbor:"power"`
+	Level        uint32  `cbor:"level" json:"level"`
+	HP           uint32  `cbor:"hp" json:"hp"`
+	Attack       uint32  `cbor:"attack" json:"attack"`
+	Unknown50    uint32  `cbor:"unk50" json:"unk50"`
+	StunPower    float32 `cbor:"stunPower" json:"stunPower"`
+	CriticalRate float32 `cbor:"criticalRate" json:"criticalRate"`
+	Power        uint32  `cbor:"power" json:"power"`
 }
 
 func normalizeLogsOwnerCode(value string) string {
@@ -758,6 +798,152 @@ func logsPlayerLoadoutShare(logTime int64, player *logsLoadoutPlayer) (*LogsLoad
 		CapturedFields: append([]string(nil), share.CapturedFields...), MissingFields: logsMissingCapturedFields(share.CapturedFields),
 		Warnings: warnings, CompatibilityCode: encoded.CompatibilityCode, Preview: preview,
 	}, nil
+}
+
+func decodeLogsLoadoutJSONPlayers(raw []byte) ([]*logsLoadoutPlayer, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 为空")
+	}
+	if len(raw) > logsLoadoutJSONMaximumBytes {
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 超过 %d KiB", logsLoadoutJSONMaximumBytes/1024)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	var root json.RawMessage
+	if err := decoder.Decode(&root); err != nil {
+		return nil, fmt.Errorf("解析 Relink Logs 角色 JSON 失败: %w", err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("Relink Logs 角色 JSON 后还有多余内容")
+		}
+		return nil, fmt.Errorf("解析 Relink Logs 角色 JSON 尾部失败: %w", err)
+	}
+
+	trimmed := bytes.TrimSpace(root)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 为空")
+	}
+	var players []*logsLoadoutPlayer
+	switch trimmed[0] {
+	case '[':
+		if err := json.Unmarshal(trimmed, &players); err != nil {
+			return nil, fmt.Errorf("解析 Relink Logs 角色数组失败: %w", err)
+		}
+	case '{':
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &fields); err != nil {
+			return nil, fmt.Errorf("解析 Relink Logs 角色对象失败: %w", err)
+		}
+		if playerData, wrapped := fields["playerData"]; wrapped {
+			if err := json.Unmarshal(playerData, &players); err != nil {
+				return nil, fmt.Errorf("解析 Relink Logs playerData 数组失败: %w", err)
+			}
+		} else {
+			var player logsLoadoutPlayer
+			if err := json.Unmarshal(trimmed, &player); err != nil {
+				return nil, fmt.Errorf("解析 Relink Logs 角色对象失败: %w", err)
+			}
+			players = []*logsLoadoutPlayer{&player}
+		}
+	default:
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 顶层必须是角色对象或角色数组")
+	}
+	if len(players) == 0 {
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 中没有角色")
+	}
+	if len(players) > logsLoadoutJSONMaximumPlayers {
+		return nil, fmt.Errorf("Relink Logs 角色 JSON 最多一次导入 %d 名角色", logsLoadoutJSONMaximumPlayers)
+	}
+	for index, player := range players {
+		if player == nil {
+			continue
+		}
+		if len(player.Sigils) > loadoutMaxSigils {
+			return nil, fmt.Errorf("Relink Logs 第 %d 名角色的因子超过 %d 格", index+1, loadoutMaxSigils)
+		}
+		if len(player.Summons) > 32 || len(player.Abilities) > 32 || len(player.Skillboard) > 256 {
+			return nil, fmt.Errorf("Relink Logs 第 %d 名角色的配装数组异常过长", index+1)
+		}
+		if player.WeaponState != nil && (len(player.WeaponState.WrightstoneTraits) > 32 || len(player.WeaponState.InnateTraits) > 32) {
+			return nil, fmt.Errorf("Relink Logs 第 %d 名角色的武器词条数组异常过长", index+1)
+		}
+		if player.OvermasteryInfo != nil && len(player.OvermasteryInfo.Overmasteries) > 32 {
+			return nil, fmt.Errorf("Relink Logs 第 %d 名角色的上限突破数组异常过长", index+1)
+		}
+	}
+	return players, nil
+}
+
+func parseLogsLoadoutJSON(raw []byte) ([]LogsLoadoutShareCandidate, error) {
+	players, err := decodeLogsLoadoutJSONPlayers(raw)
+	if err != nil {
+		return nil, err
+	}
+	logTime := time.Now().UnixMilli()
+	protocolLabel := runtimePatchMonitorText("Relink Logs 角色 JSON", "Relink Logs Character JSON")
+	result := make([]LogsLoadoutShareCandidate, 0, len(players))
+	skipped := 0
+	lastReason := ""
+	for _, player := range players {
+		if player == nil {
+			skipped++
+			lastReason = "角色数组包含空项"
+			continue
+		}
+		candidate, convertErr := logsPlayerLoadoutShare(logTime, player)
+		if convertErr != nil {
+			skipped++
+			lastReason = convertErr.Error()
+			continue
+		}
+		candidate.ProtocolLabel = protocolLabel
+		if candidate.Preview != nil {
+			candidate.Preview.Verification = "relink-logs-character-json-v1"
+			candidate.Preview.Evidence = protocolLabel
+		}
+		result = append(result, *candidate)
+	}
+	if len(result) == 0 {
+		if lastReason == "" {
+			lastReason = "没有包含可部署的因子、武器、技能、召唤石、专精或上限突破"
+		}
+		return nil, fmt.Errorf("没有找到可导入的 Relink Logs 角色配装：%s", lastReason)
+	}
+	if skipped > 0 {
+		warning := fmt.Sprintf(runtimePatchMonitorText("另有 %d 条角色数据未导入；最后原因：%s", "%d character records were not imported; last reason: %s"), skipped, lastReason)
+		for index := range result {
+			result[index].Warnings = append(result[index].Warnings, warning)
+		}
+	}
+	return result, nil
+}
+
+func (a *App) ParseLogsLoadoutJSON(payload string) ([]LogsLoadoutShareCandidate, error) {
+	return parseLogsLoadoutJSON([]byte(payload))
+}
+
+func (a *App) SelectLogsLoadoutJSON() ([]LogsLoadoutShareCandidate, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择 Relink Logs 角色 JSON",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Relink Logs 角色 JSON (*.json)", Pattern: "*.json"},
+			{DisplayName: "所有文件", Pattern: "*.*"},
+		},
+	})
+	if err != nil || path == "" {
+		return nil, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("打开 Relink Logs 角色 JSON 失败: %w", err)
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, logsLoadoutJSONMaximumBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("读取 Relink Logs 角色 JSON 失败: %w", err)
+	}
+	return parseLogsLoadoutJSON(raw)
 }
 
 func logsReadOnlyDatabaseDSN(path string) (string, error) {

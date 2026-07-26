@@ -656,6 +656,41 @@ func (a *App) PublishLoadoutShareNamed(savePath string, unitID uint32, title str
 	return a.publishLoadoutShare(savePath, unitID, title)
 }
 
+func publishLogsLoadoutShareCandidate(ctx context.Context, client *http.Client, endpoint string, candidate LogsLoadoutShareCandidate, title string) (*LoadoutPublishedShare, error) {
+	share, err := decodeLoadoutShareCode(candidate.CompatibilityCode)
+	if err != nil {
+		return nil, fmt.Errorf("Logs 配装完整性校验失败: %w", err)
+	}
+	if share.SourceKind != loadoutShareSourceLogsDB {
+		return nil, fmt.Errorf("只允许上传由 Logs 解析得到的配装")
+	}
+	if candidate.Preview == nil {
+		return nil, fmt.Errorf("Logs 配装缺少可发布预览")
+	}
+	if !strings.EqualFold(strings.TrimSpace(candidate.CharacterHash), strings.TrimSpace(share.CharaHash)) ||
+		!strings.EqualFold(strings.TrimSpace(candidate.OwnerCode), strings.TrimSpace(share.OwnerCode)) ||
+		!strings.EqualFold(strings.TrimSpace(candidate.Preview.CharacterHash), strings.TrimSpace(share.CharaHash)) ||
+		!strings.EqualFold(strings.TrimSpace(candidate.Preview.CharacterCode), strings.TrimSpace(share.OwnerCode)) {
+		return nil, fmt.Errorf("Logs 配装角色标识与分享内容不一致")
+	}
+	frame, err := loadoutShareFrameFromCompatibilityCode(candidate.CompatibilityCode)
+	if err != nil {
+		return nil, err
+	}
+	preview := previewForRuntimeLoadout(share, *candidate.Preview)
+	if preview == nil {
+		return nil, fmt.Errorf("无法生成 Logs 配装预览")
+	}
+	if value := trimLoadoutShareTitle(title); value != "" {
+		preview.Title = value
+	}
+	return publishLoadoutShareFrameWithMetadata(ctx, client, endpoint, frame, preview)
+}
+
+func (a *App) PublishLogsLoadoutShare(candidate LogsLoadoutShareCandidate, title string) (*LoadoutPublishedShare, error) {
+	return publishLogsLoadoutShareCandidate(a.ctx, loadoutShareHTTPClient(), loadoutShareServiceURL, candidate, title)
+}
+
 func (a *App) publishLoadoutShare(savePath string, unitID uint32, title string) (*LoadoutPublishedShare, error) {
 	share, err := buildLoadoutShare(savePath, unitID)
 	if err != nil {
