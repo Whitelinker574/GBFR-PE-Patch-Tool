@@ -146,10 +146,14 @@ test('verified character hash selects the matching official compact icon', () =>
 })
 
 test('complete build simulation follows weapon, factors, mastery and summon slots', () => {
-  assert.match(source, /LoadoutSimulateBuild/)
+	assert.match(source, /LoadoutSimulateBuild/)
 	assert.match(source, /form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*selectedMasteryHashes\.value[\s\S]*backendSummonSlotIDs\(\)/)
-	assert.match(source, /watch\(\(\)\s*=>\s*form\.value\.weaponSlotId\s*,\s*refreshSim\)/)
-	assert.match(source, /watch\(\(\)\s*=>\s*selectedMasteryHashes\.value\.slice\(\)\s*,\s*refreshSim/)
+	assert.match(source, /const simulationInputKey = computed\(\(\) => \{/)
+	assert.match(source, /JSON\.stringify\(\[[\s\S]*loadContextRevision\.value[\s\S]*form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*payload\.constructedSigils[\s\S]*selectedMasteryHashes\.value[\s\S]*backendSummonSlotIDs\(\)[\s\S]*\]\)/)
+	assert.match(source, /watch\(simulationInputKey, refreshSim\)/)
+	assert.doesNotMatch(source, /watch\(factorSlots, refreshSim, \{ deep: true \}\)/)
+	assert.match(source, /masterySummaryKey = computed\(\(\) => `\$\{loadContextRevision\.value\}:\$\{ctx\.value\?\.ownerCode \|\| ''\}/)
+	assert.match(source, /hydrateFromTarget\(\)\s*\n\s*loadContextRevision\.value \+= 1/)
   assert.match(source, /w\.summonSlotIds\s*=\s*backendSummonSlotIDs\(\)/)
 })
 

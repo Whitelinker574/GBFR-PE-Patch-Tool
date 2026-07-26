@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref } from 'vue'
 import {
   SigilMemoryAcquire,
   SigilMemoryGetOptions,
@@ -373,6 +373,10 @@ onMounted(async () => {
     options.sigils = result?.sigils || []
     options.traits = result?.traits || []
   } catch (error) { showStatus(`加载因子目录失败：${String(error)}`, 'error') }
+})
+onDeactivated(stopPolling)
+onActivated(() => {
+  if (!disposed && isActive.value && !pollTimer) pollTimer = window.setTimeout(poll, POLL_DELAY)
 })
 onBeforeUnmount(() => {
   disposed = true

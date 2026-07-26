@@ -16,7 +16,9 @@ test('live wrightstone editor is reachable from the realtime group and owns func
   assert.match(shell, /items:\s*\[[^\]]*'wrightstoneMemory'/)
   assert.match(assetManifest.assets.wrightstoneMemory.art.variants.full.url, /wrightstone-memory-official-edge-safe\.full\./)
   assert.match(assetManifest.assets.wrightstoneMemory.sticker.variants.full.url, /wrightstone-memory\.full\./)
-  assert.match(shell, /<WrightstoneMemoryGenerator\s+v-else-if="activeTab === 'wrightstoneMemory'"/)
+  assert.match(shell, /cachedRuntimePages = Object\.freeze\(\{[\s\S]*?wrightstoneMemory:\s*WrightstoneMemoryGenerator/)
+  assert.match(component, /onDeactivated\(stopPolling\)/)
+  assert.match(component, /onActivated\(\(\) => \{ if \(status\.hooked\) startPolling\(\) \}\)/)
   assert.match(shell, /\.tool-stage\[data-tool="wrightstoneMemory"\]/)
 })
 

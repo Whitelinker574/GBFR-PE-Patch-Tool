@@ -706,6 +706,7 @@ const currentMasterLevel = computed(() => Math.max(1, Math.min(55, Number(
 ))))
 const currentMasterStars = computed(() => masteryProgressStars(currentMasterLevel.value))
 const simulating = ref(false)
+const loadContextRevision = ref(0)
 let simTimer = null
 let masteryTimer = null
 let simRequestId = 0
@@ -750,10 +751,18 @@ function refreshSim() {
     finally { if (requestId === simRequestId) simulating.value = false }
   }, 180)
 }
-watch(factorSlots, refreshSim, { deep: true })
-watch(summonSlotIds, refreshSim, { deep: true })
-watch(() => form.value.weaponSlotId, refreshSim)
-watch(() => selectedMasteryHashes.value.slice(), refreshSim, { deep: true })
+const simulationInputKey = computed(() => {
+  const payload = buildFactorWritePayload(factorSlots.value)
+  return JSON.stringify([
+    loadContextRevision.value,
+    form.value.weaponSlotId,
+    payload.sigilSlotIds,
+    payload.constructedSigils,
+    selectedMasteryHashes.value,
+    backendSummonSlotIDs(),
+  ])
+})
+watch(simulationInputKey, refreshSim)
 const catClass = (label) => ({ '攻击类': 'atk', '基础能力': 'base', '防御类': 'def', '支援类': 'sup' }[label] || 'misc')
 function formatEffectTotal(total) {
   const value = Number(total?.value || 0)
@@ -772,7 +781,8 @@ function refreshMasterySummary() {
     catch { masterySummary.value = null }
   }, 100)
 }
-watch(() => effectiveMasteryHashes.value.slice(), refreshMasterySummary, { deep: true })
+const masterySummaryKey = computed(() => `${loadContextRevision.value}:${ctx.value?.ownerCode || ''}:${effectiveMasteryHashes.value.join('|')}`)
+watch(masterySummaryKey, refreshMasterySummary)
 
 function setMasteryHashes(hashes) {
   masteryPick.value = { R1: [], R2: [], R3: [], EX: [] }
@@ -858,6 +868,7 @@ async function loadCtx() {
     if (occupiedSlots.value.length) cloneFrom.value = occupiedSlots.value[0].unitId
     if (masterySources.value.length) form.value.masterySource = masterySources.value[0].unitId
     hydrateFromTarget()
+    loadContextRevision.value += 1
     void readRuntimePanel(true)
   } catch (err) {
     emit('status', String(err), 'error')

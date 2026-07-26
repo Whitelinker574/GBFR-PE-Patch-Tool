@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, defineAsyncComponent, onMounted, watch } from 'vue'
+import { reactive, ref, computed, defineAsyncComponent, nextTick, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
@@ -13,6 +13,7 @@ import HomeJournal from './HomeJournal.vue'
 import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
 import { functionAssetManifest } from '../generated/functionAssetManifest.js'
+import { beginPerformanceMeasure } from '../performanceMonitor.js'
 
 const pageLoaders = Object.freeze({
   progression: () => import('./ProgressionEditor.vue'),
@@ -78,6 +79,15 @@ const RuntimePatchFeatures = asyncPage('patchCombat')
 const RuntimePatchMonitor = asyncPage('runtimeMonitor')
 const FormulaSampler = asyncPage('formulaSampler')
 const LanguageSettings = asyncPage('language')
+const cachedRuntimePages = Object.freeze({
+  sigilMemory: SigilMemoryGenerator,
+  loadout: SigilLoadoutRestore,
+  wrightstoneMemory: WrightstoneMemoryGenerator,
+  summon: SummonEditor,
+  overlimit: OverLimit,
+  runtime: MiscTools,
+  formulaSampler: FormulaSampler,
+})
 
 const state = reactive({
   exePath: '',
@@ -111,6 +121,8 @@ const saveStatus = ref('')
 const statusType = ref('')
 const updateLoading = ref(false)
 const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
+const navigationBusy = ref(false)
+const navigationError = ref(null)
 let hasAttemptedGameDetection = false
 
 watch(activeTab, (value) => {
@@ -379,43 +391,75 @@ const iconCoverageRows = computed(() => language.value === 'zh' ? [
 ])
 
 const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
+const activeCachedRuntimePage = computed(() => cachedRuntimePages[activeTab.value] || null)
 const isLoadoutWorkspace = computed(() => activeTab.value === 'loadoutPresets' && loadoutEditing.value)
-const functionArt = Object.fromEntries(Object.entries(functionAssetManifest.assets)
-  .map(([id, asset]) => [id, asset.art.variants.display.url]))
+const functionArt = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.art.variants.display.url])))
 const currentArt = computed(() => functionArt[activeTab.value] || '')
-const functionStickers = Object.fromEntries(Object.entries(functionAssetManifest.assets)
-  .map(([id, asset]) => [id, asset.sticker.variants.display.url]))
+const functionStickers = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.sticker.variants.display.url])))
 const currentSticker = computed(() => functionStickers[activeTab.value] || '')
 const warmedImages = new Map()
 const warmedTools = new Map()
 
-function warmImage(src) {
-  if (!src || warmedImages.has(src)) return warmedImages.get(src)
-  const image = new Image()
-  image.decoding = 'async'
-  image.src = src
-  const pending = typeof image.decode === 'function'
-    ? image.decode().catch(() => undefined)
-    : new Promise(resolve => { image.onload = image.onerror = resolve })
-  warmedImages.set(src, pending)
+function decodeImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => resolve(src)
+    image.onerror = () => reject(new Error(`图片加载失败：${src}`))
+    image.src = src
+    if (typeof image.decode === 'function') image.decode().then(() => resolve(src), () => {})
+  })
+}
+
+function warmImage(src, fallback = '') {
+  const cacheKey = `${src}|${fallback}`
+  if (!src || warmedImages.has(cacheKey)) return warmedImages.get(cacheKey)
+  const pending = decodeImage(src).catch(error => fallback && fallback !== src ? decodeImage(fallback) : Promise.reject(error))
+  warmedImages.set(cacheKey, pending)
+  pending.catch(() => warmedImages.delete(cacheKey))
   return pending
 }
 
 function warmTool(id) {
   if (!id) return Promise.resolve()
   if (warmedTools.has(id)) return warmedTools.get(id)
+  const asset = functionAssetManifest.assets[id]
   const pending = Promise.all([
-    loadPageModule(id).catch(() => null),
-    warmImage(functionArt[id]),
-    warmImage(functionStickers[id]),
-  ]).then(() => undefined)
+    loadPageModule(id),
+    warmImage(functionArt[id], asset?.art?.variants?.full?.url),
+    warmImage(functionStickers[id], asset?.sticker?.variants?.full?.url),
+  ]).then(([, art, sticker]) => {
+    if (art) functionArt[id] = art
+    if (sticker) functionStickers[id] = sticker
+  })
   warmedTools.set(id, pending)
+  pending.catch(() => warmedTools.delete(id))
   return pending
+}
+
+function queueWarmTool(id) {
+  void warmTool(id).catch(() => {})
+}
+
+function waitForTool(id, timeoutMs = 15000) {
+  let timeout = 0
+  return Promise.race([
+    warmTool(id),
+    new Promise((_, reject) => {
+      timeout = window.setTimeout(() => reject(new Error('页面资源加载超时，请重试。')), timeoutMs)
+    }),
+  ]).finally(() => window.clearTimeout(timeout))
+}
+
+function afterNextPaint() {
+  return new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
 }
 
 function warmGroup(group) {
   if (!group?.items?.length) return Promise.resolve()
-  return warmTool(group.items[0])
+  return warmTool(group.items[0]).catch(() => undefined)
 }
 
 const activeGroup = computed(() => navigation.value.find(group => group.id === currentMeta.value.group) || navigation.value[0])
@@ -429,10 +473,27 @@ async function selectGroup(group) {
 
 async function selectTool(id) {
   const request = ++navigationRequest
-  await warmTool(id)
-  if (request !== navigationRequest) return
+  const finishMeasure = beginPerformanceMeasure('page-switch', { from: activeTab.value, to: id })
+  navigationBusy.value = true
+  navigationError.value = null
+  try {
+    await waitForTool(id)
+  } catch (error) {
+    if (request === navigationRequest) navigationError.value = { id, message: String(error?.message || error) }
+    finishMeasure({ cancelled: false, failed: true })
+    return
+  } finally {
+    if (request === navigationRequest) navigationBusy.value = false
+  }
+  if (request !== navigationRequest) {
+    finishMeasure({ cancelled: true })
+    return
+  }
   if (id !== 'loadoutPresets') loadoutEditing.value = false
   activeTab.value = id
+  await nextTick()
+  await afterNextPaint()
+  finishMeasure({ cancelled: false })
   if (toolMeta[id]?.group === 'tools') ensureGameDetection()
 }
 
@@ -625,9 +686,9 @@ function showStatus(message, type) {
               :class="{ active: activeTab === id, waiting: toolMeta[id].tone === 'waiting' }"
               :aria-current="activeTab === id ? 'page' : undefined"
               :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${id === 'runtimeMonitor' ? ' · 开启后自动后台检测' : toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
-              @pointerenter="warmTool(id)"
-              @pointerdown="warmTool(id)"
-              @focus="warmTool(id)"
+              @pointerenter="queueWarmTool(id)"
+              @pointerdown="queueWarmTool(id)"
+              @focus="queueWarmTool(id)"
               @click="selectTool(id)"
             >
               {{ toolMeta[id].title.replace(/（[^）]*）/g, '') }}
@@ -638,9 +699,14 @@ function showStatus(message, type) {
             </button>
         </nav>
 
+        <div v-if="navigationBusy || navigationError" class="navigation-load-state" :class="{ error: navigationError }" role="status">
+          <span>{{ navigationError ? navigationError.message : '正在准备页面与图片…' }}</span>
+          <button v-if="navigationError" class="ui-btn is-ghost is-sm" @click="selectTool(navigationError.id)">重试</button>
+        </div>
+
         <div class="workspace-scroll" :class="{ 'tool-workspace': activeTab !== 'home', 'loadout-workspace-scroll': isLoadoutWorkspace }">
           <div class="workspace-scene">
-          <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
+          <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="queueWarmTool" @open="selectTool" />
 
           <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
             <section class="tool-center-scroll">
@@ -664,18 +730,14 @@ function showStatus(message, type) {
               @status="showStatus"
               @deploy-loadout="deployRuntimeLoadout"
             />
-            <ProgressionEditor v-if="!isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
+            <KeepAlive>
+              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" @status="showStatus" />
+            </KeepAlive>
+            <ProgressionEditor v-if="!activeCachedRuntimePage && !isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
-            <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
-            <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
             <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
-            <WrightstoneMemoryGenerator v-else-if="activeTab === 'wrightstoneMemory'" @status="showStatus" />
-            <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
-            <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
-            <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
-            <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
@@ -1284,6 +1346,21 @@ button,input,select { font:inherit; }
 .switcher-tag.live { color:var(--info-ink); background:var(--info-bg); }
 .switcher-tag.offline { color:var(--success-ink); background:var(--success-bg); }
 .switcher-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); }
+
+.navigation-load-state {
+  min-height:36px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:var(--space-3);
+  padding:var(--space-2) var(--content-gutter);
+  border-bottom:1px solid rgba(140,104,49,.23);
+  color:var(--text-secondary);
+  background:rgba(245,234,208,.94);
+  font-size:var(--fs-sm);
+}
+.navigation-load-state.error { color:var(--danger-ink); background:var(--danger-bg); }
 
 .workspace-scroll {
   min-width:0;

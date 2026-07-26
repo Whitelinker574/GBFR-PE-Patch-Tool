@@ -10,7 +10,8 @@ test('formula sampler is routed after the general runtime monitor in the read-on
   assert.match(shell, /formulaSampler:\s*\(\)\s*=>\s*import\(['"]\.\/FormulaSampler\.vue['"]\)/)
   assert.match(shell, /const FormulaSampler = asyncPage\(['"]formulaSampler['"]\)/)
   assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]runtimeMonitor['"],\s*['"]formulaSampler['"]\]/)
-  assert.match(shell, /<FormulaSampler\s+v-else-if="activeTab === 'formulaSampler'"\s+@status="showStatus"\s*\/>/)
+  assert.match(shell, /cachedRuntimePages = Object\.freeze\(\{[\s\S]*?formulaSampler:\s*FormulaSampler/)
+  assert.match(shell, /<KeepAlive>[\s\S]*?<component v-if="activeCachedRuntimePage"/)
   assert.match(home, /id:\s*['"]formulaSampler['"],[\s\S]*?title:\s*['"]公式采样['"]/)
 })
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { SigilMemoryAcquire, SigilMemoryGetOptions, SigilMemoryGetStatus, SigilMemoryRelease, SigilMemoryUpdateOwned } from '../../wailsjs/go/backend/App'
 import { matchText } from '../utils/matchText.js'
 import { backendLanguageReady } from '../backendLanguage'
@@ -503,6 +503,8 @@ watch(renamingId, (v) => {
   if (v) document.addEventListener('mousedown', onRenameOutsideClick)
   else document.removeEventListener('mousedown', onRenameOutsideClick)
 })
+onDeactivated(stopPolling)
+onActivated(() => { if (status.hooked) startPolling() })
 onBeforeUnmount(() => {
   disposed = true
   lifecycleEpoch++

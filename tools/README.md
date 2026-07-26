@@ -8,6 +8,10 @@ This directory contains the maintainer scripts that reproduce checked-in data fr
 | `generate_ap_tree_panel_growth.py` | The local extracted table database, table directory, and explicit dataset-version label | Rebuilds `internal/backend/data/ap_tree_panel_growth.json` with source checksums | After mastery, Fate, weapon-tree, or permanent-growth data changes |
 | `sync_reference_icons.ps1` | Extracted game assets and catalogs under `internal/backend/data/` | Rebuilds official UI icon mappings without translated-filename guesses | After catalog or bundled icon changes |
 | `sync_reference_icons.repro.test.js` | The icon script and current mapping catalogs | Proves full and skills-only runs are deterministic and remove stale generated keys | Before accepting changes to the icon script |
+| `measure_frontend_bundle.mjs` | Vite build manifest and `performance-budget.json` | Reports the exact initial JS/CSS gzip graph and fails CI when a budget is exceeded | Every production frontend build |
+| `performance_budget.test.js` | Production frontend build and performance budget | Verifies the budget evaluator and current entry graph | CI after the frontend build |
+
+`frontend/scripts/generate_function_assets.mjs` is the only frontend build-time asset generator. It creates content-hashed thumb/display/full variants and a versioned function-art manifest before development or production builds. Its output stays generated and is not committed.
 
 Each script exposes its own command-line parameters and fails when a required source is missing. Source files are supplied locally; extracted game data and generated scratch workbooks are not committed.
 

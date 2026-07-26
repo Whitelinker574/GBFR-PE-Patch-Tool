@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import {
   FormulaSamplerAttach,
   FormulaSamplerCaptureOwned,
@@ -311,16 +311,28 @@ function formatStat(value, digits = 0) {
   return Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—'
 }
 
+function startObservationTimer() {
+  if (observeTimer != null) window.clearInterval(observeTimer)
+  observeTimer = window.setInterval(() => { void observeCurrent() }, 750)
+}
+
+function stopObservationTimer() {
+  if (observeTimer != null) window.clearInterval(observeTimer)
+  observeTimer = null
+}
+
 onMounted(() => {
 	void refreshRuntimeObjects()
-	observeTimer = window.setInterval(() => { void observeCurrent() }, 750)
+  startObservationTimer()
 })
+onDeactivated(stopObservationTimer)
+onActivated(startObservationTimer)
 
 onBeforeUnmount(() => {
   disposed = true
 	observeEpoch++
 	observingToken = ''
-	if (observeTimer != null) window.clearInterval(observeTimer)
+  stopObservationTimer()
   if (sampler.value.sessionToken) void FormulaSamplerCloseOwned(sampler.value.sessionToken).catch(() => {})
 })
 </script>
