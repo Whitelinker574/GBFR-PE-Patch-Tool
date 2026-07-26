@@ -78,6 +78,8 @@ function makeCommunityDB() {
             if (!loadouts.has(code)) loadouts.set(code, { code, title, character_name: characterName, character_hash: characterHash, created_at: createdAt, likes_count: 0 })
           } else if (sql.startsWith('INSERT OR IGNORE INTO likes')) {
             likes.add(`${values[0]}\u0000${values[1]}`)
+          } else if (sql.startsWith('DELETE FROM likes')) {
+            likes.delete(`${values[0]}\u0000${values[1]}`)
           } else if (sql.startsWith('UPDATE loadouts SET likes_count')) {
             const code = values[1]
             const entry = loadouts.get(code)
@@ -297,26 +299,40 @@ test('catalog cards show and update deduplicated likes without opening the detai
   assert.deepEqual(Object.keys(firstCatalog.items[0].preview).sort(), ['masteryCount', 'masteryLabel', 'sigils', 'weaponSkills'])
   assert.equal(community.catalogQueries(), 1, 'one catalog page should use one batched like query')
 
-  for (const visitorKey of ['visitor-alpha', 'visitor-alpha', 'visitor-beta']) {
-    const response = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/like`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitorKey }),
+  const like = async (visitorKey, liked) => worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/like`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitorKey, liked }),
     }), env)
-    assert.equal(response.status, 200)
-  }
-  assert.equal(community.likes.size, 2, 'the same anonymous visitor must not add two likes')
+  assert.equal((await like('visitor-alpha', true)).status, 200)
+  assert.equal((await like('visitor-alpha', true)).status, 200)
+  assert.equal((await like('visitor-beta', true)).status, 200)
+  const removed = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${published.compactCode}/like`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitorKey: 'visitor-alpha', liked: false }),
+  }), env).then(response => response.json())
+  assert.equal(removed.liked, false)
+  assert.equal(community.likes.size, 1, 'a second click must remove the same anonymous visitor\'s like')
   const refreshed = await worker.fetch(new Request('https://share.example/api/v1/loadouts'), env).then(response => response.json())
-  assert.equal(refreshed.items[0].likes, 2)
+  assert.equal(refreshed.items[0].likes, 1)
 
   const page = await worker.fetch(new Request('https://share.example/'), env).then(response => response.text())
   assert.match(page, /<article class="loadout-card"/)
   assert.match(page, /class="loadout-card-main"/)
-  assert.match(page, /class="card-like"/)
+  assert.match(page, /class="card-like(?:'|\+)/)
   assert.match(page, /event\.preventDefault\(\);event\.stopPropagation\(\);likeCard\(button\)/)
-  assert.match(page, /aria-pressed="false"/)
+  assert.match(page, /aria-pressed="'\+liked\+'"/)
   assert.match(page, /GitHub 下载应用/)
   assert.match(page, /github\.com\/Whitelinker574\/GBFR-PE-Patch-Tool\/releases\/latest/)
   assert.match(page, /content-visibility:auto/)
   assert.match(page, /loading="lazy" decoding="async"/)
+  assert.match(page, /<select id="sort"/)
+  assert.match(page, /<option value="time">最新<\/option>/)
+  assert.match(page, /<option value="name">名称<\/option>/)
+  assert.match(page, /<option value="likes">点赞<\/option>/)
+  assert.match(page, /document\.querySelector\('#sort'\)\?\.addEventListener\('change',renderCatalog\)/)
+  assert.match(page, /Date\.parse\(b\.createdAt\|\|0\)-Date\.parse\(a\.createdAt\|\|0\)/)
+  assert.match(page, /hint\.rel='prefetch';hint\.href=link\.href/)
+  for (const [, script] of page.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(() => new Function(script), 'every catalog inline script must remain valid JavaScript')
+  }
 })
 
 test('landing page escapes untrusted titles before server-side HTML rendering', async () => {
@@ -428,6 +444,7 @@ test('publishing stores a sanitized complete preview and keeps first metadata im
   const result = await publish.json()
   const meta = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${result.compactCode}/meta`), env)
   assert.equal(meta.status, 200)
+  assert.equal(meta.headers.get('Cache-Control'), 'public, max-age=60, stale-while-revalidate=300')
   const metadata = await meta.json()
   const originalMetadata = structuredClone(metadata)
   assert.equal(metadata.title, '训练场测试')
