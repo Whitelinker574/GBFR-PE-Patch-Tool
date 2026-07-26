@@ -935,7 +935,7 @@ function rosterBar(activeSlug = '', allActive = false, lang = 'zh') {
 }
 
 function showcaseStyles() {
-  return `<style>
+  return `<link rel="icon" href="/favicon.ico?v=2" type="image/x-icon" sizes="any"><style>
   @font-face{font-family:"GBFR UI Latin";src:url('/assets/fonts/gbfr-ui.woff2') format('woff2');font-style:normal;font-weight:400 800;font-display:swap}
   :root{font-family:"GBFR UI Latin","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif;color:#3f3932;background:#e9dfcc;color-scheme:light;--paper:#f7f0df;--paper-deep:#efe2c8;--ink:#3f3932;--ink-soft:#655b50;--brass:#896331;--line:rgba(105,76,37,.24)}
   *{box-sizing:border-box}::selection{background:rgba(167,123,57,.28)}
@@ -1124,7 +1124,8 @@ export default {
       return env.ASSETS.fetch(request)
     }
     if (request.method === 'GET' && url.pathname === '/favicon.ico') {
-      return new Response(null, { status: 204, headers: { 'Cache-Control': 'public, max-age=86400' } })
+      if (env.ASSETS) return env.ASSETS.fetch(request)
+      return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } })
     }
     if (request.method === 'GET' && url.pathname === '/health') {
       return jsonResponse({ ok: true, protocol: 'GBLC', frameVersions: [...FRAME_VERSIONS] }, 200, { 'Cache-Control': 'no-store' })

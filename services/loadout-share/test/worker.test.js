@@ -314,6 +314,7 @@ test('catalog cards show and update deduplicated likes without opening the detai
   assert.equal(refreshed.items[0].likes, 1)
 
   const page = await worker.fetch(new Request('https://share.example/'), env).then(response => response.text())
+  assert.match(page, /rel="icon" href="\/favicon\.ico\?v=2"/)
   assert.match(page, /<article class="loadout-card"/)
   assert.match(page, /class="loadout-card-main"/)
   assert.match(page, /class="card-like(?:'|\+)/)
@@ -741,6 +742,22 @@ test('character names, routes, hashes, and avatars stay on the same roster recor
   assert.equal(characterByIdentity('塞达').slug, 'zeta')
   assert.equal(characterByIdentity('', '0D21B430').slug, 'zeta')
 	assert.equal(characterByIdentity('格兰').name, '古兰')
+})
+
+test('favicon reuses the desktop app identity instead of the browser fallback', async () => {
+  assert.equal(existsSync(new URL('../public/favicon.ico', import.meta.url)), true)
+  let requestedPath = ''
+  const response = await worker.fetch(new Request('https://share.example/favicon.ico'), {
+    ASSETS: {
+      fetch(request) {
+        requestedPath = new URL(request.url).pathname
+        return new Response(new Uint8Array([0, 1, 2]), { headers: { 'Content-Type': 'image/x-icon' } })
+      },
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('Content-Type'), 'image/x-icon')
+  assert.equal(requestedPath, '/favicon.ico')
 })
 
 test('legacy previews are canonicalized with extracted hash-specific Chinese names', async () => {
