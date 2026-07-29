@@ -39,6 +39,14 @@ func TestPatchCoreResourceMatchesEmbeddedAMD64DLL(t *testing.T) {
 	if len(resource) > patchCoreReleaseSizeLimit {
 		t.Fatalf("patch_core resource size = %d bytes, limit = %d", len(resource), patchCoreReleaseSizeLimit)
 	}
+	for _, leakedBuildPath := range [][]byte{
+		[]byte(`GBFR-Codex-Field-Lab`),
+		[]byte(`source-git\src_dll\patch_core`),
+	} {
+		if bytes.Contains(resource, leakedBuildPath) {
+			t.Fatalf("patch_core resource leaks local build path segment %q", leakedBuildPath)
+		}
+	}
 
 	dll, err := pe.Open(filepath.FromSlash(patchCoreResourcePath))
 	if err != nil {
@@ -93,6 +101,10 @@ func TestPatchCoreProjectPublishesStableResource(t *testing.T) {
 	}
 	if !strings.Contains(normalized, `../thirdparty/libmem/lib/debug`) {
 		t.Fatal("patch_core Debug x64 must link the bundled debug libmem library")
+	}
+	releaseX64 := regexp.MustCompile(`(?s)<itemdefinitiongroup\s+condition="'\$\(configuration\)\|\$\(platform\)'=='release\|x64'">.*?</itemdefinitiongroup>`).FindString(normalized)
+	if releaseX64 == "" || !strings.Contains(releaseX64, `<generatedebuginformation>false</generatedebuginformation>`) {
+		t.Fatal("patch_core Release x64 must omit CodeView/PDB paths from the distributed DLL")
 	}
 }
 

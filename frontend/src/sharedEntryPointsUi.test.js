@@ -60,6 +60,18 @@ test('share-image rendering is single-flight and disables both export entry poin
   assert.match(workshop, /:disabled="exportBusy \|\| !selected" @click="download"/u)
 })
 
+test('share-image identity, equipment, and QR all stay bound to the selected loadout', () => {
+  assert.match(viewer, /function shareGroup\(loadout\)[^{]*\{[^}]*loadouts:\s*\[loadout\]/u)
+  assert.match(viewer, /:group="shareGroup\(lo\)"/u)
+  assert.match(viewer, /:published="publishedShareFor\(lo\)"/u)
+  assert.match(workshop, /characterSharePortraitProfile\(props\.group\?\.charaHash\)/u)
+  assert.match(workshop, /characterAssetIcon\(props\.group\?\.charaHash\)/u)
+  assert.match(workshop, /weaponAssetIcon\(\{ hash: selected\.value\?\.weaponHash \}\)/u)
+  assert.match(workshop, /for \(const sigil of selected\.value\?\.sigils \|\| \[\]\)/u)
+  assert.match(workshop, /watch\(\(\) => props\.published\?\.url/u)
+  assert.match(workshop, /QRCode\.toDataURL\(value,[\s\S]*errorCorrectionLevel:\s*'M'/u)
+})
+
 test('progression editor uses the shared save-source picker with isolated language copy', () => {
   assert.match(progression, /import SaveSourcePicker from '\.\/SaveSourcePicker\.vue'/u)
   assert.match(progression, /const tx = \(zh, en\) => language\.value === 'en' \? en : zh/u)

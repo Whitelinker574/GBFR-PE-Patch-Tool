@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "GBFR PE Patch Tool",
+  "name": "GBFR PE Patch Tool 测试版",
   "outputfilename": "GBFR PE Patch Tool",
   "frontend:install": "npm ci --include=optional",
   "frontend:build": "npm run build",
@@ -12,9 +12,9 @@
   },
   "info": {
     "companyName": "Whitelinker574",
-    "productName": "GBFR PE Patch Tool",
+    "productName": "GBFR PE Patch Tool 测试版",
     "productVersion": "2.0.0",
     "copyright": "Community tool for personal save management",
-    "comments": "Granblue Fantasy: Relink DLC 2.0.2 community tool"
+    "comments": "Granblue Fantasy: Relink DLC 2.0.2 experimental test build"
   }
 }

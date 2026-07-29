@@ -342,13 +342,18 @@ func TestRuntimeLoadoutDetectorRestartAllowsDifferentStableTask(t *testing.T) {
 
 func TestRuntimeLoadoutDetectorMembersDropsAddressesAndUnavailableSlots(t *testing.T) {
 	loadout := runtimeLoadoutDetectorTestMembers()[0].Loadout
+	teammate := loadout
+	teammate.CharacterCode = "PL1600"
+	teammate.CharacterHash = "0D21B430"
+	teammate.CharacterName = "泽塔"
 	snapshot := RuntimePatchPartyMonitor{Entities: []RuntimePatchPartyEntity{
 		{Role: "player", Present: true, Address: 0x12345678, Loadout: &loadout},
-		{Role: "party1", Present: true, Address: 0x87654321, Loadout: unavailableRuntimePatchPartyLoadout(nil)},
+		{Role: "party1", Present: true, Address: 0x87654321, Loadout: &teammate},
+		{Role: "party2", Present: true, Address: 0x99999999, Loadout: unavailableRuntimePatchPartyLoadout(nil)},
 		{Role: "companion", Present: true, Address: 0x22222222},
 	}}
 	members := runtimeLoadoutDetectorMembers(snapshot)
-	if len(members) != 1 || members[0].Role != "player" || !members[0].Loadout.Stable {
+	if len(members) != 1 || members[0].Role != "party1" || members[0].CharacterName != "泽塔" || !members[0].Loadout.Stable {
 		t.Fatalf("detector member sanitization mismatch: %+v", members)
 	}
 }

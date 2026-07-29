@@ -94,6 +94,28 @@ function targetName(slot) { return traitOption(slot.hash)?.displayName || format
 function traitIcon(hash, name = '') { return traitAssetIcon({ hash, name }) }
 function traitIconForOption(trait) { return traitAssetIcon({ internalId: trait?.internalId, hash: trait?.hash, name: trait?.displayName }) }
 function traitCatalogValue(slot) { return slot.hash ? String(normaliseHash(slot.hash)) : '' }
+function duplicateTraitMessage() {
+  const seen = new Map()
+  for (const slot of traitSlots) {
+    const hash = normaliseHash(slot.hash)
+    if (!hash) continue
+    if (seen.has(hash)) {
+      const previous = seen.get(hash)
+      return language.value === 'en'
+        ? `${slotLabel(slot)} duplicates ${slotLabel(previous)}.`
+        : `${slotLabel(slot)}与${slotLabel(previous)}重复。`
+    }
+    seen.set(hash, slot)
+  }
+  return ''
+}
+function traitCatalogOptionsFor(slot) {
+  const selected = new Set(traitSlots
+    .filter(candidate => candidate !== slot)
+    .map(candidate => normaliseHash(candidate.hash))
+    .filter(Boolean))
+  return traitCatalogOptions.value.filter(option => !selected.has(normaliseHash(option.hash)) || normaliseHash(option.hash) === normaliseHash(slot.hash))
+}
 function selectTrait(slot, value) {
   const wasEmpty = !slot.hash
   slot.hash = normaliseHash(value)
@@ -178,6 +200,8 @@ const validationMessage = computed(() => {
       return language.value === 'en' ? `${slotLabel(slot)} exceeds the skill curve cap (${max}).` : `${slotLabel(slot)}超过技能效果曲线上限 ${max}。`
     }
   }
+  const duplicate = duplicateTraitMessage()
+  if (duplicate) return duplicate
   if (!changes.value.length) return text('目标值与当前记录相同。', 'Target values are identical to the current record.')
   return ''
 })
@@ -300,7 +324,7 @@ async function write() {
   const confirmed = await confirmDialog.value?.ask({
     title: text('写入当前祝福石', 'Write Current Wrightstone'),
     message: language.value === 'en' ? `Write ${changes.value.length} changes?` : `确认写入 ${changes.value.length} 项变更？`,
-    detail: `${changeDetail}\n\n天然组合与等级只作提示；将按当前三槽值写入。`,
+    detail: `${changeDetail}\n\n${text('重复技能和超过技能曲线的等级会被拒绝；确认后只修改游戏中当前选中的这颗祝福石。', 'Duplicate traits and levels above the skill curve are rejected. Confirming changes only the wrightstone currently selected in-game.')}`,
     tone: 'warning',
     confirmLabel: text('确认写入', 'Confirm Write'),
   })
@@ -320,7 +344,7 @@ async function write() {
       if (hookOwnerToken === ownerToken) hookOwnerToken = ''
       applyStatus(released)
       stale.value = false
-      liveMessage.value = text('写入成功，读取已自动停止，游戏指令已恢复。', 'Write succeeded. Capture stopped automatically and the game instruction was restored.')
+      liveMessage.value = text('写入成功：三槽修改已保存到当前祝福石；读取已自动停止，游戏原始指令已恢复。继续修改前请重新启用并选择目标。', 'Write succeeded: all three-slot changes were saved to the current wrightstone. Capture stopped automatically and the original game instruction was restored. Enable capture and select a target again before another edit.')
       emit('status', liveMessage.value, 'success')
     } catch (releaseError) {
       if (disposed) return
@@ -371,8 +395,8 @@ onBeforeUnmount(() => {
       <section class="connection-card section ui-card">
         <header class="ui-split">
           <div>
-            <h2 class="ui-section-title">{{ text('捕获状态', 'Capture Status') }}</h2>
-            <p class="ui-section-copy">{{ text('捕获游戏内当前选中的祝福石记录，核对三槽后一次性写入。', 'Capture the currently selected in-game wrightstone, verify all three slots, then write once.') }}</p>
+            <h2 class="ui-section-title">{{ text('第一步 · 读取游戏中选中的祝福石', 'Step 1 · Read the Selected In-Game Wrightstone') }}</h2>
+            <p class="ui-section-copy">{{ text('点“启用读取”，再到游戏祝福石列表中高亮目标；回到这里刷新后会显示真实三槽。', 'Select Enable Capture, highlight the target in the in-game wrightstone list, then return and refresh to see its actual three slots.') }}</p>
           </div>
           <span class="ui-tag" :class="status.selectedAddr && !stale ? 'is-ok' : status.hooked ? 'is-info' : ''">{{ statusLabel }}</span>
         </header>
@@ -380,19 +404,19 @@ onBeforeUnmount(() => {
           <div class="connection-actions ui-actions">
             <button type="button" class="ui-btn is-primary" :disabled="loading || status.hooked" @click="enable">{{ text('启用读取', 'Enable Capture') }}</button>
             <button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">{{ text('刷新状态', 'Refresh Status') }}</button>
-            <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">{{ text('停止读取', 'Stop Capture') }}</button>
+            <button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked" @click="disable">{{ text('停止读取并恢复', 'Stop Capture and Restore') }}</button>
           </div>
           <p class="connection-message ui-notice" :class="{ 'is-warn': stale }" aria-live="polite">{{ liveMessage }}</p>
         </div>
-        <p class="ui-hint">{{ text('读取 Hook 启用期间不要切入铁匠铺的其他操作；写入成功后会自动停止读取，避免游戏闪退。', 'Do not switch to other blacksmith actions while the capture hook is active. Capture stops automatically after a successful write to avoid crashes.') }}</p>
+        <p class="ui-hint">{{ text('读取开启期间，请停留在祝福石列表，不要切到铁匠铺其他操作；写入成功后会自动停止并恢复游戏指令，避免游戏闪退。', 'While capture is enabled, stay in the wrightstone list and do not switch to other blacksmith actions. A successful write stops capture and restores the game instruction automatically to avoid a game crash.') }}</p>
         <p v-if="status.sourceVersion" class="ui-hint capture-source">{{ text(`捕获来源：runtime patch ${status.sourceVersion} 当前查看项（2.0.2 完整指令守卫）`, `Capture source: runtime patch ${status.sourceVersion} current-view entry (full 2.0.2 instruction guard)`) }}</p>
       </section>
 
       <section class="record-panel section ui-card">
         <header class="ui-split">
           <div>
-            <h3 class="ui-section-title">{{ text('三槽记录', 'Three-Slot Record') }}</h3>
-            <p class="ui-section-copy">{{ text('当前值保持只读；目标值只有在重新捕获记录后才可写。', 'Current values remain read-only. Target values become writable only after a fresh capture.') }}</p>
+            <h3 class="ui-section-title">{{ text('第二步 · 核对并调整三条技能', 'Step 2 · Review and Adjust All Three Traits') }}</h3>
+            <p class="ui-section-copy">{{ text('卡片上方是游戏当前值，下方是准备写入的目标值；第一条固有技能只能改等级。', 'The upper area of each card shows the current game value and the lower area is the pending value. The first intrinsic trait allows level changes only.') }}</p>
           </div>
           <code>{{ status.selectedAddr ? `0x${Number(status.selectedAddr).toString(16).toUpperCase()}` : text('未选择', 'Not Selected') }}</code>
         </header>
@@ -422,15 +446,16 @@ onBeforeUnmount(() => {
                 <span class="ui-field-label">{{ text('目标词条', 'Target Trait') }}</span>
                 <CatalogSelect
                   :model-value="traitCatalogValue(slot)"
-                  :options="traitCatalogOptions"
+                  :options="traitCatalogOptionsFor(slot)"
                   :icon-resolver="traitIconForOption"
                   :optional="index > 0"
-                  :disabled="!status.selectedAddr || stale"
+                  :disabled="index === 0 || !status.selectedAddr || stale"
                   :placeholder="text('尚未选择特性', 'No Trait Selected')"
                   :search-placeholder="text('搜索特性名称', 'Search Traits')"
                   detail-key="maxLevel"
                   @update:model-value="selectTrait(slot, $event)"
                 />
+                <small v-if="index === 0" class="ui-field-help">{{ text('固有第一词条随当前祝福类型锁定；实时页只修改等级。', 'The first trait is fixed by the current wrightstone type; only its level can be changed here.') }}</small>
               </label>
               <label class="ui-field trait-level-field">
                 <span class="ui-field-label">{{ text('目标等级', 'Target Level') }}</span>
@@ -451,7 +476,7 @@ onBeforeUnmount(() => {
             <span><b>{{ statusLabel }}</b><small>{{ validationMessage || (language === 'en' ? `${changes.length} changes pending` : `${changes.length} 项待写入`) }}</small></span>
             <small class="ui-hint">{{ text('天然等级是默认参考；最高可填到对应技能效果曲线的目录上限。', 'Natural levels are defaults; the maximum follows each skill effect curve.') }}</small>
             <button type="button" class="ui-btn" :disabled="!status.selectedAddr || stale" @click="syncDraftFromStatus">{{ text('还原当前值', 'Restore Current Values') }}</button>
-            <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? text('写入中…', 'Writing…') : text('写入三槽', 'Write Three Slots') }}</button>
+            <button type="button" class="ui-btn is-primary" :disabled="!canWrite" @click="write">{{ writing ? text('正在写入并恢复…', 'Writing and Restoring…') : text('第三步 · 写入当前祝福石', 'Step 3 · Write the Current Wrightstone') }}</button>
           </aside>
         </div>
       </section>

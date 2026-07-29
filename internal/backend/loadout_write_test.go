@@ -820,16 +820,20 @@ func TestLoadoutApplyClonesExactRealSaveSigilTemplateOnSaveCopy(t *testing.T) {
 	}
 }
 
-func TestPrepareLoadoutSigilAcceptsWritableFreeformTraitsAndLevels(t *testing.T) {
+func TestPrepareLoadoutSigilRejectsFreeformIdentityButAllowsCurveLevels(t *testing.T) {
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
 	item := naturalConstructedSigilItem(t)
+	item.Level = 16
+	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item}); err != nil {
+		t.Fatalf("固定词条身份不变时，技能曲线内的非天然等级应保留可写: %v", err)
+	}
 	var freeTrait *TraitDef
 	for index := range cat.Traits {
 		trait := &cat.Traits[index]
-		if isSelectableTrait(trait) && highestLevel(trait.AllowedLevels, derefInt(trait.MaxLevel)) >= 16 {
+		if isSelectableTrait(trait) && trait.InternalID != item.PrimaryTraitID {
 			freeTrait = trait
 			break
 		}
@@ -837,17 +841,57 @@ func TestPrepareLoadoutSigilAcceptsWritableFreeformTraitsAndLevels(t *testing.T)
 	if freeTrait == nil {
 		t.Fatal("目录中没有修改上限至少 16 的可选词条")
 	}
-	item.Level = 16
 	item.PrimaryTraitID = freeTrait.InternalID
-	item.PrimaryLevel = 16
+	item.PrimaryLevel = 15
 	item.SecondaryTraitID = freeTrait.InternalID
-	item.SecondaryLevel = 16
-	prepared, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item})
-	if err != nil {
-		t.Fatalf("可编码的非自然配置只能警告，不应拒绝: %v", err)
+	item.SecondaryLevel = 15
+	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item}); err == nil {
+		t.Fatal("配装构造器不得接受自由主词条或主副重复")
 	}
-	if prepared.item.PrimaryTraitID != freeTrait.InternalID || prepared.item.SecondaryTraitID != freeTrait.InternalID {
-		t.Fatalf("自由主副词条未保留: %+v", prepared.item)
+}
+
+func TestPrepareLoadoutSigilForSaveUsesUnifiedKnownTemplateCombinationRules(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		gemUnitID = uint32(GemSlotBaseID)
+		slotID    = uint32(77)
+		traitBase = uint32(TraitSlotBase)
+	)
+	scalar := func(idType, unitID, value uint32) *unitEntry {
+		entry := &unitEntry{
+			IDType: idType, UnitID: unitID, ValueCnt: 1,
+			data: make([]byte, 4),
+		}
+		entry.SetUint32(value)
+		return entry
+	}
+	save := &SaveData{unitsByType: map[uint32][]*unitEntry{
+		GemSlotIDType:    {scalar(GemSlotIDType, gemUnitID, slotID)},
+		GemIDType:        {scalar(GemIDType, gemUnitID, 0xCE6C62CF)},
+		GemLevelIDType:   {scalar(GemLevelIDType, gemUnitID, 15)},
+		GemFlagsIDType:   {scalar(GemFlagsIDType, gemUnitID, NormalSigilFlags)},
+		TraitHashIDType:  {scalar(TraitHashIDType, traitBase, 0x7EDD69D0), scalar(TraitHashIDType, traitBase+1, 0xF26BAEA5)},
+		TraitLevelIDType: {scalar(TraitLevelIDType, traitBase, 15), scalar(TraitLevelIDType, traitBase+1, 15)},
+	}}
+	index := buildLoadoutIndex(save)
+	_, err = prepareLoadoutSigilForSave(save, index, cat, LoadoutConstructedSigil{
+		Index: 0, TemplateSlotID: slotID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "不能用于因子") {
+		t.Fatalf("已损坏的怒发冲冠模板组合必须被统一合法性门拒绝，实际错误: %v", err)
+	}
+	secondary, ok := save.findUnitExact(TraitHashIDType, traitBase+1)
+	if !ok {
+		t.Fatal("测试模板缺少副词条")
+	}
+	secondary.SetUint32(0xDC584F60)
+	if _, err := prepareLoadoutSigilForSave(save, index, cat, LoadoutConstructedSigil{
+		Index: 0, TemplateSlotID: slotID,
+	}); err != nil {
+		t.Fatalf("合法的怒发冲冠 V+ + 伤害上限模板不应被拒绝: %v", err)
 	}
 }
 

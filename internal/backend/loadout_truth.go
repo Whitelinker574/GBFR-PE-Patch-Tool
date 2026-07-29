@@ -149,7 +149,9 @@ func synthesizeSigilNameForTraits(cat *Catalog, primaryName string, hasSecondary
 		}
 		return fallbackSynthesizedSigilName(base, "secondary", chinese)
 	}
-	for _, suffix := range []string{"V+", "V", "+", ""} {
+	// A hashless instance without a secondary trait represents the single-trait
+	// family shape. Do not let a newly cataloged V+ shell rename it to V+.
+	for _, suffix := range []string{"V", "+", ""} {
 		if suffixes[suffix] {
 			if suffix == "" {
 				return base
@@ -159,6 +161,9 @@ func synthesizeSigilNameForTraits(cat *Catalog, primaryName string, hasSecondary
 			}
 			return base + " " + suffix
 		}
+	}
+	if suffixes["V+"] {
+		return base + " V"
 	}
 	return fallbackSynthesizedSigilName(base, "", chinese)
 }

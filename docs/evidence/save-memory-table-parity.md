@@ -7,7 +7,7 @@
 | Summon types, main traits, sub parameters | `SummonSaveGen.GetOptions` | `App.SummonGetOptions` | Exact: both call the same function (189 / 82 / 22) |
 | Summon natural pools and levels | `validateSummonTraitChange` | `validateSummonTraitChange` | Exact: both use the same 189-rule validator |
 | Wrightstone traits and levels | `WrightstoneGen.GetTraitList` | `App.WrightstoneMemoryGetOptions` | Exact: same catalog and level resolver |
-| Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same unified 221-item catalog (189 table-backed + 32 supplemental), primary traits, secondary pools and natural level sets |
+| Sigil catalog | `SigilGen` and loadout constructor | `App.SigilMemoryGetOptions` | Exact: same unified 222-item catalog (189 generated table-backed + 33 locked 2.0.2 supplemental rows), primary traits, secondary pools and natural level sets |
 
 The parity contract is executable in `catalog_channel_parity_test.go`. Historical
 runtime-only hash names remain labelled when found in memory. The editors may

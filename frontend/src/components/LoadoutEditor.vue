@@ -1,10 +1,9 @@
 <script setup>
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutImportCode, LoadoutImportShortCode, LoadoutRuntimePanelStats, LoadoutShareCode, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, PublishLoadoutShare, PublishLoadoutShareNamed, SummonGetOptions } from '../../wailsjs/go/backend/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/backend/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
-import { optimizerEquipmentDraft } from '../loadoutOptimizerApply.js'
 import { formatFinalStat, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { buildConstructCatalog, collectBagTraitOptions, filterAndSortBagSigils, filterConstructCatalog, resolveConstructSelection } from '../loadoutCatalogFilters'
@@ -18,6 +17,8 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import LoadoutImportDialog from './LoadoutImportDialog.vue'
 import LoadoutShareCodeDialog from './LoadoutShareCodeDialog.vue'
 
+const LoadoutOptimizer = defineAsyncComponent(() => import('./LoadoutOptimizer.vue'))
+
 const props = defineProps({
   savePath: { type: String, default: '' },
   charaHash: { type: String, default: '' },
@@ -26,6 +27,7 @@ const props = defineProps({
   pendingImportCode: { type: String, default: '' },
   pendingAtlasConstruct: { type: Object, default: null },
   pendingOptimizerPlan: { type: Object, default: null },
+  pendingOptimizerTarget: { type: Object, default: null },
   preferredUnitId: { type: Number, default: 0 },
 })
 const emit = defineEmits(['status', 'reload', 'import-consumed'])
@@ -67,6 +69,7 @@ const bagViewportWidth = ref(900)
 const bagViewportHeight = ref(420)
 let bagResizeObserver = null
 const factorMode = ref('construct')
+const factorWorkspaceMode = ref('manual')
 const masteryExpanded = ref(false)
 const pendingSkillHash = ref('')
 const constructCatalog = ref([])
@@ -148,7 +151,15 @@ const configuredFactorCount = computed(() => factorSlotCount(factorSlots.value))
 const factorSlotCards = computed(() => factorSlots.value.map((entry, index) => {
   if (!entry) return { index, empty: true }
   if (entry.kind === 'construct') {
-    return { index, kind: 'construct', ...entry.preview, slotId: 0 }
+    return {
+      index,
+      kind: 'construct',
+      ...entry.preview,
+      slotId: 0,
+      exactSigilHash: entry.exactSigilHash || '',
+      exactPrimaryTraitHash: entry.exactPrimaryTraitHash || '',
+      exactSecondaryTraitHash: entry.exactSecondaryTraitHash || '',
+    }
   }
   const sigil = (ctx.value?.sigils || []).find(item => item.slotId === entry.slotId)
   return {
@@ -510,7 +521,7 @@ const filteredConstructCatalog = computed(() => {
 })
 const selectedConstructSigil = computed(() => fullConstructCatalog.value.find(item => item.internalId === constructSigilId.value) || null)
 const selectedConstructPrimary = computed(() => constructTraits.value.find(item => item.internalId === constructPrimaryId.value) || null)
-const constructSecondaryOptions = computed(() => constructTraits.value)
+const constructSecondaryOptions = computed(() => constructCompatibleTraits.value)
 const selectedConstructSecondary = computed(() => constructSecondaryOptions.value.find(item => item.internalId === constructSecondaryId.value) || null)
 function highestAllowed(levels, fallback = 0) {
   return (levels || []).reduce((max, value) => value <= 15 && value > max ? value : max, Math.min(fallback, 15))
@@ -672,6 +683,26 @@ async function loadMasteryPool() {
 
 const selectedSlot = computed(() => slots.value.find(s => s.unitId === targetSlot.value) || null)
 const selectedLoadout = computed(() => props.loadouts.find(item => item.unitId === targetSlot.value) || null)
+const optimizerBaseLoadout = computed(() => ({
+  ...(selectedLoadout.value || {}),
+  name: form.value.name || selectedLoadout.value?.name || '',
+  weaponSlotId: Number(form.value.weaponSlotId || 0),
+  mastery: selectedMasteryHashes.value.slice(),
+  summonSlotIds: summonSlotIds.value.slice(),
+  sigils: factorSlotCards.value.filter(card => !card.empty).map(card => ({
+    slotId: Number(card.slotId || 0),
+    hash: card.hash || card.exactSigilHash || '',
+    name: card.name || '因子',
+    primaryTraitId: card.primaryTraitId || '',
+    primaryTraitHash: card.primaryTraitHash || card.exactPrimaryTraitHash || '',
+    primaryTraitName: card.primaryTraitName || '',
+    primaryTraitLevel: Number(card.primaryTraitLevel || 0),
+    secondaryTraitId: card.secondaryTraitId || '',
+    secondaryTraitHash: card.secondaryTraitHash || card.exactSecondaryTraitHash || '',
+    secondaryTraitName: card.secondaryTraitName || '',
+    secondaryTraitLevel: Number(card.secondaryTraitLevel || 0),
+  })),
+}))
 const selectedMasteryHashes = computed(() => resolveMasteryHashes({
   mode: masteryMode.value,
   picks: masteryPick.value,
@@ -929,28 +960,7 @@ let handledOptimizerPlanRequest = 0
 function stageOptimizerPlan(payload) {
   const picked = payload?.result?.picked || []
   if (!ctx.value) return false
-  const equipment = optimizerEquipmentDraft(payload?.result)
-  let equipmentApplied = false
-  if (equipment.weaponSlotId && (ctx.value.weapons || []).some(item => Number(item.slotId) === equipment.weaponSlotId)) {
-    form.value.weaponSlotId = equipment.weaponSlotId
-    importedWeaponSkillSnapshot.value = equipment.weaponSkillHashes.length === 5 ? equipment.weaponSkillHashes.slice() : []
-    equipmentApplied = true
-  }
-  if (equipment.summonSlotIds.length === 4 && equipment.summonSlotIds.every(slotId => (statContext.value.summons || []).some(item => Number(item.slotId) === slotId))) {
-    summonSlotIds.value = equipment.summonSlotIds.slice()
-    writeGlobalSummons.value = true
-    equipmentApplied = true
-  }
-  if (equipment.masteryHashes.length) {
-    masteryMode.value = 'free'
-    setMasteryHashes(equipment.masteryHashes)
-    importedMasterySnapshot.value = equipment.masteryHashes.slice()
-    if (equipment.masteryUnitId && masterySources.value.some(item => Number(item.unitId) === equipment.masteryUnitId)) {
-      form.value.masterySource = equipment.masteryUnitId
-    }
-    equipmentApplied = true
-  }
-  if (!picked.length) return equipmentApplied
+  if (!picked.length) return false
   const baseSlots = [...factorSlots.value]
   let next = createFactorSlots()
   let cursor = 0
@@ -1005,8 +1015,24 @@ function stageOptimizerPlan(payload) {
   factorSlots.value = next
   activeFactorIndex.value = 0
   op.value = 'write'
-  factorMode.value = payload.domain === 'catalog' || payload.domain === 'table' || payload.domain === 'table-exact' ? 'construct' : 'bag'
+  factorMode.value = next.some(entry => entry?.kind === 'construct') ? 'construct' : 'bag'
   return true
+}
+function optimizerPlanMessage(payload) {
+  const owned = Number(payload?.result?.ownedCount || 0)
+  const constructed = Number(payload?.result?.constructedCount || 0)
+  const deployment = payload?.result?.deploymentMode === 'owned-first'
+    ? `已优先复用 ${owned} 个背包因子，并为 ${constructed} 个缺口准备独立新因子；`
+    : ''
+  return `${deployment}优化方案已载入当前角色配装草稿，请核对因子和目标槽后保存`
+}
+function applyOptimizerPlan(payload) {
+  if (!stageOptimizerPlan(payload)) {
+    emit('status', '优化方案没有可用于当前存档的装备或因子', 'error')
+    return
+  }
+  factorWorkspaceMode.value = 'manual'
+  emit('status', optimizerPlanMessage(payload), 'success')
 }
 function consumePendingOptimizerPlan() {
   const payload = props.pendingOptimizerPlan
@@ -1016,7 +1042,9 @@ function consumePendingOptimizerPlan() {
   if (requestedTarget && slots.value.some(slot => Number(slot.unitId) === requestedTarget)) targetSlot.value = requestedTarget
   hydrateFromTarget()
   handledOptimizerPlanRequest = requestId
-  if (stageOptimizerPlan(payload)) emit('status', '优化方案已载入当前角色配装草稿；请核对武器、祝福、召唤石、专精、因子和目标槽后保存', 'success')
+  if (stageOptimizerPlan(payload)) {
+    emit('status', optimizerPlanMessage(payload), 'success')
+  }
   else emit('status', '优化方案没有可用于当前存档的装备或因子', 'error')
 }
 
@@ -1878,8 +1906,15 @@ async function apply() {
       <template v-if="op === 'write'">
 
         <div class="ed-field factor-field">
-          <label>因子配置（{{ configuredFactorCount }}/12 · 背包 {{ ctx.sigils.length }}）</label>
+          <div class="factor-heading">
+            <label>因子配置（{{ configuredFactorCount }}/12 · 背包 {{ ctx.sigils.length }}）</label>
+            <nav class="factor-workspace-tabs" role="tablist" aria-label="因子配置方式">
+              <button type="button" role="tab" :aria-selected="factorWorkspaceMode === 'manual'" :class="{ active: factorWorkspaceMode === 'manual' }" @click="factorWorkspaceMode = 'manual'">手动配装</button>
+              <button type="button" role="tab" :aria-selected="factorWorkspaceMode === 'smart'" :class="{ active: factorWorkspaceMode === 'smart' }" @click="factorWorkspaceMode = 'smart'">按技能配装</button>
+            </nav>
+          </div>
 
+          <template v-if="factorWorkspaceMode === 'manual'">
           <div class="factor-slot-grid ui-card-grid" aria-label="当前配装的十二个因子槽">
             <button v-for="card in factorSlotCards" :key="card.index" class="factor-slot-card"
               :class="{ active: activeFactorIndex === card.index, empty: card.empty, draft: card.kind === 'construct' }"
@@ -1985,12 +2020,16 @@ async function apply() {
                 <input v-model.number="constructSigilLevel" type="number" min="0" :max="constructLevelLimit(50)" class="ui-input" @change="constructSigilLevel = clampConstructLevel(constructSigilLevel, constructLevelLimit(50))" />
               </label>
               <label class="constructor-wide"><span>主词条</span>
-                <CatalogSelect v-model="constructPrimaryId" :options="constructTraits" :icon-resolver="traitIconForOption" placeholder="选择主词条" search-placeholder="搜索全部词条" />
+                <span class="constructor-fixed-trait ui-input">
+                  <img v-if="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" :src="traitIcon(selectedConstructPrimary?.displayName, selectedConstructPrimary?.hash, selectedConstructPrimary?.internalId)" alt="" />
+                  <b>{{ selectedConstructPrimary?.displayName || '选择因子后自动确定' }}</b>
+                  <small>2.0.2 固定主词条</small>
+                </span>
               </label>
               <label><span>主词条等级</span>
                 <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary))" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary)))" />
               </label>
-              <label class="constructor-wide"><span>副词条 · 全部已知词条</span>
+              <label class="constructor-wide"><span>副词条 · 2.0.2 合法词池</span>
                 <CatalogSelect v-model="constructSecondaryId" :options="constructSecondaryOptions" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
               </label>
               <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary))" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary)))" /></label>
@@ -2001,6 +2040,17 @@ async function apply() {
               <button class="ui-btn is-primary" :disabled="!constructSigilId || !constructPrimaryId" @click="stageConstructedFactor">替换槽 {{ String(activeFactorIndex + 1).padStart(2, '0') }}</button>
             </div>
           </div>
+          </template>
+          <LoadoutOptimizer embedded
+            v-else
+            :save-path="savePath"
+            :chara-hash="charaHash"
+            :chara-name="charaName"
+            :base-loadout="optimizerBaseLoadout"
+            :pending-target="pendingOptimizerTarget"
+            @apply="applyOptimizerPlan"
+            @status="(message, type) => emit('status', message, type)"
+          />
         </div>
 
         <div class="ed-field mastery-field">
@@ -2544,6 +2594,12 @@ async function apply() {
 .replace-strip button b { width:18px; height:18px; display:grid; place-items:center; border-radius:50%; background:#8b6737; color:white; }
 .replace-strip .replace-cancel { justify-content:center; color:var(--text-muted); }
 
+.factor-heading { min-width:0; display:flex; align-items:end; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line-soft); }
+.factor-heading > label { padding-bottom:7px; color:var(--text-primary); font-size:calc(16px * var(--editor-scale)); font-weight:700; }
+.factor-workspace-tabs { flex:0 0 auto; display:flex; align-items:stretch; gap:14px; }
+.factor-workspace-tabs button { min-height:34px; padding:0 2px; border:0; border-bottom:2px solid transparent; border-radius:0; color:var(--text-muted); background:transparent; box-shadow:none; font-size:calc(14px * var(--editor-scale)); font-weight:700; cursor:pointer; }
+.factor-workspace-tabs button.active { border-bottom-color:#765126; color:#765126; background:transparent; box-shadow:none; }
+.factor-field > .optimizer-page { margin-top:2px; }
 .factor-slot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; }
 .factor-slot-card { position:relative; min-width:0; min-height:92px; height:auto; display:grid; grid-template-columns:36px minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; gap:5px 8px; align-items:start; padding:8px 8px 6px 44px; border:1px solid #d1bf98; border-radius:8px; background:#fffdf7; color:var(--text-secondary); text-align:left; cursor:pointer; overflow:hidden; }
 .factor-slot-card:hover { border-color:#9e7a45; transform:translateY(-1px); }
@@ -2594,6 +2650,10 @@ async function apply() {
 .constructor-grid label > span { font-size:calc(12px * var(--editor-scale)); font-weight:600; color:var(--text-secondary); }
 .constructor-grid input,
 .constructor-grid select { width:100%; min-height:32px; padding:0 8px; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); color:var(--text-primary); }
+.constructor-fixed-trait { min-height:32px; display:flex; align-items:center; gap:7px; }
+.constructor-fixed-trait img { width:22px; height:22px; object-fit:contain; }
+.constructor-fixed-trait b { min-width:0; flex:1; overflow:hidden; color:var(--text-primary); font-size:calc(12px * var(--editor-scale)); text-overflow:ellipsis; white-space:nowrap; }
+.constructor-fixed-trait small { flex:0 0 auto; color:var(--text-muted); font-size:calc(11px * var(--editor-scale)); }
 .constructor-wide,
 .constructor-search { grid-column:1/-1; }
 .constructor-preview { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px; border:1px solid rgba(118,81,38,.25); border-radius:8px; background:rgba(255,255,255,.58); }

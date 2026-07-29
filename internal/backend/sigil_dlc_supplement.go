@@ -6,6 +6,7 @@ import (
 )
 
 const dlcSupplementSource = "GBFR DLC 2.0.2 runtime catalog and extracted V9 tables"
+const preciseWrathVPlusSource = "locked local 2.0.2 gem.tbl GEEN_109_24 and skill type lot 15; official localization"
 
 var memoryAwakeningPrimaryTraits = map[string]string{
 	"转世之觉醒": "转世的恩宠",
@@ -109,6 +110,7 @@ func appendDLCSupplementCatalog(c *Catalog) {
 			sigilHashes[hash] = true
 		}
 	}
+	appendPreciseWrathVPlus(c, traitByHash, sigilHashes)
 	category := "dlc_supplement"
 	for _, entry := range sigilMemorySigils {
 		if sigilHashes[entry.Hash] {
@@ -157,6 +159,56 @@ func appendDLCSupplementCatalog(c *Catalog) {
 		})
 		sigilHashes[entry.Hash] = true
 	}
+}
+
+func appendPreciseWrathVPlus(c *Catalog, traitByHash map[uint32]*TraitDef, sigilHashes map[uint32]bool) {
+	const (
+		sigilHash    = uint32(0xCE6C62CF)
+		primaryHash  = uint32(0x7EDD69D0)
+		templateHash = uint32(0x91AC1DDD) // Guts V+: the same verified skill type lot 15.
+	)
+	if sigilHashes[sigilHash] {
+		return
+	}
+	primary := traitByHash[primaryHash]
+	var template *SigilDef
+	for index := range c.Sigils {
+		hash, err := ParseHashHex(c.Sigils[index].Hash)
+		if err == nil && hash == templateHash {
+			template = &c.Sigils[index]
+			break
+		}
+	}
+	if primary == nil || template == nil {
+		return
+	}
+	isPlus := true
+	supportsSecondary := true
+	level := 15
+	category := "dlc_supplement"
+	primaryName := "Precise Wrath"
+	allowedSecondary := append([]string(nil), template.AllowedSecondaryTraitIDs...)
+	c.Sigils = append(c.Sigils, SigilDef{
+		InternalID:                  "RUNTIME_GEEN_109_24_CE6C62CF",
+		Hash:                        "0xCE6C62CF",
+		DisplayName:                 "Precise Wrath V+",
+		Notes:                       "The locked 2.0.2 gem.tbl row fixes SKILL_109_00 as primary and selects random secondary skill type lot 15; the same lot is already audited through GEEN_045_24.",
+		Source:                      preciseWrathVPlusSource,
+		Confidence:                  "high",
+		Category:                    &category,
+		IsPlusSigil:                 &isPlus,
+		SupportsSecondaryTrait:      &supportsSecondary,
+		AllowedSigilLevels:          []int{level},
+		DefaultSigilLevel:           &level,
+		MaxSigilLevel:               &level,
+		PrimaryTraitID:              primary.InternalID,
+		PrimaryTraitName:            &primaryName,
+		FirstTraitMaxLevel:          &level,
+		AllowedFirstTraitLevels:     []int{level},
+		AllowedSecondaryTraitIDs:    allowedSecondary,
+		DisallowedSecondaryTraitIDs: append([]string(nil), template.DisallowedSecondaryTraitIDs...),
+	})
+	sigilHashes[sigilHash] = true
 }
 
 func supplementalSigilDisplayName(sigil *SigilDef) string {

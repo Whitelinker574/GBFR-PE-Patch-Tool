@@ -77,6 +77,94 @@ export function buildInventoryCandidates(sigils, targets, atlas = null) {
     .sort((a, b) => Number(a.slotId) - Number(b.slotId))
 }
 
+function targetVector(candidate, orderedTargets, wanted) {
+  const values = contribution(candidate, wanted)
+  return orderedTargets.map(target => Math.min(target.cap, Number(values.get(target.name) || 0)))
+}
+
+// Converts a theoretical/catalog suggestion into the deployment users expect:
+// keep every owned instance that can cover the same requested trait levels, and
+// leave only unmatched rows as constructor candidates. Matching is maximum
+// cardinality rather than a greedy first-fit so a flexible owned sigil cannot
+// steal the only slot that can satisfy a later row.
+export function synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates = [], targets = [] }) {
+  if (!desired?.picked?.length) return null
+  const wanted = targetMap(targets)
+  const orderedTargets = [...wanted.values()]
+  if (!orderedTargets.length) return null
+  const owned = (inventoryCandidates || [])
+    .filter(item => item?.source === 'inventory' && Number(item.slotId || 0) > 0)
+    .slice()
+    .sort((left, right) => Number(left.slotId) - Number(right.slotId) || candidateKey(left).localeCompare(candidateKey(right), 'en'))
+  const requested = desired.picked.map((item, index) => ({
+    index,
+    item,
+    vector: targetVector(item, orderedTargets, wanted),
+  }))
+  const matches = requested.map(row => owned
+    .map((item, ownedIndex) => ({ item, ownedIndex, vector: targetVector(item, orderedTargets, wanted) }))
+    .filter(candidate => row.vector.some(Boolean) && row.vector.every((level, index) => candidate.vector[index] >= level))
+    .sort((left, right) => {
+      const leftExcess = left.vector.reduce((sum, level, index) => sum + Math.max(0, level - row.vector[index]), 0)
+      const rightExcess = right.vector.reduce((sum, level, index) => sum + Math.max(0, level - row.vector[index]), 0)
+      return leftExcess - rightExcess || Number(left.item.slotId) - Number(right.item.slotId)
+    })
+    .map(candidate => candidate.ownedIndex))
+  const assignedRequestByOwned = new Map()
+  const assignedOwnedByRequest = new Map()
+  const visit = (requestIndex, seen) => {
+    for (const ownedIndex of matches[requestIndex]) {
+      if (seen.has(ownedIndex)) continue
+      seen.add(ownedIndex)
+      const previous = assignedRequestByOwned.get(ownedIndex)
+      if (previous === undefined || visit(previous, seen)) {
+        assignedRequestByOwned.set(ownedIndex, requestIndex)
+        assignedOwnedByRequest.set(requestIndex, ownedIndex)
+        return true
+      }
+    }
+    return false
+  }
+  requested
+    .slice()
+    .sort((left, right) => matches[left.index].length - matches[right.index].length || left.index - right.index)
+    .forEach(row => visit(row.index, new Set()))
+
+  const picked = requested.map(row => {
+    const ownedIndex = assignedOwnedByRequest.get(row.index)
+    return ownedIndex === undefined ? row.item : owned[ownedIndex]
+  })
+  const rawLevels = orderedTargets.map(target => picked.reduce((sum, item) => sum + Number(contribution(item, wanted).get(target.name) || 0), 0))
+  const totals = orderedTargets.map((target, index) => ({
+    ...target,
+    level: rawLevels[index],
+    effective: Math.min(target.cap, rawLevels[index]),
+  }))
+  const ownedCount = picked.filter(item => item.source === 'inventory').length
+  const constructedCount = picked.length - ownedCount
+  const slotChanges = picked.map((item, index) => `${index + 1}: ${item.source === 'inventory' ? `背包 #${item.slotId}` : '新建'} ${item.name}`).join('；')
+  const slotChangesEn = picked.map((item, index) => `${index + 1}: ${item.source === 'inventory' ? `owned #${item.slotId}` : 'create'} ${item.name}`).join('; ')
+  return {
+    ...desired,
+    domain: 'owned-first',
+    domainRank: 1,
+    rank: 1,
+    score: totals.reduce((sum, total) => sum + total.effective * total.weight, 0),
+    picked,
+    totals,
+    ownedCount,
+    constructedCount,
+    deploymentMode: 'owned-first',
+    explanation: desired.explanation ? {
+      ...desired.explanation,
+      inventoryReason: `优先复用 ${ownedCount} 个背包实例；保存时为 ${constructedCount} 个缺口创建独立新因子。`,
+      inventoryReasonEn: `Reuses ${ownedCount} owned instances first; saving creates ${constructedCount} independent sigils for the remaining gaps.`,
+      slotChanges,
+      slotChangesEn,
+    } : desired.explanation,
+  }
+}
+
 const evidenceIndexes = new WeakMap()
 
 function evidenceIndex(evidence) {
@@ -546,7 +634,7 @@ function solveCombatRanked(candidates, slotCount, limit, scenario) {
 }
 
 const EQUIPMENT_STAGE_ORDER = Object.freeze({ weapon: 0, wrightstone: 1, summons: 2, mastery: 3 })
-const OPTIMIZER_DOMAIN_ORDER = Object.freeze({ inventory: 0, catalog: 1, table: 2 })
+const OPTIMIZER_DOMAIN_ORDER = Object.freeze({ 'owned-first': 0, inventory: 1, catalog: 2, table: 3 })
 
 function compareOptimizerDomains(left, right) {
   return (OPTIMIZER_DOMAIN_ORDER[left.domain] ?? 99) - (OPTIMIZER_DOMAIN_ORDER[right.domain] ?? 99)
@@ -1008,17 +1096,30 @@ function pickedSignature(picked) {
 
 const exactStateLimit = 250000
 
-function addRankedState(states, key, candidate, limit) {
+function constructedCount(picked) {
+  return (picked || []).filter(item => item?.source !== 'inventory').length
+}
+
+function compareCoverageStates(left, right, preferOwned = false) {
+  if (preferOwned) {
+    const constructionDelta = constructedCount(left.picked) - constructedCount(right.picked)
+    if (constructionDelta) return constructionDelta
+  }
+  return left.picked.length - right.picked.length
+    || pickedSignature(left.picked).localeCompare(pickedSignature(right.picked), 'en')
+}
+
+function addRankedState(states, key, candidate, limit, preferOwned = false) {
   const bucket = states.get(key) || []
   const signature = pickedSignature(candidate.picked)
   if (bucket.some(item => pickedSignature(item.picked) === signature)) return
   bucket.push(candidate)
-  bucket.sort((left, right) => left.picked.length - right.picked.length || pickedSignature(left.picked).localeCompare(pickedSignature(right.picked), 'en'))
+  bucket.sort((left, right) => compareCoverageStates(left, right, preferOwned))
   if (bucket.length > limit) bucket.length = limit
   states.set(key, bucket)
 }
 
-function solveExactRanked(candidates, targets, slotCount, limit) {
+function solveExactRanked(candidates, targets, slotCount, limit, preferOwned = false) {
   const wanted = targetMap(targets)
   const orderedTargets = [...wanted.values()]
   const usable = (candidates || []).map(item => ({
@@ -1030,7 +1131,7 @@ function solveExactRanked(candidates, targets, slotCount, limit) {
 
   for (const group of usable) {
     const next = new Map()
-    for (const [key, bucket] of states) for (const state of bucket) addRankedState(next, key, state, limit)
+    for (const [key, bucket] of states) for (const state of bucket) addRankedState(next, key, state, limit, preferOwned)
     const repeat = group.item.source === 'catalog' || group.item.source === 'table-exact' ? slotCount : 1
     for (const bucket of states.values()) {
       for (const state of bucket) {
@@ -1042,7 +1143,7 @@ function solveExactRanked(candidates, targets, slotCount, limit) {
           picked.push(group.item)
           levels = advanced
           const key = `${picked.length}|${levels.join(',')}`
-          addRankedState(next, key, { levels, picked: picked.slice() }, limit)
+          addRankedState(next, key, { levels, picked: picked.slice() }, limit, preferOwned)
         }
       }
     }
@@ -1062,7 +1163,7 @@ function solveExactRanked(candidates, targets, slotCount, limit) {
     ranked.push({ ...state, score: scoreTotals(state.levels, orderedTargets) })
   }
   return ranked
-    .sort((left, right) => right.score - left.score || left.picked.length - right.picked.length || pickedSignature(left.picked).localeCompare(pickedSignature(right.picked), 'en'))
+    .sort((left, right) => right.score - left.score || compareCoverageStates(left, right, preferOwned))
     .slice(0, limit)
     .map(resolved => {
       const rawLevels = orderedTargets.map(target => resolved.picked.reduce((sum, item) => sum + (contribution(item, wanted).get(target.name) || 0), 0))
@@ -1075,7 +1176,7 @@ function solveExactRanked(candidates, targets, slotCount, limit) {
     })
 }
 
-function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '') {
+function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '', preferOwned = false) {
   const wanted = targetMap(targets)
   const totals = new Map([...wanted.values()].map(item => [item.name, 0]))
   const picked = []
@@ -1089,7 +1190,9 @@ function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '') {
       if (!picked.length && item.id === excludedFirstId) continue
       const score = marginal(item, totals, wanted)
       const key = candidateKey(item)
-      if (score > bestScore || (score === bestScore && score > 0 && key < bestKey)) {
+      const sourcePreferred = preferOwned && item.source === 'inventory' && bestIndex >= 0 && pool[bestIndex]?.source !== 'inventory'
+      const sameSourcePriority = !preferOwned || bestIndex < 0 || (item.source === 'inventory') === (pool[bestIndex]?.source === 'inventory')
+      if (score > bestScore || (score === bestScore && score > 0 && (sourcePreferred || (sameSourcePriority && key < bestKey)))) {
         bestIndex = index
         bestScore = score
         bestKey = key
@@ -1109,15 +1212,15 @@ function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '') {
   }
 }
 
-function solveRanked(candidates, targets, slotCount, limit) {
+function solveRanked(candidates, targets, slotCount, limit, preferOwned = false) {
   try {
-    return solveExactRanked(candidates, targets, slotCount, limit)
+    return solveExactRanked(candidates, targets, slotCount, limit, preferOwned)
   } catch (error) {
     if (error?.message !== 'optimizer.exact_state_limit') throw error
-    const primary = solveGreedyOnce(candidates, targets, slotCount)
+    const primary = solveGreedyOnce(candidates, targets, slotCount, '', preferOwned)
     const variants = [primary]
     const rankedIds = [...new Set([...(primary.picked || []).map(item => item.id), ...(candidates || []).map(item => item.id)])].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'en'))
-    for (const id of rankedIds.slice(0, Math.max(0, limit * 2 - 1))) variants.push(solveGreedyOnce(candidates, targets, slotCount, id))
+    for (const id of rankedIds.slice(0, Math.max(0, limit * 2 - 1))) variants.push(solveGreedyOnce(candidates, targets, slotCount, id, preferOwned))
     return variants
   }
 }
@@ -1225,22 +1328,41 @@ export function solveLoadoutSuggestionsByDomain({ domains, targets, slotCount = 
   const output = []
   for (const [domain, candidates] of Object.entries(domains || {})) {
     const results = solveLoadoutSuggestions({ candidates, targets, slotCount, limit, scenario: { ...scenario, domain } })
-    results.forEach((result, index) => output.push({ ...result, domain, domainRank: index + 1 }))
+    results.forEach((result, index) => {
+      const ownedCount = domain === 'owned-first' ? result.picked.filter(item => item.source === 'inventory').length : undefined
+      const constructed = domain === 'owned-first' ? result.picked.length - ownedCount : undefined
+      output.push({
+        ...result,
+        domain,
+        domainRank: index + 1,
+        ...(domain === 'owned-first' ? {
+          ownedCount,
+          constructedCount: constructed,
+          deploymentMode: 'owned-first',
+          explanation: result.explanation ? {
+            ...result.explanation,
+            inventoryReason: `优先复用 ${ownedCount} 个背包实例；保存时只为 ${constructed} 个缺口创建独立新因子。`,
+            inventoryReasonEn: `Reuses ${ownedCount} owned instances first; saving creates ${constructed} independent sigils only for the remaining gaps.`,
+          } : result.explanation,
+        } : {}),
+      })
+    })
   }
   return sortOptimizerDomainResults(output)
 }
 
 export function solveLoadoutSuggestions({ candidates, targets, slotCount = 12, limit = 10, scenario = {} }) {
+  const preferOwned = scenario.domain === 'owned-first' || scenario.preferOwned === true
   const variants = scenario.mode === 'combat'
     ? solveCombatRanked(candidates || [], slotCount, limit, scenario)
-    : solveRanked(candidates || [], targets || [], slotCount, limit)
+    : solveRanked(candidates || [], targets || [], slotCount, limit, preferOwned)
   const unique = new Map()
   for (const result of variants) {
     const key = result.picked.map(item => item.id).sort().join('|')
     if (!unique.has(key)) unique.set(key, result)
   }
   const ranked = [...unique.values()]
-    .sort((a, b) => b.score - a.score || a.picked.map(candidateKey).join('|').localeCompare(b.picked.map(candidateKey).join('|'), 'en'))
+    .sort((a, b) => b.score - a.score || compareCoverageStates(a, b, preferOwned))
     .slice(0, limit)
   const primary = ranked[0] || null
   const annotated = annotateOptimizerAlternatives(ranked, { ...scenario, slotCount })

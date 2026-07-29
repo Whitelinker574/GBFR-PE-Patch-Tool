@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain } from './loadoutOptimizer.js'
+import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain, synthesizeOwnedFirstSuggestion } from './loadoutOptimizer.js'
 
 const targets = [{ name: '伤害上限', weight: 3, cap: 65 }, { name: '暴击率', weight: 2, cap: 45 }]
 
@@ -38,6 +38,73 @@ test('inventory candidates preserve independent real instances', () => {
   assert.deepEqual(candidates.map(item => item.slotId), [4, 9])
 })
 
+test('owned-first deployment maximizes real SlotID reuse before creating missing sigils', () => {
+  const requestedTargets = [{ name: 'A', weight: 2, cap: 10 }, { name: 'B', weight: 1, cap: 10 }]
+  const desired = {
+    domain: 'catalog',
+    score: 30,
+    exact: true,
+    picked: [
+      { id: 'catalog-a', source: 'catalog', name: 'A shell', traits: [{ name: 'A', level: 10 }] },
+      { id: 'catalog-ab', source: 'catalog', name: 'AB shell', traits: [{ name: 'A', level: 10 }, { name: 'B', level: 10 }] },
+    ],
+    totals: [],
+  }
+  const inventoryCandidates = [
+    { id: 'slot:20', source: 'inventory', slotId: 20, name: 'Owned AB', traits: [{ name: 'A', level: 10 }, { name: 'B', level: 10 }] },
+    { id: 'slot:10', source: 'inventory', slotId: 10, name: 'Owned A', traits: [{ name: 'A', level: 10 }] },
+  ]
+  const result = synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates, targets: requestedTargets })
+  assert.equal(result.domain, 'owned-first')
+  assert.equal(result.ownedCount, 2)
+  assert.equal(result.constructedCount, 0)
+  assert.deepEqual(result.picked.map(item => item.slotId), [10, 20])
+  assert.deepEqual(result.totals.map(item => item.effective), [10, 10])
+})
+
+test('owned-first deployment keeps unmatched catalog rows as independent constructor gaps', () => {
+  const requestedTargets = [{ name: 'A', weight: 1, cap: 20 }]
+  const desired = {
+    domain: 'catalog',
+    score: 20,
+    exact: true,
+    picked: [
+      { id: 'catalog-a-1', source: 'catalog', name: 'A shell', traits: [{ name: 'A', level: 10 }] },
+      { id: 'catalog-a-2', source: 'catalog', name: 'A shell', traits: [{ name: 'A', level: 10 }] },
+    ],
+    totals: [],
+  }
+  const inventoryCandidates = [
+    { id: 'slot:7', source: 'inventory', slotId: 7, name: 'Owned A', traits: [{ name: 'A', level: 10 }] },
+  ]
+  const result = synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates, targets: requestedTargets })
+  assert.equal(result.ownedCount, 1)
+  assert.equal(result.constructedCount, 1)
+  assert.deepEqual(result.picked.map(item => item.source), ['inventory', 'catalog'])
+  assert.equal(result.totals[0].effective, 20)
+})
+
+test('owned-first domain exhausts real inventory coverage before constructing a shorter catalog plan', () => {
+  const requestedTargets = [{ name: 'A', weight: 1, cap: 10 }]
+  const results = solveLoadoutSuggestionsByDomain({
+    domains: {
+      'owned-first': [
+        { id: 'slot:1', source: 'inventory', slotId: 1, name: 'Owned A 1', traits: [{ name: 'A', level: 5 }] },
+        { id: 'slot:2', source: 'inventory', slotId: 2, name: 'Owned A 2', traits: [{ name: 'A', level: 5 }] },
+        { id: 'catalog:a', source: 'catalog', name: 'Constructed A', traits: [{ name: 'A', level: 10 }] },
+      ],
+    },
+    targets: requestedTargets,
+    slotCount: 12,
+    limit: 10,
+  })
+  assert.equal(results[0].domain, 'owned-first')
+  assert.deepEqual(results[0].picked.map(item => item.slotId), [1, 2])
+  assert.equal(results[0].ownedCount, 2)
+  assert.equal(results[0].constructedCount, 0)
+  assert.equal(results[0].totals[0].effective, 10)
+})
+
 test('suggestions cap effective levels and never reuse an inventory instance', () => {
   const candidates = buildInventoryCandidates([
     { slotId: 1, name: 'Cap+', primaryTraitName: '伤害上限', primaryTraitLevel: 40, secondaryTraitName: '暴击率', secondaryTraitLevel: 20 },
@@ -47,6 +114,26 @@ test('suggestions cap effective levels and never reuse an inventory instance', (
   assert.deepEqual(result.picked.map(item => item.slotId), [1, 2])
   assert.equal(result.totals.find(item => item.name === '伤害上限').effective, 65)
   assert.equal(result.totals.find(item => item.name === '暴击率').effective, 40)
+})
+
+test('user-entered target level changes the required slot plan', () => {
+  const candidates = [
+    { id: 'catalog:a', source: 'catalog', name: 'A shell', traits: [{ name: 'A', level: 5 }] },
+  ]
+  const [levelFive] = solveLoadoutSuggestions({
+    candidates,
+    targets: [{ name: 'A', weight: 1, cap: 5 }],
+    slotCount: 12,
+  })
+  const [levelTen] = solveLoadoutSuggestions({
+    candidates,
+    targets: [{ name: 'A', weight: 1, cap: 10 }],
+    slotCount: 12,
+  })
+  assert.equal(levelFive.picked.length, 1)
+  assert.equal(levelFive.totals[0].effective, 5)
+  assert.equal(levelTen.picked.length, 2)
+  assert.equal(levelTen.totals[0].effective, 10)
 })
 
 test('catalog suggestions are deterministic when unlimited copies are allowed', () => {

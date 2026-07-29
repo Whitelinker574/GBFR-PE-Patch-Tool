@@ -4,7 +4,7 @@ import { CloseSaveDiff, ExportFateEpisodeEvidence, ExportSaveDiffCSV, ExportSave
 import { characterNamePairByPLID } from '../characterRoster.js'
 import { language } from '../i18n.js'
 
-const emit = defineEmits(['status'])
+const emit = defineEmits(['status', 'open-tool'])
 const leftPath = ref('')
 const rightPath = ref('')
 const summary = ref(null)
@@ -130,7 +130,7 @@ async function exportDiff() {
   exporting.value = true
   try {
     const path = await ExportSaveDiffJSON()
-    if (path) emit('status', tx('脱敏差分已导出', 'Sanitized diff exported'), 'success')
+    if (path) emit('status', tx(`脱敏差分已导出到：${path}`, `Sanitized diff exported to: ${path}`), 'success')
   } catch (error) { emit('status', String(error), 'error') } finally { exporting.value = false }
 }
 async function exportCSV() {
@@ -138,7 +138,7 @@ async function exportCSV() {
   exporting.value = true
   try {
     const path = await ExportSaveDiffCSV()
-    if (path) emit('status', tx('脱敏 CSV 已导出', 'Sanitized CSV exported'), 'success')
+    if (path) emit('status', tx(`脱敏 CSV 已导出到：${path}`, `Sanitized CSV exported to: ${path}`), 'success')
   } catch (error) { emit('status', String(error), 'error') } finally { exporting.value = false }
 }
 function applyFilter() { fetchPage(true) }
@@ -189,7 +189,7 @@ async function exportFateEvidence() {
   fateExporting.value = true
   try {
     const path = await ExportFateEpisodeEvidence(fatePath.value)
-    if (path) emit('status', tx('命运篇章只读证据已导出', 'Read-only Fate evidence exported'), 'success')
+    if (path) emit('status', tx(`命运篇章只读证据已导出到：${path}`, `Read-only Fate evidence exported to: ${path}`), 'success')
   } catch (error) {
     emit('status', String(error), 'error')
   } finally { fateExporting.value = false }
@@ -214,23 +214,23 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
 <template>
   <section class="save-diff-lab ui-page-stack" :aria-label="tx('存档实验室', 'Save Laboratory')">
     <nav class="lab-modes ui-seg" :aria-label="tx('存档实验室功能', 'Save Laboratory Modes')">
-      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'diff' }" @click="mode = 'diff'">{{ tx('双存档差分', 'Save Comparison') }}</button>
-      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'fate' }" @click="mode = 'fate'">{{ tx('命运篇章', 'Fate Episodes') }}</button>
-      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'infinity' }" @click="openInfinityRules">{{ tx('无尽规则', 'Endless Rules') }}</button>
+      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'diff' }" @click="mode = 'diff'">{{ tx('比较两份存档', 'Compare Two Saves') }}</button>
+      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'fate' }" @click="mode = 'fate'">{{ tx('查看命运篇章', 'Inspect Fate Episodes') }}</button>
+      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'infinity' }" @click="openInfinityRules">{{ tx('查看无尽规则', 'Browse Endless Rules') }}</button>
     </nav>
 
     <div v-if="mode === 'diff'" class="lab-boundary ui-notice is-info">
-      <strong>{{ tx('严格只读', 'Strictly Read Only') }}</strong>
-      <span>{{ tx('两份源存档只会被读取和解析，不会备份、修改或写回。导出文件不含源路径、文件名或原始字段值。', 'Both source saves are read and parsed only. They are never backed up, modified, or written back. Exports omit source paths, file names, and raw field values.') }}</span>
+      <strong>{{ tx('严格只读 · 找出改动前后哪里不同', 'Strictly Read Only · See What Changed') }}</strong>
+      <span>{{ tx('左边选“改动前”，右边选“改动后”。两份源存档只会读取，不会备份、修改或写回；识别出的内容可转到对应编辑器处理。导出文件不含源路径、文件名或原始字段值。', 'Choose the “before” save on the left and the “after” save on the right. Both source saves are read only and are never backed up, modified, or written back. Recognized changes can be opened in the matching editor. Exports omit source paths, file names, and raw field values.') }}</span>
     </div>
 
-    <section v-if="mode === 'diff'" class="source-grid" aria-label="存档来源">
+    <section v-if="mode === 'diff'" class="source-grid" :aria-label="tx('选择要比较的两份存档', 'Choose Two Saves to Compare')">
       <button type="button" class="source-file ui-card is-flat" :class="{ ready: leftPath }" :disabled="loading" @click="choose('left')">
-        <small>{{ tx('基准存档', 'Baseline Save') }}</small><strong>{{ fileName(leftPath) }}</strong><span>{{ tx('选择左侧文件', 'Choose Left File') }}</span>
+        <small>{{ tx('改动前（基准）', 'Before (Baseline)') }}</small><strong>{{ fileName(leftPath) }}</strong><span>{{ tx('点击选择改动前的存档', 'Choose the save from before the change') }}</span>
       </button>
       <div class="compare-mark" aria-hidden="true">⇄</div>
       <button type="button" class="source-file ui-card is-flat" :class="{ ready: rightPath }" :disabled="loading" @click="choose('right')">
-        <small>{{ tx('对照存档', 'Comparison Save') }}</small><strong>{{ fileName(rightPath) }}</strong><span>{{ tx('选择右侧文件', 'Choose Right File') }}</span>
+        <small>{{ tx('改动后（对照）', 'After (Comparison)') }}</small><strong>{{ fileName(rightPath) }}</strong><span>{{ tx('点击选择改动后的存档', 'Choose the save from after the change') }}</span>
       </button>
       <button type="button" class="ui-btn is-primary compare-button" :disabled="!canCompare" @click="compare">{{ loading ? tx('正在解析…', 'Parsing…') : tx('开始只读比较', 'Compare Read Only') }}</button>
     </section>
@@ -245,6 +245,18 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
         <article class="ui-card ui-stat is-changed"><small>{{ tx('内容变化', 'Changed') }}</small><strong>{{ summary.changed }}</strong><span>{{ tx('同一位置，值或长度变化', 'Same location, changed values or length') }}</span></article>
         <article class="ui-card ui-stat is-added"><small>{{ tx('右侧新增', 'Added on Right') }}</small><strong>{{ summary.added }}</strong><span>{{ tx('只存在于对照存档', 'Only in comparison save') }}</span></article>
         <article class="ui-card ui-stat is-removed"><small>{{ tx('右侧缺少', 'Missing on Right') }}</small><strong>{{ summary.removed }}</strong><span>{{ tx('只存在于基准存档', 'Only in baseline save') }}</span></article>
+      </section>
+
+      <section class="diff-next-actions ui-card is-flat" :aria-label="tx('比较后怎么处理', 'What to Do After Comparing')">
+        <header><div><small>{{ tx('比较后怎么处理', 'What to Do After Comparing') }}</small><strong>{{ tx('按差异类型打开安全编辑器', 'Open the Safe Editor for the Changed Domain') }}</strong></div><span>{{ tx('差分页不复制未知原始字段；在对应编辑器中选择目标存档、预览并备份写入。', 'The comparison never copies unknown raw fields. Choose the target save, preview, and write with a backup in the matching editor.') }}</span></header>
+        <div>
+          <button type="button" @click="emit('open-tool', 'loadoutPresets')"><b>{{ tx('配装', 'Loadouts') }}</b><small>{{ tx('武器、因子、技能、专精', 'Weapon, sigils, skills, mastery') }}</small></button>
+          <button type="button" @click="emit('open-tool', 'sigil')"><b>{{ tx('因子', 'Sigils') }}</b><small>{{ tx('新增、删除与词条等级', 'Create, delete, and trait levels') }}</small></button>
+          <button type="button" @click="emit('open-tool', 'wrightstone')"><b>{{ tx('祝福石', 'Wrightstones') }}</b><small>{{ tx('主副词条与等级', 'Main/sub traits and levels') }}</small></button>
+          <button type="button" @click="emit('open-tool', 'progression')"><b>{{ tx('物品与武器', 'Items & Weapons') }}</b><small>{{ tx('素材、数量与武器养成', 'Materials, quantities, weapon progress') }}</small></button>
+          <button type="button" @click="emit('open-tool', 'summonSave')"><b>{{ tx('召唤石', 'Summons') }}</b><small>{{ tx('类型、加护、副词条与等级', 'Type, traits, sub-params, levels') }}</small></button>
+          <button type="button" @click="emit('open-tool', 'save')"><b>{{ tx('任务与记录', 'Quests & Records') }}</b><small>{{ tx('已验证的任务、称号与次数入口', 'Verified quest, title, and counter editors') }}</small></button>
+        </div>
       </section>
 
       <div class="diff-toolbar ui-card is-flat">
@@ -348,6 +360,17 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
 .diff-summary .ui-stat.is-removed { border-top-color:var(--danger); }
 .diff-summary small,.diff-summary span { color:var(--text-muted); font-size:var(--fs-2xs); }
 .diff-summary strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-xl); }
+.diff-next-actions { min-width:0; display:grid; gap:var(--space-3); padding:var(--space-3); border-left:3px solid var(--accent); }
+.diff-next-actions > header { min-width:0; display:grid; grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr); gap:var(--space-4); align-items:end; }
+.diff-next-actions > header div { min-width:0; display:grid; gap:2px; }
+.diff-next-actions > header small { color:var(--accent); font-size:var(--fs-2xs); font-weight:var(--fw-bold); }
+.diff-next-actions > header strong { color:var(--text-primary); font-size:var(--fs-md); }
+.diff-next-actions > header span { color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.diff-next-actions > div { min-width:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2); }
+.diff-next-actions button { min-width:0; min-height:50px; display:grid; gap:2px; padding:var(--space-2) var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-sm); color:inherit; background:var(--surface-sunken); text-align:left; cursor:pointer; }
+.diff-next-actions button:hover,.diff-next-actions button:focus-visible { border-color:var(--accent-border); background:var(--accent-soft); }
+.diff-next-actions button b { color:var(--text-primary); font-size:var(--fs-sm); }
+.diff-next-actions button small { color:var(--text-muted); font-size:var(--fs-2xs); line-height:var(--lh-normal); }
 .diff-toolbar { min-width:0; display:grid; grid-template-columns:minmax(240px,1fr) minmax(150px,.35fr) repeat(4,auto); gap:var(--space-2); align-items:end; padding:var(--space-3); }
 .diff-toolbar label { min-width:0; display:grid; gap:4px; color:var(--text-muted); font-size:var(--fs-xs); }
 .diff-count { display:flex; justify-content:space-between; gap:var(--space-3); color:var(--text-secondary); font-size:var(--fs-xs); }
@@ -446,6 +469,8 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
   .compare-mark { min-height:24px; transform:rotate(90deg); }
   .compare-button { grid-column:1; width:100%; }
   .diff-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .diff-next-actions > header { grid-template-columns:minmax(0,1fr); }
+  .diff-next-actions > div { grid-template-columns:minmax(0,1fr); }
   .fate-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .infinity-summary,.infinity-difficulties { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .diff-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }

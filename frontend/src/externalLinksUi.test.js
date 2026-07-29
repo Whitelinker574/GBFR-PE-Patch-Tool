@@ -78,6 +78,16 @@ test('packaged metadata no longer identifies another maintainer', () => {
   assert.doesNotMatch(windowsInfo, /"0000"/)
 })
 
+test('experimental branch identifies the packaged application as a test build', () => {
+  const metadata = JSON.parse(readRoot('wails.json'))
+  const shell = readRoot('frontend/src/components/PatchTool.vue')
+  const run = readRoot('internal/backend/run.go')
+  assert.equal(metadata.name, 'GBFR PE Patch Tool 测试版')
+  assert.equal(metadata.info.productName, 'GBFR PE Patch Tool 测试版')
+  assert.match(shell, /TEST BUILD/)
+  assert.match(run, /Title:\s+"GBFR PE Patch Tool 测试版"/)
+})
+
 test('release navigation cannot open a caller-supplied website', () => {
   const backend = readRoot('internal/backend/app.go')
   const shell = readRoot('frontend/src/components/PatchTool.vue')

@@ -35,12 +35,18 @@ import {
 import RuntimeLoadoutDetector from './RuntimeLoadoutDetector.vue'
 
 const emit = defineEmits(['status', 'deploy-loadout'])
-const props = defineProps({ pageActive: { type: Boolean, default: true } })
+const props = defineProps({
+  pageActive: { type: Boolean, default: true },
+  mode: {
+    type: String,
+    default: 'party',
+    validator: value => ['party', 'spatial', 'items'].includes(value),
+  },
+})
 const RUNTIME_LEASE_SCOPE = 'runtime-patch-selected-item-monitor'
 const ITEM_KINDS = Object.freeze(['material', 'keyItem'])
 
-const activeTab = ref('party')
-const tabElements = ref([])
+const activeTab = ref(props.mode)
 const activeOperation = ref(null)
 const releasePending = ref(false)
 const connected = ref(false)
@@ -70,11 +76,6 @@ let connectionOwnerToken = ''
 let flightSession = 0
 let stopEmergencyEvents = null
 
-const tabs = computed(() => [
-  { id: 'party', label: t('tabParty') },
-  { id: 'spatial', label: t('tabSpatial') },
-  { id: 'items', label: t('tabItems') },
-])
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value || flightPending.value || Boolean(flightDirection.value))
 const connectionStateLabel = computed(() => {
@@ -574,26 +575,6 @@ async function setGravityEnabled(enabled) {
   }
 }
 
-function setTabElement(element, index) {
-  if (element) tabElements.value[index] = element
-}
-
-function activateTab(tab, index) {
-  activeTab.value = tab.id
-  tabElements.value[index]?.focus?.()
-}
-
-function onTabKeydown(event, index) {
-  let nextIndex = index
-  if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.value.length
-  else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.value.length) % tabs.value.length
-  else if (event.key === 'Home') nextIndex = 0
-  else if (event.key === 'End') nextIndex = tabs.value.length - 1
-  else return
-  event.preventDefault()
-  activateTab(tabs.value[nextIndex], nextIndex)
-}
-
 function capturePhase(kind) {
   return selectedCapturePhase(selectedStatus.value, kind, consumedSelections[kind])
 }
@@ -641,18 +622,13 @@ onMounted(() => {
 })
 
 watch(activeTab, value => { if (value !== 'spatial') stopFlight() })
+watch(() => props.mode, value => { activeTab.value = value }, { immediate: true })
 watch(() => props.pageActive, value => { if (!value) stopFlight() })
 </script>
 
 <template>
   <section class="runtime-monitor-page ui-page ui-page-stack is-fluid" data-page="runtime-patch-runtime-monitor" :aria-busy="operationBusy">
-    <nav class="monitor-tabs ui-tabs" role="tablist" :aria-label="t('pageTitle')">
-      <button v-for="(tab, index) in tabs" :id="`runtime-monitor-tab-${tab.id}`" :key="tab.id" :ref="element => setTabElement(element, index)" type="button" class="ui-tab" :class="{ 'is-on': activeTab === tab.id }" role="tab" :aria-selected="activeTab === tab.id" :aria-controls="`runtime-monitor-panel-${tab.id}`" :tabindex="activeTab === tab.id ? 0 : -1" @click="activeTab = tab.id" @keydown="onTabKeydown($event, index)">
-        <span class="tab-glyph" :class="`is-${tab.id}`" aria-hidden="true"><i></i></span>{{ tab.label }}
-      </button>
-    </nav>
-
-    <RuntimeLoadoutDetector v-show="activeTab === 'party'" id="runtime-monitor-panel-party" role="tabpanel" aria-labelledby="runtime-monitor-tab-party" @status="(message, tone) => emit('status', message, tone)" @deploy-loadout="payload => emit('deploy-loadout', payload)" />
+    <RuntimeLoadoutDetector v-show="activeTab === 'party'" id="runtime-monitor-panel-party" @status="(message, tone) => emit('status', message, tone)" @deploy-loadout="payload => emit('deploy-loadout', payload)" />
 
     <template v-if="activeTab !== 'party'">
       <section class="monitor-connection ui-card ui-panel is-compact" :aria-label="`${t('memoryMonitoring')} · ${t('readOnly')}`">
@@ -663,7 +639,7 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
       <div class="monitor-live ui-notice" :class="`is-${liveTone}`" aria-live="polite" aria-atomic="true"><span class="live-mark" aria-hidden="true"></span><span>{{ liveMessage }}</span></div>
     </template>
 
-    <section v-if="activeTab === 'spatial'" id="runtime-monitor-panel-spatial" class="spatial-panel ui-card ui-panel" role="tabpanel" aria-labelledby="runtime-monitor-tab-spatial" data-monitor-panel="spatial">
+    <section v-if="activeTab === 'spatial'" id="runtime-monitor-panel-spatial" class="spatial-panel ui-card ui-panel" data-monitor-panel="spatial">
       <header class="panel-heading"><div><h3 class="ui-section-title">{{ t('spatialTitle') }}</h3><p class="ui-section-copy">{{ t('spatialSummary') }}</p></div><button type="button" class="ui-btn is-primary is-sm" :disabled="interactionLocked || !connected" @click="readSpatialSnapshot">{{ activeOperation?.kind === 'spatial-read' ? t('spatialReading') : t('spatialRead') }}</button></header>
       <div v-if="!spatialSnapshot" class="monitor-empty ui-empty"><strong>{{ t('spatialCurrent') }}</strong><span>{{ t('spatialEmpty') }}</span></div>
       <div v-else class="spatial-entity-grid">
@@ -713,7 +689,7 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
     </section>
 
     <template v-if="activeTab === 'items'">
-      <section id="runtime-monitor-panel-items" class="items-panel ui-card ui-panel" role="tabpanel" aria-labelledby="runtime-monitor-tab-items" data-monitor-panel="selected-items">
+      <section id="runtime-monitor-panel-items" class="items-panel ui-card ui-panel" data-monitor-panel="selected-items">
         <header class="panel-heading"><div><h3 class="ui-section-title">{{ t('selectedTitle') }}</h3><p class="ui-section-copy">{{ t('selectedSummary') }}</p></div><span class="ui-tag is-ok">{{ t('readOnlyChip') }}</span></header>
         <section class="read-only-banner ui-notice is-ok"><span class="shield-mark" aria-hidden="true"><i></i></span><div><strong>{{ t('readOnlyBanner') }}</strong><p>{{ t('neverWritesSave') }}</p><small>{{ t('hookTechnical') }}</small></div></section>
         <ol class="capture-steps"><li><span>1</span>{{ t('stepConnect') }}</li><li><span>2</span>{{ t('stepEnable') }}</li><li><span>3</span>{{ t('stepSelect') }}</li><li><span>4</span>{{ t('stepRead') }}</li></ol>
@@ -735,18 +711,6 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
 
 <style scoped>
 .runtime-monitor-page { width:100%; max-width:none; min-width:0; padding-bottom:var(--space-8); container:runtime-monitor / inline-size; }
-.monitor-tabs { padding-inline:var(--space-2); background:color-mix(in srgb,var(--surface-card-pop) 72%,transparent); }
-.monitor-tabs .ui-tab { display:flex; align-items:center; gap:var(--space-2); }
-.tab-glyph { position:relative; width:18px; height:18px; flex:0 0 18px; }
-.tab-glyph::before,.tab-glyph::after,.tab-glyph i { content:""; position:absolute; border:1px solid currentColor; }
-.tab-glyph.is-party::before { inset:2px 6px 8px; border-radius:50%; }
-.tab-glyph.is-party::after { inset:10px 3px 1px; border-radius:8px 8px 3px 3px; }
-.tab-glyph.is-party i { inset:6px 1px 4px 12px; border-left:0; border-radius:0 5px 5px 0; }
-.tab-glyph.is-spatial::before { inset:3px; border-radius:50%; }
-.tab-glyph.is-spatial::after { inset:7px; border-radius:50%; background:currentColor; }
-.tab-glyph.is-spatial i { left:8px; top:0; width:1px; height:18px; border-width:0 0 0 1px; box-shadow:-8px 8px 0 -7px currentColor,8px 8px 0 -7px currentColor; }
-.tab-glyph.is-items::before { inset:2px 5px; transform:rotate(45deg); }
-.tab-glyph.is-items::after { inset:6px 1px; border-radius:50%; }
 .monitor-connection,.panel-heading,.connection-summary,.capture-card-heading { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); }
 .monitor-connection { flex-direction:row; }
 .connection-summary { flex:1 1 auto; justify-content:flex-start; }
@@ -840,5 +804,5 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
 .flight-capability small { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
 @container runtime-monitor (max-width:720px) { .monitor-connection,.panel-heading,.capture-toolbar { align-items:stretch; flex-direction:column; }.connection-actions,.connection-actions .ui-btn { width:100%; }.capture-steps,.bookmark-list { grid-template-columns:repeat(2,minmax(0,1fr)); }.teleport-controls { grid-template-columns:repeat(3,minmax(0,1fr)); }.teleport-controls .ui-btn { grid-column:1 / -1; }.teleport-result { grid-template-columns:minmax(0,1fr); } }
 @container runtime-monitor (max-width:720px) { .flight-console { grid-template-columns:minmax(0,1fr); } }
-@container runtime-monitor (max-width:460px) { .monitor-tabs { display:grid; grid-template-columns:minmax(0,1fr); }.capture-steps,.record-card dl,.coordinate-row,.teleport-controls,.bookmark-compose,.bookmark-list { grid-template-columns:minmax(0,1fr); }.teleport-controls .ui-btn { grid-column:auto; }.spatial-bookmarks > header { align-items:stretch; flex-direction:column; }.spatial-bookmarks > header .ui-btn,.bookmark-compose .ui-btn { width:100%; }.flight-settings > label { grid-template-columns:minmax(0,1fr); }.flight-settings > label .ui-input { width:100%; }.flight-capability { align-items:stretch; flex-direction:column; }.flight-capability .ui-btn { width:100%; } }
+@container runtime-monitor (max-width:460px) { .capture-steps,.record-card dl,.coordinate-row,.teleport-controls,.bookmark-compose,.bookmark-list { grid-template-columns:minmax(0,1fr); }.teleport-controls .ui-btn { grid-column:auto; }.spatial-bookmarks > header { align-items:stretch; flex-direction:column; }.spatial-bookmarks > header .ui-btn,.bookmark-compose .ui-btn { width:100%; }.flight-settings > label { grid-template-columns:minmax(0,1fr); }.flight-settings > label .ui-input { width:100%; }.flight-capability { align-items:stretch; flex-direction:column; }.flight-capability .ui-btn { width:100%; } }
 </style>

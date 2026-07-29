@@ -12,6 +12,18 @@ const characterIcon = computed(() => characterAssetIcon(props.loadout?.character
 const weaponIcon = computed(() => weaponAssetIcon({ hash: props.loadout?.weapon?.hashHex || props.loadout?.weapon?.hash }))
 const masteryRanks = computed(() => props.loadout?.masterySummary?.ranks || [])
 const tx = (zh, en) => language.value === 'en' ? en : zh
+const sigilCaptureLabel = computed(() => {
+  const count = (props.loadout?.sigils || []).length
+  return count ? tx(`${count}/12 因子`, `${count}/12 Sigils`) : tx('因子未记录', 'Sigils Not Recorded')
+})
+const summonCaptureLabel = computed(() => {
+  const count = (props.loadout?.summons || []).length
+  return count ? tx(`${count}/4 召唤石`, `${count}/4 Summons`) : tx('召唤石未记录', 'Summons Not Recorded')
+})
+const masteryCaptureLabel = computed(() => props.loadout?.masteryAvailable
+  ? `MLv${Number(props.loadout?.masterLevel || 0)}`
+  : tx('专精未记录', 'Mastery Not Recorded'))
+const overLimitRecorded = computed(() => (props.loadout?.overLimit || []).length > 0)
 const visibleStats = computed(() => {
   const stats = props.loadout?.stats || {}
   return [
@@ -58,7 +70,7 @@ function combinedIcon(skill) {
       <div class="preview-title">
         <small>{{ sourceLabel || tx('配装预览', 'Loadout Preview') }}</small>
         <h3>{{ loadout.characterName || tx('未识别角色', 'Unknown Character') }}</h3>
-        <p>{{ loadout.weapon?.name || tx('未记录武器', 'Weapon Not Recorded') }} · {{ (loadout.sigils || []).length }}/12 {{ tx('因子', 'Sigils') }} · {{ (loadout.summons || []).length }}/4 {{ tx('召唤石', 'Summons') }} · MLv{{ loadout.masterLevel || 0 }}</p>
+        <p>{{ loadout.weapon?.name || tx('未记录武器', 'Weapon Not Recorded') }} · {{ sigilCaptureLabel }} · {{ summonCaptureLabel }} · {{ masteryCaptureLabel }}</p>
       </div>
       <div class="preview-actions"><slot name="actions" /></div>
     </header>
@@ -116,7 +128,8 @@ function combinedIcon(skill) {
         </div>
         <div class="trait-group">
           <h4>{{ tx('角色上限突破', 'Overmastery') }}</h4>
-          <div class="overlimit-grid">
+          <p v-if="!overLimitRecorded" class="empty-line">{{ tx('未记录', 'Not Recorded') }}</p>
+          <div v-else class="overlimit-grid">
             <span v-for="slot in loadout.overLimit || []" :key="slot.index" :class="{ empty: !slot.name }">
               <i>{{ slot.index + 1 }}</i><b>{{ slot.name || tx('空槽', 'Empty') }}</b><em v-if="slot.level">Lv{{ slot.level }}</em>
             </span>
@@ -124,8 +137,8 @@ function combinedIcon(skill) {
         </div>
         <div class="mastery-block">
           <div class="mastery-heading">
-            <div><small>{{ tx('专精配置', 'Mastery') }}</small><strong>{{ loadout.masterySummary?.primaryLabel || tx('未判定方向', 'Direction Not Resolved') }}</strong></div>
-            <b>MLv{{ loadout.masterLevel || 0 }}</b>
+            <div><small>{{ tx('专精配置', 'Mastery') }}</small><strong>{{ loadout.masteryAvailable ? (loadout.masterySummary?.primaryLabel || tx('未判定方向', 'Direction Not Resolved')) : tx('未记录', 'Not Recorded') }}</strong></div>
+            <b>{{ masteryCaptureLabel }}</b>
           </div>
           <p v-if="!loadout.masteryAvailable" class="mastery-warning">{{ loadout.masteryUnavailableReason || tx('当前记录无法解析专精', 'Mastery unavailable for this record') }}</p>
           <template v-else>
@@ -153,7 +166,8 @@ function combinedIcon(skill) {
     </div>
 
     <section class="preview-section preview-sigils">
-      <header><div><small>{{ tx('装备因子', 'Equipped Sigils') }}</small><strong>{{ (loadout.sigils || []).length }} / 12</strong></div></header>
+      <header><div><small>{{ tx('装备因子', 'Equipped Sigils') }}</small><strong>{{ (loadout.sigils || []).length ? `${(loadout.sigils || []).length} / 12` : tx('未记录', 'Not Recorded') }}</strong></div></header>
+      <p v-if="!(loadout.sigils || []).length" class="empty-line">{{ tx('未记录', 'Not Recorded') }}</p>
       <div class="sigil-grid">
         <article v-for="sigil in loadout.sigils || []" :key="`${sigil.index}-${sigil.hashHex || sigil.hash}`" class="sigil-card">
           <img v-if="sigilIcon(sigil)" :src="sigilIcon(sigil)" alt="" />

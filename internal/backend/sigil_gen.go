@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -687,7 +688,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax)), nil
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
-		reasons = append(reasons, fmt.Sprintf("主特性「%s」不是因子「%s」的自然主特性", item.PrimaryTraitName, item.SigilName))
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」不是因子「%s」在 2.0.2 表中的固定主特性", item.PrimaryTraitName, item.SigilName))
+		return item, report, nil
 	}
 	primaryNaturalMax := 15
 	if primaryTrait.InternalID == sigil.PrimaryTraitID {
@@ -703,7 +705,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		item.SecondaryTraitName = ""
 		item.SecondaryLevel = 0
 		if requiresCharacterSigilSecondary(sigil) {
-			reasons = append(reasons, "角色因子自然配置通常包含副特性")
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("角色因子「%s」必须使用 2.0.2 表中的固定副特性", item.SigilName))
+			return item, report, nil
 		}
 	} else {
 		secondaryTrait, err := sg.catalog.RequireTrait(item.SecondaryTraitID)
@@ -727,10 +730,12 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax)), nil
 		}
 		if !supportsGeneratedPlusSigil(sigil) {
-			reasons = append(reasons, fmt.Sprintf("因子「%s」自然记录不含副特性", item.SigilName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子「%s」没有副特性槽", item.SigilName))
+			return item, report, nil
 		}
 		if secondaryTrait.InternalID == primaryTrait.InternalID {
-			reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」重复，游戏不会自然生成同名双词条", item.PrimaryTraitName, item.SecondaryTraitName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」与副特性「%s」重复", item.PrimaryTraitName, item.SecondaryTraitName))
+			return item, report, nil
 		}
 		allowed, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
 		found := false
@@ -741,7 +746,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			}
 		}
 		if !found {
-			reasons = append(reasons, fmt.Sprintf("副特性「%s」不属于因子「%s」的自然组合", item.SecondaryTraitName, item.SigilName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」不属于因子「%s」在 2.0.2 表中的合法词池", item.SecondaryTraitName, item.SigilName))
+			return item, report, nil
 		}
 		if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
 			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 偏离目录自然范围 1 到 15", item.SecondaryLevel))
@@ -1010,6 +1016,26 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		BackupPath:    sg.save.LastBackupPath(),
 		SlotIDs:       createdSlotIDs,
 	}, nil
+}
+
+// CreateVirtualSigilSource creates one verified, unequipped inventory instance
+// for the virtual-sigil page without touching the shared generator queue.
+// The ordinary generator safety gate still rejects writes to a managed save
+// while the game is running, and ApplyQueue performs backup plus strict readback.
+func (sg *SigilGen) CreateVirtualSigilSource(savePath string, item QueueItem) (*ApplyResult, error) {
+	savePath = strings.TrimSpace(savePath)
+	if savePath == "" {
+		return nil, errors.New("请先选择来源存档")
+	}
+	item.Quantity = 1
+	isolated := NewSigilGen()
+	if _, err := isolated.LoadSaveFile(savePath); err != nil {
+		return nil, err
+	}
+	if err := isolated.AddToQueue(item); err != nil {
+		return nil, err
+	}
+	return isolated.ApplyQueue(savePath)
 }
 
 // RemoveAllSigils 清除输出的存档中所有因子

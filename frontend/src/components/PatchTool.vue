@@ -2,7 +2,7 @@
 import { reactive, ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
-  GetAppVersion, CheckUpdate, OpenReleasePage,
+  GetAppVersion, CheckUpdate, GetRuntimeCompanionSummary, OpenReleasePage,
 } from '../../wailsjs/go/backend/App'
 import {
   ClipboardSetText,
@@ -113,18 +113,42 @@ const state = reactive({
 
 const activeTab = ref('home')
 const workspaceScroll = ref(null)
+const toolSwitcher = ref(null)
 const pageScrollPositions = new Map()
 const RUNTIME_PATCH_MODES = Object.freeze({
   patchCombat: 'combat',
   patchCharacters: 'characters',
   patchQuest: 'quest',
 })
+const RUNTIME_MONITOR_MODES = Object.freeze({
+  runtimeMonitor: 'party',
+  spatialTools: 'spatial',
+  selectedItemMonitor: 'items',
+})
 const runtimePatchesMounted = ref(false)
 const runtimeMonitorMounted = ref(false)
 const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, recoveryCount: 0, pid: 0 })
+const runtimeCompanionStates = reactive({
+  camera: { id: 'camera', active: false, recoveryRequired: false },
+  audioMixer: { id: 'audioMixer', active: false, recoveryRequired: false },
+  virtualSigils: { id: 'virtualSigils', active: false, recoveryRequired: false },
+})
+const runtimeCompanionLabels = {
+  camera: ['镜头', 'Camera'],
+  audioMixer: ['音频', 'Audio'],
+  virtualSigils: ['虚拟因子', 'Virtual sigils'],
+}
+const activeRuntimeCompanions = computed(() => Object.values(runtimeCompanionStates)
+  .filter(item => item.active || item.recoveryRequired)
+  .map(item => ({
+    ...item,
+    label: runtimeCompanionLabels[item.id]?.[language.value === 'en' ? 1 : 0] || item.id,
+  })))
 const lastRuntimePatchTab = ref('patchCombat')
 const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
 const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || RUNTIME_PATCH_MODES[lastRuntimePatchTab.value])
+const isRuntimeMonitorTab = computed(() => Boolean(RUNTIME_MONITOR_MODES[activeTab.value]))
+const runtimeMonitorMode = computed(() => RUNTIME_MONITOR_MODES[activeTab.value] || 'party')
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const loadoutEditing = ref(false)
@@ -139,15 +163,13 @@ const updateLoading = ref(false)
 const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
 const navigationBusy = ref(false)
 const navigationError = ref(null)
-const moreMenu = ref(null)
-const moreMenuOpen = ref(false)
-const moreMenuQuery = ref('')
 let hasAttemptedGameDetection = false
 let stopRuntimeQOLSessionEvents = () => {}
+let runtimeCompanionSummaryTimer = 0
+let runtimeCompanionSummaryRequest = 0
 
 watch(activeTab, (value) => {
-  closeMoreMenu()
-  if (value === 'runtimeMonitor') runtimeMonitorMounted.value = true
+  if (RUNTIME_MONITOR_MODES[value]) runtimeMonitorMounted.value = true
   if (!RUNTIME_PATCH_MODES[value]) return
   runtimePatchesMounted.value = true
   lastRuntimePatchTab.value = value
@@ -161,6 +183,41 @@ function updateCTFeatureSession(value) {
   ctFeatureSession.pid = Number.isSafeInteger(value?.pid) && value.pid > 0 ? value.pid : 0
 }
 
+function updateRuntimeCompanionState(value) {
+  const target = runtimeCompanionStates[value?.id]
+  if (!target) return
+  target.active = value?.active === true
+  target.recoveryRequired = value?.recoveryRequired === true
+}
+
+function scheduleRuntimeCompanionSummary(delay = 2000) {
+  window.clearTimeout(runtimeCompanionSummaryTimer)
+  if (document.hidden) return
+  runtimeCompanionSummaryTimer = window.setTimeout(refreshRuntimeCompanionSummary, delay)
+}
+
+async function refreshRuntimeCompanionSummary() {
+  const request = ++runtimeCompanionSummaryRequest
+  try {
+    const summaries = await GetRuntimeCompanionSummary()
+    if (request !== runtimeCompanionSummaryRequest) return
+    for (const summary of summaries || []) updateRuntimeCompanionState(summary)
+  } catch {
+    // Page-level workspaces still publish immediate state; the next shell poll
+    // retries the authoritative aggregate without hiding the existing status.
+  } finally {
+    if (request === runtimeCompanionSummaryRequest) scheduleRuntimeCompanionSummary()
+  }
+}
+
+function handleRuntimeCompanionVisibility() {
+  if (document.hidden) {
+    window.clearTimeout(runtimeCompanionSummaryTimer)
+    return
+  }
+  void refreshRuntimeCompanionSummary()
+}
+
 const toolMeta = {
   home: {
     group: 'home', title: '首页', eyebrow: '功能入口', status: 'DLC 2.0.2', tone: 'stable',
@@ -169,44 +226,44 @@ const toolMeta = {
   },
   progression: {
     group: 'save', title: '物品与武器（存档修改）', eyebrow: '离线养成', status: '已适配 2.0.2', tone: 'stable',
-    description: '统一处理物品、素材、武器等级与养成资源，适合大批量、可回滚的存档修改。',
-    usage: ['完全退出游戏', '选择存档并确认空位', '写入后使用自动备份验证'],
-    caution: '不要在游戏运行时编辑同一份存档。',
+    description: '给所选存档补充素材和养成资源，或调整武器等级与强化进度；只改你在页面中确认的项目。',
+    usage: ['完全退出游戏并选择目标存档', '搜索物品或武器，填入数量与等级', '预览改动后保存；应用会自动备份并回读'],
+    caution: '改动写回所选存档；需要恢复时，从页面右上角的存档保护中选择写入前备份。',
     speaker: '卡莉奥斯特罗', note: '先留好备份，再把素材和武器整理得漂漂亮亮——这才像完美的炼金术嘛。',
   },
   sigil: {
     group: 'save', title: '因子修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '生成、批量管理和删除存档内因子，适合一次性整理较多因子。',
-    usage: ['退出游戏并加载存档', '配置因子与词条', '先检查合法性再写入'],
-    caution: '不合法组合会提醒，但不会替你改变选择。',
+    description: '在所选存档中新增独立因子实例，也能查看或删除已有因子；适合一次准备多颗合法因子。',
+    usage: ['完全退出游戏并选择目标存档', '选择因子、主副词条、等级与数量，加入待写入队列', '核对队列后保存；应用会自动备份并回读'],
+    caution: '不合法或未验证的组合不会写入；需要撤销时，从存档保护恢复本次写入前的备份。',
     speaker: '娜露梅亚', note: '先检验组合，再写入存档。稳稳完成每一步，理想的因子就不会跑掉。',
   },
   sigilMemory: {
     group: 'memory', title: '因子即时编辑', eyebrow: '游戏内养成', status: '实时', tone: 'live',
-    description: '直接修改游戏中当前选中的因子，适合少量精确调整和反复试配。',
-    usage: ['启动游戏并启用读取', '在游戏中选中目标因子', '刷新、核对后写入'],
-    caution: '重新进档或因子列表刷新后，请重新选择目标。',
+    description: '修改游戏里当前高亮的那一颗因子，适合少量调整；页面会并列显示当前值与准备写入的值。',
+    usage: ['启动游戏，打开因子列表并点击“启用读取”', '在游戏中选中目标因子，回到工具核对名称和词条', '修改后点击“写入修改”；继续编辑前重新选择目标'],
+    caution: '写入的是当前游戏进程，不是离线存档文件；停止读取会恢复捕获指令，重新进档后需重新连接。',
     speaker: '萝赛塔', note: '游戏重新载入后，记得再选一次目标。旧的指针可不会一直等你哦。',
   },
   loadout: {
-    group: 'memory', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
-    description: '记录角色当前的 12 个因子并导出分享，也可把配装文件逐项复刻到备用因子。（改的是游戏内因子；写存档配装预设请用「配装预设」。）',
-    usage: ['启动游戏并按角色筛选因子', '从第一项开始记录或复刻', '逐项向下移动，不要快速滚动'],
+    group: 'liveExtras', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
+    description: '从游戏内依次读取角色当前的 12 个因子，用于导出和分享；也能把导入配装逐颗写到你准备好的备用因子上。',
+    usage: ['启动游戏，打开角色因子列表并选中第一颗', '选择“录制”或载入配装进行“复刻”', '按页面提示逐颗向下移动，完成后预览、导出或分享'],
     caution: '复刻会改写当前选中的备用因子；不要使用已经装备或需要保留的因子。',
     speaker: '芙劳', note: '把十二个因子的顺序先理清，再一步一步复刻。速度不必太快，准确才最重要。',
   },
   loadoutPresets: {
     group: 'save', title: '配装预设（查看与写入）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '查看游戏配装界面保存的预设（武器/12 因子/4 技能/专精），也可把自定义配装写入指定槽位。',
-    usage: ['完全退出游戏', '选择存档位或浏览存档文件', '查看，或切到「编辑写入」自定义配装'],
-    caution: '',
+    description: '查看和编辑角色配装：武器、12 个因子、4 个技能、专精与其他已记录内容都在同一页核对。',
+    usage: ['完全退出游戏并选择目标存档', '打开角色和配装槽，手动编辑或按技能目标生成因子方案', '先预览整套配装，再确认写入所选槽位'],
+    caution: '保存草稿不会修改存档；只有确认写入才会覆盖目标配装槽，并自动创建备份和回读。',
     speaker: '古兰', note: '先备份，再确认角色和目标槽；已有配装会被覆盖。',
   },
   wrightstone: {
     group: 'save', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '集中生成祝福与三条词条，使用与因子批量修改一致的存档工作流。',
-    usage: ['退出游戏并加载存档', '选择祝福和三条词条', '校验队列并应用'],
-    caution: '等级上限与组合合法性会在写入前提示。',
+    description: '在所选存档中新增祝福石实例；选择祝福类型和三条技能后，可以一次生成一颗或批量加入队列。',
+    usage: ['完全退出游戏并选择目标存档', '选择祝福、三条技能、等级与数量', '核对队列后保存；应用会自动备份并回读'],
+    caution: '重复技能、非法组合和超过技能曲线的等级不会写入；可从存档保护恢复写入前备份。',
     speaker: '菲莉', note: '三条词条都确认好再应用，幽灵朋友们也会替你看着。',
   },
   summonSave: {
@@ -218,118 +275,132 @@ const toolMeta = {
   },
   wrightstoneMemory: {
     group: 'memory', title: '祝福石即时编辑', eyebrow: '游戏内祝福石', status: '实时', tone: 'live',
-    description: '捕获游戏内当前选中的祝福石记录，并以一次事务核对、写入三条词条。',
+    description: '修改游戏中当前高亮的祝福石：先读取真实三槽，再一次写入你确认的技能和等级。',
     usage: ['启动游戏并启用读取', '在游戏内祝福石列表选中目标记录', '核对三槽变更后一次性写入'],
-    caution: '每次写入后旧记录都会失效；继续操作前必须在游戏内重新选择记录。',
+    caution: '写入成功会自动停止读取并恢复游戏指令；继续修改前，必须重新启用并在游戏中选择目标。',
     speaker: '玛琪拉菲菈', note: '写入后旧记录会失效。回到游戏里重新选中目标，再继续。',
   },
   summon: {
-    group: 'memory', title: '召唤石修改', eyebrow: '游戏内修改', status: '实时保存', tone: 'live',
-    description: '读取召唤石背包并修改因子、副参数和等级，写入时调用游戏保存流程。',
-    usage: ['打开游戏内召唤石背包', '连接并选择一颗召唤石', '核对稀有度与合法性后写入'],
-    caution: '当前不支持安全更换召唤石种类。',
+    group: 'memory', title: '召唤石即时修改', eyebrow: '游戏内召唤石', status: '实时保存', tone: 'live',
+    description: '读取游戏背包中当前选中的召唤石，修改它的技能、副参数和等级，再调用游戏自身保存流程。',
+    usage: ['启动游戏并打开召唤石背包', '连接后在游戏中选中目标召唤石', '回到工具核对类型和等级，再写入并按提示保存'],
+    caution: '实时页不更换召唤石种类；需要更换类型或新增实例，请使用“召唤石添加 / 修改（存档）”。',
     speaker: '露莉亚', note: '先在背包里选中目标召唤石，再核对稀有度和等级，我们一起慢慢来。',
   },
   overlimit: {
     group: 'memory', title: '角色上限突破', eyebrow: '游戏内修改', status: '流程型', tone: 'live',
-    description: '读取角色突破界面的四个能力槽，按游戏原流程保存结果。',
-    usage: ['先完成一次 3 级突破', '停在结果界面后刷新', '修改四项并按说明保存'],
-    caution: '必须按页面步骤完成，不能跳过游戏内确认流程。',
+    description: '读取角色上限突破结果页的四项能力，修改后仍由游戏原本的确认步骤保存。',
+    usage: ['在游戏中完成一次 3 级上限突破', '停留在四项结果页，回到工具读取', '调整四项后写回，再返回游戏确认保存'],
+    caution: '工具只改当前结果页；跳过游戏内最终确认不会保存。',
     speaker: '希耶提', note: '四个能力槽一个都别漏。真正的剑王，可不会跳过确认步骤。',
   },
   runtime: {
-    group: 'memory', title: '游戏内实时修改', eyebrow: '金币、素材与掉落', status: '需连接游戏', tone: 'live',
-    description: '集中管理货币、药水、素材消耗和任务掉落等运行时功能。',
-    usage: ['先启动并进入游戏存档', '连接游戏进程', '按资源或任务分类切换功能'],
-    caution: '重启游戏后运行时设置会失效，需要重新连接。',
+    group: 'memory', title: '货币、素材与任务掉落', eyebrow: '游戏内即时资源', status: '需连接游戏', tone: 'live',
+    description: '在当前游戏进程中调整金币、MSP、药水和素材，或开启已验证的任务掉落功能。',
+    usage: ['启动游戏并进入要使用的存档', '连接当前游戏进程', '选择资源或任务功能，按页面提示应用'],
+    caution: '这些设置作用于当前游戏会话；重启游戏后需要重新连接，页面提供的停用操作会恢复相应补丁。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   runtimeMonitor: {
-    group: 'memory', title: '配装检测与空间工具', eyebrow: '后台检测 · 单机空间操作', status: '混合工具 · 写入项单独标识', tone: 'live',
-    description: '角色配装检测和选中物品解析保持只读；空间页提供单机坐标、飞行与重力操作，每个写入入口单独标识并受连接所有权保护。',
-    usage: ['开启角色配装检测并正常游玩', '在本地批次中预览、导出或部署配装', '需要时单独连接空间诊断或选中物品读取'],
-    caution: '队伍记录与物品读取保持只读；空间坐标写入和重力抑制仅限离线/单机，并且需要逐项确认。穿墙/无碰撞仍未开放。',
+    group: 'liveExtras', title: '队友配装持续检测', eyebrow: '队伍配装 · 后台服务', status: '点击开启后持续检测', tone: 'live',
+    description: '点击开启后持续在后台读取连续稳定的任务队伍快照；切换页面不会停止，直到你主动关闭。',
+    usage: ['点击开启角色配装检测', '正常进入任务并与队友游玩', '在本地批次中预览、导出、部署或上传配装'],
+    caution: '检测器不会默认开启；只读游戏数据，只有你点击关闭时才停止。',
     speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
   },
+  spatialTools: {
+    group: 'liveExtras', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '2.0.2 实验', tone: 'live',
+    description: '单独提供坐标读取、书签、传送、世界轴连续移动与重力抑制，不再和队友配装检测混在一个入口。',
+    usage: ['仅在离线或单机内容连接', '读取当前坐标并按需保存书签', '逐项使用传送、移动或重力控制'],
+    caution: '世界轴移动加重力抑制不等于穿墙；noclip 与相机相对飞行仍未开放。',
+    speaker: '姬塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
+  },
+  selectedItemMonitor: {
+    group: 'tools', title: '选中物品查看（只读）', eyebrow: '诊断 · 内存查看', status: '低频工具', tone: 'live',
+    description: '查看游戏中当前高亮素材或关键物品的名称、数量、Hash 与 Flags；页面没有任何修改入口。',
+    usage: ['启动游戏并连接，点击“启用只读捕获”', '在游戏的素材或关键物品列表中高亮目标', '回到工具刷新并读取一次；查看下一件前重新选择'],
+    caution: '这是低频诊断工具；点击“安全断开”会移除临时捕获并恢复游戏原始指令。',
+    speaker: '卡塔莉娜', note: '只读一次，记录清楚。诊断工具不应该挡住常用功能。',
+  },
   formulaSampler: {
-    group: 'monitor', title: '角色公式采样', eyebrow: '严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
-    description: '只读采集角色最终 HP、攻击、暴击率与昏厥值，通过单变量 A1/B1/A2/B2 复现实验生成脱敏证据包。',
-    usage: ['选择当前出战角色并连接', '每轮只改变一个可逆项目', '严格按 A1/B1/A2/B2 采集后导出'],
-    caution: '面板未稳定或同时改变多个项目会让样本失效；采样器不安装 Hook，也不写进程。',
+    group: 'tools', title: '角色公式采样', eyebrow: '诊断 · 严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
+    description: '用四次只读记录比较某一项装备或技能到底改变了多少 HP、攻击、暴击率与昏厥值。',
+    usage: ['选择当前出战角色并连接，先记录原状态 A1', '只改变一个可逆项目，记录 B1，再重复记录 A2、B2', '四次结果可复现后，导出不含个人路径的证据包'],
+    caution: '角色面板没稳定或一次改变多项都会让结果失效；本页不安装 Hook、不写游戏，也不改存档。',
     speaker: '卡塔莉娜', note: '一次只动一项，等数字站稳再记。前后能复现，公式才算有证据。',
   },
   patchCombat: {
-    group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
-    description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
-    usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '三个补丁页共用常驻连接；明确断开时恢复全部补丁'],
+    group: 'liveExtras', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
+    description: '在离线或单机游玩中调整闪避、格挡、Link、召唤限制和部位破坏等战斗规则。',
+    usage: ['启动游戏并进入离线或单机内容', '连接后逐项开启需要的规则', '切页不会停止；用完点击断开，恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
     speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。切换页面不会打断，明确断开时才会全部恢复。',
   },
   patchCharacters: {
-    group: 'memory', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
-    description: '按角色整理已验证的专属机制补丁，可搜索角色与功能名称并查看明确冲突。',
-    usage: ['启动游戏并进入单机内容', '选择角色分组后启用机制', '冲突项先恢复当前功能再切换'],
+    group: 'liveExtras', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
+    description: '按角色查找专属机制调整；每个开关都会说明作用，互相冲突的功能不会同时开启。',
+    usage: ['启动游戏并进入离线或单机内容', '搜索角色或机制名称，查看说明后开启', '切换互斥功能前，先停用并确认原机制已恢复'],
     caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
     speaker: '巴萨拉卡', note: '冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。',
   },
   patchQuest: {
-    group: 'memory', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
-    description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
-    usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
+    group: 'liveExtras', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
+    description: '在离线或单机任务中调整倒计时、宝箱、结算、支线奖励与养成便利功能。',
+    usage: ['启动游戏并进入离线或单机任务', '按“任务规则”或“体验便利”选择功能', '用完在本页停用，或断开并恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
     speaker: '尤达拉哈', note: '任务路线先看清，宝箱和结算各归各位。用完恢复，下一趟才不会乱。',
   },
   chara: {
     group: 'save', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
-    description: '查看所有角色的使用次数，可任意选择多个角色批量修改。',
-    usage: ['完全退出游戏', '选择存档和目标角色', '填入次数后保存已选'],
-    caution: '只修改勾选角色，保存前请检查选择数量。',
+    description: '查看每名角色记录的使用次数，并把同一个次数批量写给你勾选的角色。',
+    usage: ['完全退出游戏并选择目标存档', '勾选角色并填入新的使用次数', '核对已选数量后保存'],
+    caution: '只修改勾选角色；写入前会自动备份，需要时可从存档保护恢复。',
     speaker: '姬塔', note: '只会保存你勾选的角色。动手前再数一遍，团长的记录要清清楚楚。',
   },
   save: {
     group: 'save', title: '任务与称号记录', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
-    description: '修改任务完成次数，或搜索并维护称号解锁与已查看记录。',
-    usage: ['完全退出游戏', '选择任务或称号标签', '核对筛选结果后写入'],
-    caution: '称号奖励领取记录保持不变。',
+    description: '修改任务完成次数，或管理称号是否解锁、是否已查看；两个功能使用同一份所选存档。',
+    usage: ['完全退出游戏并选择目标存档', '切到任务或称号，搜索并勾选要修改的记录', '核对数量后保存；应用会自动备份并回读'],
+    caution: '称号奖励是否领取不会在这里改变；需要撤销时，从存档保护恢复写入前备份。',
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
   saveDiff: {
     group: 'tools', title: '存档实验室', eyebrow: '存档与解包只读研究', status: '只读', tone: 'calibrate',
-    description: '逐条比较两份存档的逻辑记录，按类型、ID、位置和内容哈希定位差异，并导出不含路径与原始值的脱敏证据。',
-    usage: ['选择基准与对照存档', '筛选新增、缺少或变化记录', '需要协作时导出脱敏 JSON'],
-    caution: '未知字段只显示结构与哈希，不提供猜测写入。',
+    description: '比较两份存档哪里不同，并把已识别的配装、因子、祝福石、物品或召唤石差异带到对应编辑入口处理。',
+    usage: ['选择“改动前”基准存档和“改动后”对照存档', '按新增、缺少或变化筛选差异', '点击已知类型进入安全编辑器；未知记录可导出脱敏证据'],
+    caution: '本页始终只读，不会把一份存档直接覆盖到另一份；真正写入只在对应编辑器中完成，并走备份、预览和回读。',
     speaker: '兰斯洛特', note: '先找出准确差异，再判断字段含义。没有证据的记录，只读，不写。',
   },
   naturalDrop: {
-    group: 'tools', title: '天然掉落部署', eyebrow: '原生索引 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
-    description: '从用户自己的 2.0.2 解包表生成召唤石天然掉落配置，直接登记到游戏原生 data.i，并管理校验与恢复。',
-    usage: ['完全退出游戏', '选择 system/table 与游戏程序', '配置天然词条后直接部署；需要停用时恢复自动备份'],
-    caution: '发现其他外部文件覆盖同一张表时会停止部署；原始 data.i 会先做校验备份。',
+    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
+    description: '修改游戏实际读取的掉落与锻造表：可添加 Transmarvel 因子、召唤石、祝福石和普通物品，不会直接向存档背包添加物品。',
+    usage: ['完全退出游戏并选择游戏程序', '从应用内置的 2.0.2 目录搜索内容，填写数量或权重并加入待部署清单', '核对清单后部署；停用时恢复应用创建的游戏文件备份'],
+    caution: '十一张 2.0.2 精确表已随应用内嵌并校验，不需要自行解包；普通物品会加入“无尽模式·锻造师奖励池”。发现同表冲突时会停止，避免覆盖其他模组。',
     speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
   },
   audioMixer: {
     group: 'tools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
-    description: '按角色调整后续语音事件音量；只处理能从当前安装语音 bank 唯一归属的事件。',
-    usage: ['启动游戏', '在应用内开启语音控制', '调整角色音量并保存；停用时自动恢复 Hook'],
-    caution: '未知和跨角色共享事件保持原音；不要同时启用其他 PostEvent 音频 Hook。',
+    description: '分别调低或静音各角色后续播放的语音，也能调整界面音效；不会替换游戏音频文件。',
+    usage: ['启动游戏并在本页确认已连接', '调整角色或界面音量，可先保存为本机预设', '点击“开启音频运行时”；之后保存会立即更新当前游戏'],
+    caution: '只处理能够明确归属的语音事件，未知和共享事件保持原音；点击“停用并恢复”会移除本工具的音频 Hook。',
     speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
   },
   camera: {
     group: 'tools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
-    description: '调整城镇镜头最远距离、视线目标高度与滚轮缩放步长；组件锁定已验证的 2.0.2 游戏文件。',
-    usage: ['启动游戏', '在应用内开启镜头控制', '热更新距离、高度与滚轮步长；停用时恢复'],
-    caution: '只影响城镇镜头；三项参数均由应用内运行时管理，停用时恢复原始 Hook 与镜头值。',
+    description: '调整城镇镜头能拉多远、看向角色的高度，以及每格滚轮缩放多少；战斗镜头不会改变。',
+    usage: ['启动游戏并在本页确认已连接', '选择默认或舒适预设，也可手动调三个参数', '点击“开启镜头运行时”；之后保存会立即更新当前游戏'],
+    caution: '只影响城镇镜头；点击“停用并恢复”会还原开启前的镜头值和本工具安装的 Hook。',
     speaker: '萝赛塔', note: '远近与高低都留一点余裕，镜头才会从容。想换滚轮手感，重启以后再看效果。',
   },
   virtualSigils: {
-    group: 'tools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
-    description: '为每名角色配置额外运行时因子槽与预设，引用真实未装备实例，不扩写存档的 12 个物理槽。',
-    usage: ['选择因子来源存档', '按角色配置 1 至 8 个虚拟槽或应用预设', '连接游戏后启用；切换装备、角色或场景触发技能重建'],
-    caution: '同一物理因子只能归一个虚拟槽；换档后实例内容不一致会拒绝注入。',
+    group: 'liveExtras', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
+    description: '让运行中的角色额外读取 1 至 8 颗真实库存因子的技能；它不会把存档的 12 个物理配装槽扩容。',
+    usage: ['选择提供因子实例的存档和角色', '从未装备背包选择因子，或在退出游戏后制造新实例', '启动游戏并点击“开启虚拟因子”；切页后仍会保持运行'],
+    caution: '同一个真实因子实例只能占一个虚拟槽；换存档、实例变化或校验失败会拒绝启用，停用时恢复所有相关 Hook。',
     speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
   },
 	runtimeQOL: {
-		group: 'memory', title: '游戏便利运行时', eyebrow: '显示 · 任务 · 编队便利', status: '2.0.2 内置运行时', tone: 'live',
+		group: 'liveExtras', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2 内置运行时', tone: 'live',
 		description: '集中开启显示精度、房间 ID 和主线队长替换；等级同步与重镶返还保留为待实测候选，不会在当前构建安装。',
 		usage: ['启动游戏', '选择需要的便利功能和显示精度', '开启后正常游玩；F12 可紧急恢复'],
 		caution: '所有入口必须唯一匹配 2.0.2；发现其他工具已修改同一入口时会拒绝接管。',
@@ -337,23 +408,23 @@ const toolMeta = {
 	},
   compatibility: {
     group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
-    description: '在一个位置查看工具版本、游戏文件和功能适配状态。',
-    usage: ['检查工具更新', '确认游戏文件已识别', '查看适配状态'],
-    caution: '',
+    description: '确认当前工具版本、游戏 EXE 和各功能是否匹配 DLC 2.0.2；这里不修改游戏或存档。',
+    usage: ['检查是否有新的工具版本', '确认已识别正确的游戏 EXE', '查看各功能的已适配、实验或未开放状态'],
+    caution: '“已识别”只代表版本和文件匹配，不代表尚未完成的实机功能已经验证。',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
   monster: {
-    group: 'memory', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
-    description: '控制怪物血量、伤害、昏厥条和 Overdrive 状态。',
-    usage: ['仅在主机端测试', '先刷新并检查状态', '告知队友后再启用'],
-    caution: '',
+    group: 'liveExtras', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
+    description: '实验性调整当前怪物的血量、伤害、昏厥条与 Overdrive 状态，便于离线测试战斗。',
+    usage: ['只在离线、单机或你明确控制的主机端测试', '连接后刷新并确认当前怪物状态', '一次调整一项，记录结果后恢复默认'],
+    caution: '怪物切换、阶段变化和任务结束都可能让目标失效；不能把候选行为当作稳定联机功能。',
     speaker: '伊德', note: '先确认主机端和倍率，再动手。力量失控的话，记录也会失去意义。',
   },
   patch: {
     group: 'tools', title: '游戏文件维护', eyebrow: 'EXE 备份与恢复', status: '可用', tone: 'calibrate',
-    description: '识别游戏 EXE、创建原始文件备份并一键恢复。',
-    usage: ['定位游戏 EXE', '先创建原始备份', '需要时一键恢复'],
-    caution: '',
+    description: '定位游戏 EXE、保存一份原始文件副本，并在文件补丁异常时恢复。',
+    usage: ['自动检测或手动选择游戏 EXE', '修改游戏文件前先创建原始备份', '需要撤销文件补丁时点击“恢复备份”'],
+    caution: '“重新创建原始备份”会替换旧备份；只有确认当前 EXE 是干净原版时才使用。',
     speaker: '欧根', note: '原始文件先备份，字节状态看清楚再修。老手从不省这一步。',
   },
   language: {
@@ -366,10 +437,10 @@ const toolMeta = {
 }
 
 const navigation = computed(() => [
-  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏读取或修改运行时数据' : 'Read or edit runtime data in-game', items: ['runtime', 'runtimeQOL', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'runtimeMonitor', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '严格只读的公式采样' : 'Strict read-only formula sampling', items: ['formulaSampler'] },
-  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '存档研究 · 模组构建 · 设置' : 'Save research, mod building, settings', items: ['saveDiff', 'naturalDrop', 'audioMixer', 'camera', 'virtualSigils', 'compatibility', 'language', 'patch'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'wrightstone', 'progression', 'summonSave', 'chara', 'save'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '常用即时修改' : 'Common Live Editing', caption: language.value === 'zh' ? '因子、祝福、召唤石与养成数据' : 'Sigils, wrightstones, summons, and progression', items: ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'] },
+  { id: 'liveExtras', mark: '拓', label: language.value === 'zh' ? '配装与实时扩展' : 'Loadouts & Live Tools', caption: language.value === 'zh' ? '队友配装、实时复刻与单机扩展' : 'Party loadouts, live restore, and solo extensions', items: ['runtimeMonitor', 'loadout', 'virtualSigils', 'runtimeQOL', 'spatialTools', 'camera', 'audioMixer', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '游戏文件 · 诊断 · 维护研究' : 'Game files, diagnostics, maintenance', items: ['naturalDrop', 'saveDiff', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'language', 'patch'] },
 ])
 
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
@@ -416,9 +487,9 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
-  { scope: '内存注入页面', status: '12 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、配装检测与空间工具、怪物实验' },
+  { scope: '实时功能页面', status: '13 页接入', tone: 'flow', detail: '常用即时修改 5 页；配装检测、实时复刻、虚拟因子、便利与补丁扩展 8 页' },
   { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '角色公式采样不安装 Hook，也不写进程或存档' },
-  { scope: '工具设置页面', status: '8 页已接入', tone: 'ok', detail: '存档实验室、天然掉落、角色语音混音台、城镇镜头、虚拟因子槽、版本适配、语言与显示、游戏文件维护' },
+  { scope: '工具设置页面', status: '7 页已接入', tone: 'ok', detail: '存档实验室、天然掉落、角色语音混音台、城镇镜头、版本适配、语言与显示、游戏文件维护' },
   { scope: '运行时补丁覆盖', status: '58 已接入 / 4 待证据', tone: 'ok', detail: '58 个目录功能已接入；4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
   { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
   { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 现场修复', tone: 'ok', detail: '当前目录逐站点验证；祝福石捕获与自动完美格挡连招修复使用独立版本守卫和写后回读' },
@@ -426,9 +497,9 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
   { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
-  { scope: 'Live injection pages', status: '12 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, combat rules, character mechanics, quest utilities, loadout detection and spatial tools, monster experiments' },
+  { scope: 'Live feature pages', status: '13 integrated', tone: 'flow', detail: '5 common live-editing pages plus 8 loadout detection, live restore, virtual sigil, convenience, and patch extension pages' },
   { scope: 'Strict read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Formula sampling installs no hooks and writes neither process nor save data; mixed runtime detection/spatial tools are classified under live memory tools' },
-  { scope: 'Utility pages', status: '8 pages integrated', tone: 'ok', detail: 'Save laboratory, natural drops, character voice mixer, town camera, virtual sigil slots, version compatibility, language and display, game file maintenance' },
+  { scope: 'Utility pages', status: '7 pages integrated', tone: 'ok', detail: 'Save laboratory, natural drops, character voice mixer, town camera, version compatibility, language and display, game file maintenance' },
   { scope: 'Runtime patch coverage', status: '58 integrated / 4 pending', tone: 'ok', detail: '58 catalog features are integrated; 4 candidates remain hidden until field or layout evidence is sufficient' },
   { scope: 'Runtime patch catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
   { scope: 'DLC 2.0.2 delta audit', status: '58 stable entries + 1 field fix', tone: 'ok', detail: 'Every catalog site is validated; wrightstone capture and the auto-perfect-guard combo fix use independent version guards and writeback' },
@@ -580,42 +651,11 @@ function warmGroupIntent(group) {
 }
 
 const activeGroup = computed(() => navigation.value.find(group => group.id === currentMeta.value.group) || navigation.value[0])
-const visibleSwitcherItems = computed(() => {
-  const items = activeGroup.value?.items || []
-  if (items.length <= 6) return items
-  const visible = items.slice(0, 3)
-  if (!visible.includes(activeTab.value)) visible.splice(2, 1, activeTab.value)
-  return visible
-})
-const hiddenSwitcherItems = computed(() => {
-  const visible = new Set(visibleSwitcherItems.value)
-  const query = moreMenuQuery.value.trim().toLocaleLowerCase(language.value === 'en' ? 'en' : 'zh-CN')
-  return (activeGroup.value?.items || []).filter(id => {
-    if (visible.has(id)) return false
-    if (!query) return true
-    const meta = localizedToolMeta.value[id]
-    return [meta?.title, meta?.eyebrow, meta?.description].some(value => String(value || '').toLocaleLowerCase(language.value === 'en' ? 'en' : 'zh-CN').includes(query))
-  })
-})
-const hasMoreSwitcherItems = computed(() => (activeGroup.value?.items?.length || 0) > 6)
-
-function closeMoreMenu() {
-  moreMenuOpen.value = false
-  moreMenuQuery.value = ''
-}
-function toggleMoreMenu() {
-  moreMenuOpen.value = !moreMenuOpen.value
-  if (!moreMenuOpen.value) moreMenuQuery.value = ''
-}
-function selectMoreTool(id) {
-  closeMoreMenu()
-  void selectTool(id)
-}
-function handleGlobalPointerDown(event) {
-  if (moreMenuOpen.value && moreMenu.value && !moreMenu.value.contains(event.target)) closeMoreMenu()
-}
-function handleGlobalKeydown(event) {
-  if (event.key === 'Escape') closeMoreMenu()
+function scrollToolSwitcher(event) {
+  const target = event.currentTarget
+  if (!target || target.scrollWidth <= target.clientWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  event.currentTarget.scrollLeft += event.deltaY
+  event.preventDefault()
 }
 let navigationRequest = 0
 async function selectGroup(group) {
@@ -669,8 +709,6 @@ function toggleSidebar() {
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', handleGlobalPointerDown)
-  document.addEventListener('keydown', handleGlobalKeydown)
   stopRuntimeQOLSessionEvents = EventsOn('runtime-qol-session', event => {
     const sessionId = String(event?.sessionId || '').trim()
     if (!sessionId) return
@@ -679,11 +717,14 @@ onMounted(() => {
     }).catch(() => showStatus('自动复制房间 ID 失败，请在游戏便利运行时页面手动复制。', 'error'))
   })
   GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
+  document.addEventListener('visibilitychange', handleRuntimeCompanionVisibility)
+  void refreshRuntimeCompanionSummary()
 })
 onBeforeUnmount(() => {
   window.clearTimeout(warmIntentTimer)
-  document.removeEventListener('pointerdown', handleGlobalPointerDown)
-  document.removeEventListener('keydown', handleGlobalKeydown)
+  window.clearTimeout(runtimeCompanionSummaryTimer)
+  runtimeCompanionSummaryRequest++
+  document.removeEventListener('visibilitychange', handleRuntimeCompanionVisibility)
   stopRuntimeQOLSessionEvents()
 })
 
@@ -776,19 +817,33 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">DLC 2.0.2</span>
+        <span class="build-chip test-build">{{ language === 'en' ? 'TEST BUILD' : '测试版' }}</span>
       </div>
-      <button
-        v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
-        type="button"
-        class="titlebar-patch-session"
-        style="--wails-draggable:no-drag"
-        :class="{ 'is-releasing': ctFeatureSession.releasePending }"
-        :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
-        @click="selectTool(lastRuntimePatchTab)"
-      >
-        <span aria-hidden="true"></span>
-        {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : ctFeatureSession.recoveryCount ? `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启 · ${ctFeatureSession.recoveryCount} 项待恢复` : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启` }}
-      </button>
+      <div v-if="ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
+        <button
+          v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
+          type="button"
+          class="titlebar-patch-session"
+          :class="{ 'is-releasing': ctFeatureSession.releasePending }"
+          :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
+          @click="selectTool(lastRuntimePatchTab)"
+        >
+          <span aria-hidden="true"></span>
+          {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : ctFeatureSession.recoveryCount ? `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启 · ${ctFeatureSession.recoveryCount} 项待恢复` : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启` }}
+        </button>
+        <button
+          v-for="companion in activeRuntimeCompanions"
+          :key="companion.id"
+          type="button"
+          class="titlebar-companion-session"
+          :class="{ 'needs-recovery': companion.recoveryRequired }"
+          :title="companion.recoveryRequired ? `${companion.label}运行时需要恢复 · 点击返回处理` : `${companion.label}运行时仍在后台工作 · 点击返回`"
+          @click="selectTool(companion.id)"
+        >
+          <span aria-hidden="true"></span>
+          {{ companion.label }}{{ companion.recoveryRequired ? '待恢复' : '常驻' }}
+        </button>
+      </div>
       <transition name="toast">
         <div v-if="saveStatus" class="titlebar-status" :class="statusType">
           <span class="status-light"></span>{{ saveStatus }}
@@ -803,7 +858,6 @@ function showStatus(message, type) {
 
     <div class="app-body" :class="{ 'home-mode': activeTab === 'home', 'sidebar-collapsed': sidebarCollapsed, 'loadout-workspace': isLoadoutWorkspace, 'art-visible': activeTab !== 'home' && !isLoadoutWorkspace && !artCollapsed }" style="--wails-draggable:no-drag">
       <aside class="sidebar">
-        <button class="sidebar-collapse" :title="sidebarCollapsed ? '展开目录' : '收起目录'" :aria-label="sidebarCollapsed ? '展开目录' : '收起目录'" @click="toggleSidebar">{{ sidebarCollapsed ? '›' : '‹' }}</button>
         <button class="sidebar-home-compact" type="button" title="返回功能首页" aria-label="返回功能首页" @click="selectTool('home')">
           <span aria-hidden="true">⌂</span>
         </button>
@@ -847,14 +901,23 @@ function showStatus(message, type) {
             <div class="breadcrumb"><span>{{ activeGroup.label }}</span><b>/</b><strong>{{ currentMeta.title }}</strong></div>
             <div class="workspace-actions">
               <div class="workspace-state"><span :class="['state-dot', currentMeta.tone]"></span>{{ currentMeta.status }}</div>
-              <SaveBackupDrawer v-if="currentMeta.group !== 'monitor'" @status="showStatus" />
+              <SaveBackupDrawer v-if="!['formulaSampler', 'selectedItemMonitor'].includes(activeTab)" @status="showStatus" />
             </div>
         </div>
 
-        <div v-if="activeTab !== 'home' && !isLoadoutWorkspace && activeGroup.items.length > 1" class="tool-switcher-shell" :data-group="activeGroup.id">
-          <nav class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换">
+        <div v-if="activeTab !== 'home' && !isLoadoutWorkspace" class="tool-switcher-shell" :data-group="activeGroup.id">
+          <button
+            type="button"
+            class="tool-switcher-collapse"
+            :title="sidebarCollapsed ? '展开左侧目录' : '收起左侧目录'"
+            aria-label="收起或展开左侧目录"
+            @click="toggleSidebar"
+          >
+            <span aria-hidden="true">{{ sidebarCollapsed ? '›' : '‹' }}</span>
+          </button>
+          <nav ref="toolSwitcher" class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换" @wheel="scrollToolSwitcher">
             <button
-              v-for="id in visibleSwitcherItems"
+              v-for="id in activeGroup.items"
               :key="id"
               :data-tool="id"
               class="ui-tab"
@@ -874,23 +937,6 @@ function showStatus(message, type) {
               <span v-if="localizedToolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
           </nav>
-          <div v-if="hasMoreSwitcherItems" ref="moreMenu" class="switcher-more" @click.stop>
-            <button type="button" class="switcher-more-button ui-btn is-ghost" :aria-expanded="moreMenuOpen" aria-haspopup="menu" @click="toggleMoreMenu">
-              {{ language === 'en' ? 'More' : '更多' }} <span aria-hidden="true">⌄</span>
-            </button>
-            <section v-if="moreMenuOpen" class="switcher-more-popover" role="menu">
-              <label>
-                <span>{{ language === 'en' ? 'Find a tool' : '查找同类功能' }}</span>
-                <input v-model="moreMenuQuery" class="ui-input" type="search" :placeholder="language === 'en' ? 'Search tools' : '搜索功能'" autofocus />
-              </label>
-              <div class="switcher-more-list">
-                <button v-for="id in hiddenSwitcherItems" :key="id" :data-tool="id" type="button" role="menuitem" @click="selectMoreTool(id)">
-                  <span><strong>{{ localizedToolMeta[id].title }}</strong><small>{{ localizedToolMeta[id].eyebrow }}</small></span><b aria-hidden="true">›</b>
-                </button>
-                <p v-if="!hiddenSwitcherItems.length">{{ language === 'en' ? 'No matching tools' : '没有匹配功能' }}</p>
-              </div>
-            </section>
-          </div>
         </div>
 
         <div v-if="navigationBusy || navigationError" class="navigation-load-state" :class="{ error: navigationError }" role="status">
@@ -920,8 +966,9 @@ function showStatus(message, type) {
             />
             <RuntimePatchMonitor
               v-if="runtimeMonitorMounted"
-              v-show="activeTab === 'runtimeMonitor'"
-              :page-active="activeTab === 'runtimeMonitor'"
+              v-show="isRuntimeMonitorTab"
+              :mode="runtimeMonitorMode"
+              :page-active="isRuntimeMonitorTab"
               @status="showStatus"
               @deploy-loadout="deployRuntimeLoadout"
             />
@@ -935,13 +982,13 @@ function showStatus(message, type) {
               <NaturalDropLab v-if="activeTab === 'naturalDrop'" @status="showStatus" />
             </KeepAlive>
             <KeepAlive>
-              <AudioMixerLab v-if="activeTab === 'audioMixer'" @status="showStatus" />
+              <AudioMixerLab v-if="activeTab === 'audioMixer'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
             </KeepAlive>
             <KeepAlive>
-              <CameraLab v-if="activeTab === 'camera'" @status="showStatus" />
+              <CameraLab v-if="activeTab === 'camera'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
             </KeepAlive>
             <KeepAlive>
-              <VirtualSigilLab v-if="activeTab === 'virtualSigils'" @status="showStatus" />
+              <VirtualSigilLab v-if="activeTab === 'virtualSigils'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
             </KeepAlive>
 			<KeepAlive>
 			  <RuntimeQOLLab v-if="activeTab === 'runtimeQOL'" @status="showStatus" />
@@ -952,7 +999,7 @@ function showStatus(message, type) {
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
-            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" />
+            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" @open-tool="selectTool" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
             <LanguageSettings v-else-if="activeTab === 'language'" />
 
@@ -1101,12 +1148,27 @@ button,input,select { font:inherit; }
   background:rgba(255,255,255,.08);
   font-size:var(--fs-xs);
 }
-.titlebar-patch-session {
+.build-chip.test-build {
+  border-color:rgba(255,208,118,.58);
+  color:#fff1c7;
+  background:rgba(151,92,23,.46);
+  font-weight:var(--fw-bold);
+  letter-spacing:.05em;
+}
+.titlebar-runtime-sessions {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:var(--space-2);
+  margin-left:var(--space-4);
+  overflow:hidden;
+}
+.titlebar-patch-session,
+.titlebar-companion-session {
   flex:0 0 auto;
   display:inline-flex;
   align-items:center;
   gap:var(--space-2);
-  margin-left:var(--space-4);
   padding:3px var(--space-3);
   border:1px solid rgba(150,224,204,.52);
   border-radius:var(--radius-pill);
@@ -1117,7 +1179,8 @@ button,input,select { font:inherit; }
   white-space:nowrap;
   cursor:pointer;
 }
-.titlebar-patch-session span {
+.titlebar-patch-session span,
+.titlebar-companion-session span {
   width:7px;
   height:7px;
   border-radius:50%;
@@ -1130,6 +1193,17 @@ button,input,select { font:inherit; }
   background:rgba(130,85,25,.62);
 }
 .titlebar-patch-session.is-releasing span { background:#ffd585; }
+.titlebar-companion-session {
+  color:#f8ead0;
+  border-color:rgba(255,229,169,.35);
+  background:rgba(63,49,33,.34);
+}
+.titlebar-companion-session.needs-recovery {
+  color:#fff0c7;
+  border-color:rgba(255,213,133,.52);
+  background:rgba(130,85,25,.62);
+}
+.titlebar-companion-session.needs-recovery span { background:#ffd585; }
 .titlebar-status {
   position:absolute;
   z-index:1;
@@ -1241,23 +1315,6 @@ button,input,select { font:inherit; }
 .primary-nav,
 .sidebar-mascot,
 .sidebar-foot { position:relative; z-index:1; }
-.sidebar-collapse {
-  position:absolute;
-  z-index:2;
-  top:var(--space-2);
-  right:var(--space-2);
-  width:30px;
-  height:30px;
-  display:grid;
-  place-items:center;
-  border:0;
-  border-radius:var(--radius-sm);
-  color:var(--text-muted);
-  background:transparent;
-  font-size:var(--fs-lg);
-  cursor:pointer;
-}
-.sidebar-collapse:hover { color:var(--text-primary); background:var(--state-hover); }
 .sidebar-home-compact {
   width:48px;
   height:48px;
@@ -1443,15 +1500,27 @@ button,input,select { font:inherit; }
 .sidebar-collapsed .nav-arrow,
 .sidebar-collapsed .sidebar-foot { display:none; }
 .sidebar-collapsed .sidebar-home-compact { display:grid; }
-.sidebar-collapsed .primary-nav { align-items:center; padding-top:var(--space-3); }
+.sidebar-collapsed .primary-nav {
+  width:48px;
+  align-self:center;
+  align-items:center;
+  padding-top:var(--space-3);
+}
 .sidebar-collapsed .nav-item {
   width:48px;
+  height:48px;
   min-height:48px;
   grid-template-columns:1fr;
   place-items:center;
-  padding:var(--space-2);
+  padding:0;
+  box-sizing:border-box;
 }
-.sidebar-collapsed .nav-mark { width:32px; height:32px; }
+.sidebar-collapsed .nav-item.active { box-shadow:inset 3px 0 0 var(--selected-bar); }
+.sidebar-collapsed .nav-mark {
+  width:100%;
+  height:100%;
+  border:0;
+}
 .sidebar-collapsed .sidebar-mascot {
   width:48px;
   grid-template-columns:48px;
@@ -1524,40 +1593,73 @@ button,input,select { font:inherit; }
 
 .tool-switcher-shell {
   min-height:46px;
-  flex:0 0 46px;
+  flex:0 0 auto;
   min-width:0;
-  display:flex;
-  align-items:stretch;
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr);
   border-bottom:1px solid rgba(140,104,49,.23);
   background:#eddfc0;
+}
+.tool-switcher-collapse {
+  width:46px;
+  min-height:46px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:0;
+  border-right:1px solid rgba(140,104,49,.23);
+  border-radius:0;
+  color:#78684f;
+  background:transparent;
+  box-shadow:none;
+  font-size:var(--fs-lg);
+  cursor:pointer;
+}
+.tool-switcher-collapse:hover {
+  color:#4e402e;
+  background:rgba(126,89,40,.08);
 }
 .tool-switcher {
   min-width:0;
   min-height:46px;
-  flex:1 1 auto;
+  display:flex;
+  flex-wrap:nowrap;
   align-items:stretch;
-  gap:var(--space-1);
+  gap:0;
   padding:0 var(--content-gutter);
   border-bottom:0;
   background:#eddfc0;
-  overflow:hidden;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
 }
 .tool-switcher .ui-tab {
+  min-width:max-content;
   min-height:46px;
+  flex:0 0 auto;
   display:inline-flex;
+  justify-content:center;
   align-items:center;
   gap:var(--space-2);
-  padding-inline:var(--space-4);
+  padding:0 var(--space-4);
+  border:0;
+  border-bottom:2px solid transparent;
+  border-radius:0;
   font-size:var(--fs-sm);
   font-weight:var(--fw-bold);
   color:#78684f;
   background:transparent;
+  box-shadow:none;
+  white-space:nowrap;
+  text-align:center;
+  line-height:1;
 }
 .tool-switcher .ui-tab.active {
-  border-bottom-color:#9a7440;
   color:#4e402e;
-  background:#dfc79b;
-  box-shadow:inset 0 -2px #9a7440;
+  background:transparent;
+  border-bottom-color:#9a7440;
+  box-shadow:none;
 }
 .switcher-tag {
   display:inline-flex;
@@ -1571,50 +1673,6 @@ button,input,select { font:inherit; }
 .switcher-tag.live { color:var(--info-ink); background:var(--info-bg); }
 .switcher-tag.offline { color:var(--success-ink); background:var(--success-bg); }
 .switcher-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); }
-.switcher-more {
-  position:relative;
-  z-index:20;
-  flex:0 0 auto;
-  display:flex;
-  align-items:center;
-  padding-right:var(--content-gutter);
-}
-.switcher-more-button { min-width:92px; min-height:38px; justify-content:center; color:var(--accent-hover); }
-.switcher-more-popover {
-  position:absolute;
-  z-index:30;
-  top:calc(100% + 6px);
-  right:var(--content-gutter);
-  width:min(340px,calc(100vw - 110px));
-  padding:var(--space-3);
-  border:1px solid var(--border-strong);
-  border-radius:var(--radius-md);
-  background:var(--surface-card-pop);
-  box-shadow:var(--shadow-lg);
-}
-.switcher-more-popover label { display:grid; gap:4px; color:var(--text-muted); font-size:var(--fs-xs); }
-.switcher-more-list { max-height:min(440px,55vh); display:grid; gap:4px; margin-top:var(--space-2); overflow:auto; scrollbar-width:thin; }
-.switcher-more-list button {
-  min-width:0;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:var(--space-3);
-  padding:var(--space-2) var(--space-3);
-  border:1px solid transparent;
-  border-radius:var(--radius-sm);
-  color:var(--text-secondary);
-  background:transparent;
-  text-align:left;
-  cursor:pointer;
-}
-.switcher-more-list button:hover,.switcher-more-list button:focus-visible { border-color:var(--accent-border); background:var(--state-hover); }
-.switcher-more-list button span { min-width:0; display:grid; gap:2px; }
-.switcher-more-list button strong,.switcher-more-list button small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.switcher-more-list button strong { color:var(--text-primary); font-size:var(--fs-sm); }
-.switcher-more-list button small { color:var(--text-muted); font-size:var(--fs-xs); }
-.switcher-more-list button b { color:var(--accent); }
-.switcher-more-list p { margin:0; padding:var(--space-4); color:var(--text-muted); font-size:var(--fs-sm); text-align:center; }
 
 .navigation-load-state {
   min-height:36px;
@@ -1750,6 +1808,14 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtimeMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="spatialTools"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="selectedItemMonitor"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="saveDiff"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="naturalDrop"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="audioMixer"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="camera"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="virtualSigils"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="runtimeQOL"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="patchCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="patchCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
@@ -1949,68 +2015,18 @@ button,input,select { font:inherit; }
   .patch-edit > * { flex:1 1 140px; }
   .backup-policy { display:grid; grid-template-columns:minmax(0,1fr); }
 }
-@media (max-width:1439px) {
-  .tool-switcher .ui-tab { min-width:0; flex:1 1 auto; justify-content:center; padding-inline:var(--space-3); white-space:nowrap; }
-}
-@media (min-width:1280px) and (max-width:1399px) {
-  .app-body { grid-template-columns:70px minmax(0,1fr); }
-  .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
-  .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .sidebar-home-compact { display:grid; }
-  .primary-nav { align-items:center; padding-top:var(--space-3); }
-  .nav-item {
-    width:48px;
-    min-height:48px;
-    grid-template-columns:1fr;
-    place-items:center;
-    padding:var(--space-2);
-  }
-  .nav-mark { width:32px; height:32px; }
-  .sidebar-mascot {
-    width:48px;
-    grid-template-columns:48px;
-    place-items:center;
-    padding:var(--space-2) 0;
-  }
-  .sidebar-mascot-img { width:48px; height:54px; }
-  .sidebar-mascot-say { display:none; }
-  .sidebar-mascot:not(.has-sticker) { display:none; }
-}
 @media (max-width:900px) {
   .tool-center-scroll { width:100%; }
   .tool-stage::before,.art-toggle,.art-caption { display:none; }
 }
 @media (max-width:1024px) {
-  .app-body { grid-template-columns:70px minmax(0,1fr); }
-  .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
-  .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .sidebar-home-compact { display:grid; }
-  .primary-nav { align-items:center; padding-top:var(--space-3); }
-  .nav-item {
-    width:48px;
-    min-height:48px;
-    grid-template-columns:1fr;
-    place-items:center;
-    padding:var(--space-2);
-  }
-  .nav-mark { width:32px; height:32px; }
-  .sidebar-mascot {
-    width:48px;
-    grid-template-columns:48px;
-    place-items:center;
-    padding:var(--space-2) 0;
-  }
-  .sidebar-mascot-img { width:48px; height:54px; }
-  .sidebar-mascot-say { display:none; }
-  .sidebar-mascot:not(.has-sticker) { display:none; }
   .workspace-bar { padding-inline:var(--space-4); }
   .tool-switcher { padding-inline:var(--space-3); }
-  .switcher-more { padding-right:var(--space-3); }
-  .switcher-more-popover { right:var(--space-3); }
 }
 @media (max-width:960px) {
   .build-chip { display:none; }
-  .titlebar-patch-session { max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+  .titlebar-runtime-sessions { margin-left:var(--space-2); }
+  .titlebar-patch-session,.titlebar-companion-session { max-width:140px; overflow:hidden; text-overflow:ellipsis; }
   .titlebar-status { max-width:36vw; }
   .workspace-state { display:none; }
   .tool-page-heading { padding:var(--space-5) var(--space-6); }
@@ -2019,8 +2035,8 @@ button,input,select { font:inherit; }
 @media (max-height:620px) {
   .app-window { --titlebar-size:38px; }
   .workspace-bar { min-height:40px; flex-basis:40px; }
-  .tool-switcher { min-height:42px; flex-basis:42px; }
-  .tool-switcher .ui-tab { min-height:42px; }
+  .tool-switcher { min-height:38px; }
+  .tool-switcher .ui-tab { min-height:36px; padding-block:var(--space-1); }
   .sidebar { padding-top:var(--space-5); padding-bottom:var(--space-3); }
   .sidebar-heading { padding-block:var(--space-2) var(--space-3); }
   .primary-nav { gap:var(--space-1); padding-top:var(--space-3); }

@@ -433,7 +433,7 @@ func (session *runtimeLoadoutDetectorSession) tick() {
 func runtimeLoadoutDetectorMembers(snapshot RuntimePatchPartyMonitor) []RuntimeLoadoutDetectorMember {
 	members := make([]RuntimeLoadoutDetectorMember, 0, 4)
 	for _, entity := range snapshot.Entities {
-		if entity.Role == "companion" || !entity.Present || entity.Loadout == nil || !entity.Loadout.Available {
+		if entity.Role == "player" || entity.Role == "companion" || !entity.Present || entity.Loadout == nil || !entity.Loadout.Available {
 			continue
 		}
 		candidate := *entity.Loadout

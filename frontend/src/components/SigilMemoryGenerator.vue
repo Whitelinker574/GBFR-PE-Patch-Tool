@@ -36,10 +36,18 @@ const sigilByHash = computed(() => new Map(allSigilOptions.value.map(o => [o.has
 const traitByHash = computed(() => new Map(allTraitOptions.value.map(o => [o.hash >>> 0, o])))
 const selectedSigilOption = computed(() => sigilByHash.value.get(form.sigilHash >>> 0) || null)
 const primaryTraitOptions = computed(() => {
-	return allTraitOptions.value
+  const fixedHash = Number(selectedSigilOption.value?.primaryTraitHash || 0) >>> 0
+  const option = traitByHash.value.get(fixedHash || (form.primaryTraitHash >>> 0))
+  return option ? [option] : []
 })
 const secondaryTraitOptions = computed(() => {
-	return allTraitOptions.value
+  const sigil = selectedSigilOption.value
+  if (!sigil || sigil.supportsSecondaryTrait === false) return []
+  const primaryHash = Number(sigil.primaryTraitHash || form.primaryTraitHash || 0) >>> 0
+  const allowed = Array.isArray(sigil.allowedSecondaryTraitHashes) ? sigil.allowedSecondaryTraitHashes : []
+  return allowed
+    .map(hash => traitByHash.value.get(Number(hash) >>> 0))
+    .filter(option => option && (option.hash >>> 0) !== primaryHash)
 })
 
 function traitIconByHash(hash, name = '') {
@@ -60,6 +68,7 @@ const tab = ref('templates')
 const renamingId = ref(null)
 const renameBuffer = ref('')
 const confirmDialog = ref(null)
+const lastRepair = ref('')
 let disposed = false
 let lifecycleEpoch = 0
 let hookOwnerToken = ''
@@ -110,6 +119,7 @@ function applyStatus(next) {
 }
 
 function syncFormFromStatus() {
+  lastRepair.value = ''
   form.sigilHash = status.sigilHash >>> 0
   form.sigilLevel = status.sigilLevel >>> 0
   form.primaryTraitHash = status.primaryTraitHash >>> 0
@@ -172,9 +182,9 @@ async function refresh(syncForm = false) {
     if (syncForm) syncFormFromStatus()
     if (status.hooked) startPolling()
     else stopPolling()
-    if (!status.hooked) show('已就绪。启用读取后，在游戏内选中因子。', 'success')
-    else if (!status.selectedAddr) show('等待游戏内因子选择。', 'success')
-    else show(`已读取: ${status.sigilName}`, 'success')
+    if (!status.hooked) show('已找到读取入口。点击“启用读取”，再到游戏里选中要改的因子。', 'success')
+    else if (!status.selectedAddr) show('读取已开启。请在游戏因子列表中选中目标，再回到这里刷新。', 'success')
+    else show(`已读取游戏中当前选中的因子：${status.sigilName}。`, 'success')
   } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
   finally { if (!disposed && epoch === lifecycleEpoch) loading.value = false }
 }
@@ -196,7 +206,7 @@ async function enable() {
     applyStatus(next)
     syncFormFromStatus()
     startPolling()
-    show('已启用。请在游戏内选择一个因子。', 'success')
+    show('读取已开启。请在游戏因子列表中选中目标，再回到本页。', 'success')
   } catch (e) {
     stopPolling()
     let cleanupError = null
@@ -236,7 +246,7 @@ async function disable() {
     if (hookOwnerToken === ownerToken) hookOwnerToken = ''
     applyStatus(next)
     syncFormFromStatus()
-    show('读取已停止，游戏指令已恢复。', 'success')
+    show('读取已停止，临时捕获已移除，游戏原始指令已恢复。', 'success')
   } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
   finally { if (!disposed && epoch === lifecycleEpoch) loading.value = false }
 }
@@ -256,7 +266,7 @@ async function performWrite() {
     if (disposed || epoch !== lifecycleEpoch) return
     applyStatus(next)
     pushHistory(snapshot)
-    show(`已写入: ${status.sigilName}`, 'success')
+    show(`已把修改写入游戏中当前选中的因子：${status.sigilName}。继续修改前请重新选择目标。`, 'success')
   } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
   finally { if (!disposed && epoch === lifecycleEpoch) applying.value = false }
 }
@@ -270,18 +280,65 @@ async function oneClickMax() {
   if (secondaryWritableMax.value != null) form.secondaryTraitLevel = secondaryWritableMax.value
 }
 
-function onPickSigil(opt) {
-  if (opt) form.sigilLevel = naturalSigilLevel(opt)
-  else if (!opt) form.sigilLevel = 0
-  if (opt?.primaryTraitHash) {
+function repairFormForSigil(opt) {
+  const corrections = []
+  if (!opt) {
+    form.sigilLevel = 0
+    form.primaryTraitHash = 0
+    form.primaryTraitLevel = 0
+    form.secondaryTraitHash = 0
+    form.secondaryTraitLevel = 0
+    lastRepair.value = ''
+    return
+  }
+
+  const previousSigilLevel = form.sigilLevel
+  form.sigilLevel = naturalSigilLevel(opt)
+  if (previousSigilLevel !== form.sigilLevel) corrections.push(`因子等级改为 ${form.sigilLevel}`)
+
+  if (opt.primaryTraitHash) {
+    const previousPrimary = form.primaryTraitHash >>> 0
     form.primaryTraitHash = Number(opt.primaryTraitHash) >>> 0
+    if (previousPrimary !== form.primaryTraitHash) corrections.push('主词条改为该因子的固定词条')
     const verifiedLevels = Array.isArray(opt.allowedPrimaryTraitLevels) ? opt.allowedPrimaryTraitLevels : []
     const primaryOption = traitByHash.value.get(form.primaryTraitHash)
     const nextLevel = verifiedLevels.length
       ? Math.max(...verifiedLevels)
       : Math.min(15, curveMax(primaryOption))
-    if (nextLevel > 0) form.primaryTraitLevel = nextLevel
+    if (nextLevel > 0) {
+      if (form.primaryTraitLevel !== nextLevel) corrections.push(`主词条等级改为 ${nextLevel}`)
+      form.primaryTraitLevel = nextLevel
+    }
   }
+
+  const allowedSecondaryTraitHashes = new Set(
+    (Array.isArray(opt.allowedSecondaryTraitHashes) ? opt.allowedSecondaryTraitHashes : [])
+      .map(hash => Number(hash) >>> 0),
+  )
+  const secondaryHash = form.secondaryTraitHash >>> 0
+  const secondaryInvalid = secondaryHash && (
+    opt.supportsSecondaryTrait === false ||
+    secondaryHash === (form.primaryTraitHash >>> 0) ||
+    !allowedSecondaryTraitHashes.has(secondaryHash)
+  )
+  if (secondaryInvalid) {
+    form.secondaryTraitHash = 0
+    form.secondaryTraitLevel = 0
+    corrections.push('清除与该因子不兼容的副词条')
+  } else if (secondaryHash) {
+    const secondary = traitByHash.value.get(secondaryHash)
+    const validLevels = Array.isArray(secondary?.allowedLevels) ? secondary.allowedLevels : []
+    if (!validLevels.includes(form.secondaryTraitLevel)) {
+      form.secondaryTraitLevel = naturalTraitLevel(secondary)
+      corrections.push(`副词条等级改为 ${form.secondaryTraitLevel}`)
+    }
+  }
+
+  lastRepair.value = corrections.length ? `已自动修正：${corrections.join('、')}` : ''
+  if (lastRepair.value) show(lastRepair.value, 'success')
+}
+function onPickSigil(opt) {
+  repairFormForSigil(opt)
 }
 function naturalSigilLevel(opt) {
   const levels = Array.isArray(opt?.allowedLevels) ? opt.allowedLevels.filter(Number.isInteger) : []
@@ -391,10 +448,10 @@ const legality = computed(() => {
   if (!selectedSigilOption || selectedSigilOption.source === 'runtime') reasons.push('因子 Hash 不在本地资料库中')
   if (!selectedPrimaryOption || selectedPrimaryOption.source === 'runtime') reasons.push('主词条 Hash 不在本地资料库中')
   if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) reasons.push('副词条 Hash 不在本地资料库中')
-  if (reasons.length) return { status: 'forced', message: `${reasons.join('；')}；合规检测仅作提示，仍按当前值写入` }
+  if (reasons.length) return { status: 'impossible', message: `${reasons.join('；')}；请先修正后再写入` }
   const sigil = sigilByHash.value.get(form.sigilHash >>> 0)
   if (form.secondaryTraitHash && (!sigil || !Array.isArray(sigil.allowedSecondaryTraitHashes) || !sigil.allowedSecondaryTraitHashes.length)) {
-    return { status: 'unknown', message: '可提交；该因子的完整天然副词条池尚未完全验证，写入前仍由后端校验' }
+    return { status: 'impossible', message: '该因子的天然副词条池尚未验证，不能提交副词条写入' }
   }
   return { status: 'legal', message: '符合当前已验证的因子、词条与等级规则' }
 })
@@ -411,7 +468,7 @@ const changedCount = computed(() => {
 })
 const changeSummary = computed(() => changedCount.value ? `待写入 ${changedCount.value} 个字段` : '尚未修改')
 const canWrite = computed(() => !!status.selectedAddr && changedCount.value > 0 &&
-  (legality.value.status === 'legal' || legality.value.status === 'unknown' || legality.value.status === 'forced'))
+  legality.value.status === 'legal')
 
 function revertToRead() { syncFormFromStatus() }
 
@@ -423,6 +480,7 @@ function applyEntry(entry) {
   form.primaryTraitLevel = entry.primaryTraitLevel >>> 0
   form.secondaryTraitHash = normaliseSecondaryHash(entry.secondaryTraitHash)
   form.secondaryTraitLevel = isEmptyTraitHash(entry.secondaryTraitHash) ? 0 : entry.secondaryTraitLevel >>> 0
+  repairFormForSigil(sigilByHash.value.get(form.sigilHash >>> 0))
 }
 async function applyAndWrite(entry) {
   if (loading.value || applying.value) return
@@ -541,21 +599,21 @@ onMounted(async () => {
       <div class="ui-split connection-row">
         <div class="ui-cluster">
           <span class="ui-tag" :class="status.hooked ? 'is-ok' : status.found ? 'is-info' : ''">{{ statusLabel }}</span>
-          <span v-if="!status.hooked && status.found" class="ui-hint">点击启用读取，然后在游戏内选择因子</span>
-          <span v-else-if="status.hooked && !status.selectedAddr" class="ui-hint">等待游戏内因子选择</span>
-          <span v-else-if="status.selectedAddr" class="ui-hint">已锁定游戏内当前选中的因子</span>
+          <span v-if="!status.hooked && status.found" class="ui-hint">第一步：启用读取，再到游戏因子列表选中目标</span>
+          <span v-else-if="status.hooked && !status.selectedAddr" class="ui-hint">等待选择：在游戏里高亮一颗因子，再回到这里刷新</span>
+          <span v-else-if="status.selectedAddr" class="ui-hint">已读取当前因子；现在可以在下方核对并修改</span>
         </div>
         <div class="ui-actions">
           <button v-if="status.hooked" class="ui-btn is-sm is-ghost" :disabled="loading || applying" @click="refresh(true)">{{ loading ? '刷新中…' : '刷新' }}</button>
-          <button v-if="status.hooked" class="ui-btn is-sm is-ghost" :disabled="loading || applying" @click="disable">停止读取</button>
-          <button class="ui-btn is-sm is-primary" :disabled="loading || applying || status.hooked" @click="enable">启用读取</button>
+          <button v-if="status.hooked" class="ui-btn is-sm is-ghost" :disabled="loading || applying" @click="disable">停止读取并恢复</button>
+          <button class="ui-btn is-sm is-primary" :disabled="loading || applying || status.hooked" @click="enable">第一步 · 启用读取</button>
         </div>
       </div>
     </section>
 
     <section class="ui-card ui-panel editor-card" :aria-disabled="!status.selectedAddr">
       <div class="ui-split editor-header">
-        <h2 class="ui-section-title">因子编辑 <small>当前值与待写入值并列核对</small></h2>
+        <h2 class="ui-section-title">第二步 · 调整因子 <small>左侧“当前”来自游戏；输入框是准备写入的目标值</small></h2>
         <div class="ui-actions">
           <button class="ui-btn is-sm is-subtle" :disabled="!status.selectedAddr || loading || applying" @click="saveCurrentAsTemplate" title="保存当前目标为模板，稍后可重命名">保存为模板</button>
           <button class="ui-btn is-sm is-ghost" :disabled="!status.selectedAddr || loading || applying || changedCount === 0" @click="revertToRead" title="放弃修改，恢复为游戏内当前值">还原当前值</button>
@@ -623,6 +681,8 @@ onMounted(async () => {
         </div>
       </div>
 
+      <div v-if="lastRepair" class="ui-notice is-ok repair-notice" role="status">{{ lastRepair }}</div>
+
       <div v-if="warnings.length" class="ui-notice is-warn warning-list" role="alert">
         <span v-for="(w, i) in warnings" :key="i">{{ w }}</span>
       </div>
@@ -630,13 +690,13 @@ onMounted(async () => {
       <div class="ui-toolbar write-toolbar">
         <div class="write-summary">
           <LegalityIndicator v-if="status.selectedAddr" :status="legality.status" :message="legality.message" />
-          <small v-if="status.selectedAddr" class="ui-hint">天然规则只作提醒；目标复核、备份与回读保护仍保留。</small>
-          <span v-else class="ui-hint">在游戏内选中一个因子后，这里会显示合法性与写入状态</span>
+          <small v-if="status.selectedAddr" class="ui-hint">更换因子时会自动修正固定主词条；非法组合和超出目录曲线的等级不会写入。</small>
+          <span v-else class="ui-hint">完成第一步并选中因子后，这里会显示合法性与待写入数量。</span>
           <span class="ui-tag" :class="changedCount ? 'is-info' : ''">{{ changeSummary }}</span>
         </div>
         <div class="ui-actions write-actions">
           <button class="ui-btn is-ghost" :disabled="loading || applying || !canOneClickMax" @click="oneClickMax" title="只填写已知上限，不会立即写入">全部设为上限</button>
-          <button class="ui-btn is-primary" :disabled="loading || applying || !canWrite" @click="write">{{ applying ? '写入中…' : '写入修改' }}</button>
+          <button class="ui-btn is-primary" :disabled="loading || applying || !canWrite" @click="write">{{ applying ? '正在写入并回读…' : '第三步 · 写入当前因子' }}</button>
         </div>
       </div>
     </section>
@@ -655,7 +715,7 @@ onMounted(async () => {
 
       <div v-if="tab === 'templates'">
         <div v-if="!filteredTemplates.length" class="ui-empty">
-          {{ templates.length ? '无匹配模板' : '尚无模板 · 在编辑器点击 "＋ 保存为模板"' }}
+          {{ templates.length ? '没有匹配的模板' : '还没有模板。先读取一颗因子，再点击“保存为模板”。' }}
         </div>
         <ul v-else class="ui-list template-list">
           <li v-for="t in filteredTemplates" :key="t.id" class="ui-row template-entry" role="button" tabindex="0" @click="applyEntry(t)" @keydown.enter="applyEntry(t)" @keydown.space.prevent="applyEntry(t)">
@@ -694,7 +754,7 @@ onMounted(async () => {
       </div>
 
       <div v-else>
-        <div v-if="!history.length" class="ui-empty">尚无历史</div>
+        <div v-if="!history.length" class="ui-empty">还没有写入记录。这里的历史只用于再次应用，不会自动回退游戏。</div>
         <ul v-else class="ui-list template-list">
           <li v-for="h in history" :key="h.id" class="ui-row template-entry" role="button" tabindex="0" @click="applyEntry(h)" @keydown.enter="applyEntry(h)" @keydown.space.prevent="applyEntry(h)">
             <span class="entry-name">
@@ -741,6 +801,7 @@ onMounted(async () => {
 .empty-level { display:flex; min-height:var(--control-height); align-items:center; justify-content:center; border:1px solid var(--border-soft); border-radius:var(--radius-sm); color:var(--text-muted); background:var(--surface-sunken); font-size:var(--fs-sm); }
 .limit-button { min-width:88px; align-self:start; min-height:var(--control-height); }
 .warning-list { display:flex; flex-direction:column; gap:var(--space-1); }
+.repair-notice { color:var(--success-ink); }
 .write-toolbar { align-items:center; justify-content:space-between; }
 .write-summary { display:flex; min-width:0; flex:1 1 360px; flex-wrap:wrap; align-items:center; gap:var(--space-3); }
 .write-actions { margin-left:auto; }

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import {
   DeployAudioMixerMod,
   GetAudioMixerWorkspace,
@@ -9,7 +9,7 @@ import { language } from '../i18n'
 import { runtimeCompanionMessage } from '../runtimeCompanionMessages.js'
 import ConfirmDialog from './ConfirmDialog.vue'
 
-const emit = defineEmits(['status'])
+const emit = defineEmits(['status', 'runtime-state'])
 const workspace = ref(null)
 const search = ref('')
 const busy = ref(false)
@@ -42,6 +42,11 @@ function report(value, nextTone = 'info') {
 
 function syncWorkspace(value) {
   workspace.value = value
+  emit('runtime-state', {
+    id: 'audioMixer',
+    active: value?.state === 'active' && value?.owned === true,
+    recoveryRequired: value?.recoveryRequired === true,
+  })
   diagnostic.value = value?.diagnostic === true
   uiVolume.value = Number(value?.uiVolume ?? 100)
   for (const character of value?.characters || []) volumes[character.id] = Number(value?.volumes?.[character.id] ?? 100)
@@ -81,7 +86,7 @@ async function savePreset() {
     const accepted = await confirmDialog.value?.ask({
       title: tx('覆盖同名音量预设', 'Replace named volume preset'),
       message: tx(`“${existing.name}”已经存在。`, `“${existing.name}” already exists.`),
-      detail: tx('只覆盖本机预设，不会立即写入组件；点底部“保存音量”后才会热更新。', 'Only the local preset is replaced. The component is updated after you press Save volumes.'),
+      detail: tx('只会替换保存在本机的预设，不会立刻改变游戏音量；点底部“保存并热更新”后才会应用。', 'Only the preset stored on this PC is replaced. Game audio changes only after you press Save and Hot-Update below.'),
       confirmLabel: tx('覆盖预设', 'Replace preset'), cancelLabel: tx('取消', 'Cancel'), tone: 'warning',
     })
     if (!accepted) return
@@ -94,7 +99,7 @@ async function savePreset() {
   }
   persistPresets()
   presetName.value = ''
-  report(tx(`已保存本机音量预设：${name}`, `Saved local volume preset: ${name}`), 'ok')
+  report(tx(`音量组合“${name}”已保存在本机；当前游戏音量尚未改变。`, `Mix “${name}” was saved on this PC; current game audio has not changed.`), 'ok')
 }
 
 function applyPreset(preset) {
@@ -148,23 +153,23 @@ async function remove() {
 }
 
 loadPresets()
-refresh()
+onActivated(() => { void refresh() })
 </script>
 
 <template>
   <div class="audio-lab ui-page-stack">
     <section class="audio-intro">
-      <div><p class="audio-kicker">WWISE · BUILT-IN RUNTIME</p><h2>{{ tx('角色语音混音台', 'Character Voice Mixer') }}</h2><p>{{ tx('调整能够从角色语音 bank 唯一归属的后续事件，不替换音频文件。游戏自身的语音音量仍作为总音量。', 'Adjust subsequent events that can be uniquely attributed from character voice banks without replacing audio files. The game voice setting remains the master volume.') }}</p></div>
-      <div class="audio-boundary"><b>{{ tx('识别不确定时保持原音', 'Fail-open for uncertain events') }}</b><span>{{ tx('共享、场景 bank 和未收录事件不会被静音', 'Shared, scene-bank and unmapped events are never muted') }}</span></div>
+      <div><p class="audio-kicker">WWISE · BUILT-IN RUNTIME</p><h2>{{ tx('分别调整角色语音音量', 'Adjust Character Voice Volumes') }}</h2><p>{{ tx('想让某个角色更安静或暂时静音，就在这里单独调整；不会替换音频文件，游戏设置里的“语音音量”仍是总开关。', 'Lower or mute individual characters here without replacing audio files. The in-game Voice Volume setting remains the master control.') }}</p></div>
+      <div class="audio-boundary"><b>{{ tx('认不准的声音保持原样', 'Uncertain Sounds Stay Unchanged') }}</b><span>{{ tx('共享语音、场景音频和未收录事件不会被误静音', 'Shared voices, scene audio, and unmapped events are never muted by mistake') }}</span></div>
     </section>
 
     <section class="audio-setup">
-      <div class="setup-copy"><h3>{{ tx('第一步 · 连接当前游戏', 'Step 1 · Connect the current game') }}</h3><p>{{ tx('不需要安装加载器。应用会直接注入自有运行时，并从游戏目录读取角色语音 bank。', 'No loader installation is needed. The app injects its own runtime and reads character voice banks from the game directory.') }}</p></div>
+      <div class="setup-copy"><h3>{{ tx('第一步 · 启动游戏并确认连接', 'Step 1 · Start the Game and Check the Connection') }}</h3><p>{{ tx('不需要安装其他程序。游戏启动后点“重新检测”，本页会确认能否安全开启角色音量控制。', 'No other program is required. After starting the game, select Check Again so this page can confirm that character volume control is ready.') }}</p></div>
       <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : workspace?.state === 'active' ? tx('音频运行时正在工作', 'Audio runtime active') : runtimeText(workspace?.detail) || tx('启动游戏后即可开启', 'Start the game to enable') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy" @click="refresh">{{ tx('重新检测', 'Check again') }}</button></div>
     </section>
 
     <section class="preset-panel">
-      <header><div><h3>{{ tx('第二步 · 调整或载入音量组合', 'Step 2 · Adjust or load a mix') }}</h3><p>{{ tx('保存整组角色音量和诊断开关；载入后仍需在底部确认保存，不会悄悄热更新。', 'Save all character volumes and the diagnostic toggle. Loading a preset still requires an explicit save below.') }}</p></div><div class="preset-compose"><input v-model="presetName" class="ui-input" maxlength="40" :placeholder="tx('例如：联机安静模式', 'Example: Quiet co-op')" @keyup.enter="savePreset" /><button type="button" class="ui-btn is-sm" @click="savePreset">{{ tx('保存当前组合', 'Save current mix') }}</button></div></header>
+      <header><div><h3>{{ tx('第二步 · 调整音量，或载入本机组合', 'Step 2 · Adjust Volumes or Load a Local Mix') }}</h3><p>{{ tx('保存组合只会记在这台电脑上，不会立刻改变游戏；载入后还要在页面底部确认应用。', 'Saving a mix stores it on this PC only and does not change the game. After loading, apply it explicitly at the bottom of the page.') }}</p></div><div class="preset-compose"><input v-model="presetName" class="ui-input" maxlength="40" :placeholder="tx('例如：联机安静模式', 'Example: Quiet co-op')" @keyup.enter="savePreset" /><button type="button" class="ui-btn is-sm" @click="savePreset">{{ tx('保存当前组合', 'Save Current Mix') }}</button></div></header>
       <div v-if="presets.length" class="preset-list"><article v-for="preset in presets" :key="preset.id"><span><b>{{ preset.name }}</b><small>{{ Object.values(preset.volumes || {}).filter(value => value !== 100).length }} {{ tx('条调整', 'adjusted') }}</small></span><button type="button" class="ui-btn is-sm" @click="applyPreset(preset)">{{ tx('载入', 'Load') }}</button><button type="button" class="preset-delete" :aria-label="tx(`删除 ${preset.name}`, `Delete ${preset.name}`)" @click="deletePreset(preset.id)">×</button></article></div>
       <p v-else class="preset-empty">{{ tx('还没有本机预设。先调整音轨，再保存当前组合。', 'No local presets yet. Adjust tracks, then save the current mix.') }}</p>
     </section>
@@ -188,7 +193,7 @@ refresh()
       </div>
     </section>
 
-    <section class="audio-dock"><label class="diagnostic-toggle"><input v-model="diagnostic" type="checkbox" /><span><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the current game') }}</b><small>{{ workspace?.recoveryRequired ? tx('Hook 恢复未完成，只能先重试恢复。', 'Hook restoration is incomplete; retry restoration first.') : tx('诊断日志默认关闭；只在核对事件映射时开启', 'Diagnostic logging is off by default; enable it only while checking event mappings') }}</small></span></label><div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry restoration') : tx('停用并恢复', 'Disable and restore') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore first') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and hot-update') : tx('开启音频运行时', 'Enable audio runtime') }}</button></div></section>
+    <section class="audio-dock"><label class="diagnostic-toggle"><input v-model="diagnostic" type="checkbox" /><span><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the Current Game') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”。', 'The previous restoration is incomplete. Select Retry Restoration first.') : tx('诊断日志默认关闭；普通调整不需要开启', 'Diagnostic logging is off by default and is not needed for normal adjustments') }}</small></span></label><div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原音', 'Disable and Restore Original Audio') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启角色音量控制', 'Enable Character Volume Control') }}</button></div></section>
     <div v-if="message" class="ui-notice" :class="{ 'is-danger': tone === 'danger', 'is-ok': tone === 'ok' }" role="status">{{ message }}</div>
     <ConfirmDialog ref="confirmDialog" />
   </div>

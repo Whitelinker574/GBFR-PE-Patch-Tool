@@ -7,10 +7,19 @@ const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url
 
 test('save laboratory is a lazy tools page and keeps the comparison mode strictly read-only', () => {
   assert.match(shell, /saveDiff:\s*\(\) => import\('\.\/SaveDiffLab\.vue'\)/)
-  assert.match(shell, /items:\s*\['saveDiff', 'naturalDrop', 'audioMixer', 'camera', 'virtualSigils', 'compatibility', 'language', 'patch'\]/)
+  assert.match(shell, /items:\s*\['naturalDrop', 'saveDiff', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'language', 'patch'\]/)
   assert.match(source, /严格只读/)
   assert.match(source, /不会备份、修改或写回/)
   assert.doesNotMatch(source, /UpdateSave|WriteSave|ApplySave|SaveChanges/)
+})
+
+test('save comparison closes the loop by routing recognized changes to safe editors', () => {
+  assert.match(source, /defineEmits\(\['status', 'open-tool'\]\)/)
+  assert.match(source, /比较后怎么处理/)
+  for (const id of ['loadoutPresets', 'sigil', 'wrightstone', 'progression', 'summonSave', 'save']) {
+    assert.match(source, new RegExp(`emit\\('open-tool', '${id}'\\)`))
+  }
+  assert.match(shell, /<SaveDiffLab[^>]*@open-tool="selectTool"/)
 })
 
 test('save diff uses bounded pagination and preserves unknown record structure', () => {

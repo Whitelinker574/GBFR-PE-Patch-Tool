@@ -87,3 +87,24 @@ test('captured preview uses bounded responsive grids and protects long text from
   assert.match(preview, /combinedIcon\(skill\)[\s\S]*?v-else aria-hidden="true"/)
   assert.match(preview, /\.combined-row > img,\.combined-row > i/)
 })
+
+test('captured preview labels absent scopes as not recorded instead of inventing zero values', () => {
+  assert.match(preview, /const sigilCaptureLabel = computed/)
+  assert.match(preview, /const summonCaptureLabel = computed/)
+  assert.match(preview, /const masteryCaptureLabel = computed/)
+  assert.match(preview, /const overLimitRecorded = computed/)
+  assert.match(preview, /sigilCaptureLabel/)
+  assert.match(preview, /summonCaptureLabel/)
+  assert.match(preview, /masteryCaptureLabel/)
+  assert.match(preview, /v-if="!\(loadout\.sigils \|\| \[\]\)\.length"[^>]*>\{\{ tx\('未记录', 'Not Recorded'\) \}\}/)
+  assert.match(preview, /v-if="!overLimitRecorded"[^>]*>\{\{ tx\('未记录', 'Not Recorded'\) \}\}/)
+})
+
+test('background detection is user-controlled and page teardown never stops the service', () => {
+  const mounted = detector.match(/onMounted\(async \(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+  const unmounted = detector.match(/onBeforeUnmount\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+  assert.doesNotMatch(mounted, /RuntimeLoadoutDetectorStart/)
+  assert.match(detector, /@click="startDetector"/)
+  assert.match(detector, /@click="stopDetector"/)
+  assert.doesNotMatch(unmounted, /RuntimeLoadoutDetectorStop/)
+})

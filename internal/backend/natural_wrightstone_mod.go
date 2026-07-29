@@ -92,12 +92,18 @@ func naturalWrightstoneChineseTrait(name string) string {
 }
 
 func loadNaturalWrightstoneTables(sourceDir string, strict bool) (*naturalWrightstoneTables, []NaturalDropTableStatus, error) {
+	bundled := naturalDropUsesBundledSource(sourceDir)
 	values := make(map[string][]byte, len(naturalWrightstoneRequiredTables))
 	statuses := make([]NaturalDropTableStatus, 0, len(naturalWrightstoneRequiredTables))
 	missing := false
 	for _, required := range naturalWrightstoneRequiredTables {
-		path := filepath.Join(sourceDir, required.Name)
-		data, err := os.ReadFile(path)
+		var data []byte
+		var err error
+		if bundled {
+			data, err = naturalDropBundledTable(required.Name)
+		} else {
+			data, err = os.ReadFile(filepath.Join(sourceDir, required.Name))
+		}
 		if err != nil {
 			if !strict && os.IsNotExist(err) {
 				missing = true

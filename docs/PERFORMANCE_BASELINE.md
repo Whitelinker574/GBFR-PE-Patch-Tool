@@ -1,6 +1,6 @@
 # Performance baseline
 
-Captured on 2026-07-27 for `experiment/community-special-features`. Production numbers come from `vite build`; browser timing is diagnostic only until the equivalent packaged Wails run is recorded.
+Captured on 2026-07-30 for `experiment/community-special-features`. Production numbers come from `vite build`; browser timing is diagnostic only until the equivalent packaged Wails run is recorded.
 
 ## Reference machine
 
@@ -20,23 +20,23 @@ The low-spec gate remains 4 cores / 8 threads, 8 GB RAM, integrated graphics, 19
 
 | Metric | Before P0 | Current | Change |
 | --- | ---: | ---: | ---: |
-| Initial JS gzip | 477,720 bytes | 144,209 bytes | -69.8% |
-| Initial CSS gzip | 43,600 bytes | 12,340 bytes | -71.7% |
+| Initial JS gzip | 477,720 bytes | 156,670 bytes | -67.2% |
+| Initial CSS gzip | 43,600 bytes | 12,224 bytes | -72.0% |
 | Initial JS chunks | 1 | 2 entry/direct-import chunks | Page code moved to async chunks |
-| Function art startup decode | 46 images, about 448 MB RGBA | No global decode queue | Current target only |
+| Function art startup decode | 46 images, about 448 MB RGBA | No global decode queue across 60 current images | Current target only |
 
-The enforced budgets are 256,000 bytes initial JS gzip, 25,600 bytes initial CSS gzip, 160,000 bytes for the largest async JS chunk, 30,000 bytes for the largest async CSS chunk, 1,500,000 bytes per raster image, 800,000 bytes per function-art asset, and 12,000,000 bytes for all function art. The final build measured 142,001 bytes for the largest async JS chunk, 12,180 bytes for the largest async CSS chunk, and 1,321,102 bytes for the largest raster. `npm run check:bundle` reads Vite's manifest and includes direct module-preload dependencies rather than checking only the entry filename.
+The enforced budgets are 256,000 bytes initial JS gzip, 25,600 bytes initial CSS gzip, 160,000 bytes for the largest async JS chunk, 30,000 bytes for the largest async CSS chunk, 1,500,000 bytes per raster image, 800,000 bytes per function-art asset, and 12,000,000 bytes for all function art. The final build measured 142,004 bytes for the largest async JS chunk, 12,382 bytes for the largest async CSS chunk, 1,321,102 bytes for the largest raster, 539,726 bytes for the largest function-art asset, and 11,646,630 bytes for all function art. `npm run check:bundle` reads Vite's manifest and includes direct module-preload dependencies rather than checking only the entry filename.
 
 ## Asset pipeline
 
-- 22 function identities have independent art and sticker records.
+- 30 function identities have independent art and sticker records.
 - Each record has one content-hashed, high-quality `display` WebP. Removed `thumb` and `full` copies are not packaged because no current page consumes them.
-- The generated function-art directory is 10,754,832 bytes across 44 display images plus its manifest; the 29 share portraits are a separate 7,035,432-byte lazy-loaded set.
-- Display art is capped at 2880 px without enlargement; this preserves the existing 2560 x 1440 composition while avoiding unconditional 4K decode.
+- The generated function-art directory is 11,664,631 bytes across 60 display images plus its manifest; the 29 share portraits remain a separate lazy-loaded set.
+- Display art is capped at 2520 px without enlargement and encoded as high-quality WebP; this preserves the supported desktop composition while avoiding unconditional 4K decode.
 - Navigation hover, focus, or pointer-down starts page-code and display-image preparation. The active page changes only after preparation completes.
 - A cold navigation keeps the current page visible until the destination module, portrait, and sticker are ready. A 15-second guard exposes an explicit retry state; a failed image leaves the old page visible instead of switching to an empty page.
 - Runtime editing pages keep their connection owner and draft state in Vue's cache across navigation. Their UI-only polling pauses while hidden and resumes on activation; explicit safety restoration timers are not suspended.
-- The packaged Wails build was exercised at the real 960 x 640 minimum: the home page remained internally scrollable, the searchable More menu reached the last runtime page without document-level horizontal overflow, and the save laboratory used the full work area when its portrait asset was unavailable. Maximized layout remained intact.
+- The packaged Wails build was exercised at the real 960 x 640 minimum: the home page remained internally scrollable, the flat horizontally scrollable function tabs reached the last runtime page without document-level horizontal overflow, and the save laboratory used the full work area when its portrait asset was unavailable. Maximized layout remained intact.
 - A browser-shell responsive matrix traversed all 28 page destinations in Chinese and English at 960 x 640, 1024 x 768, 1280 x 720, 1366 x 768, 1600 x 900, 1920 x 1080 and 2560 x 1440 with device scale factors 1.0, 1.25 and 1.5. All 1,176 page cases had zero document/workspace horizontal overflow, zero visible-control clipping and zero page/console errors. Device-scale emulation validates CSS and raster behavior; the packaged reference-machine checks below remain the evidence for actual WebView2 at Windows 150% scaling.
 - Cold-cache checks must sample the first loadout-page transition for blank frames, missing function art, console errors, and layout shifts. Local preview timings are diagnostic and are not Wails release thresholds.
 - The packaged Windows amd64 build completed on the reference machine and opened its home page, local save slot, loadout catalog, and share workshop without a blank frame. A deliberately failed destination image kept the home page visible and exposed the retry action.

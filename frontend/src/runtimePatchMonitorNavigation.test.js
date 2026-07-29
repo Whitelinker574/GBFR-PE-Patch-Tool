@@ -9,30 +9,34 @@ const home = readFileSync(new URL('./components/HomeJournal.vue', import.meta.ur
 const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
 const assetManifest = JSON.parse(readFileSync(new URL('../public/generated/function-assets/manifest.json', import.meta.url), 'utf8'))
 
-test('runtime monitor is routed with live memory tools because it includes guarded spatial writes', () => {
+test('party detection, spatial controls, and selected-item diagnostics share one persistent implementation but expose separate destinations', () => {
   assert.match(shell, /runtimeMonitor:\s*\(\)\s*=>\s*import\(['"]\.\/RuntimePatchMonitor\.vue['"]\)/)
   assert.match(shell, /const RuntimePatchMonitor = asyncPage\(['"]runtimeMonitor['"]\)/)
-  assert.match(shell, /runtimeMonitor:\s*\{\s*group:\s*['"]memory['"]/)
-  assert.match(shell, /id:\s*['"]memory['"][\s\S]*?items:\s*\[[^\]]*['"]runtimeMonitor['"]/)
-  assert.match(shell, /id:\s*['"]monitor['"][\s\S]*?items:\s*\[['"]formulaSampler['"]\]/)
-  for (const group of ['save', 'monitor']) {
+  assert.match(shell, /runtimeMonitor:\s*\{\s*group:\s*['"]liveExtras['"]/)
+  assert.match(shell, /spatialTools:\s*\{\s*group:\s*['"]liveExtras['"]/)
+  assert.match(shell, /selectedItemMonitor:\s*\{\s*group:\s*['"]tools['"]/)
+  assert.match(shell, /formulaSampler:\s*\{\s*group:\s*['"]tools['"]/)
+  assert.match(shell, /id:\s*['"]liveExtras['"][\s\S]*?items:\s*\[['"]runtimeMonitor['"]/)
+  assert.match(shell, /id:\s*['"]tools['"][^\n]*items:\s*\[[^\]]*['"]selectedItemMonitor['"][^\]]*['"]formulaSampler['"]/)
+  assert.doesNotMatch(shell, /id:\s*['"]monitor['"]/)
+  for (const group of ['save', 'tools']) {
     const match = shell.match(new RegExp(`\\{ id: '${group}'[^\\n]+items: \\[([^\\]]*)\\]`))
     assert.ok(match, `${group} navigation entry must exist`)
-    assert.doesNotMatch(match[1], /['"]runtimeMonitor['"]/, `${group} must not contain the read-only monitor`)
+    assert.doesNotMatch(match[1], /['"]runtimeMonitor['"]/, `${group} must not contain party detection`)
   }
   assert.match(shell, /const runtimeMonitorMounted = ref\(false\)/)
-  assert.match(shell, /if \(value === 'runtimeMonitor'\) runtimeMonitorMounted\.value = true/)
-  assert.match(shell, /<RuntimePatchMonitor\s+v-if="runtimeMonitorMounted"\s+v-show="activeTab === 'runtimeMonitor'"\s+:page-active="activeTab === 'runtimeMonitor'"\s+@status="showStatus"\s+@deploy-loadout="deployRuntimeLoadout"\s*\/>/)
+  assert.match(shell, /if \(RUNTIME_MONITOR_MODES\[value\]\) runtimeMonitorMounted\.value = true/)
+  assert.match(shell, /<RuntimePatchMonitor\s+v-if="runtimeMonitorMounted"\s+v-show="isRuntimeMonitorTab"\s+:mode="runtimeMonitorMode"\s+:page-active="isRuntimeMonitorTab"\s+@status="showStatus"\s+@deploy-loadout="deployRuntimeLoadout"\s*\/>/)
 })
 
-test('the home journal separates strict monitoring while labeling the mixed detector and spatial page', () => {
-  assert.match(home, /id:\s*['"]monitor['"],\s*mark:\s*['"]测['"],\s*label:\s*['"]内存监测['"]/)
-  assert.match(home, /id:\s*['"]runtimeMonitor['"],\s*icon:\s*['"]测['"],\s*title:\s*['"]配装检测与空间工具['"]/)
-  assert.match(home, /后台归档队伍配装；空间写入单独标识/)
+test('the home journal names party detection and spatial tools as separate user goals', () => {
+  assert.doesNotMatch(home, /id:\s*['"]monitor['"]/)
+  assert.match(home, /id:\s*['"]runtimeMonitor['"],\s*icon:\s*['"]队['"],\s*title:\s*['"]队友配装持续检测['"]/)
+  assert.match(home, /id:\s*['"]spatialTools['"],\s*icon:\s*['"]标['"],\s*title:\s*['"]坐标与移动工具['"]/)
 })
 
 test('read-only monitoring does not surface the save-backup drawer', () => {
-  assert.match(shell, /<SaveBackupDrawer\s+v-if="currentMeta\.group !== 'monitor'"\s+@status="showStatus"\s*\/>/)
+  assert.match(shell, /<SaveBackupDrawer\s+v-if="!\['formulaSampler', 'selectedItemMonitor'\]\.includes\(activeTab\)"\s+@status="showStatus"\s*\/>/)
 })
 
 test('runtime monitoring reserves unique function-specific portrait and sticker assets', () => {

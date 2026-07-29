@@ -581,6 +581,34 @@ test('R2 catalog fails closed for likes ordering when community counts are unava
   assert.match((await response.json()).error, /点赞排序暂时不可用/)
 })
 
+test('R2 fallback returns an explicit failure instead of a partial globally sorted page past the proof bound', async () => {
+  const r2 = makeR2()
+  for (let index = 0; index <= 1000; index += 1) {
+    const code = index.toString(32).toUpperCase().padStart(16, '0')
+    await r2.put(`meta/v1/${code}.json`, JSON.stringify({
+      code,
+      title: `全局排序边界 ${index}`,
+      characterHash: '4D0A60C3',
+      characterName: '伊欧',
+      preview: {
+        characterHash: '4D0A60C3',
+        characterName: '伊欧',
+        weaponName: '星晶武器',
+        sigils: [{ name: '快速冷却 V+' }],
+      },
+    }), { customMetadata: { sha256: code } })
+  }
+  const response = await worker.fetch(
+    new Request('https://share.example/api/v1/loadouts?sort=time&limit=24'),
+    { LOADOUTS: r2, COMMUNITY_DB: makeCommunityDB({ failCatalog: true }) },
+  )
+  assert.equal(response.status, 503)
+  const result = await response.json()
+  assert.match(result.error, /超过 1000 条安全扫描上限/)
+  assert.match(result.error, /无法证明全局排序/)
+  assert.equal(result.items, undefined)
+})
+
 test('D1 catalog cursors remain stable for time, name, and likes ordering', async () => {
   const r2 = makeR2()
   const community = makeCommunityDB()

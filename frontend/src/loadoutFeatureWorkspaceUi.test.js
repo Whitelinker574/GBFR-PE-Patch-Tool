@@ -16,17 +16,24 @@ test('loadout workspace keeps only cross-loadout tools in the top navigation', (
     assert.match(viewer, new RegExp(`id: '${id}'`))
   }
   assert.doesNotMatch(viewer, /id: 'optimizer'|id: 'share'/)
-  assert.match(viewer, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/)
-  assert.match(viewer, /@container loadout-viewer \(max-width:560px\)[\s\S]*?\.loadout-subnav \{ grid-template-columns:1fr; \}/)
+  assert.match(viewer, /@wheel="scrollWorkspaceModes"/)
+  assert.match(viewer, /\.loadout-subnav \{[\s\S]*?display:flex;[\s\S]*?flex-wrap:nowrap;[\s\S]*?overflow-x:auto;/)
+  assert.match(viewer, /\.loadout-subnav button\.active \{[\s\S]*?background:transparent;[\s\S]*?box-shadow:none;/)
+  assert.doesNotMatch(viewer, /<small>\{\{ item\.mark \}\}<\/small>/)
+  assert.doesNotMatch(viewer, /<em>\{\{ item\.description \}\}<\/em>/)
 })
 
-test('character-specific optimization and share image live inside expanded loadout details', () => {
+test('character-specific share image stays in preview while smart loadout lives in the editor factor header', () => {
   assert.match(viewer, /class="loadout-detail-actions"/)
   assert.match(viewer, /编辑此配装/)
-  assert.match(viewer, /优化这套因子/)
   assert.match(viewer, /生成分享图/)
-  assert.match(viewer, /<LoadoutOptimizer embedded[\s\S]*?:base-loadout="lo"[\s\S]*?@apply="applyOptimizerPlan"/)
   assert.match(viewer, /<LoadoutShareWorkshop embedded :group="shareGroup\(lo\)"/)
+  assert.doesNotMatch(viewer, /class="factor-strategy-switch"/)
+  assert.doesNotMatch(viewer, /<LoadoutOptimizer embedded/)
+  assert.match(editor, /class="factor-workspace-tabs"/)
+  assert.match(editor, /手动配装/)
+  assert.match(editor, /按技能配装/)
+  assert.match(editor, /<LoadoutOptimizer embedded[\s\S]*?:base-loadout="optimizerBaseLoadout"[\s\S]*?@apply="applyOptimizerPlan"/)
   assert.match(viewer, /@container loadout-viewer \(max-width:560px\)[\s\S]*?\.loadout-detail-actions \{ grid-template-columns:1fr; \}/)
 })
 
@@ -39,30 +46,49 @@ test('save and character selectors state their downstream ownership and omit man
 })
 
 test('large workspace tools stay outside the initial page bundle', () => {
-  for (const component of ['LoadoutEditor', 'SigilAtlas', 'LoadoutOptimizer', 'LoadoutShareWorkshop', 'LogsBattleArchive']) {
+  for (const component of ['LoadoutEditor', 'SigilAtlas', 'LoadoutShareWorkshop', 'LogsBattleArchive']) {
     assert.match(viewer, new RegExp(`const ${component} = defineAsyncComponent`))
   }
+  assert.match(editor, /const LoadoutOptimizer = defineAsyncComponent/)
   assert.doesNotMatch(viewer, /import LoadoutEditor from '\.\/LoadoutEditor\.vue'/u)
+  assert.doesNotMatch(editor, /import LoadoutOptimizer from '\.\/LoadoutOptimizer\.vue'/u)
 })
 
 test('catalog-heavy atlas stays mounted while contextual tools stay with their loadout', () => {
   assert.match(viewer, /<KeepAlive v-else-if="mode === 'atlas'">/)
   assert.match(viewer, /<SigilAtlas class="loadout-tool-subpage"/)
-  assert.match(viewer, /cardToolOpen\(lo, 'optimizer'\)/)
   assert.match(viewer, /cardToolOpen\(lo, 'share'\)/)
+  assert.doesNotMatch(viewer, /cardToolOpen\(lo, 'optimizer'\)/)
 })
 
 test('optimizer apply enters the requested preset and stages a draft before save', () => {
   assert.match(optimizer, /emit\('apply'/)
-  assert.match(optimizer, /一键载入首选方案/)
-  assert.match(optimizer, /applyResult\(primaryResult\)/)
-  assert.match(optimizer, /载入到 \$\{charaName/)
-  assert.match(viewer, /pendingOptimizerPlan\.value = \{ \.\.\.payload, requestId: Date\.now\(\) \}/)
+  assert.match(optimizer, /应用到当前配装草稿/)
+  assert.match(optimizer, /applyResult\(result\)/)
+  assert.match(optimizer, /if \(!result\?\.picked\?\.length\) return/)
   assert.match(viewer, /:preferred-unit-id="editorTargetUnitId"/)
   assert.match(editor, /function stageOptimizerPlan\(payload\)/)
-  assert.match(editor, /optimizerEquipmentDraft\(payload\?\.result\)/)
-  assert.match(editor, /if \(!appliedCandidates\) return equipmentApplied/)
-  assert.match(editor, /请核对武器、祝福、召唤石、专精、因子和目标槽后保存/)
+  assert.match(editor, /function applyOptimizerPlan\(payload\)/)
+  assert.doesNotMatch(editor, /optimizerEquipmentDraft\(payload\?\.result\)/)
+  assert.match(editor, /if \(!picked\.length\) return false/)
+  assert.match(editor, /factorWorkspaceMode\.value = 'manual'/)
+  assert.match(editor, /优化方案已载入当前角色配装草稿，请核对因子和目标槽后保存/)
+})
+
+test('smart loadout supports exact skill levels and owned-first gap construction', () => {
+  assert.match(optimizer, /自动推荐最好一套/)
+  assert.match(optimizer, /指定技能与等级/)
+  assert.match(optimizer, /<CatalogSelect v-model="pendingTraitId"/)
+  assert.match(optimizer, /class="skill-target-entry"/)
+  assert.match(optimizer, /addPendingTrait/)
+  assert.match(optimizer, /setTargetLevel/)
+  assert.match(optimizer, /cap: item\.targetLevel/)
+  assert.match(optimizer, /背包优先，缺少时制造/)
+  assert.match(optimizer, /'owned-first': \[\.\.\.inventoryCandidates, \.\.\.catalogCandidates\]/)
+  assert.match(optimizer, /constructedCount/)
+  assert.match(optimizer, /\.optimizer-intent button\.active \{[\s\S]*?background:transparent;[\s\S]*?box-shadow:none;/)
+  assert.match(editor, /next\.some\(entry => entry\?\.kind === 'construct'\)/)
+  assert.match(editor, /为 \$\{constructed\} 个缺口准备独立新因子/)
 })
 
 test('optimizer handoff preserves exact catalog hashes and keeps remaining preset slots', () => {
@@ -70,7 +96,31 @@ test('optimizer handoff preserves exact catalog hashes and keeps remaining prese
   assert.match(editor, /exactPrimaryTraitHash:\s*candidate\.exactPrimaryTraitHash/)
   assert.match(editor, /exactSecondaryTraitHash:\s*candidate\.exactSecondaryTraitHash/)
   assert.match(editor, /for \(const entry of baseSlots\)/)
-  assert.match(optimizer, /不足 12 个时沿用这套配装未重复的剩余因子/)
+  assert.match(optimizer, /function resultPreviewSlots\(result\)/)
+  assert.match(optimizer, /for \(const base of props\.baseLoadout\?\.sigils \|\| \[\]\)/)
+  assert.match(optimizer, /while \(rows\.length < 12\)/)
+  assert.match(editor, /const optimizerBaseLoadout = computed/)
+  assert.match(editor, /sigils: factorSlotCards\.value\.filter\(card => !card\.empty\)/)
+  assert.match(editor, /weaponSlotId: Number\(form\.value\.weaponSlotId/)
+  assert.match(editor, /mastery: selectedMasteryHashes\.value\.slice\(\)/)
+  assert.match(editor, /summonSlotIds: summonSlotIds\.value\.slice\(\)/)
+})
+
+test('optimizer embeds the editor visual language and exposes an understandable stable Top 10', () => {
+  assert.match(optimizer, /<header v-if="!embedded" class="optimizer-heading">/)
+  assert.match(optimizer, /displayResults = computed\(\(\) => \[\.\.\.results\.value\][\s\S]*?\.slice\(0, 10\)\)/)
+  assert.match(optimizer, /function compareDisplayResults\(left, right\)/)
+  assert.match(optimizer, /纯背包可达/)
+  assert.match(optimizer, /需要制造/)
+  assert.match(optimizer, /部分满足/)
+  assert.match(optimizer, /class="result-group-heading"/)
+  assert.match(optimizer, /class="result-sigil-grid"/)
+  assert.match(optimizer, /十二个因子槽预览/)
+  assert.match(optimizer, /\.chosen-trait img \{ width:32px; height:32px;/)
+  assert.match(optimizer, /font-size:16px/)
+  assert.match(optimizer, /font-size:14px/)
+  assert.match(optimizer, /font-size:13px/)
+  assert.match(optimizer, /font-size:12px/)
 })
 
 test('function artwork pipeline packages only the high-quality displayed images', () => {
@@ -120,10 +170,10 @@ test('Logs entry describes the bounded recent-record scan without claiming the w
 })
 
 test('optimizer distinguishes formula-ranked directions from exact custom trait coverage', () => {
-  assert.match(optimizer, /精确技能覆盖方案/)
-  assert.match(optimizer, /启发式降级/)
-  assert.match(optimizer, /公式模型 Top 10/)
-  assert.match(optimizer, /可审计模型而非实战保证/)
+  assert.match(optimizer, /按目标等级生成方案/)
+  assert.match(optimizer, /targetFulfilment/)
+  assert.match(optimizer, /高级战斗条件/)
+  assert.match(optimizer, /保持当前武器、祝福、召唤石与专精不变，只重新安排 12 个因子槽/)
   assert.match(optimizer, /profile\.value !== 'custom'/)
 })
 
@@ -134,7 +184,7 @@ test('optimizer presets use versioned locale-independent character profiles and 
   assert.match(optimizer, /LoadoutOptimizerEvidence/)
   assert.match(optimizer, /LoadoutOptimizerInventorySnapshot/)
   assert.match(optimizer, /LoadoutSimulateBuild/)
-  assert.match(optimizer, /当前存档可识别实例/)
+  assert.match(optimizer, /可识别实例中组合/)
   assert.match(optimizer, /可能也被其他预设引用/)
 })
 

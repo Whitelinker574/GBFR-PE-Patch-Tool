@@ -28,6 +28,25 @@ const ctAssets = [
   ['formulaSampler', 'sticker', './assets/gbfr/stickers/formula-sampler.webp'],
 ]
 
+const experimentalPageAssets = [
+  ['spatialTools', 'art', './assets/gbfr/cutouts/spatial-tools-official-edge-safe.webp'],
+  ['spatialTools', 'sticker', './assets/gbfr/stickers/spatial-tools.webp'],
+  ['selectedItemMonitor', 'art', './assets/gbfr/cutouts/selected-item-monitor-official-edge-safe.webp'],
+  ['selectedItemMonitor', 'sticker', './assets/gbfr/stickers/selected-item-monitor.webp'],
+  ['saveDiff', 'art', './assets/gbfr/cutouts/save-diff-official-edge-safe.webp'],
+  ['saveDiff', 'sticker', './assets/gbfr/stickers/save-diff.webp'],
+  ['naturalDrop', 'art', './assets/gbfr/cutouts/natural-drop-official-edge-safe.webp'],
+  ['naturalDrop', 'sticker', './assets/gbfr/stickers/natural-drop.webp'],
+  ['audioMixer', 'art', './assets/gbfr/cutouts/audio-mixer-official-edge-safe.webp'],
+  ['audioMixer', 'sticker', './assets/gbfr/stickers/audio-mixer.webp'],
+  ['camera', 'art', './assets/gbfr/cutouts/camera-official-edge-safe.webp'],
+  ['camera', 'sticker', './assets/gbfr/stickers/camera.webp'],
+  ['virtualSigils', 'art', './assets/gbfr/cutouts/virtual-sigils-official-edge-safe.webp'],
+  ['virtualSigils', 'sticker', './assets/gbfr/stickers/virtual-sigils.webp'],
+  ['runtimeQOL', 'art', './assets/gbfr/cutouts/runtime-qol-official-edge-safe.webp'],
+  ['runtimeQOL', 'sticker', './assets/gbfr/stickers/runtime-qol.webp'],
+]
+
 function assertGeneratedDisplay(id, kind) {
   const entry = manifest.assets[id]?.[kind]
   assert.ok(entry, `${id}.${kind} must exist in the generated manifest`)
@@ -53,6 +72,18 @@ test('pages that previously repeated portraits now own function-specific approve
 test('runtime patch pages ship their approved function-specific assets without repeated binaries', () => {
   const hashes = new Map()
   for (const [id, kind, path] of ctAssets) {
+    const url = new URL(path, import.meta.url)
+    assert.ok(existsSync(url), `${path} must exist`)
+    assertGeneratedDisplay(id, kind)
+    const hash = createHash('sha256').update(readFileSync(url)).digest('hex')
+    assert.equal(hashes.has(hash), false, `${path} repeats ${hashes.get(hash)}`)
+    hashes.set(hash, path)
+  }
+})
+
+test('experimental function pages ship approved function-specific portraits and stickers', () => {
+  const hashes = new Map()
+  for (const [id, kind, path] of experimentalPageAssets) {
     const url = new URL(path, import.meta.url)
     assert.ok(existsSync(url), `${path} must exist`)
     assertGeneratedDisplay(id, kind)
@@ -107,7 +138,8 @@ test('every function portrait stays top-anchored so tall windows keep faces and 
     'progression', 'sigil', 'sigilMemory', 'loadout', 'loadoutPresets', 'wrightstone',
     'wrightstoneMemory', 'summonSave', 'summon', 'overlimit', 'runtime', 'runtimeMonitor', 'formulaSampler', 'patchCombat',
     'patchCharacters', 'patchQuest', 'chara', 'save', 'compatibility',
-    'monster', 'patch', 'language',
+    'monster', 'patch', 'language', 'spatialTools', 'selectedItemMonitor',
+    'saveDiff', 'naturalDrop', 'audioMixer', 'camera', 'virtualSigils', 'runtimeQOL',
   ]
   for (const page of portraitPages) {
     assert.match(shell, new RegExp(`\\.tool-stage\\[data-tool="${page}"\\][^\\{]*\\{[^}]*--art-scale:1[5-9][0-9]%`))

@@ -486,23 +486,24 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 	assert.match(source, /主词条等级从高到低/)
 })
 
-test('constructor exposes the complete trait catalog while natural table rules remain advisory', () => {
+test('constructor locks fixed factor identity and uses the audited secondary pool', () => {
 	assert.match(source, /GetSigilList/)
 	assert.match(source, /GetTraitList/)
 	assert.match(source, /GetCompatibleSecondaryTraits/)
 	assert.match(source, /Promise\.all\(\[GetSigilList\(\), GetTraitList\(\)\]\)/)
 	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
-	assert.match(source, /v-model="constructPrimaryId" :options="constructTraits"/)
+	assert.doesNotMatch(source, /v-model="constructPrimaryId"/)
+	assert.match(source, /class="[^"]*constructor-fixed-trait[^"]*"/)
 	assert.match(source, /v-model="constructSecondaryId"/)
 	assert.match(source, /search-placeholder="搜索副词条"/)
-	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructTraits\.value\)/)
+	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructCompatibleTraits\.value\)/)
   assert.match(source, /天然等级是默认值；最高可填到对应技能效果曲线的目录上限/)
 	assert.doesNotMatch(source, /forceWrite/)
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
 })
 
-test('optimizer table and catalog domains stage constructed factors instead of inventory slots', () => {
-  assert.match(source, /payload\.domain === 'catalog' \|\| payload\.domain === 'table' \|\| payload\.domain === 'table-exact' \? 'construct' : 'bag'/u)
+test('optimizer stages mixed owned-first plans in constructor mode when any gap must be created', () => {
+  assert.match(source, /factorMode\.value = next\.some\(entry => entry\?\.kind === 'construct'\) \? 'construct' : 'bag'/u)
 })
 
 test('share publication caches the captured unit id instead of referencing an undefined variable', () => {

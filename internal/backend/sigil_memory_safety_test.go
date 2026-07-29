@@ -54,7 +54,7 @@ func TestValidateSigilMemoryUpdateRejectsMismatchedPrimaryTrait(t *testing.T) {
 	}
 }
 
-func TestSigilMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testing.T) {
+func TestSigilMemoryWriteRejectsInvalidIdentityAndEnforcesCurveCaps(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
 	var alternate *TraitDef
 	for index := range catalog.Traits {
@@ -77,10 +77,12 @@ func TestSigilMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testin
 	curveMax := effectCurveMax(levels, 15)
 	update.PrimaryTraitLevel = uint32(curveMax)
 	update.SecondaryTraitLevel = uint32(curveMax)
-	if err := validateSigilMemoryWriteRequest(catalog, update); err != nil {
-		t.Fatalf("known but non-natural combination should remain writable within the curve: %v", err)
+	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("runtime write must reject a primary trait that does not match the factor shell")
 	}
-	update.PrimaryTraitLevel = uint32(curveMax + 1)
+	_, valid := validCatalogSigilMemoryUpdate(t)
+	update = valid
+	update.PrimaryTraitLevel = uint32(effectCurveMax(catalog.LookupTraitByHash(update.PrimaryTraitHash).AllowedLevels, 15) + 1)
 	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
 		t.Fatal("write request must reject a trait level above its effect curve")
 	}
@@ -90,13 +92,13 @@ func TestSigilMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testin
 	}
 }
 
-func TestSigilMemoryRuntimeSelectionAllowsObservedUnknownDLCRow(t *testing.T) {
+func TestSigilMemoryRuntimeSelectionRequiresUnifiedCatalogEvenWhenObserved(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
 	current := SigilMemoryStatus{
-		SigilHash:          0xCE6C6C2C,
+		SigilHash:          0xCE6C62CF, // Precise Wrath V+, observed in the reported DLC 2.0.2 runtime row
 		PrimaryTraitHash:   0x7EDD69D0,
 		SecondaryTraitHash: 0x887AE0B0,
 	}
@@ -107,16 +109,17 @@ func TestSigilMemoryRuntimeSelectionAllowsObservedUnknownDLCRow(t *testing.T) {
 		PrimaryTraitLevel: 15,
 	}
 	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err != nil {
-		t.Fatalf("observed runtime DLC row should remain writable: %v", err)
+		t.Fatalf("cataloged Precise Wrath V+ row should be writable: %v", err)
 	}
 	update.SigilHash = 0xDEADBEEF
-	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "当前已读取") {
-		t.Fatalf("arbitrary unknown row was accepted: %v", err)
+	current.SigilHash = update.SigilHash
+	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "统一目录") {
+		t.Fatalf("observed but unknown row was accepted: %v", err)
 	}
 	update.SigilHash = current.SigilHash
 	update.SigilLevel = sigilWritableLevelMax + 1
-	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "超过修改上限") {
-		t.Fatalf("observed row level overflow was accepted: %v", err)
+	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "统一目录") {
+		t.Fatalf("unknown row bypassed strict validation: %v", err)
 	}
 }
 
@@ -231,6 +234,21 @@ func TestEncodeSigilMemoryRecordCanonicalizesEmptySecondaryTrait(t *testing.T) {
 		if got := binary.LittleEndian.Uint32(encoded[0x0C:0x10]); got != 0 {
 			t.Fatalf("empty secondary level encoded as %d, want 0", got)
 		}
+	}
+}
+
+func TestValidateSigilMemorySnapshotAfterBackup(t *testing.T) {
+	original := bytes.Repeat([]byte{0x21}, sigilMemoryRecordSize)
+	if err := validateSigilMemorySnapshot(0x1000, 0x1000, 0x1000, original, append([]byte(nil), original...)); err != nil {
+		t.Fatalf("unchanged target rejected: %v", err)
+	}
+	if err := validateSigilMemorySnapshot(0x1000, 0x2000, 0x2000, original, original); err == nil {
+		t.Fatal("selection switch during backup was accepted")
+	}
+	changed := append([]byte(nil), original...)
+	changed[7] ^= 0xFF
+	if err := validateSigilMemorySnapshot(0x1000, 0x1000, 0x1000, original, changed); err == nil {
+		t.Fatal("record replacement during backup was accepted")
 	}
 }
 

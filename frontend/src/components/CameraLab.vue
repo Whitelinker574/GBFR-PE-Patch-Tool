@@ -1,11 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { DeployCameraMod, GetCameraWorkspace, RemoveCameraMod } from '../../wailsjs/go/backend/App'
 import { language } from '../i18n'
 import { runtimeCompanionMessage } from '../runtimeCompanionMessages.js'
 import ConfirmDialog from './ConfirmDialog.vue'
 
-const emit = defineEmits(['status'])
+const emit = defineEmits(['status', 'runtime-state'])
 const tx = (zh, en) => language.value === 'zh' ? zh : en
 const runtimeText = value => runtimeCompanionMessage(value, language.value)
 const confirmDialog = ref(null)
@@ -29,6 +29,11 @@ function report(text, nextTone = '') {
 
 function applyWorkspace(value) {
   workspace.value = value
+  emit('runtime-state', {
+    id: 'camera',
+    active: value?.state === 'active' && value?.owned === true,
+    recoveryRequired: value?.recoveryRequired === true,
+  })
   const config = value?.config
   if (config) {
     maxDistance.value = Number(config.maxDistance ?? 6)
@@ -69,7 +74,7 @@ async function save() {
       targetHeight: Number(targetHeight.value),
       zoomStep: Number(zoomStep.value),
     })
-    report(tx('内置镜头运行时已开启，三个参数均已应用；之后保存会直接热更新。', 'The built-in camera runtime is active. All three values are applied and later saves hot-update directly.'), 'ok')
+    report(tx('城镇镜头调整已应用到当前游戏；之后点击“保存并热更新”即可更新数值。', 'Town-camera adjustments are now active in the current game. Use Save and Hot-Update for later changes.'), 'ok')
     await refresh()
   } catch (error) { report(runtimeText(error), 'danger') }
   finally { busy.value = false }
@@ -88,7 +93,7 @@ async function remove() {
   finally { busy.value = false }
 }
 
-refresh()
+onActivated(() => { void refresh() })
 </script>
 
 <template>
@@ -96,19 +101,19 @@ refresh()
     <section class="camera-intro">
       <div>
         <p class="camera-kicker">TOWN CAMERA · BUILT-IN RUNTIME</p>
-        <h2>{{ tx('城镇镜头工坊', 'Town Camera Workshop') }}</h2>
-        <p>{{ tx('调整城镇镜头的最远距离、视线目标高度与滚轮缩放手感；不会改变战斗镜头。', 'Tune town-camera distance, target height, and wheel zoom feel without changing the combat camera.') }}</p>
+        <h2>{{ tx('城镇镜头距离与滚轮', 'Town Camera Distance & Zoom') }}</h2>
+        <p>{{ tx('让城镇镜头拉得更远、调整看向角色的高度，或改变每格滚轮的缩放幅度；战斗镜头不会改变。', 'Move the town camera farther out, adjust where it looks on the character, or change the zoom amount per wheel notch. Combat camera behavior is unchanged.') }}</p>
       </div>
-      <div class="camera-boundary"><b>{{ tx('锁定 DLC 2.0.2', 'Locked to DLC 2.0.2') }}</b><span>{{ tx('三个入口必须唯一命中；卸载时恢复原值', 'All three entries must match uniquely; unload restores the originals') }}</span></div>
+      <div class="camera-boundary"><b>{{ tx('只在确认匹配 2.0.2 时开启', 'Enabled Only After a 2.0.2 Match') }}</b><span>{{ tx('无法确认游戏版本时不会写入；停用后恢复开启前的数值', 'Nothing is written if the game version cannot be verified; disabling restores the values from before activation') }}</span></div>
     </section>
 
     <section class="camera-setup">
-      <div><h3>{{ tx('第一步 · 启动并连接游戏', 'Step 1 · Start and connect the game') }}</h3><p>{{ tx('无需安装加载器或选择目录。保存时应用会把自有运行时直接注入当前游戏进程。', 'No loader installation or folder selection is needed. Saving injects the tool-owned runtime directly into the current game process.') }}</p></div>
+      <div><h3>{{ tx('第一步 · 启动游戏并确认连接', 'Step 1 · Start the Game and Check the Connection') }}</h3><p>{{ tx('无需安装其他程序或选择目录。游戏启动后点“重新检测”，确认页面显示“游戏进程已连接”。', 'No other program or folder selection is required. After starting the game, select Check Again and confirm that the page shows Game Process Connected.') }}</p></div>
       <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : workspace?.state === 'active' ? tx('镜头运行时正在工作', 'Camera runtime active') : runtimeText(workspace?.detail) || tx('启动游戏后即可开启', 'Start the game to enable') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy || refreshing" @click="refresh">{{ refreshing ? tx('正在检查…', 'Checking…') : tx('重新检测', 'Check again') }}</button></div>
     </section>
 
     <section class="camera-controls">
-      <header class="controls-heading"><div><h3>{{ tx('第二步 · 调整镜头参数', 'Step 2 · Tune camera parameters') }}</h3><p>{{ tx('数值输入与滑轨保持同步；内置运行时开启后，三个参数都可以直接热更新。', 'Numeric inputs stay synchronized with the sliders. Once active, all three values hot-update directly.') }}</p></div><div class="preset-actions"><button class="ui-btn is-sm is-ghost" type="button" @click="usePreset('game')">{{ tx('游戏默认', 'Game defaults') }}</button><button class="ui-btn is-sm" type="button" @click="usePreset('comfort')">{{ tx('舒适预设', 'Comfort preset') }}</button></div></header>
+      <header class="controls-heading"><div><h3>{{ tx('第二步 · 选预设或手动调整', 'Step 2 · Choose a Preset or Adjust Manually') }}</h3><p>{{ tx('滑轨和数字输入会同步变化；先调整到想要的数值，再到底部应用。', 'Sliders and number fields stay synchronized. Choose the values you want, then apply them at the bottom.') }}</p></div><div class="preset-actions"><button class="ui-btn is-sm is-ghost" type="button" @click="usePreset('game')">{{ tx('恢复游戏默认值', 'Use Game Defaults') }}</button><button class="ui-btn is-sm" type="button" @click="usePreset('comfort')">{{ tx('使用舒适预设', 'Use Comfort Preset') }}</button></div></header>
       <div class="parameter-grid">
         <article class="parameter">
           <header><div><span>01</span><h4>{{ tx('最远距离', 'Maximum distance') }}</h4></div><label><input v-model.number="maxDistance" class="ui-input" type="number" min="0.5" max="30" step="0.1" /><small>0.5-30</small></label></header>
@@ -129,8 +134,8 @@ refresh()
     </section>
 
     <section class="camera-dock">
-      <div class="runtime-state"><span :class="{ active: workspace?.state === 'active' }"></span><div><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the current game') }}</b><small>{{ workspace?.recoveryRequired ? tx('Hook 恢复未完成，只能先重试恢复；请勿重新注入。', 'Hook restoration is incomplete. Retry restoration before injecting again.') : workspace?.state === 'active' ? tx('内置运行时已开启；保存会立即热更新', 'Built-in runtime active; saving hot-updates immediately') : tx('启动游戏后即可一键开启，不需要其他程序', 'Start the game, then enable it here without another program') }}</small></div></div>
-      <div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy || refreshing" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry restoration') : tx('停用并恢复', 'Disable and restore') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore first') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and hot-update') : tx('开启镜头运行时', 'Enable camera runtime') }}</button></div>
+      <div class="runtime-state"><span :class="{ active: workspace?.state === 'active' }"></span><div><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the Current Game') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”，不要再次开启。', 'The previous restoration is incomplete. Select Retry Restoration before enabling again.') : workspace?.state === 'active' ? tx('镜头调整正在运行；保存后数值立即生效', 'Camera adjustments are active; saved values take effect immediately') : tx('首次开启会应用上方三个数值；不修改存档文件', 'The first activation applies the three values above and does not modify save files') }}</small></div></div>
+      <div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy || refreshing" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原镜头', 'Disable and Restore Original Camera') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启城镇镜头调整', 'Enable Town Camera Adjustments') }}</button></div>
     </section>
     <div v-if="message" class="ui-notice" :class="{ 'is-danger': tone === 'danger', 'is-ok': tone === 'ok' }" role="status">{{ message }}</div>
     <ConfirmDialog ref="confirmDialog" />

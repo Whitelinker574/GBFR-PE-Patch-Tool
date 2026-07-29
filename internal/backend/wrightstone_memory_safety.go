@@ -86,23 +86,18 @@ func validateWrightstoneMemoryUpdate(catalog *WrightstoneCatalog, update Wrights
 }
 
 func validateWrightstoneMemoryWriteRequest(catalog *WrightstoneCatalog, update WrightstoneMemoryUpdate) error {
-	if isEmptyWrightstoneMemoryTrait(update.FirstHash) {
-		return fmt.Errorf("祝福第一槽 Hash 必须是可编码的非空值")
+	return validateWrightstoneMemoryUpdate(catalog, update)
+}
+
+func validateWrightstoneMemoryWriteRequestForSelection(catalog *WrightstoneCatalog, update WrightstoneMemoryUpdate, current WrightstoneMemoryStatus) error {
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
+		return err
 	}
-	slots := []struct {
-		hash       uint32
-		level      uint32
-		naturalCap int
-		required   bool
-	}{
-		{update.FirstHash, update.FirstLevel, 20, true},
-		{update.SecondHash, update.SecondLevel, 15, false},
-		{update.ThirdHash, update.ThirdLevel, 10, false},
+	if isEmptyWrightstoneMemoryTrait(current.FirstHash) {
+		return fmt.Errorf("当前祝福记录缺少固有第一词条，请重新选择")
 	}
-	for index, slot := range slots {
-		if err := validateWrightstoneMemorySlot(catalog, slot.hash, slot.level, index+1, slot.naturalCap, slot.required); err != nil {
-			return err
-		}
+	if update.FirstHash != current.FirstHash {
+		return fmt.Errorf("实时编辑不能改变祝福类型对应的固有第一词条")
 	}
 	return nil
 }

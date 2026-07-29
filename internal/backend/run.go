@@ -34,7 +34,7 @@ func Run(assets embed.FS) {
 	summonSaveGen := NewSummonSaveGen()
 
 	err := wails.Run(&options.App{
-		Title:     "GBFR PE Patch Tool",
+		Title:     "GBFR PE Patch Tool 测试版",
 		Width:     defaultAppWidth,
 		Height:    defaultAppHeight,
 		MinWidth:  minAppWidth,
@@ -76,10 +76,10 @@ func reportStartupError(runErr error) {
 	logPath := appendDiagnosticError("startup", runErr)
 
 	text, _ := windows.UTF16PtrFromString(fmt.Sprintf(
-		"GBFR PE Patch Tool 启动失败：\n\n%v\n\n诊断日志：\n%s\n\n请检查 Microsoft Edge WebView2 Runtime 和安全软件拦截记录。",
+		"GBFR PE Patch Tool 测试版启动失败：\n\n%v\n\n诊断日志：\n%s\n\n请检查 Microsoft Edge WebView2 Runtime 和安全软件拦截记录。",
 		runErr, logPath,
 	))
-	caption, _ := windows.UTF16PtrFromString("GBFR PE Patch Tool")
+	caption, _ := windows.UTF16PtrFromString("GBFR PE Patch Tool 测试版")
 	_, _ = windows.MessageBox(0, text, caption, 0x00000010) // MB_ICONERROR
 }
 

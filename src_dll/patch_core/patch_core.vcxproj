@@ -153,7 +153,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(ProjectDir)..\thirdparty\libmem\lib\release</AdditionalLibraryDirectories>
       <AdditionalDependencies>libmem.lib;ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>

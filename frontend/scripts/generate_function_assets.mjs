@@ -26,6 +26,14 @@ const sources = Object.freeze({
   patchCharacters: ['patch-characters-official-edge-safe.webp', 'patch-characters.webp'],
   patchQuest: ['patch-quest-official-edge-safe.webp', 'patch-quest.webp'],
   runtimeMonitor: ['runtime-monitor-official-edge-safe.webp', 'runtime-monitor.webp'],
+  spatialTools: ['spatial-tools-official-edge-safe.webp', 'spatial-tools.webp'],
+  selectedItemMonitor: ['selected-item-monitor-official-edge-safe.webp', 'selected-item-monitor.webp'],
+  saveDiff: ['save-diff-official-edge-safe.webp', 'save-diff.webp'],
+  naturalDrop: ['natural-drop-official-edge-safe.webp', 'natural-drop.webp'],
+  audioMixer: ['audio-mixer-official-edge-safe.webp', 'audio-mixer.webp'],
+  camera: ['camera-official-edge-safe.webp', 'camera.webp'],
+  virtualSigils: ['virtual-sigils-official-edge-safe.webp', 'virtual-sigils.webp'],
+  runtimeQOL: ['runtime-qol-official-edge-safe.webp', 'runtime-qol.webp'],
   formulaSampler: ['formula-sampler-official-edge-safe.webp', 'formula-sampler.webp'],
   chara: ['chara-official-edge-safe.webp', 'chara.webp'],
   save: ['save-official-edge-safe.webp', 'save.webp'],
@@ -37,10 +45,10 @@ const sources = Object.freeze({
 
 const variantProfiles = Object.freeze({
   art: Object.freeze({
-    display: { width: 2880, height: 2880, quality: 92 },
+    display: { width: 2520, height: 2520, quality: 87, alphaQuality: 95 },
   }),
   sticker: Object.freeze({
-    display: { width: 512, height: 512, quality: 92 },
+    display: { width: 512, height: 512, quality: 87, alphaQuality: 95 },
   }),
 })
 
@@ -58,7 +66,12 @@ async function buildVariants(kind, sourcePath, hash) {
     const outputPath = join(kindRoot, `${sourceName}.${name}.${hash}.webp`)
     await sharp(sourcePath)
       .resize({ width: profile.width, height: profile.height, fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: profile.quality, alphaQuality: 100, effort: 4, smartSubsample: true })
+      .webp({
+        quality: profile.quality,
+        alphaQuality: profile.alphaQuality,
+        effort: 4,
+        smartSubsample: true,
+      })
       .toFile(outputPath)
     const outputMetadata = await sharp(outputPath).metadata()
     variants[name] = {

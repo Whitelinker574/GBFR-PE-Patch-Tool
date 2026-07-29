@@ -64,6 +64,154 @@ func localNaturalDropTableDir(t *testing.T) string {
 	return dir
 }
 
+func TestNaturalDropBundledTablesNeedNoExternalExtraction(t *testing.T) {
+	source, statuses, err := loadNaturalDropTables("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != len(naturalDropRequiredTables) {
+		t.Fatalf("bundled summon statuses=%d, want %d", len(statuses), len(naturalDropRequiredTables))
+	}
+	for _, status := range statuses {
+		if !status.Valid {
+			t.Fatalf("bundled summon table failed exact validation: %+v", status)
+		}
+	}
+	catalog, err := buildNaturalDropCatalog(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog) < 80 {
+		t.Fatalf("bundled summon catalog=%d, want broad 2.0.2 coverage", len(catalog))
+	}
+	wrightstones, wrightstoneStatuses, err := loadNaturalWrightstoneTables(naturalDropBundledSourceID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrightstones == nil || len(wrightstoneStatuses) != len(naturalWrightstoneRequiredTables) {
+		t.Fatalf("bundled wrightstone tables are incomplete: tables=%v statuses=%d", wrightstones != nil, len(wrightstoneStatuses))
+	}
+	for _, status := range wrightstoneStatuses {
+		if !status.Valid {
+			t.Fatalf("bundled wrightstone table failed exact validation: %+v", status)
+		}
+	}
+	itemTables, itemStatuses, err := loadNaturalDropItemTables(naturalDropBundledSourceID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if itemTables == nil || len(itemStatuses) != len(naturalDropItemRequiredTables) {
+		t.Fatalf("bundled item-drop tables are incomplete: tables=%v statuses=%d", itemTables != nil, len(itemStatuses))
+	}
+	for _, status := range itemStatuses {
+		if !status.Valid {
+			t.Fatalf("bundled item-drop table failed exact validation: %+v", status)
+		}
+	}
+	if pool, err := resolveNaturalDropItemRewardPool(itemTables); err != nil || pool != naturalDropDefaultItemPool {
+		t.Fatalf("bundled item reward target = 0x%08X, %v", pool, err)
+	}
+}
+
+func TestNaturalDropItemPatchUsesVerifiedDefaultPool(t *testing.T) {
+	tables, _, err := loadNaturalDropItemTables("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := buildNaturalDropItemCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog) < 100 {
+		t.Fatalf("item catalog=%d, want searchable 2.0.2 coverage", len(catalog))
+	}
+	original := append([]byte(nil), tables.RewardLots...)
+	count, err := tableRowCount(original, rewardLotTableRowSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := make(map[uint32]bool)
+	for i := 0; i < count; i++ {
+		offset := 8 + i*rewardLotTableRowSize
+		if binary.LittleEndian.Uint32(original[offset+8:]) == naturalDropDefaultItemPool {
+			existing[binary.LittleEndian.Uint32(original[offset+12:])] = true
+		}
+	}
+	var chosen NaturalDropItemOption
+	for _, option := range catalog {
+		hash, _ := ParseHashHex(option.Hash)
+		if !existing[hash] {
+			chosen = option
+			break
+		}
+	}
+	if chosen.Hash == "" {
+		t.Fatal("catalog contains no item outside the default reward pool")
+	}
+	patched, err := patchNaturalDropItemTable(tables, []NaturalDropItemSelection{{
+		ItemHash: chosen.Hash,
+		Quantity: 7,
+		Weight:   23456,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(tables.RewardLots, original) {
+		t.Fatal("item patch mutated the embedded source table")
+	}
+	patchedCount, err := tableRowCount(patched, rewardLotTableRowSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patchedCount != count+1 {
+		t.Fatalf("reward lot rows=%d, want %d", patchedCount, count+1)
+	}
+	chosenHash, _ := ParseHashHex(chosen.Hash)
+	found := false
+	for i := 0; i < patchedCount; i++ {
+		offset := 8 + i*rewardLotTableRowSize
+		if binary.LittleEndian.Uint32(patched[offset+8:]) != naturalDropDefaultItemPool ||
+			binary.LittleEndian.Uint32(patched[offset+12:]) != chosenHash {
+			continue
+		}
+		found = true
+		if got := binary.LittleEndian.Uint32(patched[offset:]); got != 7 {
+			t.Fatalf("item quantity=%d, want 7", got)
+		}
+		if got := binary.LittleEndian.Uint32(patched[offset+48:]); got != 23456 {
+			t.Fatalf("item weight=%d, want 23456", got)
+		}
+		if binary.LittleEndian.Uint32(patched[offset+16:]) != summonInvalidTypeHash ||
+			binary.LittleEndian.Uint32(patched[offset+20:]) != summonInvalidTypeHash {
+			t.Fatal("generated item row did not retain the item-only sentinels")
+		}
+	}
+	if !found {
+		t.Fatalf("generated reward row for %s was not found", chosen.Hash)
+	}
+}
+
+func TestNaturalDropItemPatchRejectsDuplicateAndInvalidBounds(t *testing.T) {
+	tables, _, err := loadNaturalDropItemTables("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := buildNaturalDropItemCatalog()
+	if err != nil || len(catalog) == 0 {
+		t.Fatalf("catalog: %v", err)
+	}
+	valid := NaturalDropItemSelection{ItemHash: catalog[0].Hash, Quantity: 1, Weight: 1}
+	for name, selections := range map[string][]NaturalDropItemSelection{
+		"duplicate":     {valid, valid},
+		"zero quantity": {{ItemHash: valid.ItemHash, Quantity: 0, Weight: 1}},
+		"zero weight":   {{ItemHash: valid.ItemHash, Quantity: 1, Weight: 0}},
+	} {
+		if _, err := patchNaturalDropItemTable(tables, selections); err == nil {
+			t.Fatalf("%s selection was accepted", name)
+		}
+	}
+}
+
 func findNaturalDropCatalogOption(t *testing.T, options []NaturalDropSummonOption, typeHash string) NaturalDropSummonOption {
 	t.Helper()
 	for _, option := range options {

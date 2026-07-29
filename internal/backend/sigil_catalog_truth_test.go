@@ -174,11 +174,11 @@ func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityForced || !report.Writable {
-		t.Fatalf("GEEN_114_90 non-fixed secondary must warn but remain writable, got %+v", report)
+	if report.Status != LegalityImpossible || report.Writable {
+		t.Fatalf("GEEN_114_90 non-fixed secondary must be rejected, got %+v", report)
 	}
-	if err := gen.AddToQueue(nonFixed); err != nil {
-		t.Fatalf("GEEN_114_90 non-fixed secondary should enter the writable queue: %v", err)
+	if err := gen.AddToQueue(nonFixed); err == nil {
+		t.Fatal("GEEN_114_90 non-fixed secondary must not enter the queue")
 	}
 
 	missing := fixed
@@ -188,15 +188,15 @@ func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityForced || !report.Writable {
-		t.Fatalf("GEEN_114_90 missing fixed SkillId2 must warn but remain writable, got %+v", report)
+	if report.Status != LegalityImpossible || report.Writable {
+		t.Fatalf("GEEN_114_90 missing fixed SkillId2 must be rejected, got %+v", report)
 	}
-	if err := gen.AddToQueue(missing); err != nil {
-		t.Fatalf("GEEN_114_90 without fixed SkillId2 should enter the writable queue: %v", err)
+	if err := gen.AddToQueue(missing); err == nil {
+		t.Fatal("GEEN_114_90 without fixed SkillId2 must not enter the queue")
 	}
 }
 
-func TestLoadoutDraftAllowsMissingFixedCharacterSecondaryWithWarning(t *testing.T) {
+func TestLoadoutDraftRejectsMissingFixedCharacterSecondary(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -207,8 +207,8 @@ func TestLoadoutDraftAllowsMissingFixedCharacterSecondaryWithWarning(t *testing.
 			SigilID: "GEEN_114_90", Level: 15, PrimaryLevel: 15, Quantity: 1,
 		},
 	})
-	if err != nil {
-		t.Fatalf("loadout draft should preserve a writable non-natural character factor: %v", err)
+	if err == nil {
+		t.Fatal("loadout draft must reject a character factor without its fixed secondary")
 	}
 }
 

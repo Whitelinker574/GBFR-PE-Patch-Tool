@@ -6,12 +6,12 @@ const componentURL = new URL('./components/RuntimePatchMonitor.vue', import.meta
 const source = existsSync(componentURL) ? readFileSync(componentURL, 'utf8') : ''
 const detector = readFileSync(new URL('./components/RuntimeLoadoutDetector.vue', import.meta.url), 'utf8')
 
-test('runtime monitor keeps loadout history, spatial diagnostics, and selected items in one page', () => {
+test('runtime monitor keeps one lifecycle implementation while the shell selects one destination mode', () => {
   assert.ok(source, 'RuntimePatchMonitor.vue must exist')
   assert.match(source, /data-page="runtime-patch-runtime-monitor"/)
-  assert.match(source, /role="tablist"/)
-  assert.match(source, /role="tab"[\s\S]*?:aria-selected=/)
-  assert.match(source, /role="tabpanel"/)
+  assert.match(source, /validator:\s*value => \['party', 'spatial', 'items'\]\.includes\(value\)/)
+  assert.match(source, /watch\(\(\) => props\.mode, value => \{ activeTab\.value = value \}/)
+  assert.doesNotMatch(source, /role="tablist"|class="monitor-tabs/)
   assert.match(detector, /data-monitor-panel="party"/)
   assert.match(source, /data-monitor-panel="spatial"/)
   assert.match(source, /data-monitor-panel="selected-items"/)
@@ -139,15 +139,14 @@ test('the page keeps the parchment atom system responsive from narrow to ultra-w
 
 test('the embedded page does not repeat the shell heading and keeps the narrow status badge intact', () => {
   assert.doesNotMatch(source, /<header class="monitor-hero/)
-  assert.match(source, /data-page="runtime-patch-runtime-monitor"[^>]*>\s*<nav class="monitor-tabs/)
+  assert.match(source, /data-page="runtime-patch-runtime-monitor"[^>]*>\s*<RuntimeLoadoutDetector/)
   assert.match(source, /\.connection-summary > \.ui-tag\s*\{[^}]*flex:none/s)
 })
 
-test('tabs and live status expose keyboard and screen-reader state', () => {
+test('live status and operations expose screen-reader and busy state without a second local tab bar', () => {
   assert.ok(source, 'RuntimePatchMonitor.vue must exist')
   assert.match(source, /aria-live="polite"/)
-  assert.match(source, /@keydown="onTabKeydown/)
-  assert.match(source, /:tabindex="activeTab === tab\.id \? 0 : -1"/)
+  assert.doesNotMatch(source, /@keydown="onTabKeydown|:tabindex="activeTab === tab\.id/)
   assert.match(source, /:aria-busy="operationBusy"/)
   assert.match(source, /:disabled="interactionLocked/)
 })

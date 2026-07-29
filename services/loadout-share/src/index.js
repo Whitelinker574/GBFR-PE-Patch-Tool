@@ -1518,6 +1518,7 @@ export default {
         try { result = await readR2Catalog(env, options, Boolean(env.COMMUNITY_DB)) } catch (error) {
           if (error?.code === 'INVALID_CATALOG_CURSOR') return errorResponse(error.message, 400)
           if (error?.code === 'R2_LIKES_UNAVAILABLE') return errorResponse(error.message, 503)
+          if (error?.code === 'R2_CATALOG_SCAN_LIMIT') return errorResponse(error.message, 503)
           throw error
         }
       }

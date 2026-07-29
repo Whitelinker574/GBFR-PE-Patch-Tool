@@ -91,18 +91,22 @@ test('manual and natural loadout stops release the sigil hook immediately', () =
   assert.doesNotMatch(source, /function stopPolling\([^)]*\)\s*\{[\s\S]{0,180}?mode\.value\s*=/)
 })
 
-test('live sigil legality is advisory by default', () => {
+test('live sigil editor auto-repairs shell coupling and blocks unresolved invalid combinations', () => {
   const source = sources['SigilMemoryGenerator.vue']
   assert.doesNotMatch(source, /forceWrite/)
-  assert.match(source, /status: 'forced'/)
-  assert.match(source, /合规检测仅作提示/)
-  assert.match(source, /legality\.value\.status === 'forced'/)
+  assert.match(source, /function repairFormForSigil\(opt\)/)
+  assert.match(source, /form\.primaryTraitHash = Number\(opt\.primaryTraitHash\) >>> 0/)
+  assert.match(source, /allowedSecondaryTraitHashes/)
+  assert.match(source, /已自动修正/)
+  assert.doesNotMatch(source, /status: 'forced'/)
+  assert.doesNotMatch(source, /合规检测仅作提示/)
+  assert.doesNotMatch(source, /legality\.value\.status === 'forced'/)
 })
 
 test('sigil memory has an explicit stop action and locks draft controls until a row is captured', () => {
   const source = sources['SigilMemoryGenerator.vue']
   assert.match(source, /async function disable\(\)[\s\S]*?releaseRuntimeLease\([^;]*SigilMemoryRelease\)/)
-  assert.match(source, /class="ui-btn is-sm is-ghost"[^>]*@click="disable"[^>]*>\s*停止读取\s*</)
+  assert.match(source, /class="ui-btn is-sm is-ghost"[^>]*@click="disable"[^>]*>\s*停止读取并恢复\s*</)
   assert.match(source, /class="ui-btn is-sm is-primary"[^>]*:disabled="loading \|\| applying \|\| status\.hooked"[^>]*@click="enable"/)
   assert.equal((source.match(/<SigilMemoryPicker[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying[^\"]*"/g) || []).length, 3)
   assert.equal((source.match(/<input[^>]*class="ui-input"[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying"/g) || []).length, 3)

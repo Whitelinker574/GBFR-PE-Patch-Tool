@@ -19,13 +19,22 @@ import (
 )
 
 const (
-	naturalDropGameVersion         = "2.0.2"
-	naturalDropModID               = "gbfr.codex.natural-drop-lab"
-	naturalDropForcedWeight uint32 = 1_000_000
-	naturalDropLowWeight    uint32 = 1
-	summonTableRowSize             = 36
-	summonLotRowSize               = 20
-	rewardSummonLotRowSize         = 16
+	naturalDropGameVersion                = "2.0.2"
+	naturalDropModID                      = "gbfr.codex.natural-drop-lab"
+	naturalDropForcedWeight        uint32 = 1_000_000
+	naturalDropLowWeight           uint32 = 1
+	summonTableRowSize                    = 36
+	summonLotRowSize                      = 20
+	rewardSummonLotRowSize                = 16
+	rewardTableRowSize                    = 52
+	rewardLotTableRowSize                 = 60
+	endlessPackageTableRowSize            = 108
+	naturalDropItemMaxQuantity            = 999
+	naturalDropItemMaxWeight              = 1_000_000
+	naturalDropDefaultPackageIndex        = 0
+	naturalDropDefaultPackageKey          = 0xDCFBA295
+	naturalDropDefaultRewardKey           = 0xE48A5279
+	naturalDropDefaultItemPool            = 0xDF1DB99C
 )
 
 var naturalDropRequiredTables = []struct {
@@ -38,6 +47,16 @@ var naturalDropRequiredTables = []struct {
 	{"reward_summon_lot.tbl", 9400, "20A8EAA16BDF6413EB57D39952B6313E758DF1B9F85C634400997047407DC4A1"},
 }
 
+var naturalDropItemRequiredTables = []struct {
+	Name   string
+	Size   int
+	SHA256 string
+}{
+	{"reward.tbl", 327192, "52A90D18D1BECF2C4F610F98EEB44DE55FA225A314D6E7E9878CA0444C3FFF11"},
+	{"reward_lot.tbl", 1473668, "0E35B52BA171F59C1CCB4E6CC389F5B5AB0BBE3A52109DBD3066A023927BE8A0"},
+	{"endlessmode_package.tbl", 4760, "DB6067C20910F40B481360AEC28EDACA331C440A68DC5F9BC50A5BCFA5A2C75E"},
+}
+
 type NaturalDropTableStatus struct {
 	Name     string `json:"name"`
 	Size     int    `json:"size"`
@@ -47,9 +66,10 @@ type NaturalDropTableStatus struct {
 }
 
 type NaturalDropTraitOption struct {
-	Hash   string `json:"hash"`
-	NameZh string `json:"nameZh"`
-	NameEn string `json:"nameEn"`
+	InternalID string `json:"internalId,omitempty"`
+	Hash       string `json:"hash"`
+	NameZh     string `json:"nameZh"`
+	NameEn     string `json:"nameEn"`
 }
 
 type NaturalDropSummonOption struct {
@@ -62,6 +82,14 @@ type NaturalDropSummonOption struct {
 	RewardPools int                      `json:"rewardPools"`
 	MainTraits  []NaturalDropTraitOption `json:"mainTraits"`
 	SubParams   []NaturalDropTraitOption `json:"subParams"`
+}
+
+type NaturalDropItemOption struct {
+	Hash      string `json:"hash"`
+	NameZh    string `json:"nameZh"`
+	NameEn    string `json:"nameEn"`
+	Category  string `json:"category"`
+	Dangerous bool   `json:"dangerous"`
 }
 
 type NaturalDropConflict struct {
@@ -84,9 +112,15 @@ type NaturalDropWorkspace struct {
 	IndexSummary           string                         `json:"indexSummary"`
 	Tables                 []NaturalDropTableStatus       `json:"tables"`
 	Summons                []NaturalDropSummonOption      `json:"summons"`
+	Sigils                 []NaturalDropSigilOption       `json:"sigils"`
 	Wrightstones           []NaturalDropWrightstoneOption `json:"wrightstones"`
+	Items                  []NaturalDropItemOption        `json:"items"`
+	ItemRewardTargetZh     string                         `json:"itemRewardTargetZh"`
+	ItemRewardTargetEn     string                         `json:"itemRewardTargetEn"`
 	SummonTablesReady      bool                           `json:"summonTablesReady"`
+	SigilTablesReady       bool                           `json:"sigilTablesReady"`
 	WrightstoneTablesReady bool                           `json:"wrightstoneTablesReady"`
+	ItemTablesReady        bool                           `json:"itemTablesReady"`
 	Conflicts              []NaturalDropConflict          `json:"conflicts"`
 }
 
@@ -96,11 +130,20 @@ type NaturalDropSelection struct {
 	SubParam  string `json:"subParam"`
 }
 
+type NaturalDropItemSelection struct {
+	ItemHash string `json:"itemHash"`
+	Quantity int    `json:"quantity"`
+	Weight   uint32 `json:"weight"`
+}
+
 type NaturalDropDeployRequest struct {
 	SourceDir       string                            `json:"sourceDir"`
 	GameExePath     string                            `json:"gameExePath"`
 	Selections      []NaturalDropSelection            `json:"selections"`
+	Sigils          []NaturalDropSigilSelection       `json:"sigils"`
 	Wrightstones    []NaturalDropWrightstoneSelection `json:"wrightstones"`
+	Items           []NaturalDropItemSelection        `json:"items"`
+	SigilOnly       bool                              `json:"sigilOnly"`
 	WrightstoneOnly bool                              `json:"wrightstoneOnly"`
 }
 
@@ -112,7 +155,9 @@ type NaturalDropDeployResult struct {
 	ModDir               string   `json:"modDir"`
 	GeneratedFiles       []string `json:"generatedFiles"`
 	SelectedSummons      int      `json:"selectedSummons"`
+	SelectedSigils       int      `json:"selectedSigils"`
 	SelectedWrightstones int      `json:"selectedWrightstones"`
+	SelectedItems        int      `json:"selectedItems"`
 	AffectedRewardPools  int      `json:"affectedRewardPools"`
 	SourceDigest         string   `json:"sourceDigest"`
 }
@@ -128,7 +173,10 @@ type naturalDropManifest struct {
 	SourceFiles         map[string]string                 `json:"sourceFiles"`
 	GeneratedFiles      map[string]string                 `json:"generatedFiles"`
 	Selections          []NaturalDropSelection            `json:"selections"`
+	Sigils              []NaturalDropSigilSelection       `json:"sigils,omitempty"`
 	Wrightstones        []NaturalDropWrightstoneSelection `json:"wrightstones,omitempty"`
+	Items               []NaturalDropItemSelection        `json:"items,omitempty"`
+	SigilOnly           bool                              `json:"sigilOnly,omitempty"`
 	WrightstoneOnly     bool                              `json:"wrightstoneOnly,omitempty"`
 	AffectedRewardPools int                               `json:"affectedRewardPools"`
 }
@@ -137,6 +185,12 @@ type naturalDropTables struct {
 	Summon          []byte
 	SummonLot       []byte
 	RewardSummonLot []byte
+}
+
+type naturalDropItemTables struct {
+	Rewards         []byte
+	RewardLots      []byte
+	EndlessPackages []byte
 }
 
 type naturalDropSummonRow struct {
@@ -166,15 +220,20 @@ func fileSHA256(data []byte) string {
 }
 
 func loadNaturalDropTables(sourceDir string, strictHash bool) (*naturalDropTables, []NaturalDropTableStatus, error) {
-	sourceDir = filepath.Clean(strings.TrimSpace(sourceDir))
-	if sourceDir == "." || sourceDir == "" {
-		return nil, nil, errors.New("请选择 2.0.2 解包表目录")
+	bundled := naturalDropUsesBundledSource(sourceDir)
+	if !bundled {
+		sourceDir = filepath.Clean(strings.TrimSpace(sourceDir))
 	}
 	values := make(map[string][]byte, len(naturalDropRequiredTables))
 	statuses := make([]NaturalDropTableStatus, 0, len(naturalDropRequiredTables))
 	for _, required := range naturalDropRequiredTables {
-		path := filepath.Join(sourceDir, required.Name)
-		data, err := os.ReadFile(path)
+		var data []byte
+		var err error
+		if bundled {
+			data, err = naturalDropBundledTable(required.Name)
+		} else {
+			data, err = os.ReadFile(filepath.Join(sourceDir, required.Name))
+		}
 		if err != nil {
 			return nil, statuses, fmt.Errorf("读取 %s 失败: %w", required.Name, err)
 		}
@@ -196,6 +255,82 @@ func loadNaturalDropTables(sourceDir string, strictHash bool) (*naturalDropTable
 		return nil, statuses, fmt.Errorf("reward_summon_lot.tbl: %w", err)
 	}
 	return &naturalDropTables{Summon: values["summon.tbl"], SummonLot: values["summon_lot.tbl"], RewardSummonLot: values["reward_summon_lot.tbl"]}, statuses, nil
+}
+
+func loadNaturalDropItemTables(sourceDir string, strictHash bool) (*naturalDropItemTables, []NaturalDropTableStatus, error) {
+	bundled := naturalDropUsesBundledSource(sourceDir)
+	if !bundled {
+		sourceDir = filepath.Clean(strings.TrimSpace(sourceDir))
+	}
+	values := make(map[string][]byte, len(naturalDropItemRequiredTables))
+	statuses := make([]NaturalDropTableStatus, 0, len(naturalDropItemRequiredTables))
+	for _, required := range naturalDropItemRequiredTables {
+		var data []byte
+		var err error
+		if bundled {
+			data, err = naturalDropBundledTable(required.Name)
+		} else {
+			data, err = os.ReadFile(filepath.Join(sourceDir, required.Name))
+		}
+		if err != nil {
+			return nil, statuses, fmt.Errorf("读取 %s 失败: %w", required.Name, err)
+		}
+		hash := fileSHA256(data)
+		valid := len(data) == required.Size && strings.EqualFold(hash, required.SHA256)
+		statuses = append(statuses, NaturalDropTableStatus{
+			Name: required.Name, Size: len(data), SHA256: hash, Expected: required.SHA256, Valid: valid,
+		})
+		if strictHash && !valid {
+			return nil, statuses, fmt.Errorf("%s 不是已验证的 DLC 2.0.2 原表（大小 %d，SHA-256 %s）", required.Name, len(data), hash)
+		}
+		values[required.Name] = data
+	}
+	if _, err := tableRowCount(values["reward.tbl"], rewardTableRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("reward.tbl: %w", err)
+	}
+	if _, err := tableRowCount(values["reward_lot.tbl"], rewardLotTableRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("reward_lot.tbl: %w", err)
+	}
+	if _, err := tableRowCount(values["endlessmode_package.tbl"], endlessPackageTableRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("endlessmode_package.tbl: %w", err)
+	}
+	return &naturalDropItemTables{
+		Rewards:         values["reward.tbl"],
+		RewardLots:      values["reward_lot.tbl"],
+		EndlessPackages: values["endlessmode_package.tbl"],
+	}, statuses, nil
+}
+
+func buildNaturalDropItemCatalog() ([]NaturalDropItemOption, error) {
+	catalog, err := loadProgressionCatalog()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]NaturalDropItemOption, 0, len(catalog.Items))
+	for _, item := range catalog.Items {
+		if item.Dangerous {
+			continue
+		}
+		hash, err := ParseHashHex(item.Hash)
+		if err != nil || hash == 0 || hash == summonInvalidTypeHash {
+			continue
+		}
+		nameZh := strings.TrimSpace(item.NameCN)
+		nameEn := strings.TrimSpace(item.NameEN)
+		if nameZh == "" || nameEn == "" {
+			continue
+		}
+		result = append(result, NaturalDropItemOption{
+			Hash: fmt.Sprintf("0x%08X", hash), NameZh: nameZh, NameEn: nameEn, Category: item.Category,
+		})
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Category != result[j].Category {
+			return result[i].Category < result[j].Category
+		}
+		return result[i].NameZh < result[j].NameZh
+	})
+	return result, nil
 }
 
 func naturalDropSummonRows(data []byte) (map[uint32]naturalDropSummonRow, error) {
@@ -405,8 +540,12 @@ var naturalDropWrightstoneTablePaths = []string{
 	"system/table/gacha.tbl",
 }
 
-func naturalDropSourceFiles(includeSummons, includeWrightstones bool) map[string]string {
-	result := make(map[string]string, len(naturalDropRequiredTables)+len(naturalWrightstoneRequiredTables))
+var naturalDropItemTablePaths = []string{
+	"system/table/reward_lot.tbl",
+}
+
+func naturalDropSourceFiles(includeSummons, includeWrightstones, includeSigils, includeItems bool) map[string]string {
+	result := make(map[string]string, len(naturalDropRequiredTables)+len(naturalWrightstoneRequiredTables)+len(naturalSigilRequiredTables)+len(naturalDropItemRequiredTables))
 	if includeSummons {
 		for _, required := range naturalDropRequiredTables {
 			result[required.Name] = required.SHA256
@@ -414,6 +553,19 @@ func naturalDropSourceFiles(includeSummons, includeWrightstones bool) map[string
 	}
 	if includeWrightstones {
 		for _, required := range naturalWrightstoneRequiredTables {
+			result[required.Name] = required.SHA256
+		}
+	}
+	if includeSigils {
+		for _, required := range naturalWrightstoneRequiredTables[1:] {
+			result[required.Name] = required.SHA256
+		}
+		for _, required := range naturalSigilRequiredTables {
+			result[required.Name] = required.SHA256
+		}
+	}
+	if includeItems {
+		for _, required := range naturalDropItemRequiredTables {
 			result[required.Name] = required.SHA256
 		}
 	}
@@ -444,6 +596,9 @@ func naturalDropFileSHA256(path string) (string, error) {
 }
 
 func naturalDropCleanPath(path string) string {
+	if naturalDropUsesBundledSource(path) {
+		return naturalDropBundledSourceID
+	}
 	if strings.TrimSpace(path) == "" {
 		return ""
 	}
@@ -514,7 +669,7 @@ func naturalDropReadManifest(gameDir string) (*naturalDropManifest, []byte, erro
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, data, err
 	}
-	if manifest.SchemaVersion != 2 || manifest.Owner != naturalDropModID ||
+	if (manifest.SchemaVersion != 2 && manifest.SchemaVersion != 3 && manifest.SchemaVersion != 4) || manifest.Owner != naturalDropModID ||
 		manifest.GameVersion != naturalDropGameVersion ||
 		!strings.EqualFold(manifest.GameExecutableSHA, runtimePatchCatalogGameSHA256) {
 		return nil, data, errors.New("天然掉落清单不属于当前版本的本工具")
@@ -568,12 +723,19 @@ func naturalDropConflicts(gameDir string, index *gbfrDataIndex, owned bool) []Na
 		return nil
 	}
 	type scopedPath struct{ path, scope string }
-	paths := make([]scopedPath, 0, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths))
+	paths := make([]scopedPath, 0, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths)+len(naturalDropSigilTablePaths)+len(naturalDropItemTablePaths))
 	for _, path := range naturalDropSummonTablePaths {
 		paths = append(paths, scopedPath{path: path, scope: "summon"})
 	}
-	for _, path := range naturalDropWrightstoneTablePaths {
-		paths = append(paths, scopedPath{path: path, scope: "wrightstone"})
+	paths = append(paths, scopedPath{path: naturalDropWrightstoneTablePaths[0], scope: "wrightstone"})
+	for _, path := range naturalDropWrightstoneTablePaths[1:] {
+		paths = append(paths, scopedPath{path: path, scope: "transmarvel"})
+	}
+	for _, path := range naturalDropSigilTablePaths {
+		paths = append(paths, scopedPath{path: path, scope: "sigil"})
+	}
+	for _, path := range naturalDropItemTablePaths {
+		paths = append(paths, scopedPath{path: path, scope: "item"})
 	}
 	result := make([]NaturalDropConflict, 0, len(paths))
 	for _, candidate := range paths {
@@ -614,30 +776,59 @@ func (a *App) GetNaturalDropWorkspace(sourceDir, gameExePath string) (*NaturalDr
 		SourceDir:   naturalDropCleanPath(sourceDir),
 		GameExePath: naturalDropCleanPath(gameExePath),
 	}
-	if strings.TrimSpace(sourceDir) != "" {
-		tables, statuses, err := loadNaturalDropTables(sourceDir, true)
-		workspace.Tables = statuses
+	if strings.TrimSpace(sourceDir) == "" {
+		sourceDir = naturalDropBundledSourceID
+		workspace.SourceDir = sourceDir
+	}
+	tables, statuses, err := loadNaturalDropTables(sourceDir, true)
+	workspace.Tables = statuses
+	if err != nil {
+		return nil, err
+	}
+	workspace.SummonTablesReady = true
+	workspace.Summons, err = buildNaturalDropCatalog(tables)
+	if err != nil {
+		return nil, err
+	}
+	wrightstoneTables, wrightstoneStatuses, wrightstoneErr := loadNaturalWrightstoneTables(sourceDir, true)
+	workspace.Tables = append(workspace.Tables, wrightstoneStatuses...)
+	if wrightstoneErr != nil {
+		return nil, wrightstoneErr
+	}
+	if wrightstoneTables != nil {
+		workspace.WrightstoneTablesReady = true
+		workspace.Wrightstones, err = buildNaturalWrightstoneCatalog()
 		if err != nil {
 			return nil, err
-		}
-		workspace.SummonTablesReady = true
-		workspace.Summons, err = buildNaturalDropCatalog(tables)
-		if err != nil {
-			return nil, err
-		}
-		wrightstoneTables, wrightstoneStatuses, wrightstoneErr := loadNaturalWrightstoneTables(sourceDir, false)
-		workspace.Tables = append(workspace.Tables, wrightstoneStatuses...)
-		if wrightstoneErr != nil {
-			return nil, wrightstoneErr
-		}
-		if wrightstoneTables != nil {
-			workspace.WrightstoneTablesReady = true
-			workspace.Wrightstones, err = buildNaturalWrightstoneCatalog()
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
+	sigilTables, sigilStatuses, sigilErr := loadNaturalSigilTables(sourceDir, true)
+	workspace.Tables = append(workspace.Tables, sigilStatuses...)
+	if sigilErr != nil {
+		return nil, sigilErr
+	}
+	if sigilTables != nil && wrightstoneTables != nil {
+		workspace.SigilTablesReady = true
+		workspace.Sigils, err = buildNaturalSigilCatalog(wrightstoneTables.Lots, sigilTables.Gem)
+		if err != nil {
+			return nil, err
+		}
+	}
+	itemTables, itemStatuses, itemErr := loadNaturalDropItemTables(sourceDir, true)
+	workspace.Tables = append(workspace.Tables, itemStatuses...)
+	if itemErr != nil {
+		return nil, itemErr
+	}
+	if _, err := resolveNaturalDropItemRewardPool(itemTables); err != nil {
+		return nil, err
+	}
+	workspace.Items, err = buildNaturalDropItemCatalog()
+	if err != nil {
+		return nil, err
+	}
+	workspace.ItemTablesReady = true
+	workspace.ItemRewardTargetZh = "无尽模式 · 锻造师奖励"
+	workspace.ItemRewardTargetEn = "Endless Mode · Forger's Bounty"
 	if strings.TrimSpace(gameExePath) == "" {
 		return workspace, nil
 	}
@@ -677,6 +868,127 @@ func parseNaturalDropSelection(value string, label string) (uint32, error) {
 		return 0, fmt.Errorf("%s哈希无效: %q", label, value)
 	}
 	return hash, nil
+}
+
+func resolveNaturalDropItemRewardPool(tables *naturalDropItemTables) (uint32, error) {
+	if tables == nil {
+		return 0, errors.New("通用物品掉落原表为空")
+	}
+	packageCount, err := tableRowCount(tables.EndlessPackages, endlessPackageTableRowSize)
+	if err != nil {
+		return 0, fmt.Errorf("endlessmode_package.tbl: %w", err)
+	}
+	if packageCount <= naturalDropDefaultPackageIndex {
+		return 0, errors.New("内置锻造师奖励包记录缺失")
+	}
+	packageOffset := 8 + naturalDropDefaultPackageIndex*endlessPackageTableRowSize
+	packageKey := binary.LittleEndian.Uint32(tables.EndlessPackages[packageOffset+64:])
+	rewardKey := binary.LittleEndian.Uint32(tables.EndlessPackages[packageOffset+68:])
+	if packageKey != naturalDropDefaultPackageKey || rewardKey != naturalDropDefaultRewardKey {
+		return 0, fmt.Errorf("内置锻造师奖励包关系不匹配: package=0x%08X reward=0x%08X", packageKey, rewardKey)
+	}
+
+	rewardCount, err := tableRowCount(tables.Rewards, rewardTableRowSize)
+	if err != nil {
+		return 0, fmt.Errorf("reward.tbl: %w", err)
+	}
+	var pool uint32
+	for i := 0; i < rewardCount; i++ {
+		offset := 8 + i*rewardTableRowSize
+		if binary.LittleEndian.Uint32(tables.Rewards[offset+24:]) == rewardKey {
+			pool = binary.LittleEndian.Uint32(tables.Rewards[offset:])
+			break
+		}
+	}
+	if pool != naturalDropDefaultItemPool {
+		return 0, fmt.Errorf("内置锻造师奖励池关系不匹配: 0x%08X", pool)
+	}
+
+	lotCount, err := tableRowCount(tables.RewardLots, rewardLotTableRowSize)
+	if err != nil {
+		return 0, fmt.Errorf("reward_lot.tbl: %w", err)
+	}
+	for i := 0; i < lotCount; i++ {
+		offset := 8 + i*rewardLotTableRowSize
+		if binary.LittleEndian.Uint32(tables.RewardLots[offset+8:]) == pool {
+			return pool, nil
+		}
+	}
+	return 0, fmt.Errorf("内置锻造师奖励池 0x%08X 没有可复制的物品行", pool)
+}
+
+func patchNaturalDropItemTable(tables *naturalDropItemTables, selections []NaturalDropItemSelection) ([]byte, error) {
+	pool, err := resolveNaturalDropItemRewardPool(tables)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := loadProgressionCatalog(); err != nil {
+		return nil, err
+	}
+	result := append([]byte(nil), tables.RewardLots...)
+	count, err := tableRowCount(result, rewardLotTableRowSize)
+	if err != nil {
+		return nil, err
+	}
+	template := []byte(nil)
+	existing := make(map[uint32]int)
+	for i := 0; i < count; i++ {
+		offset := 8 + i*rewardLotTableRowSize
+		if binary.LittleEndian.Uint32(result[offset+8:]) != pool {
+			continue
+		}
+		if template == nil {
+			template = append([]byte(nil), result[offset:offset+rewardLotTableRowSize]...)
+		}
+		itemHash := binary.LittleEndian.Uint32(result[offset+12:])
+		weaponHash := binary.LittleEndian.Uint32(result[offset+16:])
+		gemHash := binary.LittleEndian.Uint32(result[offset+20:])
+		if itemHash != 0 && itemHash != summonInvalidTypeHash &&
+			weaponHash == summonInvalidTypeHash && gemHash == summonInvalidTypeHash {
+			existing[itemHash] = offset
+		}
+	}
+	if template == nil {
+		return nil, errors.New("内置锻造师奖励池没有模板行")
+	}
+
+	seen := make(map[uint32]bool, len(selections))
+	for _, selection := range selections {
+		itemHash, err := parseNaturalDropSelection(selection.ItemHash, "物品")
+		if err != nil {
+			return nil, err
+		}
+		def, allowed := progressionItemByHash[itemHash]
+		if !allowed || def.Dangerous {
+			return nil, fmt.Errorf("物品 0x%08X 不在可掉落目录中", itemHash)
+		}
+		if seen[itemHash] {
+			return nil, fmt.Errorf("物品 %s 被重复添加", progressionItemName(def))
+		}
+		seen[itemHash] = true
+		if selection.Quantity < 1 || selection.Quantity > naturalDropItemMaxQuantity {
+			return nil, fmt.Errorf("%s 数量必须为 1–%d", progressionItemName(def), naturalDropItemMaxQuantity)
+		}
+		if selection.Weight < 1 || selection.Weight > naturalDropItemMaxWeight {
+			return nil, fmt.Errorf("%s 权重必须为 1–%d", progressionItemName(def), naturalDropItemMaxWeight)
+		}
+
+		offset, exists := existing[itemHash]
+		if !exists {
+			row := append([]byte(nil), template...)
+			binary.LittleEndian.PutUint32(row[12:16], itemHash)
+			result = append(result, row...)
+			offset = len(result) - rewardLotTableRowSize
+			existing[itemHash] = offset
+		}
+		binary.LittleEndian.PutUint32(result[offset:offset+4], uint32(selection.Quantity))
+		binary.LittleEndian.PutUint32(result[offset+48:offset+52], selection.Weight)
+	}
+	binary.LittleEndian.PutUint32(result[:4], uint32((len(result)-8)/rewardLotTableRowSize))
+	if _, err := tableRowCount(result, rewardLotTableRowSize); err != nil {
+		return nil, fmt.Errorf("生成 reward_lot.tbl 回读失败: %w", err)
+	}
+	return result, nil
 }
 
 func uniqueNaturalDropPoolHash(typeHash uint32, occupied map[uint32]bool) (uint32, error) {
@@ -1037,14 +1349,17 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	if err := naturalDropRequireStoppedProcesses(); err != nil {
 		return nil, err
 	}
-	if len(request.Selections) == 0 && len(request.Wrightstones) == 0 {
-		return nil, errors.New("请至少选择一颗召唤石或祝福石")
+	if len(request.Selections) == 0 && len(request.Sigils) == 0 && len(request.Wrightstones) == 0 && len(request.Items) == 0 {
+		return nil, errors.New("请至少选择一颗召唤石、因子、祝福石或物品")
+	}
+	if request.SigilOnly && request.WrightstoneOnly {
+		return nil, errors.New("Transmarvel 不能同时设为只出因子和只出祝福石")
 	}
 	gameExePath, err := validateNaturalDropGameExecutable(request.GameExePath)
 	if err != nil {
 		return nil, err
 	}
-	files := make(map[string][]byte, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths))
+	files := make(map[string][]byte, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths)+len(naturalDropSigilTablePaths)+len(naturalDropItemTablePaths))
 	affectedPools := 0
 	if len(request.Selections) > 0 {
 		source, _, loadErr := loadNaturalDropTables(request.SourceDir, true)
@@ -1060,19 +1375,47 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		files[naturalDropSummonTablePaths[1]] = patched.SummonLot
 		files[naturalDropSummonTablePaths[2]] = patched.RewardSummonLot
 	}
-	if len(request.Wrightstones) > 0 {
-		source, _, loadErr := loadNaturalWrightstoneTables(request.SourceDir, true)
+	if len(request.Sigils) > 0 || len(request.Wrightstones) > 0 {
+		shared, _, loadErr := loadNaturalWrightstoneTables(request.SourceDir, true)
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		patched, _, patchErr := patchNaturalWrightstoneTables(source, request.Wrightstones, request.WrightstoneOnly)
+		var sigilTables *naturalSigilTables
+		if len(request.Sigils) > 0 {
+			sigilTables, _, loadErr = loadNaturalSigilTables(request.SourceDir, true)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			var patchErr error
+			shared, sigilTables, _, patchErr = patchNaturalSigilTables(shared, sigilTables, request.Sigils, request.SigilOnly)
+			if patchErr != nil {
+				return nil, patchErr
+			}
+			files[naturalDropSigilTablePaths[0]] = sigilTables.Gem
+		}
+		if len(request.Wrightstones) > 0 {
+			var patchErr error
+			shared, _, patchErr = patchNaturalWrightstoneTables(shared, request.Wrightstones, request.WrightstoneOnly)
+			if patchErr != nil {
+				return nil, patchErr
+			}
+			files[naturalDropWrightstoneTablePaths[0]] = shared.Items
+		}
+		files[naturalDropWrightstoneTablePaths[1]] = shared.Lots
+		files[naturalDropWrightstoneTablePaths[2]] = shared.RateGroups
+		files[naturalDropWrightstoneTablePaths[3]] = shared.Gacha
+	}
+	if len(request.Items) > 0 {
+		itemTables, _, loadErr := loadNaturalDropItemTables(request.SourceDir, true)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		patchedLots, patchErr := patchNaturalDropItemTable(itemTables, request.Items)
 		if patchErr != nil {
 			return nil, patchErr
 		}
-		files[naturalDropWrightstoneTablePaths[0]] = patched.Items
-		files[naturalDropWrightstoneTablePaths[1]] = patched.Lots
-		files[naturalDropWrightstoneTablePaths[2]] = patched.RateGroups
-		files[naturalDropWrightstoneTablePaths[3]] = patched.Gacha
+		files[naturalDropItemTablePaths[0]] = patchedLots
+		affectedPools++
 	}
 	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
 	currentIndex, err := os.ReadFile(indexPath)
@@ -1178,18 +1521,23 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	}
 	selectionCopy := append([]NaturalDropSelection(nil), request.Selections...)
 	sort.Slice(selectionCopy, func(i, j int) bool { return selectionCopy[i].TypeHash < selectionCopy[j].TypeHash })
+	itemCopy := append([]NaturalDropItemSelection(nil), request.Items...)
+	sort.Slice(itemCopy, func(i, j int) bool { return itemCopy[i].ItemHash < itemCopy[j].ItemHash })
 	newManifest := naturalDropManifest{
-		SchemaVersion:       2,
+		SchemaVersion:       4,
 		Owner:               naturalDropModID,
 		GameVersion:         naturalDropGameVersion,
 		GameExecutableSHA:   runtimePatchCatalogGameSHA256,
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
 		OriginalIndexSHA:    fileSHA256(baseIndex),
 		DeployedIndexSHA:    fileSHA256(deployedIndex),
-		SourceFiles:         naturalDropSourceFiles(len(selectionCopy) > 0, len(request.Wrightstones) > 0),
+		SourceFiles:         naturalDropSourceFiles(len(selectionCopy) > 0, len(request.Wrightstones) > 0, len(request.Sigils) > 0, len(itemCopy) > 0),
 		GeneratedFiles:      generated,
 		Selections:          selectionCopy,
+		Sigils:              append([]NaturalDropSigilSelection(nil), request.Sigils...),
 		Wrightstones:        append([]NaturalDropWrightstoneSelection(nil), request.Wrightstones...),
+		Items:               itemCopy,
+		SigilOnly:           request.SigilOnly,
 		WrightstoneOnly:     request.WrightstoneOnly,
 		AffectedRewardPools: affectedPools,
 	}
@@ -1211,7 +1559,9 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		ModDir:               gameDir,
 		GeneratedFiles:       fileList,
 		SelectedSummons:      len(selectionCopy),
+		SelectedSigils:       len(request.Sigils),
 		SelectedWrightstones: len(request.Wrightstones),
+		SelectedItems:        len(itemCopy),
 		AffectedRewardPools:  affectedPools,
 		SourceDigest:         naturalDropSourceDigest(newManifest.SourceFiles),
 	}, nil

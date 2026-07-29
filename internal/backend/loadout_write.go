@@ -509,6 +509,9 @@ func prepareExactLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*pre
 			return nil, fmt.Errorf("精确副词条为空时副词条等级必须为 0")
 		}
 		prepared.item.SecondaryLevel = 0
+		if err := validateExactLoadoutSigil(cat, prepared); err != nil {
+			return nil, err
+		}
 		return prepared, nil
 	}
 	secondaryHash, err := parseExactLoadoutHash(secondaryText, "精确副词条哈希")
@@ -521,7 +524,53 @@ func prepareExactLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*pre
 	prepared.secondaryHash = secondaryHash
 	prepared.secondaryLevel = item.SecondaryLevel
 	prepared.hasSecondary = true
+	if err := validateExactLoadoutSigil(cat, prepared); err != nil {
+		return nil, err
+	}
 	return prepared, nil
+}
+
+// Exact transport preserves real save/share identities that are not present as
+// ordinary constructible shells. When the shell is known, it must obey the
+// same fixed-primary and audited-secondary rules as every other write path.
+// Unknown captured shells retain their exact hash, but their trait identities,
+// levels and non-duplication still pass the unified 2.0.2 catalog gate.
+func validateExactLoadoutSigil(cat *Catalog, prepared *preparedLoadoutSigil) error {
+	if cat == nil || prepared == nil {
+		return fmt.Errorf("精确因子校验缺少统一目录或记录")
+	}
+	update := SigilMemoryUpdate{
+		SigilHash:          prepared.sigilHash,
+		SigilLevel:         uint32(prepared.item.Level),
+		PrimaryTraitHash:   prepared.primaryHash,
+		PrimaryTraitLevel:  uint32(prepared.item.PrimaryLevel),
+		SecondaryTraitHash: prepared.secondaryHash,
+		SecondaryTraitLevel: func() uint32 {
+			if !prepared.hasSecondary {
+				return 0
+			}
+			return uint32(prepared.secondaryLevel)
+		}(),
+	}
+	if cat.LookupSigilByHash(prepared.sigilHash) != nil {
+		return validateSigilMemoryUpdate(cat, update)
+	}
+	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
+		return fmt.Errorf("精确因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
+	}
+	if err := validateSigilMemoryTraitLevel(cat, update.PrimaryTraitHash, update.PrimaryTraitLevel, "精确主词条"); err != nil {
+		return err
+	}
+	if !prepared.hasSecondary {
+		if update.SecondaryTraitHash != EmptyHash || update.SecondaryTraitLevel != 0 {
+			return fmt.Errorf("精确副词条为空时哈希与等级必须同时为空")
+		}
+		return nil
+	}
+	if update.PrimaryTraitHash == update.SecondaryTraitHash {
+		return fmt.Errorf("精确因子的主副词条不能重复")
+	}
+	return validateSigilMemoryTraitLevel(cat, update.SecondaryTraitHash, update.SecondaryTraitLevel, "精确副词条")
 }
 
 func prepareLoadoutSigil(cat *Catalog, draft LoadoutConstructedSigil) (*preparedLoadoutSigil, error) {
@@ -788,11 +837,19 @@ func prepareLoadoutSigilForSave(save *SaveData, ix *loadoutIndex, cat *Catalog, 
 	if item.SigilName == "" {
 		item.SigilName = sigilDisplayNameOr(sigilHash)
 	}
-	return &preparedLoadoutSigil{
+	prepared := &preparedLoadoutSigil{
 		index: draft.Index, item: item, sigilHash: sigilHash, primaryHash: primaryHash,
 		secondaryHash: secondaryHash, secondaryLevel: item.SecondaryLevel,
 		hasSecondary: hasSecondary, flags: flags,
-	}, nil
+	}
+	// A real inventory SlotID is trustworthy evidence for the bytes that were
+	// captured, but it is not permission to replicate a malformed known shell.
+	// Reuse the same catalog/curve/primary-secondary gate as live editing and
+	// ordinary loadout construction before allocating a new independent SlotID.
+	if err := validateExactLoadoutSigil(cat, prepared); err != nil {
+		return nil, fmt.Errorf("真实存档模板 SlotID %d 的因子组合无效: %w", draft.TemplateSlotID, err)
+	}
+	return prepared, nil
 }
 
 func validateLoadoutSigilDestination(save *SaveData, prepared *preparedLoadoutSigil) error {

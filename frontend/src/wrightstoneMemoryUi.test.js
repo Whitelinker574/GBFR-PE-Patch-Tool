@@ -32,11 +32,11 @@ test('live wrightstone editor owns an explicit enable, polling and disable lifec
   assert.match(component, /onBeforeUnmount\([\s\S]*?queueRuntimeLeaseRelease\([^;]*ownerToken[^;]*WrightstoneMemoryRelease/)
   assert.doesNotMatch(component, /WrightstoneMemory(?:Enable|Disable)/)
   assert.match(component, /text\('启用读取', 'Enable Capture'\)/)
-  assert.match(component, /text\('停止读取', 'Stop Capture'\)/)
+  assert.match(component, /text\('停止读取并恢复', 'Stop Capture and Restore'\)/)
 })
 
 test('live wrightstone feedback uses the shared warning and low-emphasis stop treatments', () => {
-  assert.match(component, /class="ui-btn is-ghost"[^>]*@click="disable"[^>]*>[\s\S]*?text\('停止读取', 'Stop Capture'\)/)
+  assert.match(component, /class="ui-btn is-ghost"[^>]*@click="disable"[^>]*>[\s\S]*?text\('停止读取并恢复', 'Stop Capture and Restore'\)/)
   assert.match(component, /:class="\{\s*'is-warn'\s*:\s*stale\s*\}"/)
   assert.doesNotMatch(component, /\bis-warning\b|class="ui-btn is-danger"[^>]*@click="disable"/)
 })
@@ -56,10 +56,14 @@ test('live wrightstone editor exposes current and target values for all three sl
   assert.match(component, /labelZh:\s*'第三槽'[^}]*labelEn:\s*'Slot Three'[^}]*maxLevel:\s*10/)
   assert.match(component, /slot\.level = Math\.min\(slot\.maxLevel, traitWritableMax\(slot\)\)/)
   assert.match(component, /Number\(slot\.level\) < 1/)
+  assert.match(component, /function duplicateTraitMessage\(/)
+  assert.match(component, /const duplicate = duplicateTraitMessage\(\)/)
   assert.match(component, /第一槽/)
   assert.match(component, /第二槽/)
   assert.match(component, /第三槽/)
   assert.match(component, /<details[^>]*class="[^"]*ui-disclosure[^"]*change-summary/)
+  assert.match(component, /:disabled="index === 0 \|\| !status\.selectedAddr \|\| stale"/)
+  assert.match(component, /固有第一词条随当前祝福类型锁定/)
 })
 
 test('live wrightstone configuration mirrors the offline parchment editor without a dark or floating sub-skin', () => {
@@ -121,4 +125,11 @@ test('offline wrightstone legality failure is fail-closed', () => {
   assert.match(catchBody, /status:\s*'impossible'/)
   assert.match(catchBody, /writable:\s*false/)
   assert.doesNotMatch(catchBody, /writable:\s*true/)
+})
+
+test('offline wrightstone editor locks the fixed first trait and filters duplicate choices', () => {
+  assert.match(offlineGenerator, /function wrightstoneTraitOptions\(slot\)/)
+  assert.match(offlineGenerator, /:options="wrightstoneTraitOptions\(i\)"/)
+  assert.match(offlineGenerator, /:disabled="i === 0"/)
+  assert.match(offlineGenerator, /固有特性由祝福类型固定/)
 })

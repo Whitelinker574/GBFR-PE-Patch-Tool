@@ -6,35 +6,36 @@ const emit = defineEmits(['open', 'warm'])
 
 const groups = [
   {
-    id: 'save', mark: '档', label: '存档修改', hint: '退出游戏后离线改存档文件，可批量、可回滚',
+    id: 'save', mark: '档', label: '存档修改', hint: '完全退出游戏后再改；保存前自动备份，需要时可恢复',
     items: [
-      { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看与写入配装、因子加成模拟' },
-      { id: 'sigil', icon: '◇', title: '因子修改', copy: '批量生成因子与合法性校验' },
-      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '素材、武器等级与养成资源' },
-      { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '生成祝福石与三条词条' },
-      { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增召唤石，或原子修改已有实例' },
+      { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看整套配装，手动编辑或按技能目标配因子' },
+      { id: 'sigil', icon: '◇', title: '因子修改', copy: '给存档新增、批量生成或删除因子' },
+      { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '给存档新增祝福石并设置三条技能' },
+      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '补素材，调整数量、武器等级与强化进度' },
+      { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增召唤石，或修改已有实例和装备引用' },
     ],
   },
   {
-    id: 'memory', mark: '注', label: '内存注入', hint: '连接运行中的游戏改进程内存，实时生效',
+    id: 'memory', mark: '注', label: '常用即时修改', hint: '先启动游戏，再修改当前选中的装备或当前会话资源',
     items: [
-      { id: 'runtime', icon: '✧', title: '游戏内实时修改', copy: '金币、MSP、药水、素材与任务掉落' },
-      { id: 'runtimeQOL', icon: '◉', title: '游戏便利运行时', copy: '伤害上限、精确百分比与房间 ID' },
-      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
-      { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '改游戏中当前选中的祝福石' },
-      { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '记录、分享并逐项复刻十二个因子' },
-      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
-      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
+      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '读取并修改游戏里当前高亮的因子' },
+      { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '读取并修改游戏里当前高亮的祝福石' },
+      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '修改当前召唤石的技能、副参数与等级' },
+      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '读取突破结果页并保存四项能力值' },
+      { id: 'runtime', icon: '✧', title: '货币、素材与任务掉落', copy: '调整当前会话的金币、MSP、素材与掉落功能' },
+    ],
+  },
+  {
+    id: 'liveExtras', mark: '拓', label: '配装与实时扩展', hint: '按需主动开启；切页后会继续运行，停用时恢复',
+    items: [
+      { id: 'runtimeMonitor', icon: '队', title: '队友配装持续检测', copy: '点击开启后持续后台归档稳定队伍配装' },
+      { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '逐颗记录十二个因子，导出分享或写到备用因子' },
+      { id: 'virtualSigils', icon: '◇', title: '虚拟因子槽', copy: '运行时读取额外库存因子，不扩存档十二槽' },
+      { id: 'runtimeQOL', icon: '显', title: '显示与房间工具', copy: '精确显示、房间 ID 与主线队长替换' },
+      { id: 'spatialTools', icon: '标', title: '坐标与移动工具', copy: '离线使用书签、传送、世界轴移动和重力控制' },
       { id: 'patchCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'patchCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'patchQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
-      { id: 'runtimeMonitor', icon: '测', title: '配装检测与空间工具', copy: '后台归档队伍配装；空间写入单独标识' },
-    ],
-  },
-  {
-    id: 'monitor', mark: '测', label: '内存监测', hint: '严格只读的角色面板与公式证据采样',
-    items: [
-      { id: 'formulaSampler', icon: '证', title: '公式采样', copy: '单变量 A/B/A/B 角色面板证据' },
     ],
   },
 ]

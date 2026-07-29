@@ -37,6 +37,14 @@ type runtimeCompanionOwner struct {
 	Created uint64
 }
 
+type RuntimeCompanionSummary struct {
+	ID               string `json:"id"`
+	State            string `json:"state"`
+	Active           bool   `json:"active"`
+	Owned            bool   `json:"owned"`
+	RecoveryRequired bool   `json:"recoveryRequired"`
+}
+
 func runtimeCompanionMatchesProcess(status runtimeCompanionStatus, process processInstanceID) bool {
 	return status.PID != 0 && status.Created != 0 &&
 		status.PID == process.PID && status.Created == process.Created
@@ -381,6 +389,33 @@ func runtimeCompanionPresent(feature string) bool {
 	status := readRuntimeCompanionStatus(feature)
 	process, err := findRuntimeProcessInstance()
 	return err == nil && runtimeCompanionInstalled(status, process)
+}
+
+// GetRuntimeCompanionSummary is the shell-level authority for persistent
+// camera, audio, and virtual-sigil status. It intentionally avoids loading the
+// large per-page catalogs or save inventories.
+func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
+	features := []struct {
+		ID      string
+		Runtime string
+	}{
+		{ID: "camera", Runtime: "camera"},
+		{ID: "audioMixer", Runtime: "audio"},
+		{ID: "virtualSigils", Runtime: "virtual-sigils"},
+	}
+	process, processErr := findRuntimeProcessInstance()
+	result := make([]RuntimeCompanionSummary, 0, len(features))
+	for _, feature := range features {
+		status := readRuntimeCompanionStatus(feature.Runtime)
+		summary := RuntimeCompanionSummary{ID: feature.ID, State: status.State}
+		if processErr == nil && runtimeCompanionMatchesProcess(status, process) {
+			summary.Owned = a.runtimeCompanionOwned(feature.Runtime, process)
+			summary.Active = summary.Owned && strings.EqualFold(strings.TrimSpace(status.State), "active")
+			summary.RecoveryRequired = runtimeCompanionRecoveryRequired(status, process)
+		}
+		result = append(result, summary)
+	}
+	return result
 }
 
 func extractAndInjectPatchCore(hProcess windows.Handle, command string) (string, error) {

@@ -7,9 +7,9 @@ const source = readFileSync(new URL('./components/PatchTool.vue', import.meta.ur
 test('version compatibility reports current pages and runtime evidence', () => {
   assert.match(source, /28\s*个实际工具页\s*\+\s*1\s*个主页/)
   assert.match(source, /存档修改页面[\s\S]*?7\s*\/\s*7[\s\S]*?配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录/)
-  assert.match(source, /内存注入页面[\s\S]*?12\s*页接入[\s\S]*?战斗规则、角色机制、任务便利、配装检测与空间工具、怪物实验/)
+  assert.match(source, /实时功能页面[\s\S]*?13\s*页接入[\s\S]*?常用即时修改 5 页[\s\S]*?扩展 8 页/)
   assert.match(source, /只读监测页面[\s\S]*?1\s*\/\s*1[\s\S]*?角色公式采样不安装\s*Hook，也不写进程或存档/)
-  assert.match(source, /工具设置页面[\s\S]*?8 页已接入[\s\S]*?存档实验室、天然掉落、角色语音混音台/)
+  assert.match(source, /工具设置页面[\s\S]*?7 页已接入[\s\S]*?存档实验室、天然掉落、角色语音混音台/)
   assert.match(source, /运行时补丁覆盖[\s\S]*?58\s*已接入\s*\/\s*4\s*待证据/)
   assert.match(source, /58\s*功能\s*\/\s*81\s*站点\s*\/\s*79\s*AOB/)
   assert.match(source, /DLC\s*2\.0\.2\s*增量审计[\s\S]*?现场修复/)

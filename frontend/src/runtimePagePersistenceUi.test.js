@@ -21,6 +21,26 @@ test('loadout and managed mod workspaces retain unfinished drafts across navigat
   assert.doesNotMatch(shell, /if \(id !== 'loadoutPresets'\) loadoutEditing\.value = false/)
 })
 
+test('managed runtime companions stay visible from every page and refresh without releasing ownership', () => {
+  assert.match(shell, /const runtimeCompanionStates = reactive\(/)
+  assert.match(shell, /function updateRuntimeCompanionState\(value\)/)
+  assert.match(shell, /GetRuntimeCompanionSummary/)
+  assert.match(shell, /void refreshRuntimeCompanionSummary\(\)/)
+  assert.match(shell, /document\.hidden/)
+  assert.match(shell, /visibilitychange/)
+  assert.match(shell, /v-for="companion in activeRuntimeCompanions"/)
+  assert.match(shell, /@click="selectTool\(companion\.id\)"/)
+  for (const component of ['AudioMixerLab', 'CameraLab', 'VirtualSigilLab']) {
+    assert.match(shell, new RegExp(`<${component} v-if="activeTab === '[^"]+'"[^>]*@runtime-state="updateRuntimeCompanionState"`))
+    const source = read(`./components/${component}.vue`)
+    assert.match(source, /defineEmits\(\['status', 'runtime-state'\]\)/)
+    assert.match(source, /emit\('runtime-state',/)
+    assert.doesNotMatch(source, /onDeactivated\([^)]*Remove(?:AudioMixer|Camera|VirtualSigil)Mod/)
+  }
+  assert.match(read('./components/AudioMixerLab.vue'), /onActivated\(\(\) => \{ void refresh\(\) \}\)/)
+  assert.match(read('./components/CameraLab.vue'), /onActivated\(\(\) => \{ void refresh\(\) \}\)/)
+})
+
 test('cached polling pages pause UI clocks while hidden and resume the same session', () => {
   const contracts = [
     ['./components/SigilMemoryGenerator.vue', /onDeactivated\(stopPolling\)/, /onActivated\(\(\) => \{ if \(status\.hooked\) startPolling\(\) \}\)/],
