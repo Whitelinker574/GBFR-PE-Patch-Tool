@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -36,6 +37,35 @@ type TraitInfo struct {
 	DisplayName   string `json:"displayName"`
 	MaxLevel      int    `json:"maxLevel"`
 	AllowedLevels []int  `json:"allowedLevels"`
+}
+
+type SigilAtlasEntry struct {
+	SigilInfo
+	Source          string      `json:"source"`
+	Confidence      string      `json:"confidence"`
+	TableExact      bool        `json:"tableExact"`
+	SecondaryTraits []TraitInfo `json:"secondaryTraits"`
+}
+
+type SigilAtlas struct {
+	DataVersion string            `json:"dataVersion"`
+	Sigils      []SigilAtlasEntry `json:"sigils"`
+	Traits      []TraitInfo       `json:"traits"`
+}
+
+type SigilAtlasIndexEntry struct {
+	SigilInfo
+	Source                  string   `json:"source"`
+	Confidence              string   `json:"confidence"`
+	TableExact              bool     `json:"tableExact"`
+	SecondaryTraitIndexes   []uint16 `json:"secondaryTraitIndexes,omitempty"`
+	SecondaryTraitMaxLevels []uint16 `json:"secondaryTraitMaxLevels,omitempty"`
+}
+
+type SigilAtlasIndex struct {
+	DataVersion string                 `json:"dataVersion"`
+	Sigils      []SigilAtlasIndexEntry `json:"sigils"`
+	Traits      []TraitInfo            `json:"traits"`
 }
 
 type SaveInfo struct {
@@ -223,6 +253,110 @@ func (sg *SigilGen) GetTraitList() ([]TraitInfo, error) {
 			MaxLevel:      derefInt(t.MaxLevel),
 			AllowedLevels: t.AllowedLevels,
 		})
+	}
+	return result, nil
+}
+
+// GetSigilAtlas returns the complete audited catalog in one IPC response. The
+// secondary pool is produced by the same rules used by construction and save
+// writes, so the atlas cannot drift into a separate compatibility language.
+func (sg *SigilGen) GetSigilAtlas() (*SigilAtlas, error) {
+	items, err := sg.GetSigilList()
+	if err != nil {
+		return nil, err
+	}
+	traits, err := sg.GetTraitList()
+	if err != nil {
+		return nil, err
+	}
+
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	result := &SigilAtlas{DataVersion: "GBFR 2.0.2", Traits: traits, Sigils: make([]SigilAtlasEntry, 0, len(items))}
+	for _, item := range items {
+		definition, err := sg.catalog.RequireSigil(item.InternalID)
+		if err != nil {
+			return nil, err
+		}
+		entry := SigilAtlasEntry{
+			SigilInfo:  item,
+			Source:     strings.TrimSpace(definition.Source),
+			Confidence: strings.TrimSpace(definition.Confidence),
+			TableExact: strings.Contains(strings.ToLower(definition.Source), "fresh local 2.0.2 gem.tbl from data.i"),
+		}
+		if item.Constructible && item.SupportsSecondaryTrait {
+			allowed, err := sg.catalog.GetAllowedSecondaryTraits(definition)
+			if err != nil {
+				return nil, err
+			}
+			explicit := make(map[string]bool, len(definition.AllowedSecondaryTraitIDs))
+			for _, id := range definition.AllowedSecondaryTraitIDs {
+				explicit[id] = true
+			}
+			for _, trait := range allowed {
+				if trait.InternalID == definition.PrimaryTraitID || !explicit[trait.InternalID] || !isSelectableTrait(trait) {
+					continue
+				}
+				levels, err := sg.catalog.RequireSecondaryTraitLevels(definition, trait)
+				if err != nil {
+					continue
+				}
+				natural := naturalSigilLevels(levels)
+				if len(natural) == 0 {
+					continue
+				}
+				entry.SecondaryTraits = append(entry.SecondaryTraits, TraitInfo{
+					InternalID: trait.InternalID, Hash: trait.Hash, DisplayName: cnTrait(trait.DisplayName),
+					MaxLevel: maxNaturalSigilLevel(natural), AllowedLevels: natural,
+				})
+			}
+			sort.Slice(entry.SecondaryTraits, func(i, j int) bool {
+				return entry.SecondaryTraits[i].DisplayName < entry.SecondaryTraits[j].DisplayName
+			})
+		}
+		result.Sigils = append(result.Sigils, entry)
+	}
+	return result, nil
+}
+
+// GetSigilAtlasIndex normalizes the repeated secondary-trait pool into indexes
+// over the top-level trait table. UI consumers can reconstruct the former
+// shape without transferring thousands of duplicate names and level arrays.
+func (sg *SigilGen) GetSigilAtlasIndex() (*SigilAtlasIndex, error) {
+	atlas, err := sg.GetSigilAtlas()
+	if err != nil {
+		return nil, err
+	}
+	traitIndexes := make(map[string]uint16, len(atlas.Traits))
+	for index, trait := range atlas.Traits {
+		if index > math.MaxUint16 {
+			return nil, fmt.Errorf("因子词条目录超出紧凑索引范围")
+		}
+		traitIndexes[trait.InternalID] = uint16(index)
+	}
+	result := &SigilAtlasIndex{
+		DataVersion: atlas.DataVersion,
+		Traits:      atlas.Traits,
+		Sigils:      make([]SigilAtlasIndexEntry, 0, len(atlas.Sigils)),
+	}
+	for _, entry := range atlas.Sigils {
+		compact := SigilAtlasIndexEntry{SigilInfo: entry.SigilInfo, Source: entry.Source, Confidence: entry.Confidence, TableExact: entry.TableExact}
+		if len(entry.SecondaryTraits) > 0 {
+			compact.SecondaryTraitIndexes = make([]uint16, 0, len(entry.SecondaryTraits))
+			compact.SecondaryTraitMaxLevels = make([]uint16, 0, len(entry.SecondaryTraits))
+		}
+		for _, trait := range entry.SecondaryTraits {
+			index, ok := traitIndexes[trait.InternalID]
+			if !ok {
+				return nil, fmt.Errorf("因子 %s 的副词条 %s 不在顶层词条目录中", entry.InternalID, trait.InternalID)
+			}
+			if trait.MaxLevel < 0 || trait.MaxLevel > math.MaxUint8 {
+				return nil, fmt.Errorf("因子 %s 的副词条 %s 等级超出紧凑索引范围", entry.InternalID, trait.InternalID)
+			}
+			compact.SecondaryTraitIndexes = append(compact.SecondaryTraitIndexes, index)
+			compact.SecondaryTraitMaxLevels = append(compact.SecondaryTraitMaxLevels, uint16(trait.MaxLevel))
+		}
+		result.Sigils = append(result.Sigils, compact)
 	}
 	return result, nil
 }

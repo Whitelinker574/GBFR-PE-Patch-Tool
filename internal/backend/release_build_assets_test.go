@@ -11,6 +11,7 @@ import (
 )
 
 const patchCoreResourcePath = "resources/patch_core.dll"
+const patchCoreReleaseSizeLimit = 10 * 1024 * 1024
 
 func TestPatchCoreEmbedUsesStableResource(t *testing.T) {
 	source, err := os.ReadFile("app.go")
@@ -34,6 +35,9 @@ func TestPatchCoreResourceMatchesEmbeddedAMD64DLL(t *testing.T) {
 	}
 	if !bytes.Equal(resource, patchCoreDLL) {
 		t.Fatal("stable patch_core resource differs from bytes compiled into the Go application")
+	}
+	if len(resource) > patchCoreReleaseSizeLimit {
+		t.Fatalf("patch_core resource size = %d bytes, limit = %d", len(resource), patchCoreReleaseSizeLimit)
 	}
 
 	dll, err := pe.Open(filepath.FromSlash(patchCoreResourcePath))
@@ -161,7 +165,10 @@ func TestCodePatchPublishersSuspendAndResumeTargetExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	cpp := string(cppBytes)
-	for _, required := range []string{"ScopedOtherThreadSuspension", "SuspendThread(", "ResumeThread(", "if (!suspension.Active()) return false"} {
+	for _, required := range []string{
+		"ScopedOtherThreadSuspension", "SuspendThread(", "ResumeThread(",
+		"return suspension.Active() && PatchBytesWhileSuspended", "InstructionPointersOutside", "RetireQOLLevelCaves",
+	} {
 		if !strings.Contains(cpp, required) {
 			t.Errorf("patch_core code publisher is missing %q", required)
 		}

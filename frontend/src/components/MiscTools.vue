@@ -279,7 +279,7 @@ function setCurrency(item) {
   if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
   if (String(currencyInputs[item.id] ?? '').trim() === '') { emit('status', '数值不能为空', 'error'); return }
   const value = Number(currencyInputs[item.id])
-  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
+  if (!Number.isInteger(value) || value < 0 || value > 999) { emit('status', '药水请输入 0 到 999 之间的整数', 'error'); return }
   currencyLoading.value = true
   CurrencySetOneOwned(connectionOwnerToken, item.id, value)
     .then((updated) => {
@@ -408,11 +408,12 @@ onBeforeUnmount(() => {
             <div v-for="item in potions" :key="item.id" class="currency-row">
               <div class="currency-name">{{ item.name }}</div>
               <div class="currency-meta">{{ formatInt(item.value) }} · {{ formatHex(item.rva) }} + {{ formatOffsets(item.offsets) }}</div>
-              <input v-model="potionInputs[item.id]" type="number" min="0" max="2147483647" step="1" class="batch-input currency-input ui-input" />
-              <button class="btn-max ui-btn is-sm" @click="potionInputs[item.id]='2147483647'">最大</button>
+              <input v-model="potionInputs[item.id]" type="number" min="0" max="999" step="1" class="batch-input currency-input ui-input" />
+              <button class="btn-max ui-btn is-sm" @click="potionInputs[item.id]='999'">最大</button>
               <button class="btn-batch ui-btn is-primary is-sm" @click="setPotion(item)" :disabled="potionLoading">写入</button>
             </div>
           </div>
+          <p v-if="!potions.length" class="ui-empty">药水数据尚未就绪。进入副本并等待角色可操作后，再刷新读取。</p>
           <div class="memory-row">
             <button class="btn-refresh ui-btn" @click="loadPotionValues" :disabled="potionLoading">刷新药水</button>
           </div>

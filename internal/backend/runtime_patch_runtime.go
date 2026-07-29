@@ -688,7 +688,7 @@ func (a *App) RuntimePatchReleaseOwned(token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
 	}
-	hasOwnedLease := false
+	hasOwnedLease := a.confluxTimerLease != nil && a.confluxTimerLease.OwnerToken == token
 	for _, lease := range a.runtimePatchPatchLeases {
 		if lease.OwnerToken == token {
 			hasOwnedLease = true
@@ -700,9 +700,10 @@ func (a *App) RuntimePatchReleaseOwned(token string) error {
 	}
 	if a.hProcess == 0 || !processHandleAlive(a.hProcess) {
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
+		a.dropConfluxTimerOwnerLocked(token)
 		return nil
 	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
-	return a.restoreAllRuntimePatchPatchesLocked(token)
+	return errors.Join(a.restoreAllRuntimePatchPatchesLocked(token), a.restoreConfluxTimerOwnedLocked(token, false))
 }

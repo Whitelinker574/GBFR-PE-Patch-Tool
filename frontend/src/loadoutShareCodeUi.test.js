@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const editor = read('./components/LoadoutEditor.vue')
 const dialog = read('./components/LoadoutShareCodeDialog.vue')
+const publishDialog = read('./components/LoadoutPublishDialog.vue')
+const viewer = read('./components/LoadoutViewer.vue')
 const backend = read('../../internal/backend/loadout_share_code.go')
 const binding = read('../wailsjs/go/backend/App.js')
 
@@ -15,11 +17,28 @@ test('loadout editor exposes online and offline share workflows without replacin
   assert.match(editor, /<LoadoutShareCodeDialog[\s\S]*?@generate="generateShareCode"[\s\S]*?@publish="publishShareCode"[\s\S]*?@import="importShareCode"/u)
   assert.match(editor, /compatibleLoadoutShareCode\(rawCode\)/u)
   assert.match(editor, /LoadoutImportShortCode\(props\.savePath, props\.charaHash, rawCode\)/u)
-  assert.match(editor, /PublishLoadoutShare\(props\.savePath, selectedLoadout\.value\.unitId\)/u)
+  assert.match(editor, /PublishLoadoutShare\(props\.savePath, unitID\)/u)
 	assert.match(editor, /const shareAutoPublish = ref\(true\)/u)
-	assert.match(editor, /generated && shareAutoPublish\.value[\s\S]*publishShareCode\(\)/u)
-	assert.match(editor, /PublishLoadoutShareNamed\(props\.savePath, selectedLoadout\.value\.unitId, shareTitle\.value\.trim\(\)\)/u)
+	assert.match(editor, /generated && shareCodeOpen\.value && shareAutoPublish\.value[\s\S]*publishShareCode\(generatedResult\)/u)
+	assert.match(editor, /PublishLoadoutShareNamed\(props\.savePath, unitID, title\)/u)
   assert.match(editor, /importDraft\.value = draft/u)
+})
+
+test('share dialogs close immediately, discard stale callbacks, and reuse published frames', () => {
+	assert.match(editor, /const shareDialogGate = createOperationGate\(\)/u)
+	assert.match(editor, /function closeShareCodeDialog\(\)\s*\{[\s\S]*shareCodeOpen\.value = false[\s\S]*shareDialogGate\.invalidate\(\)/u)
+	assert.match(editor, /if \(!shareCodeOpen\.value \|\| !shareDialogGate\.isCurrent\(operation\)\) return/u)
+	assert.match(editor, /cachedPublishedShareCode === result\.compatibilityCode[\s\S]*publishedShare\.value = cachedPublishedShare/u)
+	assert.match(editor, /@close="closeShareCodeDialog"/u)
+
+	const closeBody = viewer.match(/function closeLogsPublish\(\)\s*\{([\s\S]*?)\n\}/u)?.[1] || ''
+	assert.match(closeBody, /logsPublishGate\.invalidate\(\)/u)
+	assert.doesNotMatch(closeBody, /logsPublishBusy\.value/u)
+	assert.match(viewer, /publishedLoadoutShare\(sessionKey\)[\s\S]*copyLogsPublishedLink\(cached\)/u)
+	assert.match(viewer, /rememberPublishedLoadoutShare\(sessionKey, published\)/u)
+	assert.match(viewer, /<LoadoutPublishDialog[\s\S]*@close="closeLogsPublish"[\s\S]*@submit="publishLogsCandidate"/u)
+	assert.match(publishDialog, /class="ui-btn is-ghost is-sm" :aria-label="tx\('关闭', 'Close'\)" @click="emit\('close'\)"/u)
+	assert.match(publishDialog, /@click\.self="emit\('close'\)" @keydown\.esc="emit\('close'\)"/u)
 })
 
 test('share dialog prioritises readable short codes and keeps long codes collapsed', () => {
@@ -32,10 +51,13 @@ test('share dialog prioritises readable short codes and keeps long codes collaps
   assert.match(dialog, /读取剪贴板/u)
   assert.match(dialog, /解析并选择导入范围/u)
   assert.match(dialog, /不会直接写入存档/u)
-	assert.match(dialog, /生成后同时上传到线上分享站/u)
+	assert.match(dialog, /同时上传到线上分享站/u)
+	assert.match(dialog, /生成前可先选择是否上传到线上分享站/u)
+	assert.match(dialog, /result \? emit\('publish'\) : emit\('generate'\)/u)
+	assert.doesNotMatch(dialog, /if \(!props\.result && props\.canGenerate\) emit\('generate'\)/u)
 	assert.match(dialog, /maxlength="80"/u)
-  assert.match(dialog, /catch\s*\{\s*legacyCopy\(\)/u)
-  assert.match(dialog, /field\.focus\(\)/u)
+  assert.match(dialog, /await copyShareText\(value\)/u)
+  assert.doesNotMatch(dialog, /legacyCopy|field\.focus\(\)/u)
 })
 
 test('share code backend owns versioned framing compression limits and checksum verification', () => {

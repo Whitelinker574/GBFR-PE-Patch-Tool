@@ -1,6 +1,77 @@
 package backend
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestRuntimePatchPartyCombinedSkillsIncludesWeaponAndMasteryWithoutInventingOverlimitLevels(t *testing.T) {
+	candidate := RuntimePatchPartyLoadout{
+		CharacterCode:    "PL1600",
+		MasteryAvailable: true,
+		Mastery: []LoadoutMasteryNode{
+			{Hash: "01EE7C0A", Cat: "SB_LIMIT", Rank: "R1", RankLabel: "R1", Desc: "最大HP+15000"},
+		},
+		Weapon: RuntimePatchPartyWeapon{
+			Name: "阿尔贝斯之枪",
+			Skills: []RuntimePatchPartyTrait{
+				{Hash: 0x7EDD69D0, HashHex: "7EDD69D0", Name: "攻击力", Level: 15},
+			},
+		},
+		OverLimit: []RuntimePatchPartyOverLimit{
+			{AttributeHash: 0x52A207B5, HashHex: "52A207B5", Name: "暴击率", Level: 20},
+		},
+	}
+
+	combined := runtimePatchPartyCombinedSkills(candidate)
+	foundWeapon := false
+	foundMastery := false
+	for _, bonus := range combined {
+		for _, source := range bonus.Sources {
+			if strings.Contains(source, "阿尔贝斯之枪") || strings.Contains(source, "武器") {
+				foundWeapon = true
+			}
+			if strings.Contains(source, "专精") || strings.HasPrefix(bonus.TraitID, "MASTERY:") {
+				foundMastery = true
+			}
+		}
+		if bonus.TraitID == "52A207B5" || strings.Contains(strings.Join(bonus.Sources, " "), "上限突破") {
+			t.Fatalf("overlimit was incorrectly represented as a trait level: %+v", bonus)
+		}
+	}
+	if !foundWeapon || !foundMastery {
+		t.Fatalf("combined skill sources incomplete: weapon=%v mastery=%v bonuses=%+v", foundWeapon, foundMastery, combined)
+	}
+}
+
+func TestPreviewForRuntimeLoadoutKeepsRuntimeCombinedSkills(t *testing.T) {
+	index := 0
+	candidate := RuntimePatchPartyLoadout{
+		Available: true, Stable: true, SnapshotCount: 3,
+		CharacterCode: "PL1600", CharacterHash: "4D0A60C3", CharacterName: "泽塔", MasteryAvailable: true,
+		Mastery:   []LoadoutMasteryNode{{Hash: "01EE7C0A", Cat: "SB_LIMIT", Rank: "R1", RankLabel: "R1", Desc: "最大HP+15000"}},
+		Weapon:    RuntimePatchPartyWeapon{Hash: 0x02352554, HashHex: "02352554", Name: "阿尔贝斯之枪", Skills: []RuntimePatchPartyTrait{{Hash: 0x7EDD69D0, HashHex: "7EDD69D0", Name: "攻击力", Level: 15}}},
+		Sigils:    []RuntimePatchPartySigil{{Index: index, Hash: 0x2D7F2E70, HashHex: "2D7F2E70", Name: "攻击力 V+", Level: 15, PrimaryTraitHash: 0x50079A1C, PrimaryTraitHashHex: "50079A1C", PrimaryTraitName: "攻击力", PrimaryTraitLevel: 15}},
+		OverLimit: []RuntimePatchPartyOverLimit{{AttributeHash: 0x52A207B5, HashHex: "52A207B5", Name: "暴击率", Level: 10, Value: 20}},
+	}
+	share, err := runtimeLoadoutShareFromCandidate(candidate, "测试")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview := previewForRuntimeLoadout(share, candidate)
+	if preview == nil || len(preview.CombinedSkills) == 0 {
+		t.Fatalf("runtime public preview lost combined skills: %+v", preview)
+	}
+	foundMastery := false
+	for _, skill := range preview.CombinedSkills {
+		if strings.HasPrefix(skill.Hash, "MASTERY:") {
+			foundMastery = true
+		}
+	}
+	if !foundMastery || len(preview.OverLimit) != 4 || preview.OverLimit[0].Name == "" || preview.OverLimit[0].Value <= 0 {
+		t.Fatalf("runtime public preview missing derived sources: mastery=%v overlimit=%+v skills=%+v", foundMastery, preview.OverLimit, preview.CombinedSkills)
+	}
+}
 
 func TestRuntimeLoadoutShareUsesPartialV11AndKeepsCapturedScopes(t *testing.T) {
 	index := 0

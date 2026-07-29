@@ -71,6 +71,30 @@ func TestPotionEntrypointsPinProcessAndWritesUseTransaction(t *testing.T) {
 	}
 }
 
+func TestPotionSnapshotRejectsTownPointerGarbage(t *testing.T) {
+	for _, value := range []int32{-1, -2145138787, 1000, 1718865883} {
+		if err := validatePotionSnapshot("复活药水", value); err == nil {
+			t.Fatalf("accepted implausible potion snapshot %d", value)
+		}
+	}
+	for _, value := range []int32{0, 1, 9, maximumPlausiblePotionSnapshot} {
+		if err := validatePotionSnapshot("复活药水", value); err != nil {
+			t.Fatalf("rejected plausible potion snapshot %d: %v", value, err)
+		}
+	}
+}
+
+func TestPotionWriteRangeMatchesTrustedSnapshotRange(t *testing.T) {
+	for _, value := range []int32{0, 1, maximumPlausiblePotionSnapshot} {
+		if err := validatePotionSnapshot("复活药水", value); err != nil {
+			t.Fatalf("trusted write boundary rejected %d: %v", value, err)
+		}
+	}
+	if err := validatePotionSnapshot("复活药水", maximumPlausiblePotionSnapshot+1); err == nil {
+		t.Fatal("snapshot validation accepted a value the write path must reject")
+	}
+}
+
 func countCallsIdent(body *ast.BlockStmt, name string) int {
 	count := 0
 	ast.Inspect(body, func(node ast.Node) bool {

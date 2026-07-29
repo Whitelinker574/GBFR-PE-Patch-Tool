@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   CharaAcquire,
   CharaRelease,
+  ConfluxTimerGetStatusOwned,
+  ConfluxTimerSetEnabledOwned,
+  ConfluxTimerVerifyStatusOwned,
   RuntimePatchGetCatalog,
   RuntimePatchGetStatusesOwned,
   RuntimePatchReleaseOwned,
@@ -36,9 +39,12 @@ const emit = defineEmits(['status', 'session-change'])
 const RUNTIME_LEASE_SCOPE = 'runtime-patch-features'
 const OFFLINE_CONFIRMATION_KEY = 'gbfr.runtimePatch.offline-only-confirmed'
 const EMPTY_STATUS = Object.freeze({ enabled: false, available: false, rvas: [], currentBytes: [], error: '' })
+const EMPTY_CONFLUX_STATUS = Object.freeze({ verified: false, available: false, enabled: false, owned: false, mode: 0, initialSeconds: 0, currentSeconds: 0, error: '' })
+const CONFLUX_FEATURE = Object.freeze({ id: 'conflux-fast-wait', name: '极沌空域快速等待' })
 
 const catalog = ref([])
 const statuses = ref([])
+const confluxStatus = ref({ ...EMPTY_CONFLUX_STATUS })
 const searchQuery = ref('')
 const activeGroupKey = ref('')
 const catalogLoading = ref(true)
@@ -87,8 +93,9 @@ const groups = computed(() => buildRuntimePatchGroups(catalog.value, props.mode,
   groupLabel: group => translateRuntimePatchGroupName(group, language.value),
 }))
 const currentGroup = computed(() => groups.value.find(group => group.key === activeGroupKey.value) || groups.value[0] || null)
-const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0))
-const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length)
+const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0) + (props.mode === 'quest' ? 1 : 0))
+const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length + (confluxStatus.value.enabled && confluxStatus.value.owned ? 1 : 0))
+const recoveryFeatureCount = computed(() => statuses.value.filter(status => !status.enabled && status.rvas.length > 0).length + (confluxStatus.value.owned && !confluxStatus.value.enabled ? 1 : 0))
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value)
 const connectionLoading = computed(() => ['connect', 'disconnect'].includes(activeOperation.value?.kind))
@@ -100,6 +107,7 @@ function publishSession() {
     connected: connected.value,
     releasePending: releasePending.value,
     activeCount: activeFeatureCount.value,
+    recoveryCount: recoveryFeatureCount.value,
     pid: connected.value ? processInfo.value.pid : 0,
   }))
 }
@@ -107,7 +115,7 @@ function publishSession() {
 watch(groups, (nextGroups) => {
   if (!nextGroups.some(group => group.key === activeGroupKey.value)) activeGroupKey.value = nextGroups[0]?.key || ''
 }, { immediate: true })
-watch([connected, releasePending, activeFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
+watch([connected, releasePending, activeFeatureCount, recoveryFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
 watch(pendingConfirmationFeature, async (feature) => {
   if (!feature) return
   await nextTick()
@@ -138,6 +146,24 @@ function announce(message, tone = 'info') {
 
 function applyStatuses(nextStatuses) {
   statuses.value = nextStatuses
+}
+
+function normalizeConfluxStatus(value) {
+  return {
+    verified: value?.verified === true,
+    available: value?.available === true,
+    enabled: value?.enabled === true,
+    owned: value?.owned === true,
+    mode: Number.isSafeInteger(Number(value?.mode)) ? Number(value.mode) : 0,
+    initialSeconds: Number.isFinite(Number(value?.initialSeconds)) ? Number(value.initialSeconds) : 0,
+    currentSeconds: Number.isFinite(Number(value?.currentSeconds)) ? Number(value.currentSeconds) : 0,
+    error: String(value?.error || ''),
+  }
+}
+
+function applyVerifiedSession(session) {
+  applyStatuses(session.statuses)
+  confluxStatus.value = session.conflux
 }
 
 function beginOperation(kind, featureID = '') {
@@ -181,6 +207,7 @@ function clearConnectionState() {
   connectionOwnerToken = ''
   processInfo.value = { pid: 0, moduleBase: 0 }
   statuses.value = []
+  confluxStatus.value = { ...EMPTY_CONFLUX_STATUS }
 }
 
 function completeRuntimeRelease(expectedOwnerToken, expectedEpoch, notification) {
@@ -210,7 +237,7 @@ async function connect() {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, releaseRuntimePatchPageOwner)
       return
     }
-    const verifiedStatuses = await fetchVerifiedStatuses(acquiredOwnerToken)
+    const verifiedSession = await fetchVerifiedSession(acquiredOwnerToken)
     if (!operationIsCurrent(operationToken, epoch)) {
       queueRuntimeLeaseRelease(RUNTIME_LEASE_SCOPE, acquiredOwnerToken, releaseRuntimePatchPageOwner)
       return
@@ -218,7 +245,7 @@ async function connect() {
     connectionOwnerToken = acquiredOwnerToken
     connected.value = true
     processInfo.value = { pid: Number(info?.pid || 0), moduleBase: Number(info?.moduleBase || 0) }
-    applyStatuses(verifiedStatuses)
+    applyVerifiedSession(verifiedSession)
     announce(`已连接游戏进程 PID ${processInfo.value.pid}`, 'ok')
   } catch (error) {
     let cleanupError = null
@@ -267,6 +294,14 @@ async function fetchVerifiedStatuses(ownerToken) {
   return validateRuntimePatchStatusSet(catalog.value, await RuntimePatchGetStatusesOwned(ownerToken))
 }
 
+async function fetchVerifiedSession(ownerToken) {
+  const [nextStatuses, nextConfluxStatus] = await Promise.all([
+    fetchVerifiedStatuses(ownerToken),
+    ConfluxTimerGetStatusOwned(ownerToken),
+  ])
+  return { statuses: nextStatuses, conflux: normalizeConfluxStatus(nextConfluxStatus) }
+}
+
 async function refreshStatuses() {
   const ownerToken = connectionOwnerToken
   if (!ownerToken || releasePending.value) return
@@ -274,9 +309,9 @@ async function refreshStatuses() {
   if (!operationToken) return
   const epoch = lifecycleEpoch
   try {
-    const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
-    applyStatuses(verifiedStatuses)
+    applyVerifiedSession(verifiedSession)
     announce('实时补丁状态已回读', 'ok')
   } catch (error) {
     if (operationIsCurrent(operationToken, epoch)) announce(`刷新状态失败：${errorMessage(error)}`, 'danger')
@@ -294,22 +329,79 @@ async function setFeatureEnabled(feature, enabled) {
   try {
     if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
     await RuntimePatchSetEnabledOwned(ownerToken, feature.id, enabled)
-    const verifiedStatuses = await fetchVerifiedStatuses(ownerToken)
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
-    const verifiedStatus = verifiedStatuses.find(status => status.id === feature.id)
+    const verifiedStatus = verifiedSession.statuses.find(status => status.id === feature.id)
     if (!verifiedStatus || verifiedStatus.enabled !== enabled) throw new Error(`${feature.name} 写后回读状态不一致`)
-    applyStatuses(verifiedStatuses)
+    applyVerifiedSession(verifiedSession)
     announce(`${displayFeatureName(feature)}已${enabled ? '开启' : '恢复默认'}`, 'ok')
   } catch (error) {
     if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
       try {
-        const recoveredStatuses = await fetchVerifiedStatuses(ownerToken)
-        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyStatuses(recoveredStatuses)
+        const recoveredSession = await fetchVerifiedSession(ownerToken)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyVerifiedSession(recoveredSession)
       } catch {
         // Keep the last verified UI state. Disconnect remains available so the
         // backend can retry restoration using its retained recovery lease.
       }
       announce(`${displayFeatureName(feature)}操作失败：${errorMessage(error)}`, 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
+async function setConfluxEnabled(enabled) {
+  if (releasePending.value) return
+  const operationToken = beginOperation('feature', CONFLUX_FEATURE.id)
+  if (!operationToken) return
+  const ownerToken = connectionOwnerToken
+  const epoch = lifecycleEpoch
+  try {
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
+    await ConfluxTimerSetEnabledOwned(ownerToken, enabled)
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
+    if (verifiedSession.conflux.enabled !== enabled || (enabled && !verifiedSession.conflux.owned)) {
+      throw new Error('极沌空域快速等待写后回读状态不一致')
+    }
+    applyVerifiedSession(verifiedSession)
+    announce(`极沌空域快速等待已${enabled ? '开启' : '恢复默认'}`, 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+      try {
+        const recoveredSession = await fetchVerifiedSession(ownerToken)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyVerifiedSession(recoveredSession)
+      } catch {
+        // Retain the last verified state so the global safe-disconnect path can retry.
+      }
+      announce(`极沌空域快速等待操作失败：${errorMessage(error)}`, 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
+async function verifyConfluxStatus() {
+  if (releasePending.value) return
+  const operationToken = beginOperation('feature', CONFLUX_FEATURE.id)
+  if (!operationToken) return
+  const ownerToken = connectionOwnerToken
+  const epoch = lifecycleEpoch
+  try {
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
+    const [nextStatuses, nextConfluxStatus] = await Promise.all([
+      fetchVerifiedStatuses(ownerToken),
+      ConfluxTimerVerifyStatusOwned(ownerToken),
+    ])
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
+    const normalized = normalizeConfluxStatus(nextConfluxStatus)
+    applyVerifiedSession({ statuses: nextStatuses, conflux: normalized })
+    if (!normalized.verified) throw new Error(normalized.error || '游戏版本校验失败')
+    announce(normalized.error ? `游戏版本已校验；${normalized.error}` : '游戏版本已校验，极沌空域计时器状态已回读', normalized.error ? 'info' : 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+      announce(`极沌空域版本校验失败：${errorMessage(error)}`, 'danger')
     }
   } finally {
     finishOperation(operationToken)
@@ -335,6 +427,21 @@ function requestFeatureChange(feature) {
   void setFeatureEnabled(feature, enable)
 }
 
+function requestConfluxChange() {
+  if (interactionLocked.value) return
+  if (!confluxStatus.value.verified) {
+    void verifyConfluxStatus()
+    return
+  }
+  const enable = !confluxStatus.value.owned
+  if (enable && !offlineUseConfirmed()) {
+    confirmationReturnTarget = document.activeElement
+    pendingConfirmationFeature.value = CONFLUX_FEATURE
+    return
+  }
+  void setConfluxEnabled(enable)
+}
+
 function cancelOfflineConfirmation() {
   pendingConfirmationFeature.value = null
   const returnTarget = confirmationReturnTarget
@@ -355,7 +462,8 @@ async function confirmOfflineUse() {
     // unavailable; no patch state is changed before this explicit action.
   }
   pendingConfirmationFeature.value = null
-  await setFeatureEnabled(feature, true)
+  if (feature.id === CONFLUX_FEATURE.id) await setConfluxEnabled(true)
+  else await setFeatureEnabled(feature, true)
   await nextTick()
   returnTarget?.focus?.()
 }
@@ -426,6 +534,27 @@ function formatRVA(value) {
   return Number.isFinite(numeric) && numeric >= 0 ? `0x${numeric.toString(16).toUpperCase()}` : '—'
 }
 
+function confluxStateLabel() {
+  if (busyFeatureID.value === CONFLUX_FEATURE.id) return tr('回读中')
+  if (confluxStatus.value.enabled && confluxStatus.value.owned) return tr('已开启')
+  if (confluxStatus.value.owned) return tr('需要恢复')
+  if (!connected.value) return tr('未连接')
+  if (!confluxStatus.value.verified) return tr('待验证')
+  if (!confluxStatus.value.available) return tr('不可用')
+  return tr('默认')
+}
+
+function confluxDisabled() {
+  if (!connected.value || interactionLocked.value) return true
+  if (!confluxStatus.value.verified) return false
+  return !confluxStatus.value.owned && !confluxStatus.value.available
+}
+
+function formatConfluxSeconds(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric >= 0 ? `${numeric.toFixed(numeric < 10 ? 1 : 0)} s` : '—'
+}
+
 onMounted(() => {
   void loadCatalog()
 })
@@ -483,6 +612,49 @@ onBeforeUnmount(() => {
           </span>
         </label>
       </header>
+
+      <article
+        v-if="mode === 'quest'"
+        class="conflux-feature patch-feature-card"
+        :class="{ 'is-on': confluxStatus.enabled, 'needs-recovery': confluxStatus.owned && !confluxStatus.enabled }"
+        :aria-busy="busyFeatureID === CONFLUX_FEATURE.id"
+      >
+        <div class="patch-feature-summary">
+          <div class="feature-title-block">
+            <div class="feature-kicker"><span>{{ tr('极沌空域') }}</span><span>{{ tr('等待计时器') }}</span></div>
+            <h4>{{ tr('极沌空域快速等待') }}</h4>
+            <small class="feature-evidence">{{ tr('只缩短已验证的等待计时器；不自动领奖，也不自动重新进入任务。') }}</small>
+          </div>
+          <span class="ui-tag" :class="confluxStatus.enabled && confluxStatus.owned ? 'is-ok' : confluxStatus.owned ? 'is-warn' : confluxStatus.available ? 'is-info' : 'is-danger'">
+            {{ confluxStateLabel() }}
+          </span>
+        </div>
+
+        <p v-if="confluxStatus.error" class="feature-error ui-notice" :class="confluxStatus.owned ? 'is-danger' : 'is-info'">{{ tr(confluxStatus.error) }}</p>
+
+        <div class="conflux-readback" aria-label="极沌空域计时器回读">
+          <span><small>{{ tr('运行模式') }}</small><strong>{{ confluxStatus.mode === 1 ? tr('Endless') : tr('未进入') }}</strong></span>
+          <span><small>{{ tr('本轮初始') }}</small><strong>{{ formatConfluxSeconds(confluxStatus.initialSeconds) }}</strong></span>
+          <span><small>{{ tr('当前等待') }}</small><strong>{{ formatConfluxSeconds(confluxStatus.currentSeconds) }}</strong></span>
+        </div>
+
+        <div class="patch-feature-actions">
+          <span class="feature-proof">{{ tr(confluxStatus.owned ? '已保存本工具写入前的 12 项原始配置' : connected && !confluxStatus.verified ? '先校验游戏版本，再读取任务计时器' : connected ? '进入极沌空域任务后刷新读取' : '连接后读取状态') }}</span>
+          <button
+            type="button"
+            role="switch"
+            class="feature-switch ui-btn is-sm"
+            :class="{ 'is-primary': !confluxStatus.owned, 'is-danger': confluxStatus.owned }"
+            :aria-checked="confluxStatus.enabled"
+            :aria-label="`${tr('极沌空域快速等待')}: ${tr(!confluxStatus.verified ? '验证并读取' : confluxStatus.owned ? '恢复默认' : '开启')}`"
+            :disabled="confluxDisabled()"
+            @click="requestConfluxChange"
+          >
+            <span class="switch-track" :class="{ 'is-on': confluxStatus.enabled }" aria-hidden="true"><i></i></span>
+            <span>{{ tr(busyFeatureID === CONFLUX_FEATURE.id ? '回读中…' : !confluxStatus.verified ? '验证并读取' : confluxStatus.owned ? '恢复默认' : '开启') }}</span>
+          </button>
+        </div>
+      </article>
 
       <div v-if="catalogLoading" class="patch-empty ui-empty">{{ tr('正在读取功能目录…') }}</div>
       <div v-else-if="!groups.length" class="patch-empty ui-empty">
@@ -748,6 +920,27 @@ onBeforeUnmount(() => {
 }
 .patch-feature-card.is-on { border-color:var(--success); background:color-mix(in srgb,var(--success-bg) 36%,var(--surface-card-pop)); box-shadow:3px 0 0 var(--success) inset; }
 .patch-feature-card.needs-recovery { border-color:var(--warning); box-shadow:3px 0 0 var(--warning) inset; }
+.conflux-feature { border:1px solid var(--border-default); border-left:3px solid var(--accent-border); }
+.conflux-readback {
+  min-width:0;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:var(--space-2);
+  margin-top:var(--space-3);
+}
+.conflux-readback > span {
+  min-width:0;
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);
+  background:var(--surface-field);
+}
+.conflux-readback small { color:var(--text-muted); font-size:var(--fs-xs); }
+.conflux-readback strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-sm); white-space:nowrap; }
 .patch-feature-summary { align-items:flex-start; justify-content:space-between; }
 .feature-title-block { min-width:0; }
 .feature-kicker { display:flex; flex-wrap:wrap; gap:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); }
@@ -823,6 +1016,7 @@ onBeforeUnmount(() => {
   .patch-feature-actions { align-items:stretch; flex-direction:column; }
   .feature-switch { width:100%; }
   .patch-group-heading { align-items:flex-start; flex-direction:column; }
+  .conflux-readback { grid-template-columns:minmax(0,1fr); }
 }
 
 @container tool-panel (max-width:340px) {

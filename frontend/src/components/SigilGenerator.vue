@@ -13,6 +13,7 @@ import { traitAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import CatalogSelect from './CatalogSelect.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 
@@ -155,12 +156,6 @@ async function browseInput() {
 async function selectSaveSlot(path) {
   inputPath.value = path
   await loadSave()
-}
-
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
 }
 
 async function loadSave() {
@@ -405,17 +400,7 @@ async function removeAll() {
 <template>
   <div class="sigil-container">
     <!-- 存档选择 -->
-    <div class="section ui-card compact-save-bar">
-      <div class="section-title ui-section-title"><span>选择存档槽</span><small>与物品、武器页面使用同一组存档</small></div>
-      <div class="save-slots">
-        <button v-for="slot in slots" :key="slot.index" class="slot-choice ui-btn is-sm" :class="{ on: inputPath === slot.path }" @click="selectSaveSlot(slot.path)">{{ saveSlotLabel(slot) }}</button>
-        <button class="slot-choice secondary ui-btn is-sm" @click="browseInput">选择其他存档</button>
-      </div>
-      <div class="selected-save" :class="{ empty: !inputPath }">{{ inputPath || '尚未选择存档' }}</div>
-      <div v-if="saveLoaded" class="save-info">
-        已加载 · {{ saveInfo.occupiedSigils }} 个因子 · 最大槽位 {{ saveInfo.maxSlotId }}
-      </div>
-    </div>
+    <SaveSourcePicker v-model="inputPath" :slots="slots" :busy="isApplying || dataLoading" :loaded="saveLoaded" :summary="saveLoaded ? `已加载 · ${saveInfo.occupiedSigils} 个因子 · 最大槽位 ${saveInfo.maxSlotId}` : ''" helper="与物品、武器页面使用同一组存档" @select="selectSaveSlot" @browse="browseInput" />
 
     <!-- 已有因子 -->
     <div v-if="showExisting" class="section ui-card">
@@ -594,37 +579,14 @@ async function removeAll() {
   min-width:0;
   padding:var(--space-6);
 }
-.compact-save-bar { padding:var(--space-4) var(--space-5); }
 .section-title { margin-bottom:var(--space-4); }
 .section-title > small { margin-left:auto; text-align:right; }
-.save-slots,
 .existing-actions {
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:var(--space-2);
 }
-.slot-choice.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
-.selected-save {
-  min-width:0;
-  margin-top:var(--space-3);
-  padding:var(--space-3) var(--space-4);
-  overflow:hidden;
-  border:1px solid var(--border-soft);
-  border-radius:var(--radius-sm);
-  background:var(--surface-sunken);
-  color:var(--text-secondary);
-  font-family:var(--font-data);
-  font-size:var(--fs-sm);
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.selected-save.empty { color:var(--text-secondary); }
-.save-info { margin-top:var(--space-2); color:var(--success-ink); font-size:var(--fs-sm); }
 .loading-hint,
 .warning-hint,
 .data-error {
@@ -788,8 +750,7 @@ input[type="checkbox"] { accent-color:var(--accent); }
 }
 
 @container (max-width:620px) {
-  .section,
-  .compact-save-bar { padding:var(--space-4); }
+  .section { padding:var(--space-4); }
   .field-row { align-items:stretch; flex-direction:column; }
   .level-field { width:100%; flex-basis:auto; }
   .section-title { align-items:flex-start; }
@@ -800,7 +761,6 @@ input[type="checkbox"] { accent-color:var(--accent); }
 }
 
 @container (max-width:440px) {
-  .save-slots .ui-btn { flex:1; }
   .qty-add { align-items:stretch; flex-direction:column; }
   .quantity-field { width:100%; }
   .add-btn { width:100%; }

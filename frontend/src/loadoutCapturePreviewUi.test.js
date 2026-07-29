@@ -67,7 +67,7 @@ test('background detector shows exact character icons and opens a full preview w
   assert.match(detector, /openPreview\(record, member\)/)
   assert.match(detector, /closest\('\.tool-center-scroll,\.workspace-scroll'\)\?\.scrollTo\(\{ top: 0 \}\)/)
   assert.match(detector, /<CapturedLoadoutPreview/)
-  assert.match(detector, /返回任务记录/)
+  assert.match(detector, /返回队伍记录/)
   assert.match(detector, /titles\[titleKey\(preview\.record, preview\.member\)\]/)
 })
 

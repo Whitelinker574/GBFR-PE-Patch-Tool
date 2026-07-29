@@ -90,6 +90,36 @@ func TestSigilMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testin
 	}
 }
 
+func TestSigilMemoryRuntimeSelectionAllowsObservedUnknownDLCRow(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := SigilMemoryStatus{
+		SigilHash:          0xCE6C6C2C,
+		PrimaryTraitHash:   0x7EDD69D0,
+		SecondaryTraitHash: 0x887AE0B0,
+	}
+	update := SigilMemoryUpdate{
+		SigilHash:         current.SigilHash,
+		SigilLevel:        15,
+		PrimaryTraitHash:  current.PrimaryTraitHash,
+		PrimaryTraitLevel: 15,
+	}
+	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err != nil {
+		t.Fatalf("observed runtime DLC row should remain writable: %v", err)
+	}
+	update.SigilHash = 0xDEADBEEF
+	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "当前已读取") {
+		t.Fatalf("arbitrary unknown row was accepted: %v", err)
+	}
+	update.SigilHash = current.SigilHash
+	update.SigilLevel = sigilWritableLevelMax + 1
+	if err := validateSigilMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "超过修改上限") {
+		t.Fatalf("observed row level overflow was accepted: %v", err)
+	}
+}
+
 func TestValidateSigilMemoryUpdateAllowsCurveLevelsAndRejectsCurveOverflow(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
 	update.SigilLevel = 50

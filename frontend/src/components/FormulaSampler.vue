@@ -11,6 +11,7 @@ import {
   FormulaSamplerStatus,
 	FormulaSamplerStopChangeRecordingOwned,
 } from '../../wailsjs/go/backend/App'
+import { characterRoster } from '../characterRoster.js'
 import { characterAssetIcon } from '../gameAssetIcons.js'
 import { language } from '../i18n.js'
 import {
@@ -23,23 +24,11 @@ import {
 
 const emit = defineEmits(['status'])
 
-const characters = Object.freeze([
-  ['2A26B1B2', '古兰', 'Gran'], ['A4ACBA76', '姬塔', 'Djeeta'],
-  ['18E2F9F9', '卡塔莉娜', 'Katalina'], ['079DF0CC', '拉卡姆', 'Rackam'],
-  ['4D0A60C3', '伊欧', 'Io'], ['DD7A151E', '欧根', 'Eugen'],
-  ['C8616284', '萝赛塔', 'Rosetta'], ['978E4B18', '冈达葛萨', 'Ghandagoza'],
-  ['C3FFD418', '菲莉', 'Ferry'], ['22E437E5', '兰斯洛特', 'Lancelot'],
-  ['2EBE91D5', '巴恩', 'Vane'], ['BDEF7181', '珀西瓦尔', 'Percival'],
-  ['627BCB0D', '齐格飞', 'Siegfried'], ['FD3BE362', '夏洛特', 'Charlotta'],
-  ['BAD16E3B', '索恩', 'Tweyen'], ['FC6CDF7B', '尤达拉哈', 'Yodarha'],
-  ['E7053919', '娜露梅亚', 'Narmaya'], ['1BB37EF0', '伽兰查', 'Gallanza'],
-  ['0D21B430', '泽塔', 'Zeta'], ['A3A3CB2F', '伊德', 'Id'],
-  ['F0EB77EF', '巴萨拉卡', 'Vaseraga'], ['AA66178A', '卡莉奥斯特罗', 'Cagliostro'],
-  ['718E1A14', '圣德芬', 'Sandalphon'], ['296471BE', '希耶提', 'Seofon'],
-  ['74DD4C79', '菲迪埃尔', 'Fediel'], ['9A8AF295', '贝阿朵丽丝', 'Beatrix'],
-  ['25D46F4B', '玛琪拉菲菈', 'Maglielle'], ['9B15CFB1', '尤斯提斯', 'Eustace'],
-  ['646C3168', '芙劳', 'Fraux'],
-].map(([hash, zh, en]) => Object.freeze({ hash, zh, en })))
+const characters = Object.freeze(characterRoster.map(character => Object.freeze({
+  hash: character.hash,
+  zh: character.nameZh,
+  en: character.nameEn,
+})))
 
 const phaseLabels = Object.freeze({ A1: 'A1', B1: 'B1', A2: 'A2', B2: 'B2' })
 const experimentTypes = Object.freeze([

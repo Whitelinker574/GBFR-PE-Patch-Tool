@@ -137,6 +137,50 @@ func validateSigilMemoryWriteRequest(catalog *Catalog, update SigilMemoryUpdate)
 	return nil
 }
 
+// validateSigilMemoryWriteRequestForSelection keeps the strict catalog path
+// for known rows, while allowing a value already observed in the selected
+// in-game record to be written back when a DLC/runtime table row is absent
+// from the local catalog.  The UI intentionally exposes these as advisory
+// entries; the observed-hash match prevents an arbitrary unknown hash from
+// becoming a write primitive, and all unknown levels remain bounded.
+func validateSigilMemoryWriteRequestForSelection(catalog *Catalog, update SigilMemoryUpdate, current SigilMemoryStatus) error {
+	if catalog == nil {
+		return fmt.Errorf("因子目录为空")
+	}
+	if catalog.LookupSigilByHash(update.SigilHash) != nil {
+		return validateSigilMemoryWriteRequest(catalog, update)
+	}
+	if update.SigilHash == 0 || update.SigilHash == EmptyHash || update.SigilHash != current.SigilHash {
+		return fmt.Errorf("未知因子哈希 0x%08X；运行时写入只接受当前已读取的运行时记录", update.SigilHash)
+	}
+	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
+		return fmt.Errorf("因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
+	}
+	if err := validateSigilMemoryObservedTrait(catalog, update.PrimaryTraitHash, update.PrimaryTraitLevel, current.PrimaryTraitHash, "主词条"); err != nil {
+		return err
+	}
+	if isEmptySigilMemoryTrait(update.SecondaryTraitHash) {
+		if update.SecondaryTraitLevel != 0 {
+			return fmt.Errorf("副词条为空时等级必须为 0")
+		}
+		return nil
+	}
+	return validateSigilMemoryObservedTrait(catalog, update.SecondaryTraitHash, update.SecondaryTraitLevel, current.SecondaryTraitHash, "副词条")
+}
+
+func validateSigilMemoryObservedTrait(catalog *Catalog, hash uint32, level uint32, observed uint32, label string) error {
+	if trait := catalog.LookupTraitByHash(hash); trait != nil {
+		return validateSigilMemoryTraitLevel(catalog, hash, level, label)
+	}
+	if hash == 0 || hash == EmptyHash || hash != observed {
+		return fmt.Errorf("未知%s哈希 0x%08X；只能回写当前已读取的运行时词条", label, hash)
+	}
+	if level == 0 || level > sigilWritableLevelMax {
+		return fmt.Errorf("%s等级 %d 超过修改上限 %d", label, level, sigilWritableLevelMax)
+	}
+	return nil
+}
+
 func isEmptySigilMemoryTrait(hash uint32) bool {
 	return hash == 0 || hash == EmptyHash
 }

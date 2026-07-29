@@ -4,7 +4,6 @@ import journalScene from '../assets/gbfr/journal-scene-4k.webp'
 defineProps({ version: { type: String, default: '—' } })
 const emit = defineEmits(['open', 'warm'])
 
-// 首页把只读内存监测单列，避免与存档修改或运行时注入混淆。
 const groups = [
   {
     id: 'save', mark: '档', label: '存档修改', hint: '退出游戏后离线改存档文件，可批量、可回滚',
@@ -20,6 +19,7 @@ const groups = [
     id: 'memory', mark: '注', label: '内存注入', hint: '连接运行中的游戏改进程内存，实时生效',
     items: [
       { id: 'runtime', icon: '✧', title: '游戏内实时修改', copy: '金币、MSP、药水、素材与任务掉落' },
+      { id: 'runtimeQOL', icon: '◉', title: '游戏便利运行时', copy: '伤害上限、精确百分比与房间 ID' },
       { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
       { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '改游戏中当前选中的祝福石' },
       { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '记录、分享并逐项复刻十二个因子' },
@@ -28,12 +28,12 @@ const groups = [
       { id: 'patchCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'patchCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'patchQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
+      { id: 'runtimeMonitor', icon: '测', title: '配装检测与空间工具', copy: '后台归档队伍配装；空间写入单独标识' },
     ],
   },
   {
-    id: 'monitor', mark: '测', label: '内存监测', hint: '只读读取运行中游戏数据，不修改物品或存档',
+    id: 'monitor', mark: '测', label: '内存监测', hint: '严格只读的角色面板与公式证据采样',
     items: [
-      { id: 'runtimeMonitor', icon: '测', title: '角色配装检测', copy: '后台自动归档每场任务的队伍配装' },
       { id: 'formulaSampler', icon: '证', title: '公式采样', copy: '单变量 A/B/A/B 角色面板证据' },
     ],
   },

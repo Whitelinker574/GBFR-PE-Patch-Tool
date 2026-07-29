@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, stat, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { gzipSync } from 'node:zlib'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,6 +52,17 @@ async function assetMetrics(distPath, files) {
   return metrics
 }
 
+async function walkFiles(root, relativePath = '') {
+  const entries = await readdir(join(root, relativePath), { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const child = join(relativePath, entry.name)
+    if (entry.isDirectory()) files.push(...await walkFiles(root, child))
+    else if (entry.isFile()) files.push(child)
+  }
+  return files
+}
+
 export async function measureBundle({ dist, budget }) {
   const distPath = resolve(dist)
   const budgetPath = resolve(budget)
@@ -70,17 +81,44 @@ export async function measureBundle({ dist, budget }) {
     assetMetrics(distPath, initial.js),
     assetMetrics(distPath, initial.css),
   ])
+  const allJsFiles = [...new Set(Object.values(manifest).map(item => item?.file).filter(file => file?.endsWith('.js')))].sort()
+  const allCssFiles = [...new Set(Object.values(manifest).flatMap(item => item?.css || []).filter(file => file?.endsWith('.css')))].sort()
+  const [asyncJs, asyncCss, distFiles] = await Promise.all([
+    assetMetrics(distPath, allJsFiles.filter(file => !initial.js.includes(file))),
+    assetMetrics(distPath, allCssFiles.filter(file => !initial.css.includes(file))),
+    walkFiles(distPath),
+  ])
+  const rasterFiles = distFiles.filter(file => /\.(?:png|webp|jpe?g)$/iu.test(file))
+  const functionAssetFiles = rasterFiles.filter(file => file.replaceAll('\\', '/').includes('generated/function-assets/'))
+  const rasterStats = await Promise.all(rasterFiles.map(async file => ({ file: file.replaceAll('\\', '/'), bytes: (await stat(join(distPath, file))).size })))
+  const functionAssetStats = rasterStats.filter(item => item.file.includes('generated/function-assets/'))
   const sum = values => values.reduce((total, item) => total + item.gzipBytes, 0)
-  const totals = { initialJsGzipBytes: sum(js), initialCssGzipBytes: sum(css) }
+  const max = (values, field) => values.reduce((largest, item) => Math.max(largest, item[field] || 0), 0)
+  const totals = {
+    initialJsGzipBytes: sum(js),
+    initialCssGzipBytes: sum(css),
+    largestAsyncJsGzipBytes: max(asyncJs, 'gzipBytes'),
+    largestAsyncCssGzipBytes: max(asyncCss, 'gzipBytes'),
+    largestRasterBytes: max(rasterStats, 'bytes'),
+    largestFunctionAssetBytes: max(functionAssetStats, 'bytes'),
+    functionAssetsTotalBytes: functionAssetStats.reduce((total, item) => total + item.bytes, 0),
+  }
   return {
     schemaVersion: 1,
     measuredAt: new Date().toISOString(),
     entry: entryKey,
     initial: { js, css },
+    async: { js: asyncJs, css: asyncCss },
+    media: { rasterCount: rasterFiles.length, functionAssetCount: functionAssetFiles.length },
     totals,
     limits: {
       initialJsGzipBytes: limits.initialJsGzipBytes,
       initialCssGzipBytes: limits.initialCssGzipBytes,
+      largestAsyncJsGzipBytes: limits.largestAsyncJsGzipBytes,
+      largestAsyncCssGzipBytes: limits.largestAsyncCssGzipBytes,
+      largestRasterBytes: limits.largestRasterBytes,
+      largestFunctionAssetBytes: limits.largestFunctionAssetBytes,
+      functionAssetsTotalBytes: limits.functionAssetsTotalBytes,
     },
   }
 }

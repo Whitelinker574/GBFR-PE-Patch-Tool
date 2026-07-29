@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
 )
 
@@ -179,6 +180,28 @@ func readStableRuntimePatchPartySnapshots(readSnapshot func() (runtimePatchParty
 			"Party root, entity, or coordinate-chain topology changed across three snapshots; wait for a stable scene and retry",
 		))
 	}
+	// A stable pointer topology is not enough: online player records can be
+	// populated one slot at a time while the same entity pointers remain alive.
+	// Require the identity-bearing loadout fields to agree across the same three
+	// frames so a host profile cannot be paired with a teammate's slot.
+	for index := 0; index < 4; index++ {
+		keys := [runtimePatchPartySnapshotCount]string{}
+		for frame := range frames {
+			if index >= len(frames[frame].Result.Entities) {
+				continue
+			}
+			entity := frames[frame].Result.Entities[index]
+			if entity.Loadout != nil {
+				keys[frame] = runtimePatchPartyLoadoutStableKey(*entity.Loadout)
+			}
+		}
+		if keys[0] != keys[1] || keys[0] != keys[2] {
+			return RuntimePatchPartyMonitor{}, fmt.Errorf("%s", runtimePatchMonitorText(
+				fmt.Sprintf("队伍槽位 %d 的配装身份在连续三次快照间发生变化，请等待在线记录稳定后重试", index),
+				fmt.Sprintf("party slot %d loadout identity changed across three snapshots; wait for the online record to settle", index),
+			))
+		}
+	}
 	result := frames[len(frames)-1].Result
 	for index := 0; index < 4 && index < len(result.Entities); index++ {
 		if loadout := result.Entities[index].Loadout; loadout != nil && loadout.Available {
@@ -197,6 +220,23 @@ func readStableRuntimePatchPartySnapshots(readSnapshot func() (runtimePatchParty
 	result.SnapshotCount = runtimePatchPartySnapshotCount
 	result.RuntimeVerified = true
 	return result, nil
+}
+
+func runtimePatchPartyLoadoutStableKey(loadout RuntimePatchPartyLoadout) string {
+	if !loadout.Available {
+		return fmt.Sprintf("unavailable:%d:%t:%s", loadout.PartyIndex, loadout.Online, loadout.UnavailableReason)
+	}
+	parts := []string{
+		fmt.Sprintf("%d", loadout.PartyIndex),
+		fmt.Sprintf("%t", loadout.Online),
+		loadout.CharacterCode,
+		loadout.CharacterHash,
+		fmt.Sprintf("%08X", loadout.Weapon.Hash),
+	}
+	for _, sigil := range loadout.Sigils {
+		parts = append(parts, fmt.Sprintf("%d:%08X:%d:%08X:%d:%08X:%d", sigil.Index, sigil.Hash, sigil.Level, sigil.PrimaryTraitHash, sigil.PrimaryTraitLevel, sigil.SecondaryTraitHash, sigil.SecondaryTraitLevel))
+	}
+	return strings.Join(parts, "|")
 }
 
 func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase uintptr) (runtimePatchPartySnapshot, error) {
@@ -236,6 +276,9 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 		var loadoutFingerprint [32]byte
 		if resolveErr == nil {
 			loadout, fingerprint, loadoutErr := readRuntimePatchPartyLoadoutAtWithModule(memory, moduleBase, resolved.Specified, "validated party handle -> entity+0x70 -> instance+2.0.2 player record")
+			if loadoutErr == nil {
+				loadoutErr = validateRuntimePatchPartyLoadoutSlot(loadout, index)
+			}
 			if loadoutErr == nil {
 				result.Loadout = &loadout
 				result.Capabilities.Loadout = true

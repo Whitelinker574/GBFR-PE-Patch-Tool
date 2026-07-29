@@ -28,21 +28,20 @@ const ctAssets = [
   ['formulaSampler', 'sticker', './assets/gbfr/stickers/formula-sampler.webp'],
 ]
 
-function assertGeneratedVariants(id, kind) {
+function assertGeneratedDisplay(id, kind) {
   const entry = manifest.assets[id]?.[kind]
   assert.ok(entry, `${id}.${kind} must exist in the generated manifest`)
   assert.match(entry.sourceHash, /^[0-9a-f]{12}$/)
-  for (const variant of ['thumb', 'display', 'full']) {
-    const current = entry.variants[variant]
-    assert.ok(current?.width > 0 && current?.height > 0, `${id}.${kind}.${variant} dimensions`)
-    assert.ok(existsSync(new URL(`../public${current.url}`, import.meta.url)), `${current.url} must be generated`)
-  }
+  assert.deepEqual(Object.keys(entry.variants), ['display'])
+  const current = entry.variants.display
+  assert.ok(current?.width > 0 && current?.height > 0, `${id}.${kind}.display dimensions`)
+  assert.ok(existsSync(new URL(`../public${current.url}`, import.meta.url)), `${current.url} must be generated`)
 }
 
 test('pages that previously repeated portraits now own function-specific approved assets', () => {
   for (const [id, kind, path] of assets) {
     assert.ok(existsSync(new URL(path, import.meta.url)), `${path} must exist`)
-    assertGeneratedVariants(id, kind)
+    assertGeneratedDisplay(id, kind)
   }
 
   assert.equal(manifest.schemaVersion, 1)
@@ -56,7 +55,7 @@ test('runtime patch pages ship their approved function-specific assets without r
   for (const [id, kind, path] of ctAssets) {
     const url = new URL(path, import.meta.url)
     assert.ok(existsSync(url), `${path} must exist`)
-    assertGeneratedVariants(id, kind)
+    assertGeneratedDisplay(id, kind)
     const hash = createHash('sha256').update(readFileSync(url)).digest('hex')
     assert.equal(hashes.has(hash), false, `${path} repeats ${hashes.get(hash)}`)
     hashes.set(hash, path)
@@ -64,8 +63,8 @@ test('runtime patch pages ship their approved function-specific assets without r
 })
 
 test('character mechanics keeps its dedicated Vaseraga production assets and guidance', () => {
-  assert.match(manifest.assets.patchCharacters.art.variants.full.url, /patch-characters-official-edge-safe\.full\./)
-  assert.match(manifest.assets.patchCharacters.sticker.variants.full.url, /patch-characters\.full\./)
+  assert.match(manifest.assets.patchCharacters.art.variants.display.url, /patch-characters-official-edge-safe\.display\./)
+  assert.match(manifest.assets.patchCharacters.sticker.variants.display.url, /patch-characters\.display\./)
   assert.match(shell, /patchCharacters:\s*\{[\s\S]*?speaker:\s*'巴萨拉卡'/)
   assert.match(shell, /note:\s*'冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。'/)
 })
@@ -89,6 +88,12 @@ test('offline summon save owns Sandalphon art instead of repeating the runtime s
 
 test('formula sampler portrait caption matches Katalina', () => {
   assert.match(shell, /formulaSampler:\s*\{[\s\S]*?speaker:\s*'\u5361\u5854\u8389\u5a1c'/)
+})
+
+test('pages without approved artwork use the full work area without a dead portrait rail', () => {
+  assert.match(shell, /'art-collapsed': artCollapsed \|\| !currentArt/)
+  assert.match(shell, /v-if="!isLoadoutWorkspace && currentArt" class="art-toggle"/)
+  assert.match(shell, /v-if="!isLoadoutWorkspace && currentArt && !artCollapsed" class="art-caption"/)
 })
 
 test('every function portrait stays top-anchored so tall windows keep faces and props visible', () => {

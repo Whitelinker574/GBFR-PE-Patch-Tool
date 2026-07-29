@@ -113,17 +113,31 @@ type ULongSaveDataUnit struct {
 
 // ── Save loading ──
 
+func saveParseError(zh, en string) error {
+	if useChinese() {
+		return fmt.Errorf("%s", zh)
+	}
+	return fmt.Errorf("%s", en)
+}
+
+func saveParseWrap(zh, en string, err error) error {
+	if useChinese() {
+		return fmt.Errorf("%s: %w", zh, err)
+	}
+	return fmt.Errorf("%s: %w", en, err)
+}
+
 func LoadSaveFile(path string) (*SaveGameFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取文件失败: %w", err)
+		return nil, saveParseWrap("读取文件失败", "Failed to read the file", err)
 	}
 	return ParseSaveData(data)
 }
 
 func ParseSaveData(data []byte) (*SaveGameFile, error) {
 	if len(data) < 52 {
-		return nil, fmt.Errorf("文件太小，不是有效的存档")
+		return nil, saveParseError("文件太小，不是有效的存档", "The file is too small to be a valid save")
 	}
 
 	_ = binary.LittleEndian.Uint32(data[0:4])
@@ -139,7 +153,7 @@ func ParseSaveData(data []byte) (*SaveGameFile, error) {
 
 	if offset1 > 0 && size1 > 0 {
 		if !validInt64Span(offset1, size1, int64(len(data))) {
-			return nil, fmt.Errorf("存档头 binary1 偏移无效")
+			return nil, saveParseError("存档头 binary1 偏移无效", "The binary1 span in the save header is invalid")
 		}
 		binary1, err := parseSaveDataBinary(data[offset1 : offset1+size1])
 		if err == nil {
@@ -149,12 +163,12 @@ func ParseSaveData(data []byte) (*SaveGameFile, error) {
 
 	if slotDataOffset > 0 && slotDataSize > 0 {
 		if !validInt64Span(slotDataOffset, slotDataSize, int64(len(data))) {
-			return nil, fmt.Errorf("存档头 slot-data 偏移无效")
+			return nil, saveParseError("存档头 slot-data 偏移无效", "The slot-data span in the save header is invalid")
 		}
 		slotBuffer := data[slotDataOffset : slotDataOffset+slotDataSize]
 		slotData, err := parseSaveDataBinary(slotBuffer)
 		if err != nil {
-			return nil, fmt.Errorf("解析SlotData失败: %w", err)
+			return nil, saveParseWrap("解析 SlotData 失败", "Failed to parse SlotData", err)
 		}
 		save.SlotData = slotData
 
@@ -268,11 +282,11 @@ func (r *fbReader) fieldOff(vpos int, vsize uint16, fieldIdx int) (uint16, bool)
 
 func parseSaveDataBinary(data []byte) (*SaveDataBinary, error) {
 	if len(data) < 4 {
-		return nil, fmt.Errorf("数据太小")
+		return nil, saveParseError("数据太小", "The data block is too small")
 	}
 	rootOff := binary.LittleEndian.Uint32(data[0:4])
 	if uint64(rootOff)+4 > uint64(len(data)) {
-		return nil, fmt.Errorf("root offset超出范围")
+		return nil, saveParseError("root offset 超出范围", "The root offset is out of range")
 	}
 	r := &fbReader{data: data}
 	result := &SaveDataBinary{}
@@ -281,15 +295,15 @@ func parseSaveDataBinary(data []byte) (*SaveDataBinary, error) {
 	soff := int32(r.u32(tpos))
 	vpos64 := int64(tpos) - int64(soff)
 	if vpos64 < 0 || vpos64 > int64(len(data)) {
-		return nil, fmt.Errorf("根表vtable无效")
+		return nil, saveParseError("根表 vtable 无效", "The root-table vtable is invalid")
 	}
 	vpos := int(vpos64)
 	if !validIntSpan(vpos, 4, len(data)) {
-		return nil, fmt.Errorf("根表vtable无效")
+		return nil, saveParseError("根表 vtable 无效", "The root-table vtable is invalid")
 	}
 	vsize := r.u16(vpos)
 	if vsize < 4 || !validIntSpan(vpos, int(vsize), len(data)) {
-		return nil, fmt.Errorf("根表vtable无效")
+		return nil, saveParseError("根表 vtable 无效", "The root-table vtable is invalid")
 	}
 
 	// Field 0: VersionMaybe

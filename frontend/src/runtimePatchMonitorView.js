@@ -6,7 +6,7 @@ const COPY = Object.freeze({
   memoryMonitoring: ['内存监测', 'Memory Monitoring'],
   sourceLabel: ['游戏 2.0.2', 'Game 2.0.2'],
   pageTitle: ['角色配装检测', 'Character Loadout Detection'],
-  pageSummary: ['后台自动记录每场任务的队伍配装，并保留选中物品只读工具。', 'Automatically archive party loadouts for every quest while retaining the read-only selected-item tool.'],
+  pageSummary: ['后台归档连续稳定的队伍配装批次，并保留选中物品只读工具；批次不冒充精确任务边界。', 'Archive consecutive stable party-loadout batches while retaining the read-only selected-item tool; batches do not claim exact quest boundaries.'],
   readOnly: ['只读', 'Read Only'],
   notConnected: ['未连接', 'Not Connected'],
   connected: ['已连接', 'Connected'],
@@ -17,8 +17,56 @@ const COPY = Object.freeze({
   refresh: ['刷新', 'Refresh'],
   refreshing: ['刷新中…', 'Refreshing…'],
   working: ['处理中…', 'Working…'],
-  tabParty: ['任务配装记录', 'Quest Loadout History'],
+	emergencyStop: ['紧急停止', 'Emergency Stop'],
+	emergencyStopHint: ['F12：全局恢复全部运行时功能；本页按 Esc 也可立即停止。', 'F12 restores every runtime feature globally; Escape also stops immediately on this page.'],
+	statusEmergencyStopped: ['紧急停止已执行，全部应用管理的运行时功能已恢复。', 'Emergency stop completed; all app-owned runtime features were restored.'],
+	statusEmergencyFailed: ['紧急停止未能确认完整恢复：{error}', 'Emergency stop could not prove complete restoration: {error}'],
+  tabParty: ['队伍配装记录', 'Party Loadout History'],
   tabItems: ['选中物品', 'Selected Item'],
+  tabSpatial: ['空间诊断', 'Spatial Diagnostics'],
+  spatialTitle: ['玩家与队伍坐标', 'Player & Party Coordinates'],
+  spatialSummary: ['连续三次读取同一组实体与坐标节点；场景切换时拒绝返回拼接快照。', 'Reads the same entity and transform topology three times; mixed snapshots are rejected during scene transitions.'],
+  spatialRead: ['读取稳定坐标', 'Read Stable Coordinates'],
+  spatialReading: ['正在核对三次快照…', 'Verifying Three Snapshots…'],
+  spatialEmpty: ['进入城镇或任务中的稳定场景后再读取。标题、加载和过场阶段不会猜测坐标。', 'Read after entering a stable town or quest scene. Coordinates are not guessed on title, loading, or cutscene screens.'],
+  spatialTeleportTitle: ['一次性传送实验', 'One-Shot Teleport Experiment'],
+  spatialTeleportSummary: ['仅写当前玩家坐标的一组 X/Y/Z；写前核对对象生命周期，写后立即回读。', 'Writes one X/Y/Z block for the current player only, with lifecycle preflight and immediate read-back.'],
+  spatialExperimental: ['实验 · 请仅在离线/单机使用', 'Experimental · Use Offline/Solo'],
+  spatialTeleport: ['传送到输入坐标', 'Teleport to Coordinates'],
+  spatialTeleporting: ['正在写入并回读…', 'Writing and Verifying…'],
+  spatialBookmarks: ['坐标书签', 'Coordinate Bookmarks'],
+  spatialBookmarkName: ['书签名称', 'Bookmark name'],
+  spatialBookmarkSave: ['保存当前位置', 'Save Current Position'],
+  spatialBookmarkLoad: ['填入目标', 'Use as Target'],
+  spatialBookmarkDelete: ['删除书签', 'Delete Bookmark'],
+  spatialBookmarkEmpty: ['还没有坐标书签。先读取稳定坐标，再保存当前位置。', 'No coordinate bookmarks yet. Read a stable position, then save it.'],
+  spatialSessionOrigin: ['填入本次连接起点', 'Use Session Origin'],
+  spatialBookmarkSaved: ['已保存坐标书签：{name}', 'Saved coordinate bookmark: {name}'],
+  spatialCurrent: ['当前坐标', 'Current Coordinates'],
+  spatialBefore: ['传送前', 'Before Teleport'],
+  spatialObserved: ['写入回读', 'Observed After Write'],
+  spatialUnsupported: ['本工具无法可靠识别联机状态，请自行确认只在离线/单机中使用。', 'The app cannot reliably detect online state; confirm that you are offline or solo.'],
+  spatialFlightTitle: ['持续坐标飞行', 'Continuous Coordinate Flight'],
+  spatialFlightSummary: ['按住方向键沿世界 X/Y/Z 轴移动；松开、切页、失焦、断线或对象变化时立即停止。', 'Hold a direction to move along world X/Y/Z axes. Movement stops on release, navigation, focus loss, disconnect, or object changes.'],
+  spatialFlightDirections: ['世界轴移动方向', 'World-axis movement directions'],
+  spatialFlightUp: ['上升', 'Up'],
+  spatialFlightDown: ['下降', 'Down'],
+  spatialFlightStop: ['停止', 'Stop'],
+  spatialFlightStep: ['移动速度（单位/秒）', 'Movement speed (units/s)'],
+  spatialFlightMoving: ['按住移动中', 'Moving While Held'],
+  spatialFlightInvalidStep: ['移动速度必须在 0.1 到 1000 单位/秒之间。', 'Movement speed must be between 0.1 and 1000 units/s.'],
+  spatialGravity: ['重力锁定', 'Gravity Lock'],
+  spatialGravityReady: ['2.0.2 原始指令已核对', 'Verified 2.0.2 Instructions'],
+  spatialGravityEnabled: ['重力已抑制', 'Gravity Suppressed'],
+  spatialGravityEnable: ['抑制重力', 'Suppress Gravity'],
+  spatialGravityDisable: ['恢复重力', 'Restore Gravity'],
+  spatialGravityChanging: ['正在核对并写入…', 'Verifying and Writing…'],
+  spatialGravityRecovery: ['等待恢复原始指令，请点击“恢复重力”', 'Recovery Pending — Select Restore Gravity'],
+  spatialGravityUnavailable: ['入口不可用', 'Entry Unavailable'],
+  spatialNoclip: ['穿墙 / 无碰撞', 'Noclip / No Collision'],
+  spatialNotLocated: ['尚未找到可验证的 2.0.2 碰撞入口', 'No verified 2.0.2 collision entry yet'],
+  spatialUnavailable: ['未开放', 'Unavailable'],
+  spatialFlightBoundary: ['坐标移动与重力抑制是两个独立功能；穿墙仍未开放。每一步移动都会重新核对玩家实体与坐标节点。', 'Coordinate movement and gravity suppression are independent. Noclip remains unavailable. Every movement step revalidates the player entity and transform node.'],
   partyTitle: ['队伍数值与配装捕获', 'Party Values & Loadout Capture'],
   partySummary: ['点击“读取队伍与配装”后连续读取三次；稳定时会在每个角色卡片底部出现配装操作。', 'Select Read Party & Loadouts to take three consecutive reads. Stable captures expose loadout actions at the bottom of each character card.'],
   readPartyLoadouts: ['读取队伍与配装', 'Read Party & Loadouts'],
@@ -121,6 +169,12 @@ const COPY = Object.freeze({
   statusReleaseFailed: ['安全断开尚未完成，恢复任务会在后台重试：{error}', 'Safe disconnect is incomplete. Restoration will retry in the background: {error}'],
   statusPartyRead: ['已读取并验证当前队伍快照。', 'Read and verified the current party snapshot.'],
   statusPartyFailed: ['队伍快照读取失败：{error}', 'Party snapshot failed: {error}'],
+  statusSpatialRead: ['三次坐标拓扑一致，已更新空间诊断。', 'Coordinate topology matched across three reads; spatial diagnostics were updated.'],
+  statusSpatialTeleport: ['一次性传送已写入并完成回读。', 'One-shot teleport was written and verified.'],
+  statusSpatialFlightActive: ['持续坐标飞行已开始；松开按键立即停止。', 'Continuous coordinate flight started; release the button to stop.'],
+  statusSpatialFlightStopped: ['持续坐标飞行已停止：{error}', 'Continuous coordinate flight stopped: {error}'],
+  statusSpatialGravityEnabled: ['重力写入指令已暂停，并完成回读验证。', 'The gravity write instruction was suppressed and verified.'],
+  statusSpatialGravityDisabled: ['重力原始指令已恢复，并完成回读验证。', 'The original gravity instruction was restored and verified.'],
   statusCaptureEnabled: ['两个只读捕获器已启用。', 'Both read-only captures are enabled.'],
   statusCaptureDisabled: ['捕获器已停用，原字节已恢复。', 'Captures are disabled and original bytes restored.'],
   statusCaptureRefreshed: ['捕获状态已刷新。', 'Capture status refreshed.'],
@@ -435,6 +489,57 @@ export function normalizeRuntimePatchPartySnapshot(value, expectedOwnerToken, ex
     snapshotCount: snapshot.snapshotCount,
     runtimeVerified: true,
   }
+  return deepFreeze(normalized)
+}
+
+export function normalizeRuntimeSpatialTeleport(value, expectedOwnerToken, expectedPID) {
+  const result = objectValue(value, 'spatial teleport result')
+  verifyOwnerAndProcess(result, expectedOwnerToken, expectedPID, 'spatial teleport result')
+  if (result.runtimeVerified !== true || result.snapshotCount !== 3) throw new TypeError('spatial teleport result is not runtime verified')
+  stringValue(result.gameVersion, 'spatial game version', '2.0.2')
+  stringValue(result.source, 'spatial source')
+  if (!['game_runtime_spatial_2.0.2', 'game_runtime_spatial_continuous_2.0.2'].includes(result.source)) {
+    throw new TypeError('spatial source is not a verified runtime spatial operation')
+  }
+  return deepFreeze({
+    ownerToken: expectedOwnerToken,
+    pid: expectedPID,
+    processCreated: finiteNumber(result.processCreated, 'spatial process creation identity'),
+    before: normalizePosition(result.before, 'spatial position before teleport'),
+    requested: normalizePosition(result.requested, 'spatial requested position'),
+    observed: normalizePosition(result.observed, 'spatial observed position'),
+    gameVersion: result.gameVersion,
+    source: result.source,
+    snapshotCount: result.snapshotCount,
+    runtimeVerified: true,
+  })
+}
+
+export function normalizeRuntimeSpatialGravityStatus(value, expectedOwnerToken, expectedPID) {
+  const status = objectValue(value, 'spatial gravity status')
+  verifyOwnerAndProcess(status, expectedOwnerToken, expectedPID, 'spatial gravity status')
+  stringValue(status.gameVersion, 'spatial gravity game version', '2.0.2')
+  stringValue(status.source, 'spatial gravity source', 'game_runtime_gravity_patch_2.0.2')
+  const normalized = {
+    ownerToken: expectedOwnerToken,
+    pid: expectedPID,
+    processCreated: finiteNumber(status.processCreated, 'spatial gravity process creation identity'),
+    enabled: booleanValue(status.enabled, 'spatial gravity enabled'),
+    available: booleanValue(status.available, 'spatial gravity available'),
+    owned: booleanValue(status.owned, 'spatial gravity owned'),
+    recoveryPending: booleanValue(status.recoveryPending, 'spatial gravity recovery pending'),
+    address: unsignedInteger(status.address, 'spatial gravity address', Number.MAX_SAFE_INTEGER, false),
+    rva: unsignedInteger(status.rva, 'spatial gravity RVA', 0xFFFFFFFF, false),
+    currentBytes: typeof status.currentBytes === 'string' ? status.currentBytes : '',
+    gameVersion: status.gameVersion,
+    source: status.source,
+    error: typeof status.error === 'string' ? status.error : '',
+  }
+  if (normalized.rva !== 0x39DD964) throw new TypeError('spatial gravity RVA does not match the verified 2.0.2 entry')
+  if (normalized.enabled && normalized.currentBytes !== '90 90 90 90 90 90 90 90') {
+    throw new TypeError('spatial gravity enabled state does not match its instruction bytes')
+  }
+  if (normalized.available && normalized.error) throw new TypeError('available spatial gravity status must not contain an error')
   return deepFreeze(normalized)
 }
 

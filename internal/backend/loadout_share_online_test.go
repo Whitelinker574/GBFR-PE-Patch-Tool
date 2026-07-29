@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,12 @@ import (
 	"strings"
 	"testing"
 )
+
+type loadoutShareRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn loadoutShareRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
 
 func encodedShareFrame(t *testing.T, share *LoadoutShare) []byte {
 	t.Helper()
@@ -45,6 +52,12 @@ func TestNormalizeLoadoutShareShortCodeAcceptsCodesAndKnownLinkShapes(t *testing
 		}
 		if got != normalized {
 			t.Fatalf("normalize %q = %q", input, got)
+		}
+	}
+	for _, input := range []string{"0123-4567-89AB", "https://share.example/s/0123456789AB", "https://share.example/download/0123456789AB.gbfr-loadout"} {
+		got, err := normalizeLoadoutShareShortCode(input)
+		if err != nil || got != "0123456789AB" {
+			t.Fatalf("normalize legacy prefix %q = %q, %v", input, got, err)
 		}
 	}
 	for _, input := range []string{"too-short", "0123456789ABCDEFGHJKMNPQRST", "https://share.example/other/0123456789ABCDEF", "0123456789ABCDEI"} {
@@ -350,6 +363,89 @@ func TestLoadoutShareOnlineRejectsOversizedAndServiceErrors(t *testing.T) {
 	_, err := fetchLoadoutShareFrame(context.Background(), server.Client(), server.URL, "0123-4567-89AB-CDEF")
 	if err == nil || !strings.Contains(err.Error(), "没有找到") {
 		t.Fatalf("unexpected service error: %v", err)
+	}
+}
+
+func TestLoadoutShareOnlineRetriesTransientConnectionReset(t *testing.T) {
+	frame := []byte("GBFR-test-frame")
+	attempts := 0
+	client := &http.Client{Transport: loadoutShareRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("wsarecv: connection forcibly closed by remote host")
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(frame)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	got, err := fetchLoadoutShareFrame(context.Background(), client, "https://share.example", "0123-4567-89AB-CDEF")
+	if err != nil {
+		t.Fatalf("transient reset should be retried: %v", err)
+	}
+	if attempts != 2 || !bytes.Equal(got, frame) {
+		t.Fatalf("attempts=%d frame=%q", attempts, got)
+	}
+}
+
+func TestLoadoutShareOnlineRetriesRetryableCatalogIndexFailure(t *testing.T) {
+	frame := encodedShareFrame(t, loadoutShareCodeFixture())
+	attempts := 0
+	client := &http.Client{Transport: loadoutShareRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return &http.Response{
+				StatusCode: http.StatusServiceUnavailable,
+				Body:       io.NopCloser(strings.NewReader(`{"error":"catalog index is temporarily unavailable","retryable":true}`)),
+				Header:     make(http.Header), Request: request,
+			}, nil
+		}
+		body, _ := json.Marshal(LoadoutPublishedShare{Code: "0123-4567-89AB-CDEF", CompactCode: "0123456789ABCDEF"})
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header), Request: request}, nil
+	})}
+	published, err := publishLoadoutShareFrame(context.Background(), client, "https://share.example", frame)
+	if err != nil {
+		t.Fatalf("retryable index failure should be retried: %v", err)
+	}
+	if attempts != 2 || published.CompactCode != "0123456789ABCDEF" {
+		t.Fatalf("attempts=%d published=%+v", attempts, published)
+	}
+}
+
+func TestLoadoutShareOnlineRetriesRetryableCatalogIndexFailureWithNilContext(t *testing.T) {
+	frame := encodedShareFrame(t, loadoutShareCodeFixture())
+	attempts := 0
+	client := &http.Client{Transport: loadoutShareRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return &http.Response{
+				StatusCode: http.StatusServiceUnavailable,
+				Body:       io.NopCloser(strings.NewReader(`{"error":"catalog index is temporarily unavailable","retryable":true}`)),
+				Header:     make(http.Header), Request: request,
+			}, nil
+		}
+		body, _ := json.Marshal(LoadoutPublishedShare{Code: "0123-4567-89AB-CDEF", CompactCode: "0123456789ABCDEF"})
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header), Request: request}, nil
+	})}
+	//lint:ignore SA1012 This regression test verifies the public helper's documented nil-context fallback.
+	published, err := publishLoadoutShareFrame(nil, client, "https://share.example", frame)
+	if err != nil {
+		t.Fatalf("retryable index failure with nil context should be retried: %v", err)
+	}
+	if attempts != 2 || published.CompactCode != "0123456789ABCDEF" {
+		t.Fatalf("attempts=%d published=%+v", attempts, published)
+	}
+}
+
+func TestLoadoutShareOnlineConnectionErrorIsActionable(t *testing.T) {
+	client := &http.Client{Transport: loadoutShareRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection forcibly closed by remote host")
+	})}
+	_, err := fetchLoadoutShareFrame(context.Background(), client, "https://share.example", "0123-4567-89AB-CDEF")
+	if err == nil || !strings.Contains(err.Error(), "离线长码") || !strings.Contains(err.Error(), "远端中断") {
+		t.Fatalf("connection error is not actionable: %v", err)
 	}
 }
 

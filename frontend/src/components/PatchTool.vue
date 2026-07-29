@@ -1,10 +1,12 @@
 <script setup>
-import { reactive, ref, computed, defineAsyncComponent, nextTick, onMounted, watch } from 'vue'
+import { reactive, ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
   GetAppVersion, CheckUpdate, OpenReleasePage,
 } from '../../wailsjs/go/backend/App'
 import {
+  ClipboardSetText,
+  EventsOn,
   WindowMinimise,
   WindowToggleMaximise,
   Quit,
@@ -35,6 +37,12 @@ const pageLoaders = Object.freeze({
   patchQuest: () => import('./RuntimePatchFeatures.vue'),
   runtimeMonitor: () => import('./RuntimePatchMonitor.vue'),
   formulaSampler: () => import('./FormulaSampler.vue'),
+  saveDiff: () => import('./SaveDiffLab.vue'),
+  naturalDrop: () => import('./NaturalDropLab.vue'),
+  audioMixer: () => import('./AudioMixerLab.vue'),
+  camera: () => import('./CameraLab.vue'),
+  virtualSigils: () => import('./VirtualSigilLab.vue'),
+	runtimeQOL: () => import('./RuntimeQOLLab.vue'),
   language: () => import('./LanguageSettings.vue'),
 })
 
@@ -78,6 +86,12 @@ const MonsterEnhance = asyncPage('monster')
 const RuntimePatchFeatures = asyncPage('patchCombat')
 const RuntimePatchMonitor = asyncPage('runtimeMonitor')
 const FormulaSampler = asyncPage('formulaSampler')
+const SaveDiffLab = asyncPage('saveDiff')
+const NaturalDropLab = asyncPage('naturalDrop')
+const AudioMixerLab = asyncPage('audioMixer')
+const CameraLab = asyncPage('camera')
+const VirtualSigilLab = asyncPage('virtualSigils')
+const RuntimeQOLLab = asyncPage('runtimeQOL')
 const LanguageSettings = asyncPage('language')
 const cachedRuntimePages = Object.freeze({
   sigilMemory: SigilMemoryGenerator,
@@ -98,6 +112,8 @@ const state = reactive({
 })
 
 const activeTab = ref('home')
+const workspaceScroll = ref(null)
+const pageScrollPositions = new Map()
 const RUNTIME_PATCH_MODES = Object.freeze({
   patchCombat: 'combat',
   patchCharacters: 'characters',
@@ -105,7 +121,7 @@ const RUNTIME_PATCH_MODES = Object.freeze({
 })
 const runtimePatchesMounted = ref(false)
 const runtimeMonitorMounted = ref(false)
-const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, pid: 0 })
+const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, recoveryCount: 0, pid: 0 })
 const lastRuntimePatchTab = ref('patchCombat')
 const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
 const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || RUNTIME_PATCH_MODES[lastRuntimePatchTab.value])
@@ -123,9 +139,14 @@ const updateLoading = ref(false)
 const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
 const navigationBusy = ref(false)
 const navigationError = ref(null)
+const moreMenu = ref(null)
+const moreMenuOpen = ref(false)
+const moreMenuQuery = ref('')
 let hasAttemptedGameDetection = false
+let stopRuntimeQOLSessionEvents = () => {}
 
 watch(activeTab, (value) => {
+  closeMoreMenu()
   if (value === 'runtimeMonitor') runtimeMonitorMounted.value = true
   if (!RUNTIME_PATCH_MODES[value]) return
   runtimePatchesMounted.value = true
@@ -136,6 +157,7 @@ function updateCTFeatureSession(value) {
   ctFeatureSession.connected = value?.connected === true
   ctFeatureSession.releasePending = value?.releasePending === true
   ctFeatureSession.activeCount = Number.isSafeInteger(value?.activeCount) && value.activeCount >= 0 ? value.activeCount : 0
+  ctFeatureSession.recoveryCount = Number.isSafeInteger(value?.recoveryCount) && value.recoveryCount >= 0 ? value.recoveryCount : 0
   ctFeatureSession.pid = Number.isSafeInteger(value?.pid) && value.pid > 0 ? value.pid : 0
 }
 
@@ -223,11 +245,11 @@ const toolMeta = {
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   runtimeMonitor: {
-    group: 'monitor', title: '角色配装检测', eyebrow: '只读后台检测', status: '只读 · 自动记录任务配装', tone: 'live',
-    description: '一次开启后常驻后台，自动识别每场任务的稳定队伍，并把角色配装按场次保存在本机。',
-    usage: ['开启角色配装检测', '正常进入任务并游玩', '在本地记录中预览、导出或部署配装'],
-    caution: '检测器只读游戏数据，可与其他连接功能同时使用；选中物品读取是同页的独立工具。',
-    speaker: '尤斯塔斯', note: '开启一次就够了。你继续执行任务，我会把每一场稳定出现的队伍配装归档。',
+    group: 'memory', title: '配装检测与空间工具', eyebrow: '后台检测 · 单机空间操作', status: '混合工具 · 写入项单独标识', tone: 'live',
+    description: '角色配装检测和选中物品解析保持只读；空间页提供单机坐标、飞行与重力操作，每个写入入口单独标识并受连接所有权保护。',
+    usage: ['开启角色配装检测并正常游玩', '在本地批次中预览、导出或部署配装', '需要时单独连接空间诊断或选中物品读取'],
+    caution: '队伍记录与物品读取保持只读；空间坐标写入和重力抑制仅限离线/单机，并且需要逐项确认。穿墙/无碰撞仍未开放。',
+    speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
   },
   formulaSampler: {
     group: 'monitor', title: '角色公式采样', eyebrow: '严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
@@ -271,6 +293,48 @@ const toolMeta = {
     caution: '称号奖励领取记录保持不变。',
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
+  saveDiff: {
+    group: 'tools', title: '存档实验室', eyebrow: '存档与解包只读研究', status: '只读', tone: 'calibrate',
+    description: '逐条比较两份存档的逻辑记录，按类型、ID、位置和内容哈希定位差异，并导出不含路径与原始值的脱敏证据。',
+    usage: ['选择基准与对照存档', '筛选新增、缺少或变化记录', '需要协作时导出脱敏 JSON'],
+    caution: '未知字段只显示结构与哈希，不提供猜测写入。',
+    speaker: '兰斯洛特', note: '先找出准确差异，再判断字段含义。没有证据的记录，只读，不写。',
+  },
+  naturalDrop: {
+    group: 'tools', title: '天然掉落部署', eyebrow: '原生索引 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
+    description: '从用户自己的 2.0.2 解包表生成召唤石天然掉落配置，直接登记到游戏原生 data.i，并管理校验与恢复。',
+    usage: ['完全退出游戏', '选择 system/table 与游戏程序', '配置天然词条后直接部署；需要停用时恢复自动备份'],
+    caution: '发现其他外部文件覆盖同一张表时会停止部署；原始 data.i 会先做校验备份。',
+    speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
+  },
+  audioMixer: {
+    group: 'tools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    description: '按角色调整后续语音事件音量；只处理能从当前安装语音 bank 唯一归属的事件。',
+    usage: ['启动游戏', '在应用内开启语音控制', '调整角色音量并保存；停用时自动恢复 Hook'],
+    caution: '未知和跨角色共享事件保持原音；不要同时启用其他 PostEvent 音频 Hook。',
+    speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
+  },
+  camera: {
+    group: 'tools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    description: '调整城镇镜头最远距离、视线目标高度与滚轮缩放步长；组件锁定已验证的 2.0.2 游戏文件。',
+    usage: ['启动游戏', '在应用内开启镜头控制', '热更新距离、高度与滚轮步长；停用时恢复'],
+    caution: '只影响城镇镜头；三项参数均由应用内运行时管理，停用时恢复原始 Hook 与镜头值。',
+    speaker: '萝赛塔', note: '远近与高低都留一点余裕，镜头才会从容。想换滚轮手感，重启以后再看效果。',
+  },
+  virtualSigils: {
+    group: 'tools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
+    description: '为每名角色配置额外运行时因子槽与预设，引用真实未装备实例，不扩写存档的 12 个物理槽。',
+    usage: ['选择因子来源存档', '按角色配置 1 至 8 个虚拟槽或应用预设', '连接游戏后启用；切换装备、角色或场景触发技能重建'],
+    caution: '同一物理因子只能归一个虚拟槽；换档后实例内容不一致会拒绝注入。',
+    speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
+  },
+	runtimeQOL: {
+		group: 'memory', title: '游戏便利运行时', eyebrow: '显示 · 任务 · 编队便利', status: '2.0.2 内置运行时', tone: 'live',
+		description: '集中开启显示精度、房间 ID 和主线队长替换；等级同步与重镶返还保留为待实测候选，不会在当前构建安装。',
+		usage: ['启动游戏', '选择需要的便利功能和显示精度', '开启后正常游玩；F12 可紧急恢复'],
+		caution: '所有入口必须唯一匹配 2.0.2；发现其他工具已修改同一入口时会拒绝接管。',
+		speaker: '拉卡姆', note: '常用的显示和房间信息放在一起，少绕路。要停就一次恢复干净。',
+	},
   compatibility: {
     group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
     description: '在一个位置查看工具版本、游戏文件和功能适配状态。',
@@ -301,20 +365,18 @@ const toolMeta = {
   },
 }
 
-// 顶层把只读内存监测从内存注入中单独分出，避免把观察数据与修改功能混为一谈。
-// 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['runtimeMonitor', 'formulaSampler'] },
-  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
+  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏读取或修改运行时数据' : 'Read or edit runtime data in-game', items: ['runtime', 'runtimeQOL', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'runtimeMonitor', 'monster'] },
+  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '严格只读的公式采样' : 'Strict read-only formula sampling', items: ['formulaSampler'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '存档研究 · 模组构建 · 设置' : 'Save research, mod building, settings', items: ['saveDiff', 'naturalDrop', 'audioMixer', 'camera', 'virtualSigils', 'compatibility', 'language', 'patch'] },
 ])
 
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '22 个实际工具页 + 1 个主页已接入。',
+    baselineSummary: '28 个实际工具页 + 1 个主页已接入。',
   baselineBoundary: '关键运行时路径已完成 DLC 2.0.2 现场验证；其余功能按页面证据标注',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
@@ -334,7 +396,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '22 tool pages plus the home page are integrated.',
+    baselineSummary: '28 tool pages plus the home page are integrated.',
   baselineBoundary: 'Critical runtime paths have DLC 2.0.2 field evidence; remaining features keep page-level evidence labels',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
@@ -354,20 +416,20 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
-  { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、怪物实验' },
-  { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '角色配装检测与角色公式采样；均不安装 Hook、不写进程或存档' },
-  { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
-  { scope: '运行时补丁覆盖', status: '60 / 64', tone: 'ok', detail: '58 个目录功能 + 2 个已有安全实现；4 个证据不足项未作为可用开关暴露' },
+  { scope: '内存注入页面', status: '12 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、配装检测与空间工具、怪物实验' },
+  { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '角色公式采样不安装 Hook，也不写进程或存档' },
+  { scope: '工具设置页面', status: '8 页已接入', tone: 'ok', detail: '存档实验室、天然掉落、角色语音混音台、城镇镜头、虚拟因子槽、版本适配、语言与显示、游戏文件维护' },
+  { scope: '运行时补丁覆盖', status: '58 已接入 / 4 待证据', tone: 'ok', detail: '58 个目录功能已接入；4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
   { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
   { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 现场修复', tone: 'ok', detail: '当前目录逐站点验证；祝福石捕获与自动完美格挡连招修复使用独立版本守卫和写后回读' },
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
   { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
-  { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, combat rules, character mechanics, quest utilities, monster experiments' },
-  { scope: 'Read-only monitor pages', status: '2 / 2', tone: 'ok', detail: 'Runtime monitoring and formula sampling; formula sampling installs no hooks and writes neither process nor save data' },
-  { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
-  { scope: 'Runtime patch coverage', status: '60 / 64', tone: 'ok', detail: '58 catalog features plus 2 existing safe implementations; 4 candidates without enough evidence are not exposed' },
+  { scope: 'Live injection pages', status: '12 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, combat rules, character mechanics, quest utilities, loadout detection and spatial tools, monster experiments' },
+  { scope: 'Strict read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Formula sampling installs no hooks and writes neither process nor save data; mixed runtime detection/spatial tools are classified under live memory tools' },
+  { scope: 'Utility pages', status: '8 pages integrated', tone: 'ok', detail: 'Save laboratory, natural drops, character voice mixer, town camera, virtual sigil slots, version compatibility, language and display, game file maintenance' },
+  { scope: 'Runtime patch coverage', status: '58 integrated / 4 pending', tone: 'ok', detail: '58 catalog features are integrated; 4 candidates remain hidden until field or layout evidence is sufficient' },
   { scope: 'Runtime patch catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
   { scope: 'DLC 2.0.2 delta audit', status: '58 stable entries + 1 field fix', tone: 'ok', detail: 'Every catalog site is validated; wrightstone capture and the auto-perfect-guard combo fix use independent version guards and writeback' },
   { scope: 'Current maintenance delta', status: '2 / 2 verified', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use a unique signature, three-byte patch, and writeback verification' },
@@ -390,7 +452,39 @@ const iconCoverageRows = computed(() => language.value === 'zh' ? [
   { scope: 'Item icons', status: '301 / 312', tone: 'flow', detail: '11 catalog entries still lack provably exact PNGs' },
 ])
 
-const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
+function localizedMeta(meta) {
+  return {
+    ...meta,
+    title: translateText(meta.title),
+    eyebrow: translateText(meta.eyebrow),
+    status: translateText(meta.status),
+    description: translateText(meta.description),
+    usage: (meta.usage || []).map(translateText),
+    caution: translateText(meta.caution),
+    speaker: translateText(meta.speaker),
+    note: translateText(meta.note),
+  }
+}
+function toolTabTitle(id) {
+  const meta = localizedToolMeta.value[id]
+  if (!meta) return ''
+  const hint = id === 'runtimeMonitor'
+    ? (language.value === 'en' ? 'Automatic background detection after start' : '开启后自动后台检测')
+    : meta.tone === 'live'
+      ? (language.value === 'en' ? 'Start the game and connect first' : '需先启动游戏并连接进程')
+      : meta.tone === 'stable'
+        ? (language.value === 'en' ? 'Fully exit the game first' : '需先完全退出游戏')
+        : ''
+  return [meta.title, meta.eyebrow, hint].filter(Boolean).join(' · ')
+}
+function toolTagLabel(id) {
+  if (id === 'runtimeMonitor') return language.value === 'en' ? 'Background' : '后台'
+  return localizedToolMeta.value[id]?.tone === 'live'
+    ? (language.value === 'en' ? 'Live' : '实时')
+    : (language.value === 'en' ? 'Offline' : '离线')
+}
+const localizedToolMeta = computed(() => Object.fromEntries(Object.entries(toolMeta).map(([id, meta]) => [id, localizedMeta(meta)])))
+const currentMeta = computed(() => localizedToolMeta.value[activeTab.value] || localizedToolMeta.value.home)
 const activeCachedRuntimePage = computed(() => cachedRuntimePages[activeTab.value] || null)
 const isLoadoutWorkspace = computed(() => activeTab.value === 'loadoutPresets' && loadoutEditing.value)
 const functionArt = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
@@ -428,8 +522,8 @@ function warmTool(id) {
   const asset = functionAssetManifest.assets[id]
   const pending = Promise.all([
     loadPageModule(id),
-    warmImage(functionArt[id], asset?.art?.variants?.full?.url),
-    warmImage(functionStickers[id], asset?.sticker?.variants?.full?.url),
+    warmImage(functionArt[id]),
+    warmImage(functionStickers[id]),
   ]).then(([, art, sticker]) => {
     if (art) functionArt[id] = art
     if (sticker) functionStickers[id] = sticker
@@ -441,6 +535,25 @@ function warmTool(id) {
 
 function queueWarmTool(id) {
   void warmTool(id).catch(() => {})
+}
+
+let warmIntentTimer = 0
+let warmIntentID = ''
+function queueWarmToolIntent(id) {
+  window.clearTimeout(warmIntentTimer)
+  warmIntentID = id
+  warmIntentTimer = window.setTimeout(() => {
+    warmIntentTimer = 0
+    warmIntentID = ''
+    queueWarmTool(id)
+  }, 160)
+}
+
+function cancelWarmToolIntent(id) {
+  if (warmIntentID !== id) return
+  window.clearTimeout(warmIntentTimer)
+  warmIntentTimer = 0
+  warmIntentID = ''
 }
 
 function waitForTool(id, timeoutMs = 15000) {
@@ -462,7 +575,48 @@ function warmGroup(group) {
   return warmTool(group.items[0]).catch(() => undefined)
 }
 
+function warmGroupIntent(group) {
+  if (group?.items?.length) queueWarmToolIntent(group.items[0])
+}
+
 const activeGroup = computed(() => navigation.value.find(group => group.id === currentMeta.value.group) || navigation.value[0])
+const visibleSwitcherItems = computed(() => {
+  const items = activeGroup.value?.items || []
+  if (items.length <= 6) return items
+  const visible = items.slice(0, 3)
+  if (!visible.includes(activeTab.value)) visible.splice(2, 1, activeTab.value)
+  return visible
+})
+const hiddenSwitcherItems = computed(() => {
+  const visible = new Set(visibleSwitcherItems.value)
+  const query = moreMenuQuery.value.trim().toLocaleLowerCase(language.value === 'en' ? 'en' : 'zh-CN')
+  return (activeGroup.value?.items || []).filter(id => {
+    if (visible.has(id)) return false
+    if (!query) return true
+    const meta = localizedToolMeta.value[id]
+    return [meta?.title, meta?.eyebrow, meta?.description].some(value => String(value || '').toLocaleLowerCase(language.value === 'en' ? 'en' : 'zh-CN').includes(query))
+  })
+})
+const hasMoreSwitcherItems = computed(() => (activeGroup.value?.items?.length || 0) > 6)
+
+function closeMoreMenu() {
+  moreMenuOpen.value = false
+  moreMenuQuery.value = ''
+}
+function toggleMoreMenu() {
+  moreMenuOpen.value = !moreMenuOpen.value
+  if (!moreMenuOpen.value) moreMenuQuery.value = ''
+}
+function selectMoreTool(id) {
+  closeMoreMenu()
+  void selectTool(id)
+}
+function handleGlobalPointerDown(event) {
+  if (moreMenuOpen.value && moreMenu.value && !moreMenu.value.contains(event.target)) closeMoreMenu()
+}
+function handleGlobalKeydown(event) {
+  if (event.key === 'Escape') closeMoreMenu()
+}
 let navigationRequest = 0
 async function selectGroup(group) {
   if (!group.items.includes(activeTab.value)) {
@@ -472,6 +626,7 @@ async function selectGroup(group) {
 }
 
 async function selectTool(id) {
+  if (id === activeTab.value) return
   const request = ++navigationRequest
   const finishMeasure = beginPerformanceMeasure('page-switch', { from: activeTab.value, to: id })
   navigationBusy.value = true
@@ -489,9 +644,11 @@ async function selectTool(id) {
     finishMeasure({ cancelled: true })
     return
   }
-  if (id !== 'loadoutPresets') loadoutEditing.value = false
+  const previousPage = activeTab.value
+  if (workspaceScroll.value) pageScrollPositions.set(previousPage, workspaceScroll.value.scrollTop)
   activeTab.value = id
   await nextTick()
+  if (workspaceScroll.value) workspaceScroll.value.scrollTop = pageScrollPositions.get(id) || 0
   await afterNextPaint()
   finishMeasure({ cancelled: false })
   if (toolMeta[id]?.group === 'tools') ensureGameDetection()
@@ -512,7 +669,22 @@ function toggleSidebar() {
 }
 
 onMounted(() => {
+  document.addEventListener('pointerdown', handleGlobalPointerDown)
+  document.addEventListener('keydown', handleGlobalKeydown)
+  stopRuntimeQOLSessionEvents = EventsOn('runtime-qol-session', event => {
+    const sessionId = String(event?.sessionId || '').trim()
+    if (!sessionId) return
+    void ClipboardSetText(sessionId).then(copied => {
+      if (!copied) showStatus('自动复制房间 ID 失败，请在游戏便利运行时页面手动复制。', 'error')
+    }).catch(() => showStatus('自动复制房间 ID 失败，请在游戏便利运行时页面手动复制。', 'error'))
+  })
   GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
+})
+onBeforeUnmount(() => {
+  window.clearTimeout(warmIntentTimer)
+  document.removeEventListener('pointerdown', handleGlobalPointerDown)
+  document.removeEventListener('keydown', handleGlobalKeydown)
+  stopRuntimeQOLSessionEvents()
 })
 
 function ensureGameDetection() {
@@ -615,7 +787,7 @@ function showStatus(message, type) {
         @click="selectTool(lastRuntimePatchTab)"
       >
         <span aria-hidden="true"></span>
-        {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项` }}
+        {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : ctFeatureSession.recoveryCount ? `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启 · ${ctFeatureSession.recoveryCount} 项待恢复` : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启` }}
       </button>
       <transition name="toast">
         <div v-if="saveStatus" class="titlebar-status" :class="statusType">
@@ -648,7 +820,8 @@ function showStatus(message, type) {
             :class="{ active: activeGroup.id === group.id }"
             :aria-current="activeGroup.id === group.id ? 'page' : undefined"
             :title="`${group.label} · ${group.caption}`"
-            @pointerenter="warmGroup(group)"
+            @pointerenter="warmGroupIntent(group)"
+            @pointerleave="cancelWarmToolIntent(group.items[0])"
             @pointerdown="warmGroup(group)"
             @focus="warmGroup(group)"
             @click="selectGroup(group)"
@@ -659,8 +832,8 @@ function showStatus(message, type) {
           </button>
         </nav>
         <!-- Q版角色是左栏常驻元素；紧凑尺寸只收起气泡，不删除图片。 -->
-        <div class="sidebar-mascot" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
-          <img class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="eager" decoding="async">
+        <div class="sidebar-mascot" :class="{ 'has-sticker': currentSticker }" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
+          <img v-if="currentSticker" class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="eager" decoding="async">
           <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
         </div>
         <div class="sidebar-foot">
@@ -678,37 +851,58 @@ function showStatus(message, type) {
             </div>
         </div>
 
-        <nav v-if="activeTab !== 'home' && !isLoadoutWorkspace && activeGroup.items.length > 1" class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换">
+        <div v-if="activeTab !== 'home' && !isLoadoutWorkspace && activeGroup.items.length > 1" class="tool-switcher-shell" :data-group="activeGroup.id">
+          <nav class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换">
             <button
-              v-for="id in activeGroup.items"
+              v-for="id in visibleSwitcherItems"
               :key="id"
+              :data-tool="id"
               class="ui-tab"
-              :class="{ active: activeTab === id, waiting: toolMeta[id].tone === 'waiting' }"
+              :class="{ active: activeTab === id, waiting: localizedToolMeta[id].tone === 'waiting' }"
               :aria-current="activeTab === id ? 'page' : undefined"
-              :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${id === 'runtimeMonitor' ? ' · 开启后自动后台检测' : toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
-              @pointerenter="queueWarmTool(id)"
+              :title="toolTabTitle(id)"
+              @pointerenter="queueWarmToolIntent(id)"
+              @pointerleave="cancelWarmToolIntent(id)"
               @pointerdown="queueWarmTool(id)"
               @focus="queueWarmTool(id)"
               @click="selectTool(id)"
             >
-              {{ toolMeta[id].title.replace(/（[^）]*）/g, '') }}
-              <span v-if="id === 'runtimeMonitor'" class="switcher-tag live">后台</span>
-              <span v-else-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
-              <span v-else-if="toolMeta[id].tone === 'stable'" class="switcher-tag offline">离线</span>
-              <span v-if="toolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
+              {{ localizedToolMeta[id].title.replace(/（[^）]*）/g, '') }}
+              <span v-if="id === 'runtimeMonitor'" class="switcher-tag live">{{ toolTagLabel(id) }}</span>
+              <span v-else-if="localizedToolMeta[id].tone === 'live'" class="switcher-tag live">{{ toolTagLabel(id) }}</span>
+              <span v-else-if="localizedToolMeta[id].tone === 'stable'" class="switcher-tag offline">{{ toolTagLabel(id) }}</span>
+              <span v-if="localizedToolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
-        </nav>
-
-        <div v-if="navigationBusy || navigationError" class="navigation-load-state" :class="{ error: navigationError }" role="status">
-          <span>{{ navigationError ? navigationError.message : '正在准备页面与图片…' }}</span>
-          <button v-if="navigationError" class="ui-btn is-ghost is-sm" @click="selectTool(navigationError.id)">重试</button>
+          </nav>
+          <div v-if="hasMoreSwitcherItems" ref="moreMenu" class="switcher-more" @click.stop>
+            <button type="button" class="switcher-more-button ui-btn is-ghost" :aria-expanded="moreMenuOpen" aria-haspopup="menu" @click="toggleMoreMenu">
+              {{ language === 'en' ? 'More' : '更多' }} <span aria-hidden="true">⌄</span>
+            </button>
+            <section v-if="moreMenuOpen" class="switcher-more-popover" role="menu">
+              <label>
+                <span>{{ language === 'en' ? 'Find a tool' : '查找同类功能' }}</span>
+                <input v-model="moreMenuQuery" class="ui-input" type="search" :placeholder="language === 'en' ? 'Search tools' : '搜索功能'" autofocus />
+              </label>
+              <div class="switcher-more-list">
+                <button v-for="id in hiddenSwitcherItems" :key="id" :data-tool="id" type="button" role="menuitem" @click="selectMoreTool(id)">
+                  <span><strong>{{ localizedToolMeta[id].title }}</strong><small>{{ localizedToolMeta[id].eyebrow }}</small></span><b aria-hidden="true">›</b>
+                </button>
+                <p v-if="!hiddenSwitcherItems.length">{{ language === 'en' ? 'No matching tools' : '没有匹配功能' }}</p>
+              </div>
+            </section>
+          </div>
         </div>
 
-        <div class="workspace-scroll" :class="{ 'tool-workspace': activeTab !== 'home', 'loadout-workspace-scroll': isLoadoutWorkspace }">
+        <div v-if="navigationBusy || navigationError" class="navigation-load-state" :class="{ error: navigationError }" role="status">
+          <span>{{ navigationError ? navigationError.message : (language === 'en' ? 'Preparing page and images…' : '正在准备页面与图片…') }}</span>
+          <button v-if="navigationError" class="ui-btn is-ghost is-sm" @click="selectTool(navigationError.id)">{{ language === 'en' ? 'Retry' : '重试' }}</button>
+        </div>
+
+        <div ref="workspaceScroll" class="workspace-scroll" :class="{ 'tool-workspace': activeTab !== 'home', 'loadout-workspace-scroll': isLoadoutWorkspace }">
           <div class="workspace-scene">
           <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="queueWarmTool" @open="selectTool" />
 
-          <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
+          <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed || !currentArt, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
             <section class="tool-center-scroll">
               <header v-if="!isLoadoutWorkspace" class="tool-page-heading">
                 <div class="eyebrow">{{ currentMeta.eyebrow }}</div>
@@ -727,19 +921,38 @@ function showStatus(message, type) {
             <RuntimePatchMonitor
               v-if="runtimeMonitorMounted"
               v-show="activeTab === 'runtimeMonitor'"
+              :page-active="activeTab === 'runtimeMonitor'"
               @status="showStatus"
               @deploy-loadout="deployRuntimeLoadout"
             />
             <KeepAlive>
-              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" @status="showStatus" />
+              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" :key="activeTab" @status="showStatus" />
             </KeepAlive>
+            <KeepAlive>
+              <LoadoutViewer v-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
+            </KeepAlive>
+            <KeepAlive>
+              <NaturalDropLab v-if="activeTab === 'naturalDrop'" @status="showStatus" />
+            </KeepAlive>
+            <KeepAlive>
+              <AudioMixerLab v-if="activeTab === 'audioMixer'" @status="showStatus" />
+            </KeepAlive>
+            <KeepAlive>
+              <CameraLab v-if="activeTab === 'camera'" @status="showStatus" />
+            </KeepAlive>
+            <KeepAlive>
+              <VirtualSigilLab v-if="activeTab === 'virtualSigils'" @status="showStatus" />
+            </KeepAlive>
+			<KeepAlive>
+			  <RuntimeQOLLab v-if="activeTab === 'runtimeQOL'" @status="showStatus" />
+			</KeepAlive>
             <ProgressionEditor v-if="!activeCachedRuntimePage && !isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
-            <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
+            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
             <LanguageSettings v-else-if="activeTab === 'language'" />
 
@@ -801,8 +1014,8 @@ function showStatus(message, type) {
               </main>
             </section>
 
-            <button v-if="!isLoadoutWorkspace" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
-            <div v-if="!isLoadoutWorkspace && !artCollapsed" class="art-caption" aria-hidden="true"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
+            <button v-if="!isLoadoutWorkspace && currentArt" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
+            <div v-if="!isLoadoutWorkspace && currentArt && !artCollapsed" class="art-caption" aria-hidden="true"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
           </section>
           </div>
         </div>
@@ -1159,12 +1372,13 @@ button,input,select { font:inherit; }
 .sidebar-mascot {
   min-width:0;
   display:grid;
-  grid-template-columns:46px minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr);
   align-items:end;
   gap:var(--space-2);
   margin-top:auto;
   padding:var(--space-3) var(--space-2) var(--space-4);
 }
+.sidebar-mascot.has-sticker { grid-template-columns:46px minmax(0,1fr); }
 .sidebar-mascot-img {
   width:46px;
   height:50px;
@@ -1246,6 +1460,7 @@ button,input,select { font:inherit; }
 }
 .sidebar-collapsed .sidebar-mascot-img { width:48px; height:54px; }
 .sidebar-collapsed .sidebar-mascot-say { display:none; }
+.sidebar-collapsed .sidebar-mascot:not(.has-sticker) { display:none; }
 
 .workspace {
   position:relative;
@@ -1307,15 +1522,25 @@ button,input,select { font:inherit; }
 .state-dot.calibrate { background:var(--warning); }
 .state-dot.waiting { background:var(--danger); }
 
-.tool-switcher {
+.tool-switcher-shell {
   min-height:46px;
   flex:0 0 46px;
+  min-width:0;
+  display:flex;
+  align-items:stretch;
+  border-bottom:1px solid rgba(140,104,49,.23);
+  background:#eddfc0;
+}
+.tool-switcher {
+  min-width:0;
+  min-height:46px;
+  flex:1 1 auto;
   align-items:stretch;
   gap:var(--space-1);
   padding:0 var(--content-gutter);
-  border-bottom:1px solid rgba(140,104,49,.23);
+  border-bottom:0;
   background:#eddfc0;
-  scrollbar-width:thin;
+  overflow:hidden;
 }
 .tool-switcher .ui-tab {
   min-height:46px;
@@ -1346,6 +1571,50 @@ button,input,select { font:inherit; }
 .switcher-tag.live { color:var(--info-ink); background:var(--info-bg); }
 .switcher-tag.offline { color:var(--success-ink); background:var(--success-bg); }
 .switcher-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); }
+.switcher-more {
+  position:relative;
+  z-index:20;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  padding-right:var(--content-gutter);
+}
+.switcher-more-button { min-width:92px; min-height:38px; justify-content:center; color:var(--accent-hover); }
+.switcher-more-popover {
+  position:absolute;
+  z-index:30;
+  top:calc(100% + 6px);
+  right:var(--content-gutter);
+  width:min(340px,calc(100vw - 110px));
+  padding:var(--space-3);
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  background:var(--surface-card-pop);
+  box-shadow:var(--shadow-lg);
+}
+.switcher-more-popover label { display:grid; gap:4px; color:var(--text-muted); font-size:var(--fs-xs); }
+.switcher-more-list { max-height:min(440px,55vh); display:grid; gap:4px; margin-top:var(--space-2); overflow:auto; scrollbar-width:thin; }
+.switcher-more-list button {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--space-3);
+  padding:var(--space-2) var(--space-3);
+  border:1px solid transparent;
+  border-radius:var(--radius-sm);
+  color:var(--text-secondary);
+  background:transparent;
+  text-align:left;
+  cursor:pointer;
+}
+.switcher-more-list button:hover,.switcher-more-list button:focus-visible { border-color:var(--accent-border); background:var(--state-hover); }
+.switcher-more-list button span { min-width:0; display:grid; gap:2px; }
+.switcher-more-list button strong,.switcher-more-list button small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.switcher-more-list button strong { color:var(--text-primary); font-size:var(--fs-sm); }
+.switcher-more-list button small { color:var(--text-muted); font-size:var(--fs-xs); }
+.switcher-more-list button b { color:var(--accent); }
+.switcher-more-list p { margin:0; padding:var(--space-4); color:var(--text-muted); font-size:var(--fs-sm); text-align:center; }
 
 .navigation-load-state {
   min-height:36px;
@@ -1681,25 +1950,7 @@ button,input,select { font:inherit; }
   .backup-policy { display:grid; grid-template-columns:minmax(0,1fr); }
 }
 @media (max-width:1439px) {
-  .tool-switcher[data-group="memory"] {
-    display:flex;
-    min-height:46px;
-    flex:0 0 46px;
-    align-items:stretch;
-    gap:var(--space-1);
-    padding-block:0;
-    overflow-x:auto;
-    overflow-y:hidden;
-  }
-  .tool-switcher[data-group="memory"] .ui-tab {
-    min-width:max-content;
-    flex:0 0 auto;
-    min-height:46px;
-    justify-content:center;
-    padding:0 var(--space-3);
-    line-height:1.25;
-    white-space:nowrap;
-  }
+  .tool-switcher .ui-tab { min-width:0; flex:1 1 auto; justify-content:center; padding-inline:var(--space-3); white-space:nowrap; }
 }
 @media (min-width:1280px) and (max-width:1399px) {
   .app-body { grid-template-columns:70px minmax(0,1fr); }
@@ -1723,6 +1974,7 @@ button,input,select { font:inherit; }
   }
   .sidebar-mascot-img { width:48px; height:54px; }
   .sidebar-mascot-say { display:none; }
+  .sidebar-mascot:not(.has-sticker) { display:none; }
 }
 @media (max-width:900px) {
   .tool-center-scroll { width:100%; }
@@ -1750,8 +2002,11 @@ button,input,select { font:inherit; }
   }
   .sidebar-mascot-img { width:48px; height:54px; }
   .sidebar-mascot-say { display:none; }
+  .sidebar-mascot:not(.has-sticker) { display:none; }
   .workspace-bar { padding-inline:var(--space-4); }
   .tool-switcher { padding-inline:var(--space-3); }
+  .switcher-more { padding-right:var(--space-3); }
+  .switcher-more-popover { right:var(--space-3); }
 }
 @media (max-width:960px) {
   .build-chip { display:none; }

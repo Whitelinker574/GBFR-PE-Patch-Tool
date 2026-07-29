@@ -10,6 +10,7 @@ const patchPage = read('./components/RuntimePatchFeatures.vue')
 const uiI18n = read('./i18n-ui.js')
 const patchCatalogBackend = read('../../internal/backend/runtime_patch_catalog.go')
 const patchRuntimeBackend = read('../../internal/backend/runtime_patch_runtime.go')
+const confluxTimerBackend = read('../../internal/backend/conflux_timer.go')
 const productionCatalog = JSON.parse(read('../../internal/backend/data/runtime_patch_catalog.json'))
 const assetManifest = JSON.parse(read('../public/generated/function-assets/manifest.json'))
 
@@ -58,6 +59,7 @@ test('the runtime patch page routes refresh, writes, connect and disconnect thro
     ['disconnect', 'disconnect'],
     ['refreshStatuses', 'refresh'],
     ['setFeatureEnabled', 'feature', ', feature.id'],
+    ['setConfluxEnabled', 'feature', ", CONFLUX_FEATURE.id"],
   ]) {
     assert.match(patchPage, new RegExp(`async function ${name}\\([^)]*\\) \\{[\\s\\S]*?beginOperation\\('${kind}'${featureArgument.replace('.', '\\.') }\\)`), `${name} shared gate`)
   }
@@ -100,7 +102,7 @@ test('the three live-patch routes share one persistent categorized session and u
   assert.match(home, /id:\s*'patchQuest'/)
 
   for (const id of ['patchCombat', 'patchCharacters', 'patchQuest']) {
-    assert.match(assetManifest.assets[id].art.variants.full.url, new RegExp(`${id === 'patchCombat' ? 'patch-combat' : id === 'patchCharacters' ? 'patch-characters' : 'patch-quest'}-official-edge-safe\\.full\\.`))
+    assert.match(assetManifest.assets[id].art.variants.display.url, new RegExp(`${id === 'patchCombat' ? 'patch-combat' : id === 'patchCharacters' ? 'patch-characters' : 'patch-quest'}-official-edge-safe\\.display\\.`))
   }
   assert.doesNotMatch(patchTool, /currentArt[^\n]*\|\|\s*progressionArt/)
   assert.doesNotMatch(patchTool, /currentSticker[^\n]*\|\|\s*progressionSticker/)
@@ -214,17 +216,20 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
     'RuntimePatchGetStatusesOwned',
     'RuntimePatchSetEnabledOwned',
     'RuntimePatchReleaseOwned',
+    'ConfluxTimerGetStatusOwned',
+    'ConfluxTimerSetEnabledOwned',
+    'ConfluxTimerVerifyStatusOwned',
   ]) assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} binding`)
 
   assert.match(patchPage, /CharaAcquire\(nextRuntimeAcquireRequestID\(\)\)/)
-  assert.match(patchPage, /const verifiedStatuses = await fetchVerifiedStatuses\(acquiredOwnerToken\)/)
+  assert.match(patchPage, /const verifiedSession = await fetchVerifiedSession\(acquiredOwnerToken\)/)
   assert.match(patchPage, /async function releaseRuntimePatchPageOwner\(ownerToken\)[\s\S]*?await RuntimePatchReleaseOwned\(ownerToken\)[\s\S]*?await CharaRelease\(ownerToken\)/)
   assert.match(patchPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseRuntimePatchPageOwner/)
 
   const toggleBody = patchPage.match(/async function setFeatureEnabled\([^)]*\) \{([\s\S]*?)\n\}/)?.[1] || ''
   const writeAt = toggleBody.indexOf('await RuntimePatchSetEnabledOwned(')
-  const refreshAt = toggleBody.indexOf('await fetchVerifiedStatuses(')
-  const publishAt = toggleBody.indexOf('applyStatuses(')
+  const refreshAt = toggleBody.indexOf('await fetchVerifiedSession(')
+  const publishAt = toggleBody.indexOf('applyVerifiedSession(')
   assert.ok(writeAt >= 0 && refreshAt > writeAt && publishAt > refreshAt, 'write, verified refresh, then publish')
   assert.doesNotMatch(toggleBody.slice(0, publishAt), /\.enabled\s*=/, 'must not optimistically mutate enabled state')
 
@@ -234,6 +239,11 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
   assert.match(patchPage, /仅离线\/单机使用/)
   assert.match(patchPage, /aria-live="polite"/)
   assert.doesNotMatch(patchPage, /任务得分倍率|动作速度|队伍监测|选中素材/, 'unimplemented Task 7 controls must not be advertised')
+  assert.match(patchPage, /v-if="mode === 'quest'"[\s\S]*?极沌空域快速等待/)
+  assert.match(patchPage, /!confluxStatus\.value\.verified[\s\S]*?verifyConfluxStatus\(\)/)
+  assert.match(patchPage, /!confluxStatus\.verified \? '验证并读取'/)
+  assert.match(patchPage, /confluxStatus\.owned[\s\S]*?恢复默认/)
+  assert.match(patchPage, /进入极沌空域任务后刷新读取/)
 
   const statusFetchBody = patchPage.match(/async function fetchVerifiedStatuses\([^)]*\) \{([\s\S]*?)\n\}/)?.[1] || ''
   assert.match(statusFetchBody, /validateRuntimePatchStatusSet\(catalog\.value, await RuntimePatchGetStatusesOwned\(ownerToken\)\)/)
@@ -268,6 +278,21 @@ test('the component bindings match the owned backend methods Wails generates fro
   assert.match(patchRuntimeBackend, /func \(a \*App\) RuntimePatchGetStatusesOwned\(token string\) \(\[\]RuntimePatchFeatureStatus, error\)/)
   assert.match(patchRuntimeBackend, /func \(a \*App\) RuntimePatchSetEnabledOwned\(token, id string, enabled bool\) \(RuntimePatchFeatureStatus, error\)/)
   assert.match(patchRuntimeBackend, /func \(a \*App\) RuntimePatchReleaseOwned\(token string\) error/)
+  assert.match(confluxTimerBackend, /func \(a \*App\) ConfluxTimerGetStatusOwned\(token string\) \(ConfluxTimerStatus, error\)/)
+  assert.match(confluxTimerBackend, /func \(a \*App\) ConfluxTimerVerifyStatusOwned\(token string\) \(ConfluxTimerStatus, error\)/)
+  assert.match(confluxTimerBackend, /func \(a \*App\) ConfluxTimerSetEnabledOwned\(token string, enabled bool\) \(ConfluxTimerStatus, error\)/)
+  assert.match(confluxTimerBackend, /restoreConfluxTimerOwnedLocked/)
+
+  const passiveStatusBody = confluxTimerBackend.match(/func \(a \*App\) ConfluxTimerGetStatusOwned\([^]*?\n\}/)?.[0] || ''
+  assert.doesNotMatch(passiveStatusBody, /verifyRuntimePatchExecutableLocked/, 'ordinary connect and refresh must not hash the game executable')
+  assert.match(passiveStatusBody, /sameProcessInstance\(a\.runtimePatchVerifiedProcess, process\)/)
+  assert.match(confluxTimerBackend, /type ConfluxTimerStatus struct \{[\s\S]*?Verified\s+bool\s+`json:"verified"`/)
+  assert.match(confluxTimerBackend, /reconcileConfluxTimerLease\([\s\S]*?lease\.Sites\.Manager == currentSites\.Manager/)
+  assert.doesNotMatch(confluxTimerBackend, /lease\.Sites\.Manager != sites\.Manager/, 'repeated enable must reconcile a replacement manager instead of trusting stale sites')
+  assert.match(confluxTimerBackend, /lease\.State == confluxTimerLeaseEnabled && observedState == confluxTimerStateMixed/)
+  assert.match(confluxTimerBackend, /confluxTimerActiveDidNotIncrease\(lease\.WrittenActive, verifiedActive\)/)
+  assert.match(patchPage, /recoveryCount:\s*recoveryFeatureCount\.value/)
+  assert.match(patchTool, /ctFeatureSession\.recoveryCount[\s\S]*?项待恢复/)
 })
 
 test('new navigation, safety, state and recovery copy is covered by the UI translation layer', () => {
@@ -343,6 +368,12 @@ test('all 58 production runtime patch features, groups and dynamic page messages
     '实时补丁回读状态 runtime-patch-1 的当前字节[0] 必须是空值或空格分隔的十六进制字节',
     '实时功能目录 runtime-patch-1 的补丁字节无效',
     '实时补丁回读状态 runtime-patch-1 已开启，但当前字节[0] 与目录补丁不一致',
+    '极沌空域快速等待', '只缩短已验证的等待计时器；不自动领奖，也不自动重新进入任务。',
+    '尚未校验游戏版本；点击“验证并读取”后再使用', '验证并读取', '待验证',
+    '先校验游戏版本，再读取任务计时器', '游戏版本已校验，极沌空域计时器状态已回读',
+    '进入极沌空域任务后刷新读取', '已保存本工具写入前的 12 项原始配置',
+    '运行模式', '本轮初始', '当前等待', '未进入',
+    '极沌空域快速等待操作失败：未知错误',
   ]
   for (const sample of dynamicSamples) {
     const translated = translateRuntimePatchText(sample, 'en')

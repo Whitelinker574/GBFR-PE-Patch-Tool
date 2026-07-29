@@ -1,0 +1,8164 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": "2.0.2",
+  "sources": {
+    "sqlite": {
+      "file": "system-tables-full-202.sqlite",
+      "sha256": "51f6098d838bc1067d26eefbb74bd7aa6faee42c25bdbb7bd274772bfe829176"
+    },
+    "damageCalculateParam": {
+      "file": "system/player/damagecalcparam.msg",
+      "sha256": "1909e8fd79b58ecf4b4b36c1f3427e4e476fdedacb962a111d2e499e0a8b636b"
+    },
+    "guardParam": {
+      "file": "system/player/guardparam.msg",
+      "sha256": "0c81eeb7695cc24507de6bc70aea9b9f3cdb5a8a98cb6aab6bb416a28ec32367"
+    },
+    "curve_enmity": {
+      "file": "curve/battle/enmity.f-curve.msg",
+      "sha256": "c300eb9b745a54c31f1d5aa5385a9677fc5600e3c82ee00adf45a31a2c5c7ee1"
+    },
+    "curve_enmity2": {
+      "file": "curve/battle/enmity2.f-curve.msg",
+      "sha256": "9c760bbe9795162d4789f67a7f8a9b73ec35046c258430b8ac16fb9960bc06d1"
+    },
+    "curve_garrison": {
+      "file": "curve/battle/garrison.f-curve.msg",
+      "sha256": "7a2582a1b61f80975202df6dd4ebe0a6b7762ba707e7474a1e3706edec0d6baf"
+    },
+    "curve_linktime": {
+      "file": "curve/battle/linktime.f-curve.msg",
+      "sha256": "63bdbf635c69b9bcbbbfe7aad162e28af6a8c1edb333661e4dd87295e08fb91f"
+    },
+    "curve_stamina": {
+      "file": "curve/battle/stamina.f-curve.msg",
+      "sha256": "15e612dc6bef4392dff8dbd114d0732946f9fa78a9c7e20175fc2059f80829db"
+    },
+    "curve_stamina2": {
+      "file": "curve/battle/stamina2.f-curve.msg",
+      "sha256": "2d052dc6d6a7afdc9d29b0bfa0613b227841e28feeab64073320b2c5807ef980"
+    },
+    "curve_sturdy": {
+      "file": "curve/battle/sturdy.f-curve.msg",
+      "sha256": "15e612dc6bef4392dff8dbd114d0732946f9fa78a9c7e20175fc2059f80829db"
+    },
+    "characterDamageLimitTable": {
+      "file": "chara_damage_limit.tbl",
+      "sha256": "c2b62b8219c13566b39b552dbf80dc1baf89fb2faf8eb62289a3a5e34e939034"
+    },
+    "characterArtsDamageLimitTable": {
+      "file": "chara_arts_damage_limit.tbl",
+      "sha256": "8ad5ea8fce1c464d3bc9ac3257052e210e60f93b06ef240ba4f5d283e4b3f519"
+    }
+  },
+  "damageCalculate": {
+    "criticalDamageUpperRate": 20,
+    "superArmorDamageRate": 25,
+    "atkTypeDamageLimit_Normal": 9999,
+    "atkTypeDamageLimit_Ability": 14999,
+    "atkTypeDamageLimit_SpArts": 19999,
+    "chainBurstDamageLimit": 9999999,
+    "weakElementAddDamageRate": 0.2,
+    "addDamageLimitBonusStatusRate": 0.5,
+    "autoReviveMaxCount": 3,
+    "autoReviveHpRate": 1,
+    "autoReviveCoolTime": 130,
+    "gutsMaxCount": 5,
+    "gutsInvinsibleSec": 3,
+    "gutsCoolTime": 130
+  },
+  "guard": {
+    "GuardGageMax": 40,
+    "GuardStopHealSec": 7,
+    "DamageStopHealSec": 12,
+    "GuardPointStopHealSec": 10,
+    "HelpGuardStopHealSec": 15,
+    "GuardBreakSec": 20,
+    "GuardAutoHealValue": 0.005,
+    "GuardDamageCutRate": 1,
+    "GuardBreakDamageCutRate": 0.2,
+    "HelpGuardBreakGageRate": 2,
+    "GuardPointBreakGageRate": 0.5,
+    "JustGuardAcceptFrame": 5,
+    "ChargeParryAcceptFrame": 10,
+    "ChargeParryInvinsbleTime": 1.5,
+    "JustGuardAttackBreakRate": 10,
+    "guardFailedPenaltyTime": 0.5
+  },
+  "conditionalCurves": {
+    "enmity": [
+      {
+        "interpolation": "FlatToNext",
+        "x": 0,
+        "y": 1,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.01666667,
+        "y": 1,
+        "leftTangent": 0.1153789,
+        "rightTangent": -0.06248983
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.1,
+        "y": 0.854167,
+        "leftTangent": 0.04838414,
+        "rightTangent": -0.0677935
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.25,
+        "y": 0.6344833,
+        "leftTangent": 0.05404745,
+        "rightTangent": -0.122454
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.5,
+        "y": 0.3388896,
+        "leftTangent": 0.07547399,
+        "rightTangent": -0.0847468
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.7500001,
+        "y": 0.1277781,
+        "leftTangent": 0.06061716,
+        "rightTangent": -0.0307636
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.9,
+        "y": 0.04722261,
+        "leftTangent": 0.02128179,
+        "rightTangent": -0.018514
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 1,
+        "y": 0,
+        "leftTangent": 0.02084351,
+        "rightTangent": -1.436121e-05
+      }
+    ],
+    "enmity2": [
+      {
+        "interpolation": "FlatToNext",
+        "x": 0,
+        "y": 1,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "Linear",
+        "x": 0.01666667,
+        "y": 1,
+        "leftTangent": 0.1153789,
+        "rightTangent": -0.06248983
+      },
+      {
+        "interpolation": "Linear",
+        "x": 0.25,
+        "y": 0.9990196,
+        "leftTangent": 0.04838414,
+        "rightTangent": -0.0677935
+      },
+      {
+        "interpolation": "Linear",
+        "x": 0.2666667,
+        "y": 0,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 1,
+        "y": 0,
+        "leftTangent": 0.02084351,
+        "rightTangent": -1.436121e-05
+      }
+    ],
+    "garrison": [
+      {
+        "interpolation": "Smooth",
+        "x": 0,
+        "y": 1,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.2,
+        "y": 0.9708333,
+        "leftTangent": 0.02702538,
+        "rightTangent": -0.02702538
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.4,
+        "y": 0.7597222,
+        "leftTangent": 0.09677419,
+        "rightTangent": -0.07894737
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.6,
+        "y": 0.5,
+        "leftTangent": 0.07843138,
+        "rightTangent": -0.07894737
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.8000001,
+        "y": 0.2597222,
+        "leftTangent": 0.08571429,
+        "rightTangent": -0.075
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 1,
+        "y": 0,
+        "leftTangent": 0.1071429,
+        "rightTangent": -0.1071429
+      }
+    ],
+    "linktime": [
+      {
+        "interpolation": "SmoothSide",
+        "x": 0,
+        "y": 0,
+        "leftTangent": -0.01067985,
+        "rightTangent": 0.01541842
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.01666667,
+        "y": 0.01714611,
+        "leftTangent": -0.02713944,
+        "rightTangent": -3.572794e-06
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.05,
+        "y": 0.1442885,
+        "leftTangent": 7.398201e-06,
+        "rightTangent": 0.05128831
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.1,
+        "y": 0.2742887,
+        "leftTangent": -0.03773469,
+        "rightTangent": 0.08333435
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.2,
+        "y": 0.4757175,
+        "leftTangent": -0.04877602,
+        "rightTangent": 0.03174506
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.25,
+        "y": 0.5600033,
+        "leftTangent": -0.02380952,
+        "rightTangent": 0.06
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.3666667,
+        "y": 0.7285743,
+        "leftTangent": -0.04511562,
+        "rightTangent": 0.04511562
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.5,
+        "y": 0.8242888,
+        "leftTangent": -0.01999878,
+        "rightTangent": 0.03703591
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 0.7500001,
+        "y": 0.9257174,
+        "leftTangent": -0.02817159,
+        "rightTangent": 0.02817159
+      },
+      {
+        "interpolation": "SmoothSide",
+        "x": 1,
+        "y": 1,
+        "leftTangent": -4.882813e-05,
+        "rightTangent": 4.882813e-05
+      }
+    ],
+    "stamina": [
+      {
+        "interpolation": "FlatToNext",
+        "x": 0,
+        "y": 0,
+        "leftTangent": -0.01298384,
+        "rightTangent": 0.01298384
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.25,
+        "y": 0.1500006,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.5,
+        "y": 0.2500005,
+        "leftTangent": -0.05882353,
+        "rightTangent": 0.05882353
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.7500001,
+        "y": 0.5000005,
+        "leftTangent": -0.1063817,
+        "rightTangent": 0.1063817
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 1,
+        "y": 1,
+        "leftTangent": -0.2758663,
+        "rightTangent": 0.2758663
+      }
+    ],
+    "stamina2": [
+      {
+        "interpolation": "FlatToNext",
+        "x": 0,
+        "y": 0,
+        "leftTangent": -0.01298384,
+        "rightTangent": 0.01298384
+      },
+      {
+        "interpolation": "Linear",
+        "x": 0.7333333,
+        "y": 0,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "Linear",
+        "x": 0.7500001,
+        "y": 0.9990196,
+        "leftTangent": -0.07777846,
+        "rightTangent": 0.07777846
+      },
+      {
+        "interpolation": "Linear",
+        "x": 1,
+        "y": 1,
+        "leftTangent": -0.1034567,
+        "rightTangent": 0.1034567
+      }
+    ],
+    "sturdy": [
+      {
+        "interpolation": "FlatToNext",
+        "x": 0,
+        "y": 0,
+        "leftTangent": -0.01298384,
+        "rightTangent": 0.01298384
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.25,
+        "y": 0.1500006,
+        "leftTangent": 0,
+        "rightTangent": 0
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.5,
+        "y": 0.2500005,
+        "leftTangent": -0.05882353,
+        "rightTangent": 0.05882353
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 0.7500001,
+        "y": 0.5000005,
+        "leftTangent": -0.1063817,
+        "rightTangent": 0.1063817
+      },
+      {
+        "interpolation": "Smooth",
+        "x": 1,
+        "y": 1,
+        "leftTangent": -0.2758663,
+        "rightTangent": 0.2758663
+      }
+    ]
+  },
+  "damageLimits": {
+    "normalRowCount": 975,
+    "artsRowCount": 930,
+    "normal": {
+      "58F4DBD4": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 10999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        },
+        {
+          "attackRate": 200,
+          "damageCap": 2299999
+        },
+        {
+          "attackRate": 300,
+          "damageCap": 3399999
+        },
+        {
+          "attackRate": 400,
+          "damageCap": 4499999
+        },
+        {
+          "attackRate": 500,
+          "damageCap": 5599999
+        },
+        {
+          "attackRate": 600,
+          "damageCap": 6699999
+        },
+        {
+          "attackRate": 700,
+          "damageCap": 7799999
+        },
+        {
+          "attackRate": 800,
+          "damageCap": 8899999
+        },
+        {
+          "attackRate": 900,
+          "damageCap": 9999999
+        },
+        {
+          "attackRate": 1000,
+          "damageCap": 11999999
+        },
+        {
+          "attackRate": 2000,
+          "damageCap": 22000000
+        },
+        {
+          "attackRate": 3000,
+          "damageCap": 32000000
+        },
+        {
+          "attackRate": 4000,
+          "damageCap": 42000000
+        },
+        {
+          "attackRate": 5000,
+          "damageCap": 52000000
+        },
+        {
+          "attackRate": 9000,
+          "damageCap": 92000000
+        },
+        {
+          "attackRate": 9999,
+          "damageCap": 100000000
+        }
+      ],
+      "NP0000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 10999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "NP0300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 10999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL0900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 43999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 54999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL1900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ],
+      "PL2900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 2999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 5999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 6999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 21999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 32999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 47999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 71999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 95999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 107999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 119999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 719999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 839999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 959999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1079999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1199999
+        }
+      ]
+    },
+    "arts": {
+      "NP0000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1019
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 2079
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 3179
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 4319
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 5499
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 6719
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 7979
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 9279
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 10619
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 11999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 24799
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 38399
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 52799
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 67999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 100799
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 118399
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 136799
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 159999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 245999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 335999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 515999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 703999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 899999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1103999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1315999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1535999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1763999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1999999
+        }
+      ],
+      "NP0300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1019
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 2079
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 3179
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 4319
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 5499
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 6719
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 7979
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 9279
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 10619
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 11999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 24799
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 38399
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 52799
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 67999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 83999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 100799
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 118399
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 136799
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 159999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 245999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 335999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 515999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 703999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 899999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1103999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1315999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1535999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 1763999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 1999999
+        }
+      ],
+      "PL0000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 215999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 275999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 899999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1199999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1799999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2099999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2399999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2699999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2999999
+        }
+      ],
+      "PL0100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 215999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 275999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 479999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 899999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1199999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1799999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2099999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2399999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2699999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2999999
+        }
+      ],
+      "PL0200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 233999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 259999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 298999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 324999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 519999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 649999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 974999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1299999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1624999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1949999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2274999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2599999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2924999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3249999
+        }
+      ],
+      "PL0300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL0400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL0500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL0600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL0700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 212499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 254999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 305999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 339999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 390999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 424999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 679999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 849999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1274999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1699999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 2124999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2549999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2974999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 3399999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3824999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 4249999
+        }
+      ],
+      "PL0800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 64999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL0900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 131249
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 157499
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 188999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 209999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 241499
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 262499
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 419999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 524999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 787499
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1049999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1312499
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1574999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1837499
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2099999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2362499
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2624999
+        }
+      ],
+      "PL1000": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 168749
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 202499
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 242999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 310499
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 337499
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 539999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 674999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1012499
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1349999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1687499
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2024999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2362499
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2699999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3037499
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3374999
+        }
+      ],
+      "PL1100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 181249
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 217499
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 260999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 289999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 333499
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 362499
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 579999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 724999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1087499
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1449999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1812499
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2174999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2537499
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2899999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3262499
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3624999
+        }
+      ],
+      "PL1200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 143749
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 172499
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 206999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 264499
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 287499
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 459999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 574999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 862499
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1149999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1437499
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1724999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2012499
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2299999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2587499
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2874999
+        }
+      ],
+      "PL1300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL1400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 239999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 287999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 319999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 367999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 639999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 799999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1199999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1599999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2399999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2799999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 3199999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3599999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3999999
+        }
+      ],
+      "PL1500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL1600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 2499
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 3999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 6499
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 7499
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 8999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 11499
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL1700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 249998
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 299998
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 359998
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 399998
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 459998
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 499998
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 799998
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 999998
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1499998
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1999998
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 2499998
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2999998
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 3499998
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 3999998
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 4499998
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 4999998
+        }
+      ],
+      "PL1800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL1900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 11999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL2100": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 35999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 79999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 112499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 134999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 161999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 206999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 359999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 449999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 674999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 899999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1349999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1574999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1799999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2024999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2249999
+        }
+      ],
+      "PL2200": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL2300": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ],
+      "PL2400": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL2500": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 11999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 59999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 69999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 89999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 187499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 224999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 269999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 299999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 344999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 374999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 599999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 1124999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1874999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2624999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 3374999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3749999
+        }
+      ],
+      "PL2600": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 29999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 39999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 64999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 137499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 164999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 197999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 219999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 252999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 274999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 439999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 549999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 824999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1099999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1374999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1649999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1924999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2199999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2474999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2749999
+        }
+      ],
+      "PL2700": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 162499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 194999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 233999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 259999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 298999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 324999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 519999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 649999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 974999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1299999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1624999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1949999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 2274999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2599999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2924999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 3249999
+        }
+      ],
+      "PL2800": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 137499
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 164999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 197999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 219999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 252999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 274999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 439999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 549999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 824999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 1099999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1374999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1649999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1924999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 2199999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2474999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2749999
+        }
+      ],
+      "PL2900": [
+        {
+          "attackRate": 0,
+          "damageCap": 0
+        },
+        {
+          "attackRate": 0.1,
+          "damageCap": 1999
+        },
+        {
+          "attackRate": 0.2,
+          "damageCap": 4999
+        },
+        {
+          "attackRate": 0.3,
+          "damageCap": 7999
+        },
+        {
+          "attackRate": 0.4,
+          "damageCap": 9999
+        },
+        {
+          "attackRate": 0.5,
+          "damageCap": 12999
+        },
+        {
+          "attackRate": 0.6,
+          "damageCap": 14999
+        },
+        {
+          "attackRate": 0.7,
+          "damageCap": 17999
+        },
+        {
+          "attackRate": 0.8,
+          "damageCap": 19999
+        },
+        {
+          "attackRate": 0.9,
+          "damageCap": 22999
+        },
+        {
+          "attackRate": 1,
+          "damageCap": 24999
+        },
+        {
+          "attackRate": 2,
+          "damageCap": 49999
+        },
+        {
+          "attackRate": 3,
+          "damageCap": 74999
+        },
+        {
+          "attackRate": 4,
+          "damageCap": 99999
+        },
+        {
+          "attackRate": 5,
+          "damageCap": 124999
+        },
+        {
+          "attackRate": 6,
+          "damageCap": 149999
+        },
+        {
+          "attackRate": 7,
+          "damageCap": 179999
+        },
+        {
+          "attackRate": 8,
+          "damageCap": 199999
+        },
+        {
+          "attackRate": 9,
+          "damageCap": 229999
+        },
+        {
+          "attackRate": 10,
+          "damageCap": 249999
+        },
+        {
+          "attackRate": 15,
+          "damageCap": 399999
+        },
+        {
+          "attackRate": 20,
+          "damageCap": 499999
+        },
+        {
+          "attackRate": 30,
+          "damageCap": 749999
+        },
+        {
+          "attackRate": 40,
+          "damageCap": 999999
+        },
+        {
+          "attackRate": 50,
+          "damageCap": 1249999
+        },
+        {
+          "attackRate": 60,
+          "damageCap": 1499999
+        },
+        {
+          "attackRate": 70,
+          "damageCap": 1749999
+        },
+        {
+          "attackRate": 80,
+          "damageCap": 1999999
+        },
+        {
+          "attackRate": 90,
+          "damageCap": 2249999
+        },
+        {
+          "attackRate": 100,
+          "damageCap": 2499999
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "globalAttackTypeLimits": "Raw global baseline constants; not final per-action caps.",
+    "characterCurves": "Raw table nodes keyed by game character identifier.",
+    "conditionalCurves": "Raw control points. Smooth and SmoothSide interpolation is intentionally not approximated."
+  }
+}

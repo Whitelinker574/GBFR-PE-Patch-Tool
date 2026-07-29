@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -37,11 +37,9 @@ const sources = Object.freeze({
 
 const variantProfiles = Object.freeze({
   art: Object.freeze({
-    thumb: { width: 480, height: 480, quality: 84 },
     display: { width: 2880, height: 2880, quality: 92 },
   }),
   sticker: Object.freeze({
-    thumb: { width: 256, height: 256, quality: 88 },
     display: { width: 512, height: 512, quality: 92 },
   }),
 })
@@ -54,7 +52,6 @@ async function buildVariants(kind, sourcePath, hash) {
   const sourceName = basename(sourcePath, '.webp')
   const kindRoot = join(outputRoot, kind)
   await mkdir(kindRoot, { recursive: true })
-  const metadata = await sharp(sourcePath).metadata()
   const variants = {}
 
   for (const [name, profile] of Object.entries(variantProfiles[kind])) {
@@ -71,13 +68,6 @@ async function buildVariants(kind, sourcePath, hash) {
     }
   }
 
-  const fullPath = join(kindRoot, `${sourceName}.full.${hash}.webp`)
-  await copyFile(sourcePath, fullPath)
-  variants.full = {
-    url: publicUrl(fullPath),
-    width: metadata.width,
-    height: metadata.height,
-  }
   return { sourceHash: hash, variants }
 }
 

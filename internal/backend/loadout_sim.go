@@ -199,12 +199,13 @@ type EffectTotal struct {
 
 // LoadoutSimulation 同时保留合并后的总计与逐词条明细。
 type LoadoutSimulation struct {
-	Totals        []EffectTotal         `json:"totals"`
-	DynamicTotals []EffectTotal         `json:"dynamicTotals"`
-	Bonuses       []TraitBonus          `json:"bonuses"`
-	FinalStats    *LoadoutFinalStats    `json:"finalStats,omitempty"`
-	Weapon        *LoadoutWeaponContext `json:"weapon,omitempty"`
-	WeaponSkills  []LoadoutWeaponSkill  `json:"weaponSkills"`
+	Totals          []EffectTotal           `json:"totals"`
+	DynamicTotals   []EffectTotal           `json:"dynamicTotals"`
+	Bonuses         []TraitBonus            `json:"bonuses"`
+	FinalStats      *LoadoutFinalStats      `json:"finalStats,omitempty"`
+	CombatReference *RuntimeCombatReference `json:"combatReference,omitempty"`
+	Weapon          *LoadoutWeaponContext   `json:"weapon,omitempty"`
+	WeaponSkills    []LoadoutWeaponSkill    `json:"weaponSkills"`
 }
 
 // SimSigilInput 是模拟器的单颗因子输入（主/副词条 hash + 等级）。

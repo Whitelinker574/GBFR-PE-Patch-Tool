@@ -286,6 +286,9 @@ test('dedicated editing hides the global portrait background while ordinary view
 test('simulation request sequencing prevents stale results from replacing the current build', () => {
 	assert.match(source, /let simRequestId = 0/)
 	assert.match(source, /requestId !== simRequestId/)
+	assert.match(source, /let simInFlight = false/)
+	assert.match(source, /pendingSimulation = null/)
+	assert.match(source, /async function drainSimulations\(\)/)
 	assert.match(source, /async function loadCtx\(\)\s*\{\s*simRequestId\+\+\s*\n\s*clearTimeout\(simTimer\)\s*\n\s*clearSimulationResult\(\)/)
 })
 
@@ -498,6 +501,15 @@ test('constructor exposes the complete trait catalog while natural table rules r
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
 })
 
+test('optimizer table and catalog domains stage constructed factors instead of inventory slots', () => {
+  assert.match(source, /payload\.domain === 'catalog' \|\| payload\.domain === 'table' \|\| payload\.domain === 'table-exact' \? 'construct' : 'bag'/u)
+})
+
+test('share publication caches the captured unit id instead of referencing an undefined variable', () => {
+  assert.match(source, /const unitID = selectedLoadout\.value\.unitId[\s\S]*?loadoutShareSessionKey\(\{[\s\S]*?unitId: unitID/u)
+  assert.doesNotMatch(source, /charaHash: props\.charaHash,\s*unitId,\s*\}\), published/u)
+})
+
 test('narrow weapon skill editor uses a single shrinkable column', () => {
 	assert.match(source, /\.weapon-skill-edit-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)/is)
 	assert.match(source, /\.weapon-skill-edit-row\s+\.ui-select\s*\{[^}]*width\s*:\s*100%/is)
@@ -505,4 +517,14 @@ test('narrow weapon skill editor uses a single shrinkable column', () => {
 	assert.match(source, /\.dynamic-skill-level\s*\{[^}]*white-space\s*:\s*nowrap/is)
 	assert.match(source, /\.runtime-comparison-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(44px,\.8fr\) repeat\(2,minmax\(0,1fr\)\) minmax\(0,1fr\)/is)
 	assert.match(source, /\.runtime-comparison-row em\s*\{[^}]*overflow-wrap\s*:\s*anywhere/is)
+})
+
+test('combat references expose exact unpacked nodes without claiming final move caps', () => {
+	assert.match(source, /combatReference\.damageCalculate\?\.atkTypeDamageLimit_Normal/)
+	assert.match(source, /exactCurveValue\(combatReference\.normalCurve, 1\)/)
+	assert.match(source, /exactCurveValue\(combatReference\.artsCurve, 1\)/)
+	assert.match(source, /全局类型值是解包基线，不是每个招式的最终绝对上限/)
+	assert.match(source, /combatReference\.interpolationNote/)
+	assert.match(source, /\.combat-baseline-grid\s*\{[^}]*grid-template-columns\s*:\s*repeat\(4,minmax\(0,1fr\)\)/is)
+	assert.match(source, /@container loadout-editor \(max-width:760px\)[\s\S]*?\.combat-baseline-grid\s*\{[^}]*repeat\(2,minmax\(0,1fr\)\)/is)
 })

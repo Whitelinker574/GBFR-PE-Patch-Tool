@@ -18,6 +18,7 @@
 
 # Local browser and test output
 /.playwright-cli/
+/.qa-webview2/
 /.tmp-gocache-*/
 /output/
 
@@ -32,7 +33,7 @@
 *.vcxproj.user
 
 # Local maintainer work
-/tools/local/
+/tools/_local/
 
 # Visual Studio and C++ build artifacts
 /src_dll/.vs/

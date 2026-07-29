@@ -9,7 +9,7 @@ const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url
 test('loadout viewer consumes the shared page, card, control and empty-state primitives', () => {
   assert.match(viewer, /class="loadout-viewer ui-page is-wide ui-page-stack"/)
   assert.match(viewer, /class="section ui-card ui-panel"/)
-  assert.match(viewer, /class="action ui-btn/)
+  assert.match(viewer, /class="[^"]*ui-btn/)
   assert.match(viewer, /class="chara-chip ui-chip"/)
   assert.match(viewer, /class="empty ui-empty"/)
 })

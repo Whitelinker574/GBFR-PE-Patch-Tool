@@ -1,14 +1,17 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { LoadoutApplyWithResources, LoadoutCheckCompliance, LoadoutEditContext, LoadoutExport, LoadoutImport, LoadoutImportCode, LoadoutImportShortCode, LoadoutRuntimePanelStats, LoadoutShareCode, LoadoutSimulateBuild, LoadoutStatContext, MasteryNodePool, MasterySummarize, PublishLoadoutShare, PublishLoadoutShareNamed, SummonGetOptions } from '../../wailsjs/go/backend/App'
 import { GetSigilList, GetTraitList, GetCompatibleSecondaryTraits } from '../../wailsjs/go/backend/SigilGen'
 import { groupMasteryNodes, inferMasteryDirection, limitMasteryHashesByRankCaps, resolveMasteryHashes } from '../loadoutMastery'
 import { buildFactorWritePayload, clearFactorSlot, createFactorSlots, factorSlotCount, putBagFactor, putConstructedFactor } from '../loadoutFactorSlots'
+import { optimizerEquipmentDraft } from '../loadoutOptimizerApply.js'
 import { formatFinalStat, groupEffectTotals, summarizeTraitLevels } from '../loadoutFinalStats'
 import { resolveVirtualGridWindow } from '../loadoutVirtualGrid'
 import { buildConstructCatalog, collectBagTraitOptions, filterAndSortBagSigils, filterConstructCatalog, resolveConstructSelection } from '../loadoutCatalogFilters'
 import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import { compatibleLoadoutShareCode, isOfflineLoadoutShareCode } from '../loadoutShareCode'
+import { createOperationGate } from '../runtimeOperationGate.js'
+import { loadoutShareSessionKey, rememberPublishedLoadoutShare } from '../loadoutShareSession.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -21,6 +24,9 @@ const props = defineProps({
   charaName: { type: String, default: '' },
   loadouts: { type: Array, default: () => [] },
   pendingImportCode: { type: String, default: '' },
+  pendingAtlasConstruct: { type: Object, default: null },
+  pendingOptimizerPlan: { type: Object, default: null },
+  preferredUnitId: { type: Number, default: 0 },
 })
 const emit = defineEmits(['status', 'reload', 'import-consumed'])
 
@@ -41,6 +47,9 @@ const shareTitle = ref('')
 const sharePublishing = ref(false)
 const shareCodeError = ref('')
 const consumedPendingImportCode = ref('')
+const shareDialogGate = createOperationGate()
+let cachedPublishedShareCode = ''
+let cachedPublishedShare = null
 
 const targetSlot = ref(0)          // 目标预设槽 unitId
 const op = ref('write')            // write | clone | clear
@@ -80,6 +89,7 @@ const summonDrafts = ref({})
 const weaponInlineEnabled = ref(false)
 const weaponSkillDrafts = ref([])
 const finalStats = ref(null)
+const combatReference = ref(null)
 const simulationError = ref('')
 const selectedWeaponContext = ref(null)
 const runtimePanelStats = ref(null)
@@ -441,6 +451,13 @@ function defenseEvidenceLabel(value) {
     'battle-state-unavailable': '需要战斗状态',
   })[value] || value
 }
+function exactCurveValue(nodes, attackRate) {
+  const row = (nodes || []).find(item => Math.abs(Number(item.attackRate) - Number(attackRate)) < 0.000001)
+  return row ? formatStatNumber(row.damageCap) : '—'
+}
+function curveLabel(name) {
+  return ({ enmity: '背水', enmity2: '超级背水', garrison: '坚守', stamina: '奋勇', stamina2: '超级奋勇', sturdy: '刚健', linktime: 'Link Time' })[name] || name
+}
 async function readRuntimePanel(silent = false) {
   if (!props.charaHash || runtimePanelLoading.value) return
   runtimePanelLoading.value = true
@@ -458,8 +475,20 @@ async function readRuntimePanel(silent = false) {
 }
 function stopRuntimePanelLive() {
   runtimePanelLive.value = false
+  pauseRuntimePanelLive()
+}
+function pauseRuntimePanelLive() {
   clearInterval(runtimePanelTimer)
   runtimePanelTimer = 0
+}
+function scheduleRuntimePanelLive() {
+  if (!runtimePanelLive.value || runtimePanelTimer) return
+  runtimePanelTimer = window.setInterval(() => readRuntimePanel(true), 900)
+}
+async function resumeRuntimePanelLive() {
+  if (!runtimePanelLive.value || runtimePanelTimer) return
+  await readRuntimePanel(true)
+  scheduleRuntimePanelLive()
 }
 async function toggleRuntimePanelLive() {
   if (runtimePanelLive.value) {
@@ -468,8 +497,7 @@ async function toggleRuntimePanelLive() {
   }
   runtimePanelLive.value = true
   await readRuntimePanel(false)
-  if (!runtimePanelLive.value) return
-  runtimePanelTimer = window.setInterval(() => readRuntimePanel(true), 900)
+  scheduleRuntimePanelLive()
 }
 function summonOptionLabel(summon) {
   const main = summon.mainTraitName ? `${summon.mainTraitName} Lv${summon.mainTraitLevel}` : '无主词条'
@@ -500,18 +528,24 @@ function onConstructSecondaryPick(trait) {
   constructSecondaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
 }
 
+let constructCatalogPromise = null
 async function loadConstructCatalog() {
-  if (constructCatalog.value.length || constructLoading.value) return
+  if (constructCatalog.value.length) return
+  if (constructCatalogPromise) return constructCatalogPromise
   constructLoading.value = true
-  try {
-    ;[constructCatalog.value, constructTraits.value] = await Promise.all([GetSigilList(), GetTraitList()])
-    const first = fullConstructCatalog.value.find(item => item.allowedSigilLevels?.length && item.allowedFirstTraitLevels?.length)
-    if (first) constructSigilId.value = first.internalId
-  } catch (err) {
-    emit('status', String(err), 'error')
-  } finally {
-    constructLoading.value = false
-  }
+  constructCatalogPromise = (async () => {
+    try {
+      ;[constructCatalog.value, constructTraits.value] = await Promise.all([GetSigilList(), GetTraitList()])
+      const first = fullConstructCatalog.value.find(item => item.allowedSigilLevels?.length && item.allowedFirstTraitLevels?.length)
+      if (first) constructSigilId.value = first.internalId
+    } catch (err) {
+      emit('status', String(err), 'error')
+    } finally {
+      constructLoading.value = false
+      constructCatalogPromise = null
+    }
+  })()
+  return constructCatalogPromise
 }
 
 watch(factorMode, value => { if (value === 'construct') loadConstructCatalog() }, { immediate: true })
@@ -524,6 +558,43 @@ watch(filteredConstructCatalog, matches => {
   constructSigilId.value = resolveConstructSelection(matches, constructSigilId.value, constructSearch.value)
 })
 let pendingConstructRestore = null
+let handledAtlasConstructRequest = 0
+async function consumePendingAtlasConstruct() {
+  const payload = props.pendingAtlasConstruct
+  const requestId = Number(payload?.requestId || 0)
+  if (!requestId || requestId === handledAtlasConstructRequest) return
+  factorMode.value = 'construct'
+  await loadConstructCatalog()
+  const sigil = fullConstructCatalog.value.find(item => item.internalId === payload.sigilId)
+  if (!sigil) {
+    handledAtlasConstructRequest = requestId
+    emit('status', '图鉴中的因子外壳不在当前构造目录中', 'error')
+    return
+  }
+  const secondary = constructTraits.value.find(item => item.internalId === payload.secondaryTraitId)
+  pendingConstructRestore = {
+    sigilId: sigil.internalId,
+    level: highestAllowed(sigil.allowedSigilLevels, sigil.defaultSigilLevel || 0),
+    primaryTraitId: payload.primaryTraitId || sigil.primaryTraitId,
+    primaryLevel: highestAllowed(sigil.allowedFirstTraitLevels, sigil.firstTraitMaxLevel || 0),
+    secondaryTraitId: secondary?.internalId || '',
+    secondaryLevel: secondary ? Math.min(15, constructTraitWritableMax(secondary)) : 0,
+  }
+  handledAtlasConstructRequest = requestId
+  if (constructSigilId.value === sigil.internalId) {
+    const restore = pendingConstructRestore
+    constructSigilLevel.value = restore.level
+    constructPrimaryId.value = restore.primaryTraitId
+    constructPrimaryLevel.value = restore.primaryLevel
+    constructSecondaryId.value = restore.secondaryTraitId
+    constructSecondaryLevel.value = restore.secondaryLevel
+    pendingConstructRestore = null
+  } else {
+    constructSigilId.value = sigil.internalId
+  }
+  emit('status', '已从因子图鉴预填构造器，请确认槽位与等级后保存', 'success')
+}
+watch(() => props.pendingAtlasConstruct?.requestId, consumePendingAtlasConstruct, { immediate: true })
 let constructCompatibilityTicket = 0
 watch(constructSigilId, async value => {
   const ticket = ++constructCompatibilityTicket
@@ -710,46 +781,70 @@ const loadContextRevision = ref(0)
 let simTimer = null
 let masteryTimer = null
 let simRequestId = 0
+let simInFlight = false
+let pendingSimulation = null
 function clearSimulationResult() {
   bonuses.value = []
   dynamicTotals.value = []
   finalStats.value = null
+  combatReference.value = null
   selectedWeaponContext.value = null
 }
 function refreshSim() {
   clearTimeout(simTimer)
-  simTimer = setTimeout(async () => {
-    const requestId = ++simRequestId
+  const requestId = ++simRequestId
+  simTimer = setTimeout(() => {
     const payload = buildFactorWritePayload(factorSlots.value)
     if (!props.savePath) {
       simulationError.value = ''
       clearSimulationResult()
       return
     }
-    simulating.value = true
-    simulationError.value = ''
+    pendingSimulation = {
+      requestId,
+      savePath: props.savePath,
+      charaHash: props.charaHash,
+      weaponSlotId: form.value.weaponSlotId,
+      sigilSlotIds: payload.sigilSlotIds,
+      constructedSigils: payload.constructedSigils,
+      masteryHashes: selectedMasteryHashes.value.slice(),
+      summonSlotIDs: backendSummonSlotIDs(),
+    }
+    void drainSimulations()
+  }, 180)
+}
+async function drainSimulations() {
+  if (simInFlight) return
+  simInFlight = true
+  simulating.value = true
+  while (pendingSimulation) {
+    const request = pendingSimulation
+    pendingSimulation = null
+    if (request.requestId === simRequestId) simulationError.value = ''
     try {
       const result = await LoadoutSimulateBuild(
-        props.savePath,
-        props.charaHash,
-        form.value.weaponSlotId,
-        payload.sigilSlotIds,
-        payload.constructedSigils,
-        selectedMasteryHashes.value.slice(),
-        backendSummonSlotIDs(),
+        request.savePath,
+        request.charaHash,
+        request.weaponSlotId,
+        request.sigilSlotIds,
+        request.constructedSigils,
+        request.masteryHashes,
+        request.summonSlotIDs,
       )
-      if (requestId !== simRequestId) return
+      if (request.requestId !== simRequestId) continue
       bonuses.value = result?.bonuses || []
       dynamicTotals.value = result?.dynamicTotals || result?.totals || []
       finalStats.value = result?.finalStats || null
+      combatReference.value = result?.combatReference || null
       selectedWeaponContext.value = result?.weapon || null
     } catch (error) {
-      if (requestId !== simRequestId) return
+      if (request.requestId !== simRequestId) continue
       clearSimulationResult()
       simulationError.value = `配装计算失败：${String(error)}`
     }
-    finally { if (requestId === simRequestId) simulating.value = false }
-  }, 180)
+  }
+  simInFlight = false
+  simulating.value = false
 }
 const simulationInputKey = computed(() => {
   const payload = buildFactorWritePayload(factorSlots.value)
@@ -830,10 +925,106 @@ function selectImportTarget(unitId) {
   hydrateFromTarget({ preserveImport: true })
 }
 
+let handledOptimizerPlanRequest = 0
+function stageOptimizerPlan(payload) {
+  const picked = payload?.result?.picked || []
+  if (!ctx.value) return false
+  const equipment = optimizerEquipmentDraft(payload?.result)
+  let equipmentApplied = false
+  if (equipment.weaponSlotId && (ctx.value.weapons || []).some(item => Number(item.slotId) === equipment.weaponSlotId)) {
+    form.value.weaponSlotId = equipment.weaponSlotId
+    importedWeaponSkillSnapshot.value = equipment.weaponSkillHashes.length === 5 ? equipment.weaponSkillHashes.slice() : []
+    equipmentApplied = true
+  }
+  if (equipment.summonSlotIds.length === 4 && equipment.summonSlotIds.every(slotId => (statContext.value.summons || []).some(item => Number(item.slotId) === slotId))) {
+    summonSlotIds.value = equipment.summonSlotIds.slice()
+    writeGlobalSummons.value = true
+    equipmentApplied = true
+  }
+  if (equipment.masteryHashes.length) {
+    masteryMode.value = 'free'
+    setMasteryHashes(equipment.masteryHashes)
+    importedMasterySnapshot.value = equipment.masteryHashes.slice()
+    if (equipment.masteryUnitId && masterySources.value.some(item => Number(item.unitId) === equipment.masteryUnitId)) {
+      form.value.masterySource = equipment.masteryUnitId
+    }
+    equipmentApplied = true
+  }
+  if (!picked.length) return equipmentApplied
+  const baseSlots = [...factorSlots.value]
+  let next = createFactorSlots()
+  let cursor = 0
+  let appliedCandidates = 0
+  for (const candidate of picked.slice(0, 12)) {
+    if (candidate.source === 'inventory') {
+      const slotId = Number(candidate.slotId || 0)
+      if (!slotId || !(ctx.value.sigils || []).some(item => Number(item.slotId) === slotId)) continue
+      next = putBagFactor(next, cursor++, slotId)
+      appliedCandidates++
+      continue
+    }
+    if (!candidate.sigilId || !candidate.primaryTraitId) continue
+    const item = {
+      sigilId: candidate.sigilId,
+      sigilName: candidate.name || '因子',
+      level: Number(candidate.sigilLevel || 0),
+      primaryTraitId: candidate.primaryTraitId,
+      primaryTraitName: candidate.primaryTraitName || candidate.traits?.[0]?.name || '',
+      primaryLevel: Number(candidate.primaryLevel || candidate.traits?.[0]?.level || 0),
+      secondaryTraitId: candidate.secondaryTraitId || '',
+      secondaryTraitName: candidate.secondaryTraitName || candidate.traits?.[1]?.name || '',
+      secondaryLevel: Number(candidate.secondaryLevel || candidate.traits?.[1]?.level || 0),
+      quantity: 1,
+    }
+    next = putConstructedFactor(next, cursor++, item, {
+      name: item.sigilName,
+      level: item.level,
+      primaryTraitId: item.primaryTraitId,
+      primaryTraitHash: candidate.exactPrimaryTraitHash || '',
+      primaryTraitName: item.primaryTraitName,
+      primaryTraitLevel: item.primaryLevel,
+      secondaryTraitId: item.secondaryTraitId,
+      secondaryTraitHash: candidate.exactSecondaryTraitHash || '',
+      secondaryTraitName: item.secondaryTraitName,
+      secondaryTraitLevel: item.secondaryLevel,
+    }, {
+      exactSigilHash: candidate.exactSigilHash || '',
+      exactPrimaryTraitHash: candidate.exactPrimaryTraitHash || '',
+      exactSecondaryTraitHash: candidate.exactSecondaryTraitHash || '',
+    })
+    appliedCandidates++
+  }
+  if (!appliedCandidates) return equipmentApplied
+  const usedBag = new Set(next.filter(entry => entry?.kind === 'bag').map(entry => Number(entry.slotId)))
+  for (const entry of baseSlots) {
+    if (cursor >= 12) break
+    if (!entry || (entry.kind === 'bag' && usedBag.has(Number(entry.slotId)))) continue
+    next[cursor++] = entry
+    if (entry.kind === 'bag') usedBag.add(Number(entry.slotId))
+  }
+  factorSlots.value = next
+  activeFactorIndex.value = 0
+  op.value = 'write'
+  factorMode.value = payload.domain === 'catalog' || payload.domain === 'table' || payload.domain === 'table-exact' ? 'construct' : 'bag'
+  return true
+}
+function consumePendingOptimizerPlan() {
+  const payload = props.pendingOptimizerPlan
+  const requestId = Number(payload?.requestId || 0)
+  if (!requestId || requestId === handledOptimizerPlanRequest || !ctx.value) return
+  const requestedTarget = Number(payload.targetUnitId || props.preferredUnitId || 0)
+  if (requestedTarget && slots.value.some(slot => Number(slot.unitId) === requestedTarget)) targetSlot.value = requestedTarget
+  hydrateFromTarget()
+  handledOptimizerPlanRequest = requestId
+  if (stageOptimizerPlan(payload)) emit('status', '优化方案已载入当前角色配装草稿；请核对武器、祝福、召唤石、专精、因子和目标槽后保存', 'success')
+  else emit('status', '优化方案没有可用于当前存档的装备或因子', 'error')
+}
+
 async function loadCtx() {
 	simRequestId++
 	clearTimeout(simTimer)
 	clearSimulationResult()
+	pendingSimulation = null
 	stopRuntimePanelLive()
 	simulating.value = false
   runtimePanelStats.value = null
@@ -864,11 +1055,13 @@ async function loadCtx() {
       (b.mastery?.length || 0) - (a.mastery?.length || 0) || (b.sigils?.length || 0) - (a.sigils?.length || 0)
     )[0]
     const empty = ctx.value.slots.find(s => !s.occupied)
-    targetSlot.value = richest?.unitId || (empty || ctx.value.slots[0])?.unitId || 0
+    const preferred = props.loadouts.find(item => Number(item.unitId) === Number(props.preferredUnitId))
+    targetSlot.value = preferred?.unitId || richest?.unitId || (empty || ctx.value.slots[0])?.unitId || 0
     if (occupiedSlots.value.length) cloneFrom.value = occupiedSlots.value[0].unitId
     if (masterySources.value.length) form.value.masterySource = masterySources.value[0].unitId
     hydrateFromTarget()
     loadContextRevision.value += 1
+    consumePendingOptimizerPlan()
     void readRuntimePanel(true)
   } catch (err) {
     emit('status', String(err), 'error')
@@ -878,6 +1071,11 @@ async function loadCtx() {
 }
 
 watch(() => [props.savePath, props.charaHash], loadCtx, { immediate: true })
+watch(() => props.pendingOptimizerPlan?.requestId, consumePendingOptimizerPlan)
+watch(() => props.preferredUnitId, value => {
+  const unitId = Number(value || 0)
+  if (ctx.value && unitId && slots.value.some(slot => Number(slot.unitId) === unitId)) selectTarget(unitId)
+})
 watch(() => props.loadouts, (next, previous) => {
   if (next !== previous && props.savePath && props.charaHash) loadCtx()
 })
@@ -899,6 +1097,8 @@ onMounted(() => {
   })
   if (bagViewport.value) bagResizeObserver.observe(bagViewport.value)
 })
+onDeactivated(pauseRuntimePanelLive)
+onActivated(resumeRuntimePanelLive)
 
 function selectFactorSlot(index) {
   activeFactorIndex.value = index
@@ -1029,7 +1229,7 @@ const writeInvalid = computed(() => {
     || (writeGlobalSummons.value && !summonSelectionValid.value)
 })
 
-onBeforeUnmount(() => { simRequestId++; bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer); stopRuntimePanelLive() })
+onBeforeUnmount(() => { simRequestId++; pendingSimulation = null; shareDialogGate.invalidate(); bagResizeObserver?.disconnect(); clearTimeout(simTimer); clearTimeout(masteryTimer); stopRuntimePanelLive() })
 
 function opLabel() {
   return op.value === 'write' ? '写入' : op.value === 'clone' ? '克隆' : '清空'
@@ -1070,6 +1270,7 @@ async function importLoadout() {
 }
 
 function openShareCodeDialog() {
+  shareDialogGate.invalidate()
   shareCodeResult.value = null
   publishedShare.value = null
   shareCodeError.value = ''
@@ -1077,35 +1278,68 @@ function openShareCodeDialog() {
   shareCodeOpen.value = true
 }
 
+function closeShareCodeDialog() {
+  shareCodeOpen.value = false
+  shareDialogGate.invalidate()
+  shareCodeError.value = ''
+}
+
 async function generateShareCode() {
   if (!selectedLoadout.value || selectedLoadout.value.isParty || sharing.value) return
+  const operation = shareDialogGate.begin('generate')
+  if (!operation) return
+  const unitID = selectedLoadout.value.unitId
   sharing.value = true
   shareCodeError.value = ''
   let generated = false
+  let generatedResult = null
   try {
-    shareCodeResult.value = await LoadoutShareCode(props.savePath, selectedLoadout.value.unitId)
+    generatedResult = await LoadoutShareCode(props.savePath, unitID)
+    if (!shareCodeOpen.value || !shareDialogGate.isCurrent(operation)) return
+    shareCodeResult.value = generatedResult
     publishedShare.value = null
     generated = true
   } catch (err) {
-    shareCodeError.value = String(err)
+    if (shareCodeOpen.value && shareDialogGate.isCurrent(operation)) shareCodeError.value = String(err)
   } finally {
     sharing.value = false
+    shareDialogGate.finish(operation)
   }
-  if (generated && shareAutoPublish.value) await publishShareCode()
+  if (generated && shareCodeOpen.value && shareAutoPublish.value) await publishShareCode(generatedResult)
 }
 
-async function publishShareCode() {
-  if (!selectedLoadout.value || selectedLoadout.value.isParty || sharing.value || sharePublishing.value) return
+async function publishShareCode(result = shareCodeResult.value) {
+  if (!shareCodeOpen.value || !result?.compatibilityCode || !selectedLoadout.value || selectedLoadout.value.isParty || sharing.value || sharePublishing.value) return
+  if (cachedPublishedShareCode === result.compatibilityCode && cachedPublishedShare) {
+    publishedShare.value = cachedPublishedShare
+    return
+  }
+  const operation = shareDialogGate.begin('publish')
+  if (!operation) return
+  const unitID = selectedLoadout.value.unitId
+  const title = shareTitle.value.trim()
   sharePublishing.value = true
   shareCodeError.value = ''
   try {
-    publishedShare.value = shareTitle.value.trim()
-      ? await PublishLoadoutShareNamed(props.savePath, selectedLoadout.value.unitId, shareTitle.value.trim())
-      : await PublishLoadoutShare(props.savePath, selectedLoadout.value.unitId)
+    const published = title
+      ? await PublishLoadoutShareNamed(props.savePath, unitID, title)
+      : await PublishLoadoutShare(props.savePath, unitID)
+    cachedPublishedShareCode = result.compatibilityCode
+    cachedPublishedShare = published
+    rememberPublishedLoadoutShare(loadoutShareSessionKey({
+      savePath: props.savePath,
+      charaHash: props.charaHash,
+      unitId: unitID,
+    }), published)
+    rememberPublishedLoadoutShare(loadoutShareSessionKey({ compatibilityCode: result.compatibilityCode }), published)
+    if (shareCodeOpen.value && shareDialogGate.isCurrent(operation) && shareCodeResult.value?.compatibilityCode === result.compatibilityCode) {
+      publishedShare.value = published
+    }
   } catch (err) {
-    shareCodeError.value = String(err)
+    if (shareCodeOpen.value && shareDialogGate.isCurrent(operation)) shareCodeError.value = String(err)
   } finally {
     sharePublishing.value = false
+    shareDialogGate.finish(operation)
   }
 }
 
@@ -1410,6 +1644,27 @@ async function apply() {
             <span><small>奥义伤害上限</small><b>{{ formatFinalStat(finalStats?.skyboundDamageCap, 'signedPct') }}</b></span>
             <span><small>奥义连锁上限</small><b>{{ formatFinalStat(finalStats?.chainDamageCap, 'signedPct') }}</b></span>
           </div>
+          <details v-if="combatReference" class="combat-reference ui-disclosure">
+            <summary>2.0.2 解包战斗基线与原始曲线</summary>
+            <p class="combat-reference-note"><b>{{ combatReference.characterCode || '角色未识别' }}</b>{{ combatReference.evidence }}</p>
+            <div class="combat-baseline-grid" aria-label="全局伤害类型基线">
+              <span><small>普通类型基线</small><b>{{ formatStatNumber(combatReference.damageCalculate?.atkTypeDamageLimit_Normal) }}</b></span>
+              <span><small>能力类型基线</small><b>{{ formatStatNumber(combatReference.damageCalculate?.atkTypeDamageLimit_Ability) }}</b></span>
+              <span><small>奥义类型基线</small><b>{{ formatStatNumber(combatReference.damageCalculate?.atkTypeDamageLimit_SpArts) }}</b></span>
+              <span><small>奥义连锁基线</small><b>{{ formatStatNumber(combatReference.damageCalculate?.chainBurstDamageLimit) }}</b></span>
+              <span><small>当前角色普通表 @1.0</small><b>{{ exactCurveValue(combatReference.normalCurve, 1) }}</b></span>
+              <span><small>当前角色 Arts 表 @1.0</small><b>{{ exactCurveValue(combatReference.artsCurve, 1) }}</b></span>
+              <span><small>精准格挡窗口</small><b>{{ formatStatNumber(combatReference.guard?.JustGuardAcceptFrame) }} 帧</b></span>
+              <span><small>格挡槽 / 崩溃恢复</small><b>{{ formatStatNumber(combatReference.guard?.GuardGageMax) }} / {{ formatStatNumber(combatReference.guard?.GuardBreakSec) }} 秒</b></span>
+            </div>
+            <p class="combat-reference-warning">全局类型值是解包基线，不是每个招式的最终绝对上限。{{ combatReference.interpolationNote }}</p>
+            <details class="raw-combat-curves">
+              <summary>查看当前角色与 HP 条件曲线原始节点</summary>
+              <div v-if="combatReference.normalCurve?.length" class="raw-curve-row"><b>普通表</b><code v-for="row in combatReference.normalCurve" :key="`normal-${row.attackRate}`">{{ row.attackRate }}→{{ row.damageCap }}</code></div>
+              <div v-if="combatReference.artsCurve?.length" class="raw-curve-row"><b>Arts 表</b><code v-for="row in combatReference.artsCurve" :key="`arts-${row.attackRate}`">{{ row.attackRate }}→{{ row.damageCap }}</code></div>
+              <div v-for="(rows, name) in combatReference.conditionalCurves" :key="name" class="raw-curve-row"><b>{{ curveLabel(name) }}</b><code v-for="row in rows" :key="`${name}-${row.x}`">{{ row.interpolation }} {{ row.x }}→{{ row.y }}</code></div>
+            </details>
+          </details>
           <section v-if="finalStats?.defenseModel?.zones" class="defense-model" aria-label="防御分区计算">
             <header><b>防御分区</b><span>{{ finalStats.defenseModel.formula }} · 满血静态参考</span></header>
             <div class="defense-zone-grid">
@@ -1908,7 +2163,7 @@ async function apply() {
       :error="shareCodeError"
       :can-generate="!!selectedLoadout && !selectedLoadout.isParty"
       :selected-name="selectedLoadout?.name || ''"
-      @close="shareCodeOpen = false"
+      @close="closeShareCodeDialog"
       @generate="generateShareCode"
       @publish="publishShareCode"
       @import="importShareCode"
@@ -1998,6 +2253,19 @@ async function apply() {
 .cap-detail-grid > span { min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:2px; padding:5px 4px; border:1px solid rgba(162,63,101,.16); border-radius:5px; background:rgba(162,63,101,.045); text-align:center; }
 .cap-detail-grid small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.3; }
 .cap-detail-grid b { color:#a23f65; font-size:calc(11px * var(--editor-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.combat-reference { min-width:0; }
+.combat-reference-note,.combat-reference-warning { margin:5px 0; color:var(--text-muted); font-size:var(--fs-xs); line-height:1.55; }
+.combat-reference-note b { margin-right:var(--space-2); color:var(--text-primary); font-family:var(--font-data); }
+.combat-reference-warning { padding-left:var(--space-3); border-left:3px solid var(--warning); color:var(--warning-ink); }
+.combat-baseline-grid { min-width:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--line-soft); }
+.combat-baseline-grid > span { min-width:0; display:grid; gap:2px; padding:var(--space-2) var(--space-3); background:var(--surface-soft); }
+.combat-baseline-grid small { overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--fs-xs); }
+.combat-baseline-grid b { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-sm); }
+.raw-combat-curves { min-width:0; border-top:1px solid var(--line-soft); }
+.raw-combat-curves > summary { cursor:pointer; color:var(--text-secondary); font-size:var(--fs-xs); }
+.raw-curve-row { min-width:0; display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line-soft); }
+.raw-curve-row b { flex:0 0 72px; color:var(--text-secondary); font-size:var(--fs-xs); }
+.raw-curve-row code { padding:2px 4px; background:var(--surface-soft); color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
 .defense-scope-note { margin:5px 0 0; padding:5px 7px; border-left:2px solid #5f8067; background:rgba(95,128,103,.06); color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
 .defense-scope-note b { margin-right:.4em; color:#466a51; font-weight:700; }
 .defense-model { display:grid; gap:5px; margin-top:6px; }
@@ -2398,6 +2666,7 @@ async function apply() {
   .result-sidebar { grid-column:auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @container loadout-editor (max-width:760px) {
+  .combat-baseline-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .mastery-groups, .result-sidebar { grid-template-columns:1fr; }
   .bag-filter-row { grid-template-columns:1fr; }
   .weapon-skill-edit-row { grid-template-columns:1fr; }

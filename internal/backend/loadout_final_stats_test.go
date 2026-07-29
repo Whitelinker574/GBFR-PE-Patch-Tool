@@ -221,10 +221,10 @@ func TestCalculateLoadoutFinalStatsSeparatesDefenseMultiplicativeZones(t *testin
 	for _, zone := range got.DefenseModel.Zones {
 		zones[zone.Key] = zone
 	}
-	if zones["common"].Reduction != 30 || zones["stout-heart"].Reduction != 25 || zones["stronghold"].Reduction != 23.5 {
+	if zones["common"].Reduction != 20 || zones["gray-white-shield"].Reduction != 10 || zones["stout-heart"].Reduction != 25 || zones["stronghold"].Reduction != 23.5 {
 		t.Fatalf("defense zones were merged incorrectly: %+v", got.DefenseModel)
 	}
-	want := (1 - 0.30) * (1 - 0.25) * (1 - 0.235) * 100
+	want := (1 - 0.20) * (1 - 0.25) * (1 - 0.235) * (1 - 0.10) * 100
 	if math.Abs(got.DefenseModel.IncomingRate-want) > 1e-9 || math.Abs(got.DamageTakenRate-want) > 1e-9 {
 		t.Fatalf("multiplicative defense rate=%g/%g, want %g: %+v", got.DefenseModel.IncomingRate, got.DamageTakenRate, want, got.DefenseModel)
 	}
@@ -255,7 +255,7 @@ func TestDefenseZonesUseReal202TraitRows(t *testing.T) {
 	for _, zone := range got.DefenseModel.Zones {
 		zones[zone.Key] = zone
 	}
-	if zones["common"].Reduction != 25 || zones["stronghold"].Reduction != 23.5 || zones["stout-heart"].Reduction != 25 {
+	if zones["common"].Reduction != 15 || zones["gray-white-shield"].Reduction != 10 || zones["stronghold"].Reduction != 23.5 || zones["stout-heart"].Reduction != 25 {
 		t.Fatalf("real 2.0.2 trait rows did not feed defense zones: bonuses=%+v zones=%+v", bonuses, zones)
 	}
 	if zones["garrison"].Included || !strings.Contains(zones["garrison"].Condition, "已装备坚守") {

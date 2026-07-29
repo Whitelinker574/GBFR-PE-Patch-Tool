@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { FindSaveFiles, GetQuests, LoadSave, UpdateQuestCounts } from '../../wailsjs/go/backend/App'
 import BadgeUnlock from './BadgeUnlock.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 const slots = ref([])
@@ -25,12 +26,6 @@ const visibleQuests = computed(() => {
 const allVisibleSelected = computed(() => visibleQuests.value.length > 0 && visibleQuests.value.every(q => selected.value.has(q.index)))
 
 async function scanSaves() { slots.value = await FindSaveFiles() || [] }
-
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
-}
 
 async function load(path) {
   const epoch = ++loadEpoch
@@ -93,10 +88,17 @@ scanSaves()
 
 <template>
   <div class="root">
-    <div class="slots">
-      <button v-for="s in slots" :key="s.index" class="slot-btn ui-btn is-sm" :class="{ on: savePath === s.path }" @click="load(s.path)">{{ saveSlotLabel(s) }}</button>
-      <button class="plain-btn ui-btn is-sm" @click="scanSaves">刷新</button>
-    </div>
+    <SaveSourcePicker
+      v-model="savePath"
+      :slots="slots"
+      :busy="loading || saving"
+      :loaded="!!savePath && !loading"
+      :summary="quests.length ? `已加载 · ${quests.length} 个任务` : ''"
+      helper="选择要修改任务或称号记录的存档"
+      action-label="刷新存档列表"
+      @select="load"
+      @browse="scanSaves"
+    />
 
     <nav class="record-tabs" role="tablist" aria-label="记录类型">
       <button type="button" class="ui-tab" role="tab" :aria-selected="activeMode === 'quests'" :class="{ active: activeMode === 'quests' }" @click="activeMode = 'quests'">任务完成次数</button>
@@ -146,20 +148,8 @@ scanSaves()
   color:var(--text-secondary);
   container-type:inline-size;
 }
-.slots {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  justify-content:center;
-  gap:var(--space-2);
-}
 .record-tabs { display:flex; justify-content:center; gap:var(--space-2); }
 .record-tabs .ui-tab { min-width:132px; }
-.slot-btn.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
 .quests {
   min-width:0;
   min-height:0;

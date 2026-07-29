@@ -7,6 +7,7 @@ type LoadoutPreviewStats struct {
 	Slot             int                `json:"slot"`
 	IsParty          bool               `json:"isParty"`
 	FinalStats       *LoadoutFinalStats `json:"finalStats,omitempty"`
+	CombinedSkills   []TraitBonus       `json:"combinedSkills,omitempty"`
 	RuntimeBaseline  bool               `json:"runtimeBaseline"`
 	BaselineEvidence string             `json:"baselineEvidence,omitempty"`
 	Error            string             `json:"error,omitempty"`
@@ -73,6 +74,7 @@ func (a *App) LoadoutPreviewList(path, charaHex string) ([]LoadoutPreviewStats, 
 			entry.Error = simulationErr.Error()
 		} else {
 			entry.FinalStats = simulation.FinalStats
+			entry.CombinedSkills = simulation.Bonuses
 		}
 		result = append(result, entry)
 	}

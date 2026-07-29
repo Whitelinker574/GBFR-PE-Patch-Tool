@@ -267,6 +267,7 @@ func previewForRuntimeLoadout(share *LoadoutShare, candidate RuntimePatchPartyLo
 		}
 		preview.Wrightstone = wrightstone
 	}
+	setPreviewCombinedSkills(preview, runtimePatchPartyCombinedSkills(normalizedCandidate))
 	return preview
 }
 
@@ -496,6 +497,12 @@ func runtimePatchPartyCombinedSkills(candidate RuntimePatchPartyLoadout) []Trait
 		}
 		share.Weapon = &LoadoutShareWeaponState{Wrightstone: wrightstone}
 	}
+	for _, skill := range candidate.Weapon.Skills {
+		if runtimePatchPartyEmptyHash(skill.Hash) || skill.Level == 0 {
+			continue
+		}
+		share.WeaponSkillHashes = append(share.WeaponSkillHashes, skill.HashHex)
+	}
 	for _, summon := range candidate.Summons {
 		share.Summons = append(share.Summons, LoadoutShareSummon{
 			TypeHash: summon.TypeHashHex, Name: summon.Name,
@@ -507,7 +514,37 @@ func runtimePatchPartyCombinedSkills(candidate RuntimePatchPartyLoadout) []Trait
 	if simulation == nil {
 		return nil
 	}
-	return simulation.Bonuses
+	bonuses := append([]TraitBonus(nil), simulation.Bonuses...)
+	if candidate.MasteryAvailable && len(candidate.Mastery) > 0 {
+		nodes := make([]string, 0, len(candidate.Mastery))
+		for _, node := range candidate.Mastery {
+			if strings.TrimSpace(node.Hash) != "" && !strings.EqualFold(node.Hash, hashText(EmptyHash)) {
+				nodes = append(nodes, node.Hash)
+			}
+		}
+		factorCounts := loadoutFactorCategoryCounts{}
+		if cat, catalogErr := LoadCatalog(); catalogErr == nil {
+			primaryHashes := make([]uint32, 0, len(candidate.Sigils))
+			for _, sigil := range candidate.Sigils {
+				if !runtimePatchPartyEmptyHash(sigil.PrimaryTraitHash) {
+					primaryHashes = append(primaryHashes, sigil.PrimaryTraitHash)
+				}
+			}
+			factorCounts = loadoutPrimaryFactorCategoryCounts(cat, primaryHashes)
+		}
+		if mastery, masteryErr := loadoutMasteryPanelBonuses(candidate.CharacterCode, nodes, factorCounts); masteryErr == nil {
+			for _, panel := range mastery {
+				bonuses = append(bonuses, TraitBonus{
+					TraitID: "MASTERY:" + panel.Label + ":" + panel.Source,
+					Name:    panel.Label, Level: 1, RawLevel: 1, MaxLevel: 1,
+					Effect:     fmt.Sprintf("%s %+g%s", panel.Label, panel.Value, panel.Unit),
+					Components: []BonusComponent{{Label: panel.Label, Unit: panel.Unit, Value: panel.Value, Additive: true}},
+					Sources:    []string{runtimePatchMonitorText("专精", "Mastery") + " · " + panel.Source},
+				})
+			}
+		}
+	}
+	return bonuses
 }
 
 func (a *App) runtimePatchPartyLoadoutShareAndCandidateOwned(token, role, title string) (*LoadoutShare, *RuntimePatchPartyLoadout, error) {

@@ -84,15 +84,23 @@ function validSelectedStatus() {
   }
 }
 
-test('party monitoring exposes persistent quest history as the primary workflow', () => {
-  assert.equal(view.runtimeMonitorText('tabParty', 'zh'), '任务配装记录')
+test('party monitoring exposes persistent stable-party history as the primary workflow', () => {
+  assert.equal(view.runtimeMonitorText('tabParty', 'zh'), '队伍配装记录')
   assert.match(component, /<RuntimeLoadoutDetector/)
   assert.match(detector, /开启后台检测/)
   assert.match(detector, /EventsOn\(DETECTOR_STATUS_EVENT/)
   assert.doesNotMatch(detector, /setInterval|pollTimer/)
-  for (const action of ['copy', 'export', 'publish', 'deploy']) {
+  for (const action of ['copy', 'export', 'deploy']) {
     assert.match(detector, new RegExp(`runAction\\(preview\\.record, preview\\.member, '${action}'\\)`))
   }
+  assert.match(detector, /openRuntimePublish\(preview\.record, preview\.member\)/)
+  assert.match(detector, /<LoadoutPublishDialog[\s\S]*@close="closeRuntimePublish"[\s\S]*@submit="publishRuntimeTarget"/)
+})
+
+test('party detector copy does not claim exact quest boundaries', () => {
+  assert.doesNotMatch(detector, /每场任务|every quest|Quest Loadout History|本场已保存/)
+  assert.match(detector, /稳定队伍|Stable Party/)
+  assert.match(detector, /不承诺等同游戏任务边界/)
 })
 
 test('party snapshots accept only the verified five-entity 2.0.2 contract', () => {
@@ -234,6 +242,46 @@ test('party snapshots reject stale ownership, changed process identity, and inco
       /party|owner|process|verified|snapshot|entities|role/i,
     )
   }
+})
+
+test('spatial teleport results stay bound to the owner, process, and exact 2.0.2 contract', () => {
+  const result = view.normalizeRuntimeSpatialTeleport({
+    ownerToken,
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    before: { x: 1, y: 2, z: 3 },
+    requested: { x: 4, y: 5, z: 6 },
+    observed: { x: 4, y: 5, z: 6 },
+    gameVersion: '2.0.2',
+    source: 'game_runtime_spatial_2.0.2',
+    snapshotCount: 3,
+    runtimeVerified: true,
+  }, ownerToken, processInfo.pid)
+  assert.deepEqual(result.observed, { x: 4, y: 5, z: 6 })
+  assert.throws(() => view.normalizeRuntimeSpatialTeleport({ ...result, ownerToken: 'stale' }, ownerToken, processInfo.pid), /owner/i)
+  assert.throws(() => view.normalizeRuntimeSpatialTeleport({ ...result, runtimeVerified: false }, ownerToken, processInfo.pid), /verified/i)
+  assert.doesNotThrow(() => view.normalizeRuntimeSpatialTeleport({ ...result, source: 'game_runtime_spatial_continuous_2.0.2' }, ownerToken, processInfo.pid))
+})
+
+test('gravity status accepts only the owned verified 2.0.2 entry and matching instruction bytes', () => {
+  const status = view.normalizeRuntimeSpatialGravityStatus({
+    ownerToken,
+    enabled: true,
+    available: true,
+    owned: true,
+    recoveryPending: false,
+    address: 0x179DD964,
+    rva: 0x39DD964,
+    currentBytes: '90 90 90 90 90 90 90 90',
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    gameVersion: '2.0.2',
+    source: 'game_runtime_gravity_patch_2.0.2',
+    error: '',
+  }, ownerToken, processInfo.pid)
+  assert.equal(status.enabled, true)
+  assert.throws(() => view.normalizeRuntimeSpatialGravityStatus({ ...status, rva: 1 }, ownerToken, processInfo.pid), /RVA/i)
+  assert.throws(() => view.normalizeRuntimeSpatialGravityStatus({ ...status, currentBytes: 'CC CC CC CC CC CC CC CC' }, ownerToken, processInfo.pid), /instruction bytes/i)
 })
 
 test('unavailable party capabilities cannot masquerade as real zero values', () => {

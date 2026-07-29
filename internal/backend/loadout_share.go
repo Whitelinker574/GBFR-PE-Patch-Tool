@@ -1005,7 +1005,11 @@ func (a *App) LoadoutImport(savePath, expectCharaHash string) (*LoadoutImportDra
 		return nil, fmt.Errorf("Wails 上下文未初始化")
 	}
 	inputPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "导入单套配装", Filters: []runtime.FileFilter{{DisplayName: "GBFR 单套配装 (*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout.json"}},
+		Title: "导入单套配装", Filters: []runtime.FileFilter{
+			{DisplayName: "GBFR 配装文件 (*.gbfr-loadout;*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout;*.gbfr-loadout.json"},
+			{DisplayName: "GBLC 下载配装 (*.gbfr-loadout)", Pattern: "*.gbfr-loadout"},
+			{DisplayName: "GBFR JSON 配装 (*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout.json"},
+		},
 	})
 	if err != nil || inputPath == "" {
 		return nil, err
@@ -1021,9 +1025,16 @@ func (a *App) LoadoutImport(savePath, expectCharaHash string) (*LoadoutImportDra
 	if err != nil {
 		return nil, err
 	}
-	share, err := unmarshalLoadoutShare(payload)
+	share, err := decodeLoadoutShareFile(payload)
 	if err != nil {
-		return nil, fmt.Errorf("配装 JSON 无效: %w", err)
+		return nil, fmt.Errorf("配装文件无效: %w", err)
 	}
 	return resolveLoadoutShare(savePath, expectCharaHash, share)
+}
+
+func decodeLoadoutShareFile(payload []byte) (*LoadoutShare, error) {
+	if len(payload) >= len(loadoutShareCodeFrameMagic) && string(payload[:len(loadoutShareCodeFrameMagic)]) == loadoutShareCodeFrameMagic {
+		return decodeLoadoutShareFrame(payload)
+	}
+	return unmarshalLoadoutShare(payload)
 }

@@ -535,6 +535,23 @@ func TestCharaRuntimePatchLeaseBlocksAttachAcquireAndCountsAsActive(t *testing.T
 	}
 }
 
+func TestCharaConfluxLeaseBlocksAttachAcquireAndPreservesOwner(t *testing.T) {
+	lease := &confluxTimerLease{OwnerToken: "conflux-owner", Process: processInstanceID{PID: 42, Created: 100}}
+	app := &App{charaOwnerToken: "conflux-owner", confluxTimerLease: lease}
+	if !app.hasActiveRuntimeHookLeaseLocked() {
+		t.Fatal("Conflux recovery lease is not included in active runtime hooks")
+	}
+	if _, err := app.CharaAttach(); err == nil {
+		t.Fatal("CharaAttach rotated connection while Conflux lease existed")
+	}
+	if _, err := app.CharaAcquire(1); err == nil {
+		t.Fatal("CharaAcquire rotated owner while Conflux lease existed")
+	}
+	if app.charaOwnerToken != "conflux-owner" || app.confluxTimerLease != lease {
+		t.Fatalf("blocked acquire changed Conflux ownership: owner=%q lease=%+v", app.charaOwnerToken, app.confluxTimerLease)
+	}
+}
+
 func TestCharaReleaseDeadProcessDropsOnlyPresentedRuntimePatchOwner(t *testing.T) {
 	process := processInstanceID{PID: 42, Created: 100}
 	app := &App{

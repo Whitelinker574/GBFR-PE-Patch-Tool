@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
 	"encoding/binary"
 	"encoding/json"
@@ -26,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.92.0"
+	appVersion  = "v2.0.0"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -124,8 +125,11 @@ type App struct {
 	// runtimePatchPatchLeases owns only independently verified direct patches. The
 	// process identity and exact bytes make every record a retryable recovery
 	// lease; runtimePatchPatchOrder preserves reverse installation order on detach.
-	runtimePatchPatchLeases map[string]runtimePatchPatchLease
-	runtimePatchPatchOrder  []string
+	runtimePatchPatchLeases     map[string]runtimePatchPatchLease
+	runtimePatchPatchOrder      []string
+	confluxTimerLease           *confluxTimerLease
+	runtimeSpatialGravityLease  *runtimePatchPatchLease
+	runtimePatchVerifiedProcess processInstanceID
 	// The selected-item monitor uses two independent read-only address-capture
 	// hooks. Keep exact recovery evidence until both entry restoration and
 	// tool-owned cave-pointer clearing are proven.
@@ -159,10 +163,28 @@ type App struct {
 	// deliberately independent from every editor and patch ownership token.
 	runtimeLoadoutDetectorMu sync.Mutex
 	runtimeLoadoutDetector   *runtimeLoadoutDetectorSession
-	configMu                 sync.Mutex
-	config                   AppConfig
-	configLoaded             bool
-	configPathOverride       string
+	// The battle archive and loadout importer share one read-only SQLite
+	// connection. Holding the mutex across a query also prevents a database
+	// switch or disconnect from closing the handle underneath an active read.
+	logsArchiveMu                sync.Mutex
+	logsArchivePath              string
+	logsArchiveDB                *sql.DB
+	logsArchiveColumns           map[string]bool
+	saveDiffMu                   sync.Mutex
+	saveDiffSession              *saveDiffSession
+	naturalDropMu                sync.Mutex
+	emergencyStopMu              sync.Mutex
+	emergencyWatcherMu           sync.Mutex
+	emergencyWatcher             context.CancelFunc
+	emergencyWatcherWG           sync.WaitGroup
+	qolSessionWatcherMu          sync.Mutex
+	qolSessionWatcher            *runtimeQOLSessionWatcher
+	runtimeCompanionOwnerMu      sync.Mutex
+	runtimeCompanionOwnerIDValue string
+	configMu                     sync.Mutex
+	config                       AppConfig
+	configLoaded                 bool
+	configPathOverride           string
 }
 
 var (
@@ -177,6 +199,7 @@ func NewApp() *App { return &App{} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.startRuntimeEmergencyWatcher()
 	config, err := a.configSnapshot()
 	if err != nil {
 		return
@@ -191,12 +214,18 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	a.stopRuntimeEmergencyWatcher()
+	a.stopRuntimeQOLSessionWatcher()
 	_ = a.closeFormulaSampler()
+	a.CloseLogsBattleArchive()
 	a.runtimeLoadoutDetectorMu.Lock()
 	detectorWasRunning := a.runtimeLoadoutDetector != nil
 	a.runtimeLoadoutDetectorMu.Unlock()
 	_ = a.closeRuntimeLoadoutDetector(false)
-	if handleDetachBeforeClose(ctx, a.CharaDetach()) {
+	restoreErr := errors.Join(a.closeRuntimeCompanions(), a.CharaDetach())
+	if handleDetachBeforeClose(ctx, restoreErr) {
+		a.startRuntimeEmergencyWatcher()
+		a.startRuntimeQOLSessionWatcherForCurrent()
 		if detectorWasRunning {
 			_, _ = a.startRuntimeLoadoutDetector(false)
 		}
@@ -207,10 +236,13 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopRuntimeEmergencyWatcher()
+	a.stopRuntimeQOLSessionWatcher()
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
+	a.CloseLogsBattleArchive()
 	_ = a.closeRuntimeLoadoutDetector(false)
-	if err := a.CharaDetach(); err != nil {
+	if err := errors.Join(a.closeRuntimeCompanions(), a.CharaDetach()); err != nil {
 		logPath := appendDiagnosticError("shutdown hook restoration", err)
 		runtime.LogErrorf(ctx, "关闭时恢复运行时 Hook 失败；诊断日志：%s；错误：%v", logPath, err)
 	}
@@ -719,6 +751,15 @@ var potionDefs = []potionDef{
 	{ID: "group_chat", Name: "群疗药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x18}},
 }
 
+const maximumPlausiblePotionSnapshot = int32(999)
+
+func validatePotionSnapshot(name string, value int32) error {
+	if value < 0 || value > maximumPlausiblePotionSnapshot {
+		return fmt.Errorf("%s数据未就绪，请进入副本后刷新", name)
+	}
+	return nil
+}
+
 // CharaAttach finds the game process, opens a handle, reads module base and manager pointer.
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	a.procMu.Lock()
@@ -731,6 +772,12 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由当前页面持有，请先关闭或断开该页面")
+	}
+	if a.confluxTimerLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("极沌空域快速等待仍由当前页面持有，请先安全释放")
+	}
+	if a.runtimeSpatialGravityLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("重力抑制仍由当前页面持有，请先恢复重力并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err == nil {
@@ -756,6 +803,12 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由另一个页面持有，请等待该页面完成安全释放后重试")
+	}
+	if a.confluxTimerLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("极沌空域快速等待由另一个运行时页面持有，请先安全释放")
+	}
+	if a.runtimeSpatialGravityLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("重力抑制由另一个运行时页面持有，请先恢复重力并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err != nil {
@@ -1120,9 +1173,11 @@ func (a *App) CharaRelease(token string) error {
 		a.runtimePatchMu.Lock()
 		selectedErr := a.releaseRuntimePatchSelectedCaptureHooksLocked(token, false)
 		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
+		confluxErr := a.restoreConfluxTimerOwnedLocked(token, false)
+		gravityErr := a.restoreRuntimeSpatialGravityOwnedLocked(token, false)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(selectedErr, ctErr, challengeErr); combined != nil {
+		if combined := errors.Join(selectedErr, ctErr, confluxErr, gravityErr, challengeErr); combined != nil {
 			return fmt.Errorf("runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
@@ -1131,6 +1186,8 @@ func (a *App) CharaRelease(token string) error {
 	} else {
 		a.dropRuntimePatchSelectedCaptureHooksLocked(token, false)
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
+		a.dropConfluxTimerOwnerLocked(token)
+		a.dropRuntimeSpatialGravityOwnerLocked(token)
 		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
 			a.infiniteChallengeOwnerToken = ""
 			a.infiniteChallengeAddr = 0
@@ -1190,6 +1247,12 @@ func (a *App) charaDetachLocked() error {
 		if err := a.restoreAllRuntimePatchPatchesLocked(""); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("live patches: %w", err))
 		}
+		if err := a.restoreConfluxTimerOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("Conflux timer: %w", err))
+		}
+		if err := a.restoreRuntimeSpatialGravityOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("spatial gravity: %w", err))
+		}
 		a.runtimePatchMu.Unlock()
 		if err := a.releaseOverLimitHook(); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("OverLimit hook: %w", err))
@@ -1222,6 +1285,8 @@ func (a *App) charaDetachLocked() error {
 	a.charaListBase = 0
 	a.charaPID = 0
 	a.charaCreated = 0
+	a.confluxTimerLease = nil
+	a.runtimePatchVerifiedProcess = processInstanceID{}
 	a.countdownAddr = 0
 	a.faceAccessoryAddr = 0
 	a.overLimitHookAddr = 0
@@ -1242,6 +1307,7 @@ func (a *App) charaDetachLocked() error {
 	a.monsterEnhanceOwned = nil
 	a.runtimePatchPatchLeases = nil
 	a.runtimePatchPatchOrder = nil
+	a.runtimeSpatialGravityLease = nil
 	a.runtimePatchSelectedMaterialHook = runtimePatchSelectedCaptureLease{}
 	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
@@ -1609,6 +1675,9 @@ func (a *App) readPotion(def potionDef) (PotionInfo, error) {
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value)); err != nil {
 		return PotionInfo{}, fmt.Errorf("读取%s失败: %w", def.Name, err)
 	}
+	if err := validatePotionSnapshot(def.Name, value); err != nil {
+		return PotionInfo{}, err
+	}
 	return PotionInfo{ID: def.ID, Name: def.Name, RVA: uint64(def.RVA), Offsets: potionOffsetsJSON(def.Offsets), Address: uint64(addr), Value: value}, nil
 }
 
@@ -1673,8 +1742,8 @@ func (a *App) PotionSetOneOwned(token, id string, value int) (PotionInfo, error)
 
 func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 	id = strings.TrimSpace(id)
-	if value < 0 || value > math.MaxInt32 {
-		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
+	if value < 0 || value > int(maximumPlausiblePotionSnapshot) {
+		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", maximumPlausiblePotionSnapshot)
 	}
 	for _, def := range potionDefs {
 		if def.ID != id {
@@ -1687,6 +1756,9 @@ func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 		var originalValue int32
 		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
 			return PotionInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
+		}
+		if err := validatePotionSnapshot(def.Name, originalValue); err != nil {
+			return PotionInfo{}, err
 		}
 		if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
 			return PotionInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
@@ -1701,6 +1773,9 @@ func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 		var confirmedValue int32
 		if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
 			return PotionInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
+		}
+		if err := validatePotionSnapshot(def.Name, confirmedValue); err != nil {
+			return PotionInfo{}, err
 		}
 		if confirmedValue != originalValue {
 			return PotionInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
@@ -2778,6 +2853,8 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.monsterEnhanceOwned) != 0 ||
 		len(a.runtimePatchPatchLeases) != 0 ||
 		len(a.runtimePatchPatchOrder) != 0 ||
+		a.confluxTimerLease != nil ||
+		a.runtimeSpatialGravityLease != nil ||
 		a.infiniteChallengeOwnerToken != "" ||
 		a.hasRuntimePatchSelectedCaptureLeaseLocked()
 }
@@ -3204,11 +3281,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			}
 			command = fmt.Sprintf("%s %.8g", command, commandValue)
 		}
-		dllPath, err := extractPatchCoreDLL(command)
+		dllPath, err := extractAndInjectPatchCore(a.hProcess, command)
 		if err != nil {
-			return MonsterEnhanceResult{}, err
-		}
-		if err := injectDLL(a.hProcess, dllPath); err != nil {
 			if isRemoteCallIndeterminate(err) {
 				a.poisonCurrentLiveMemoryWrites()
 			}
@@ -3415,11 +3489,12 @@ func extractPatchCoreDLL(patchID string) (string, error) {
 		return "", err
 	}
 	pruneUnlockedPatchCoreDLLs(dir)
-	if err := os.WriteFile(filepath.Join(dir, "patch_core_command.txt"), []byte(patchID), 0o644); err != nil {
-		return "", err
-	}
 	path := filepath.Join(dir, fmt.Sprintf("patch_core_%d.dll", time.Now().UnixNano()))
 	if err := os.WriteFile(path, patchCoreDLL, 0o644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path+".command", []byte(patchID), 0o644); err != nil {
+		_ = os.Remove(path)
 		return "", err
 	}
 	return path, nil
@@ -3435,8 +3510,12 @@ func pruneUnlockedPatchCoreDLLs(dir string) {
 		if entry.IsDir() || !strings.HasPrefix(name, "patch_core_") || !strings.HasSuffix(strings.ToLower(name), ".dll") {
 			continue
 		}
-		// Loaded DLLs are locked by Windows and remain until the game exits.
-		_ = os.Remove(filepath.Join(dir, name))
+		// Loaded DLLs are locked by Windows. Remove the sidecar only after its
+		// module file can be removed, because its InitThread may still read it.
+		dllPath := filepath.Join(dir, name)
+		if os.Remove(dllPath) == nil {
+			_ = os.Remove(dllPath + ".command")
+		}
 	}
 }
 

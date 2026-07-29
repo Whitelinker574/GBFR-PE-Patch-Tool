@@ -2,5 +2,20 @@
   "schemaVersion": 1,
   "initialJsGzipBytes": 256000,
   "initialCssGzipBytes": 25600,
-  "singleListIpcBytes": 262144
+  "largestAsyncJsGzipBytes": 160000,
+  "largestAsyncCssGzipBytes": 30000,
+  "largestRasterBytes": 1500000,
+  "largestFunctionAssetBytes": 800000,
+  "functionAssetsTotalBytes": 12000000,
+  "nativePatchCoreBytes": 10485760,
+  "singleListIpcBytes": 262144,
+  "runtimeStress": {
+    "cycles": 50,
+    "maxRetainedJsHeapGrowthBytes": 33554432,
+    "maxPeakJsHeapGrowthBytes": 100663296,
+    "maxNodeGrowth": 2000,
+    "maxDocumentGrowth": 4,
+    "maxLongTasksOver100ms": 12,
+    "maxHiddenTaskMsPerSecond": 35
+  }
 }

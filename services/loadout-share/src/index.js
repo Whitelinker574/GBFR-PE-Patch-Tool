@@ -22,8 +22,10 @@ const DEFAULT_CATALOG_LIMIT = 24
 const MAX_CATALOG_LIMIT = 48
 const MAX_SEARCH_LIMIT = 96
 const METADATA_READ_BATCH = 10
+const MAX_R2_CATALOG_SCAN = 1000
 const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{16,24}$/
+const LEGACY_CODE_PREFIX_PATTERN = /^[0-9A-HJKMNP-TV-Z]{12}$/
 const DEFAULT_TRAIT_ICON = '/assets/traits/cmn_icskill_05_00.png'
 const DEFAULT_SUMMON_ICON = '/assets/summons/cmn_icitmsmn02_0000.png'
 const DEFAULT_WEAPON_ICON = '/assets/weapons/cmn_imgequ_wp0000.png'
@@ -210,12 +212,33 @@ export function normalizeCode(value) {
   return CODE_PATTERN.test(code) ? code : ''
 }
 
+function normalizeLegacyCodePrefix(value) {
+  const code = String(value || '').toUpperCase().replace(/[-\s]/g, '')
+  return LEGACY_CODE_PREFIX_PATTERN.test(code) ? code : ''
+}
+
 export function displayCode(code) {
-  return normalizeCode(code).match(/.{1,4}/g)?.join('-') || ''
+  const normalized = normalizeCode(code) || normalizeLegacyCodePrefix(code)
+  return normalized.match(/.{1,4}/g)?.join('-') || ''
 }
 
 function objectKey(code) {
   return `v1/${code}`
+}
+
+async function resolveStoredCode(env, value) {
+  const exact = normalizeCode(value)
+  if (exact) return { code: exact }
+  const prefix = normalizeLegacyCodePrefix(value)
+  if (!prefix) return { error: '短码格式无效', status: 400 }
+  if (!env.LOADOUTS?.list) return { error: '当前分享服务无法解析 12 位旧码', status: 503 }
+  const listed = await env.LOADOUTS.list({ prefix: objectKey(prefix), limit: 3 })
+  const matches = (listed.objects || [])
+    .map(item => String(item.key || '').replace(/^v1\//, ''))
+    .filter(code => normalizeCode(code) && code.startsWith(prefix))
+  if (matches.length === 0) return { error: '没有找到这套配装；请检查旧码是否完整', status: 404 }
+  if (matches.length !== 1 || listed.truncated) return { error: '12 位旧码对应多套配装，请使用完整 16 位短码', status: 409 }
+  return { code: matches[0] }
 }
 
 function metadataKey(code) {
@@ -650,16 +673,25 @@ function decodePreviewHeader(request) {
   }
 }
 
-async function readMetadata(env, code, lang = 'zh') {
+async function readRawMetadata(env, code) {
   const object = await env.LOADOUTS.get(metadataKey(code))
   if (!object) return null
   try {
-    const metadata = JSON.parse(new TextDecoder().decode(await object.arrayBuffer()))
-    if (metadata?.preview) localizePreview(decoratePreview(metadata.preview), lang)
-    return metadata
+    return JSON.parse(new TextDecoder().decode(await object.arrayBuffer()))
   } catch {
     return null
   }
+}
+
+function localizedMetadata(metadata, lang) {
+  if (!metadata) return null
+  const localized = JSON.parse(JSON.stringify(metadata))
+  if (localized.preview) localizePreview(decoratePreview(localized.preview), lang)
+  return localized
+}
+
+async function readMetadata(env, code, lang = 'zh') {
+  return localizedMetadata(await readRawMetadata(env, code), lang)
 }
 
 function previewSearchText(metadata) {
@@ -692,13 +724,231 @@ function catalogCardPreview(preview) {
   }
 }
 
-async function readMetadataInBatches(env, objects, lang) {
+function catalogIndexRecord(metadata) {
+  const zh = localizedMetadata(metadata, 'zh')
+  const en = localizedMetadata(metadata, 'en')
+  const identity = characterByIdentity(zh?.characterName, zh?.characterHash)
+  const ready = hasPublicCatalogPreview(zh)
+  return {
+    characterSlug: ready ? identity.slug : '',
+    weaponName: cleanText(zh?.preview?.weaponName, 80),
+    weaponNameEn: cleanText(en?.preview?.weaponName, 80),
+    searchText: ready ? previewSearchText(zh).slice(0, 12_000) : '',
+    searchTextEn: ready ? previewSearchText(en).slice(0, 12_000) : '',
+    previewJSON: ready ? JSON.stringify(catalogCardPreview(zh.preview)) : '{}',
+    previewEnJSON: ready ? JSON.stringify(catalogCardPreview(en.preview)) : '{}',
+    catalogReady: ready ? 1 : 0,
+    titleSort: cleanText(metadata?.title, MAX_TITLE_LENGTH).toLocaleLowerCase('zh-CN'),
+  }
+}
+
+function encodeCatalogCursor(sort, value, code) {
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, sort, value, code }))
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function decodeCatalogCursor(cursor, sort) {
+  if (!cursor) return null
+  try {
+    const padded = cursor.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(cursor.length / 4) * 4, '=')
+    const bytes = Uint8Array.from(atob(padded), character => character.charCodeAt(0))
+    const value = JSON.parse(new TextDecoder().decode(bytes))
+    if (value?.v !== 1 || value?.sort !== sort || !normalizeCode(value?.code)) return null
+    if (sort === 'likes' && !Number.isFinite(Number(value.value))) return null
+    if (sort !== 'likes' && typeof value.value !== 'string') return null
+    return { value: sort === 'likes' ? Number(value.value) : value.value, code: normalizeCode(value.code) }
+  } catch {
+    return null
+  }
+}
+
+function characterSlugForFilter(value) {
+  const normalized = String(value || '').trim().toLocaleLowerCase('zh-CN')
+  if (!normalized) return ''
+  return CHARACTER_ROSTER.find(character => [character.name, character.nameEn, character.slug, ...(character.aliases || [])]
+    .some(item => String(item).toLocaleLowerCase('zh-CN') === normalized))?.slug || normalized
+}
+
+function escapeLike(value) {
+  return String(value || '').replace(/[\\%_]/g, character => `\\${character}`)
+}
+
+export function buildD1CatalogQuery({ characterSlug = '', queryText = '', sort = 'time', limit = DEFAULT_CATALOG_LIMIT, decodedCursor = null, lang = 'zh' } = {}) {
+  const sortConfig = sort === 'name'
+    ? { column: 'title_sort', direction: 'ASC', compare: '>', codeCompare: '>', codeDirection: 'ASC' }
+    : sort === 'likes'
+      ? { column: 'likes_count', direction: 'DESC', compare: '<', codeCompare: '>', codeDirection: 'ASC' }
+      : { column: 'created_at', direction: 'DESC', compare: '<', codeCompare: '<', codeDirection: 'DESC' }
+  const where = ['catalog_ready = 1']
+  const bindings = []
+  if (characterSlug) { where.push('character_slug = ?'); bindings.push(characterSlug) }
+  const normalizedQuery = String(queryText || '').toLocaleLowerCase('zh-CN')
+  const searchColumn = lang === 'en' ? 'search_text_en' : 'search_text'
+  if (normalizedQuery) { where.push(`${searchColumn} LIKE ? ESCAPE '\\'`); bindings.push(`%${escapeLike(normalizedQuery)}%`) }
+  if (decodedCursor) {
+    where.push(`(${sortConfig.column} ${sortConfig.compare} ? OR (${sortConfig.column} = ? AND code ${sortConfig.codeCompare} ?))`)
+    bindings.push(decodedCursor.value, decodedCursor.value, decodedCursor.code)
+  }
+  return {
+    sql: `SELECT /* catalog-v2 */ code, title, character_name, character_hash, character_slug, weapon_name, weapon_name_en,
+      preview_json, preview_en_json, created_at, likes_count, title_sort
+    FROM loadouts
+    WHERE ${where.join('\n      AND ')}
+    ORDER BY ${sortConfig.column} ${sortConfig.direction}, code ${sortConfig.codeDirection}
+    LIMIT ?`,
+    bindings: [...bindings, limit + 1],
+    sortConfig,
+  }
+}
+
+async function readD1Catalog(env, { character, query, sort, limit, cursor, lang }) {
+  if (!env.COMMUNITY_DB) throw new Error('D1 catalog is unavailable')
+  const characterSlug = characterSlugForFilter(character)
+  const decodedCursor = decodeCatalogCursor(cursor, sort)
+  if (cursor && !decodedCursor) {
+    const error = new Error('目录游标无效或与当前排序不匹配')
+    error.code = 'INVALID_CATALOG_CURSOR'
+    throw error
+  }
+  const built = buildD1CatalogQuery({ characterSlug, queryText: query, sort, limit, decodedCursor, lang })
+  const rows = await env.COMMUNITY_DB.prepare(built.sql).bind(...built.bindings).all()
+  const selected = (rows.results || []).slice(0, limit)
+  const items = selected.map(row => {
+    const identity = characterByIdentity(row.character_name, row.character_hash)
+    let preview = {}
+    try { preview = JSON.parse((lang === 'en' ? row.preview_en_json : row.preview_json) || '{}') } catch { /* A malformed index row is rendered without a summary. */ }
+    return {
+      code: normalizeCode(row.code), title: row.title || '', characterName: lang === 'en' ? identity.nameEn : identity.name,
+      characterHash: row.character_hash || identity.hash, characterSlug: identity.slug,
+      avatarPath: `/assets/avatars/${identity.iconFile}`, accent: identity.accent, weaponName: (lang === 'en' ? row.weapon_name_en : row.weapon_name) || '',
+      preview, createdAt: row.created_at || '', likes: Math.max(0, Number(row.likes_count) || 0),
+    }
+  })
+  const truncated = (rows.results || []).length > limit
+  const last = selected.at(-1)
+  return {
+    items,
+    truncated,
+    cursor: truncated && last ? encodeCatalogCursor(sort, last[built.sortConfig.column], last.code) : '',
+    indexSource: 'd1',
+  }
+}
+
+function compareCatalogItems(left, right, sort) {
+  if (sort === 'name') {
+    const leftTitle = String(left.titleSort || '')
+    const rightTitle = String(right.titleSort || '')
+    if (leftTitle !== rightTitle) return leftTitle < rightTitle ? -1 : 1
+    return String(left.code).localeCompare(String(right.code), 'en')
+  }
+  if (sort === 'likes') {
+    const likesDelta = Number(right.likes || 0) - Number(left.likes || 0)
+    return likesDelta || String(left.code).localeCompare(String(right.code), 'en')
+  }
+  const leftCreated = String(left.createdAt || '')
+  const rightCreated = String(right.createdAt || '')
+  if (leftCreated !== rightCreated) return leftCreated > rightCreated ? -1 : 1
+  return String(right.code).localeCompare(String(left.code), 'en')
+}
+
+function catalogItemAfterCursor(item, decodedCursor, sort) {
+  if (!decodedCursor) return true
+  const value = sort === 'name' ? item.titleSort : sort === 'likes' ? Number(item.likes || 0) : item.createdAt
+  if (sort === 'name') return value > decodedCursor.value || (value === decodedCursor.value && item.code > decodedCursor.code)
+  if (sort === 'likes') return value < decodedCursor.value || (value === decodedCursor.value && item.code > decodedCursor.code)
+  return value < decodedCursor.value || (value === decodedCursor.value && item.code < decodedCursor.code)
+}
+
+function catalogCursorValue(item, sort) {
+  return sort === 'name' ? item.titleSort : sort === 'likes' ? Number(item.likes || 0) : item.createdAt
+}
+
+async function readR2Catalog(env, { character, query, sort, limit, cursor, lang }, fallback = false) {
+  if (!env.LOADOUTS?.list) throw new Error('R2 catalog is unavailable')
+  const decodedCursor = decodeCatalogCursor(cursor, sort)
+  if (cursor && !decodedCursor) {
+    const error = new Error('目录游标无效或与当前排序不匹配')
+    error.code = 'INVALID_CATALOG_CURSOR'
+    throw error
+  }
+  const items = []
+  let nextCursor = ''
+  let scanned = 0
+  do {
+    const pageLimit = Math.min(128, MAX_R2_CATALOG_SCAN - scanned)
+    const listed = await env.LOADOUTS.list({ prefix: 'meta/v1/', limit: pageLimit, ...(nextCursor ? { cursor: nextCursor } : {}) })
+    scanned += (listed.objects || []).length
+    nextCursor = listed.truncated ? String(listed.cursor || '') : ''
+    for (const { code, meta } of await readMetadataInBatches(env, listed.objects || [], lang)) {
+      if (!hasPublicCatalogPreview(meta)) continue
+      const identity = characterByIdentity(meta?.characterName, meta?.characterHash)
+      const characterTerms = [meta?.characterName, identity.name, identity.nameEn, identity.slug].filter(Boolean).map(value => String(value).toLowerCase())
+      if (!meta || (character && !characterTerms.some(value => value === character))) continue
+      if (query && !previewSearchText(meta).includes(query)) continue
+      items.push({
+        code, title: meta.title || '', characterName: lang === 'en' ? identity.nameEn : identity.name,
+        characterHash: meta.characterHash || identity.hash, characterSlug: identity.slug,
+        avatarPath: `/assets/avatars/${identity.iconFile}`, accent: identity.accent, weaponName: meta.preview?.weaponName || '',
+        preview: catalogCardPreview(meta.preview), createdAt: meta.createdAt || '',
+        titleSort: String(meta.title || '').toLocaleLowerCase('zh-CN'),
+      })
+    }
+    if (!nextCursor) break
+    if (scanned >= MAX_R2_CATALOG_SCAN) {
+      const error = new Error(`R2 目录超过 ${MAX_R2_CATALOG_SCAN} 条安全扫描上限，无法证明全局排序`)
+      error.code = 'R2_CATALOG_SCAN_LIMIT'
+      throw error
+    }
+  } while (nextCursor)
+  const likes = await communityLikesForCodes(env, items.map(item => item.code), sort === 'likes')
+  for (const item of items) item.likes = likes.get(item.code) || 0
+  items.sort((left, right) => compareCatalogItems(left, right, sort))
+  const remaining = items.filter(item => catalogItemAfterCursor(item, decodedCursor, sort))
+  const selected = remaining.slice(0, limit)
+  const truncated = remaining.length > limit
+  const last = selected.at(-1)
+  const nextCatalogCursor = truncated && last ? encodeCatalogCursor(sort, catalogCursorValue(last, sort), last.code) : ''
+  for (const item of selected) delete item.titleSort
+  return {
+    items: selected,
+    truncated,
+    cursor: nextCatalogCursor,
+    indexSource: fallback ? 'r2-fallback' : 'r2',
+  }
+}
+
+async function backfillCatalog(request, env, url) {
+  if (!env.CATALOG_ADMIN_TOKEN) return errorResponse('没有找到该资源', 404)
+  const authorization = request.headers.get('Authorization') || ''
+  if (authorization !== `Bearer ${env.CATALOG_ADMIN_TOKEN}`) return errorResponse('管理令牌无效', 403)
+  if (!env.COMMUNITY_DB || !env.LOADOUTS?.list) return errorResponse('目录存储未完整配置', 503)
+  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 100)))
+  const cursor = cleanText(url.searchParams.get('cursor'), 256)
+  const listed = await env.LOADOUTS.list({ prefix: 'meta/v1/', limit, ...(cursor ? { cursor } : {}) })
+  let indexed = 0
+  let skipped = 0
+  let failed = 0
+  for (const { meta } of await readMetadataInBatches(env, listed.objects || [], 'zh', true)) {
+    if (!meta) { skipped += 1; continue }
+    const written = await ensureCommunityEntry(env, meta)
+    if (!written) { failed += 1; continue }
+    if (hasPublicCatalogPreview(localizedMetadata(meta, 'zh'))) indexed += 1
+    else skipped += 1
+  }
+  return jsonResponse({
+    indexed, skipped, failed, truncated: Boolean(listed.truncated), cursor: listed.truncated ? String(listed.cursor || '') : '',
+  }, failed ? 503 : 200, { 'Cache-Control': 'no-store' })
+}
+
+async function readMetadataInBatches(env, objects, lang, raw = false) {
   const results = []
   for (let offset = 0; offset < objects.length; offset += METADATA_READ_BATCH) {
     const batch = objects.slice(offset, offset + METADATA_READ_BATCH)
     results.push(...await Promise.all(batch.map(async item => {
       const code = item.key.slice('meta/v1/'.length).replace(/\.json$/, '')
-      return { code, meta: await readMetadata(env, code, lang) }
+      return { code, meta: raw ? await readRawMetadata(env, code) : await readMetadata(env, code, lang) }
     })))
   }
   return results
@@ -711,11 +961,35 @@ async function visitorDigest(value) {
 }
 
 async function ensureCommunityEntry(env, metadata) {
-  if (!env.COMMUNITY_DB || !metadata?.code) return
+  if (!env.COMMUNITY_DB || !metadata?.code) return false
   try {
-    await env.COMMUNITY_DB.prepare(`INSERT OR IGNORE INTO loadouts (code, title, character_name, character_hash, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .bind(metadata.code, metadata.title || '', metadata.characterName || '', metadata.characterHash || '', metadata.createdAt || new Date().toISOString()).run()
-  } catch { /* Community features are optional; binary sharing must remain available. */ }
+    const index = catalogIndexRecord(metadata)
+    const timestamp = new Date().toISOString()
+    await env.COMMUNITY_DB.prepare(`INSERT INTO loadouts (
+      code, title, character_name, character_hash, created_at, character_slug, weapon_name, weapon_name_en,
+      search_text, search_text_en, preview_json, preview_en_json, catalog_ready, updated_at, title_sort
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(code) DO UPDATE SET
+      title = excluded.title,
+      character_name = excluded.character_name,
+      character_hash = excluded.character_hash,
+      character_slug = excluded.character_slug,
+      weapon_name = excluded.weapon_name,
+      weapon_name_en = excluded.weapon_name_en,
+      search_text = excluded.search_text,
+      search_text_en = excluded.search_text_en,
+      preview_json = excluded.preview_json,
+      preview_en_json = excluded.preview_en_json,
+      catalog_ready = excluded.catalog_ready,
+      updated_at = excluded.updated_at,
+      title_sort = excluded.title_sort`)
+      .bind(
+        metadata.code, metadata.title || '', metadata.characterName || '', metadata.characterHash || '', metadata.createdAt || timestamp,
+        index.characterSlug, index.weaponName, index.weaponNameEn, index.searchText, index.searchTextEn,
+        index.previewJSON, index.previewEnJSON, index.catalogReady, timestamp, index.titleSort,
+      ).run()
+    return true
+  } catch { return false }
 }
 
 async function communitySummary(env, code) {
@@ -728,11 +1002,19 @@ async function communitySummary(env, code) {
   } catch { return { enabled: false, likes: 0, comments: [] } }
 }
 
-async function communityLikesForCodes(env, codes) {
+async function communityLikesForCodes(env, codes, required = false) {
   const result = new Map()
   const normalized = [...new Set((codes || []).map(normalizeCode).filter(Boolean))]
   for (const code of normalized) result.set(code, 0)
-  if (!env.COMMUNITY_DB || normalized.length === 0) return result
+  if (normalized.length === 0) return result
+  if (!env.COMMUNITY_DB) {
+    if (required) {
+      const error = new Error('点赞排序暂时不可用')
+      error.code = 'R2_LIKES_UNAVAILABLE'
+      throw error
+    }
+    return result
+  }
   try {
     const placeholders = normalized.map(() => '?').join(',')
     const rows = await env.COMMUNITY_DB.prepare(`SELECT code, likes_count FROM loadouts WHERE code IN (${placeholders})`).bind(...normalized).all()
@@ -740,7 +1022,13 @@ async function communityLikesForCodes(env, codes) {
       const code = normalizeCode(row?.code)
       if (code && result.has(code)) result.set(code, Math.max(0, Number(row?.likes_count) || 0))
     }
-  } catch { /* Community counts are optional; the catalog remains available. */ }
+  } catch {
+    if (required) {
+      const error = new Error('点赞排序暂时不可用')
+      error.code = 'R2_LIKES_UNAVAILABLE'
+      throw error
+    }
+  }
   return result
 }
 
@@ -866,7 +1154,13 @@ async function publish(request, env, origin) {
 
   const shown = displayCode(code)
   const metadata = await readMetadata(env, code)
-  await ensureCommunityEntry(env, metadata)
+  const indexed = await ensureCommunityEntry(env, metadata)
+  if (env.COMMUNITY_DB && !indexed) {
+    return jsonResponse({
+      error: 'catalog index is temporarily unavailable; retrying this identical upload is safe',
+      retryable: true,
+    }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '2' })
+  }
   return jsonResponse({
     code: shown,
     compactCode: code,
@@ -958,7 +1252,7 @@ function showcaseStyles() {
   .data-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.tile{min-width:0;padding:11px;border:1px solid rgba(105,76,37,.16);border-radius:6px;background:rgba(244,234,214,.78)}.tile small{display:block;color:#98703a;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.tile b{display:block;margin-top:4px;color:var(--ink);font-size:14px;line-height:1.45;overflow-wrap:anywhere}.wide{grid-column:1/-1}.sigils{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.sigils span{padding:4px 7px;border:1px solid rgba(126,89,40,.24);border-radius:4px;background:#fffdf7;color:var(--ink-soft);font-size:11px}
   .sticker{display:flex;align-items:center;gap:9px;margin-top:14px;padding:9px 10px;border-left:3px solid var(--character-accent);background:rgba(251,246,233,.88)}.sticker img{display:block;width:54px;height:54px;object-fit:contain;border-radius:5px}.sticker b{display:block;color:#6e4e28;font-size:13px}.sticker span{display:block;margin-top:3px;color:var(--ink-soft);font-size:12px}.community{margin-top:14px;padding-top:14px;border-top:1px solid rgba(105,76,37,.16)}.community h3{margin:0 0 9px;color:#6e4e28;font-size:16px}.community-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.community small{color:#98703a;font-size:11px}.community textarea{width:100%;min-height:68px;margin-top:8px;padding:9px;border:1px solid rgba(126,89,40,.26);border-radius:5px;background:#fffdf7;color:var(--ink)}.comments{display:grid;gap:7px;margin-top:9px}.comment{padding:9px;border-left:3px solid #c9a25e;background:#f4ead6}.comment small{color:#98703a}.comment p{margin:3px 0 0;color:var(--ink-soft);font-size:12px}
   .character-bar{display:grid;grid-template-columns:auto minmax(150px,1fr) minmax(230px,380px);align-items:center;gap:13px;margin-top:11px;padding:13px 15px;border:1px solid var(--line);border-left:4px solid var(--character-accent,#896331);background:rgba(255,253,247,.76)}.character-bar img{width:58px;height:58px;object-fit:contain;border-radius:6px}.character-bar>div{min-width:0}.character-bar small{color:#98703a;font-size:10px;font-weight:800;letter-spacing:.08em}.character-bar h2{margin:2px 0;color:var(--ink);font-size:25px}.character-bar p{margin:0;color:var(--ink-soft);font-size:12px}.character-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}.character-tools input{width:100%;min-height:36px;padding:0 9px;border:1px solid rgba(126,89,40,.26);background:#fffdf7;color:#3f3932}.sort-select{min-height:36px;padding:0 8px;border:1px solid rgba(126,89,40,.26);border-radius:5px;background:#fffdf7;color:#6e4e28;font-weight:700}.character-tools em{grid-column:1/-1;color:#7f5d31;font-size:10px;font-style:normal;font-weight:800;text-align:right}
-  .catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:14px}.loadout-card{min-width:0;min-height:232px;display:flex;flex-direction:column;content-visibility:auto;contain-intrinsic-size:auto 232px;border:1px solid rgba(105,76,37,.2);border-top:3px solid var(--card-accent,#896331);border-radius:7px;background:rgba(255,253,247,.84);box-shadow:0 5px 14px rgba(72,50,22,.06);transition:transform .16s,border-color .16s,box-shadow .16s}.loadout-card:hover{transform:translateY(-2px);border-color:#98703a;box-shadow:0 9px 20px rgba(72,50,22,.1)}.loadout-card-main{min-width:0;display:flex;flex:1;flex-direction:column;padding:15px 15px 11px}.loadout-card-main:focus-visible{outline:2px solid #98703a;outline-offset:-3px}.loadout-card-head{display:grid;grid-template-columns:48px minmax(0,1fr);gap:10px;align-items:center}.loadout-card-head img{display:block;width:48px;height:48px;object-fit:contain;border-radius:6px;background:#f4ead6}.loadout-card-head small{display:block;color:#98703a;font-size:10px;font-weight:800}.loadout-card h3{display:-webkit-box;min-height:44px;margin:3px 0 0;overflow:hidden;color:var(--ink);font-size:17px;line-height:1.3;-webkit-box-orient:vertical;-webkit-line-clamp:2}.loadout-weapon{display:flex;justify-content:space-between;gap:10px;margin:12px 0 8px;padding:8px 9px;border-left:3px solid #a77b39;background:rgba(244,234,214,.76)}.loadout-weapon small{color:#98703a;font-size:10px}.loadout-weapon b{overflow:hidden;color:#4c3c2d;font-size:13px;text-align:right;text-overflow:ellipsis;white-space:nowrap}.card-tags{display:flex;flex-wrap:wrap;gap:5px}.card-tags span{max-width:100%;overflow:hidden;padding:3px 6px;border:1px solid rgba(126,89,40,.22);border-radius:4px;background:#fffdf7;color:var(--ink-soft);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.card-tags span.mastery{border-color:rgba(93,122,73,.38);background:rgba(93,122,73,.09);color:#47613b}.card-footer{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;margin-top:auto;padding:9px 11px 9px 15px;border-top:1px solid rgba(126,89,40,.14);background:rgba(244,234,214,.38);color:#98703a;font:10px ui-monospace,Consolas,monospace}.card-footer>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card-like{min-width:52px;height:30px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 9px;border:1px solid rgba(137,99,49,.3);border-radius:5px;background:rgba(255,253,247,.76);color:#795d3d;line-height:1;transition:border-color .16s,background-color .16s,color .16s,transform .16s,opacity .16s}.card-like>span{font-family:"Microsoft YaHei UI",sans-serif;font-size:16px;line-height:1;transition:transform .16s}.card-like>b{min-width:1ch;font-size:11px}.card-like:hover{border-color:#a65849;background:#fff8f3;color:#a04438;transform:translateY(-1px)}.card-like:hover>span,.card-like.liked>span{transform:scale(1.12)}.card-like.liked{border-color:rgba(160,68,56,.45);background:#fff2eb;color:#a04438}.card-like.pending,.community-like.pending{opacity:.72}.card-like:focus-visible{outline:2px solid #98703a;outline-offset:2px}.community-like.liked{border-color:rgba(160,68,56,.45);background:#fff2eb;color:#a04438}.empty{padding:42px 12px;text-align:center;color:#98703a}.footer{margin-top:24px;color:#98703a;font-size:11px;line-height:1.6}
+  .catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:14px}.loadout-card{min-width:0;min-height:232px;display:flex;flex-direction:column;content-visibility:auto;contain-intrinsic-size:auto 232px;border:1px solid rgba(105,76,37,.2);border-top:3px solid var(--card-accent,#896331);border-radius:7px;background:rgba(255,253,247,.84);box-shadow:0 5px 14px rgba(72,50,22,.06);transition:transform .16s,border-color .16s,box-shadow .16s}.loadout-card:hover{transform:translateY(-2px);border-color:#98703a;box-shadow:0 9px 20px rgba(72,50,22,.1)}.loadout-card-main{min-width:0;display:flex;flex:1;flex-direction:column;padding:15px 15px 11px}.loadout-card-main:focus-visible{outline:2px solid #98703a;outline-offset:-3px}.loadout-card-head{display:grid;grid-template-columns:48px minmax(0,1fr);gap:10px;align-items:center}.loadout-card-head img{display:block;width:48px;height:48px;object-fit:contain;border-radius:6px;background:#f4ead6}.loadout-card-head small{display:block;color:#98703a;font-size:10px;font-weight:800}.loadout-card h3{display:-webkit-box;min-height:44px;margin:3px 0 0;overflow:hidden;color:var(--ink);font-size:17px;line-height:1.3;-webkit-box-orient:vertical;-webkit-line-clamp:2}.loadout-weapon{display:flex;justify-content:space-between;gap:10px;margin:12px 0 8px;padding:8px 9px;border-left:3px solid #a77b39;background:rgba(244,234,214,.76)}.loadout-weapon small{color:#98703a;font-size:10px}.loadout-weapon b{overflow:hidden;color:#4c3c2d;font-size:13px;text-align:right;text-overflow:ellipsis;white-space:nowrap}.card-tags{display:flex;flex-wrap:wrap;gap:5px}.card-tags span{max-width:100%;overflow:hidden;padding:3px 6px;border:1px solid rgba(126,89,40,.22);border-radius:4px;background:#fffdf7;color:var(--ink-soft);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.card-tags span.mastery{border-color:rgba(93,122,73,.38);background:rgba(93,122,73,.09);color:#47613b}.card-footer{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;margin-top:auto;padding:9px 11px 9px 15px;border-top:1px solid rgba(126,89,40,.14);background:rgba(244,234,214,.38);color:#98703a;font:10px ui-monospace,Consolas,monospace}.card-footer>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card-like{min-width:52px;height:30px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 9px;border:1px solid rgba(137,99,49,.3);border-radius:5px;background:rgba(255,253,247,.76);color:#795d3d;line-height:1;transition:border-color .16s,background-color .16s,color .16s,transform .16s,opacity .16s}.card-like>span{font-family:"Microsoft YaHei UI",sans-serif;font-size:16px;line-height:1;transition:transform .16s}.card-like>b{min-width:1ch;font-size:11px}.card-like:hover{border-color:#a65849;background:#fff8f3;color:#a04438;transform:translateY(-1px)}.card-like:hover>span,.card-like.liked>span{transform:scale(1.12)}.card-like.liked{border-color:rgba(160,68,56,.45);background:#fff2eb;color:#a04438}.card-like.pending,.community-like.pending{opacity:.72}.card-like:focus-visible{outline:2px solid #98703a;outline-offset:2px}.community-like.liked{border-color:rgba(160,68,56,.45);background:#fff2eb;color:#a04438}.catalog-more{display:flex;justify-content:center;margin-top:14px}.catalog-more .button[hidden]{display:none}.empty{padding:42px 12px;text-align:center;color:#98703a}.footer{margin-top:24px;color:#98703a;font-size:11px;line-height:1.6}
   .detail-head{display:flex;align-items:center;gap:13px}.detail-avatar-stack{align-self:flex-start;display:grid;justify-items:start;gap:6px}.detail-back{display:inline-flex;align-items:center;min-height:22px;padding:0 6px;border-left:2px solid rgba(137,99,49,.58);color:#7f5d31;font-size:10px;font-weight:800;line-height:1.25;transition:background-color .16s,color .16s}.detail-back:hover{background:rgba(137,99,49,.09);color:#4f371c}.detail-back:focus-visible{outline:2px solid #98703a;outline-offset:2px}.detail-avatar-stack img{width:64px;height:64px;object-fit:contain;border-radius:7px;background:#f4ead6}.detail-title{min-width:0}.detail-title small{color:#98703a;font-size:10px;font-weight:800}.detail-title h2{margin:3px 0;color:var(--ink);font-size:clamp(22px,2.6vw,32px)}.detail-actions{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px}.detail-code{padding:6px 9px;border:1px solid rgba(126,89,40,.32);background:#f4ead6;color:#6e4e28;font:700 13px ui-monospace,Consolas,monospace;letter-spacing:.06em}.detail-layout{display:grid;grid-template-columns:minmax(250px,.86fr) minmax(280px,1fr) minmax(320px,1.18fr);gap:12px;margin-top:16px;align-items:start}.detail-column{display:flex;min-width:0;flex-direction:column;gap:10px}.detail-section{min-width:0;padding:12px;border:1px solid rgba(105,76,37,.17);border-radius:6px;background:rgba(244,234,214,.52)}.detail-section h3{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 9px;color:#6e4e28;font-size:14px}.detail-section h3 small{color:#98703a;font-size:10px;font-weight:500}.detail-section .lead{display:block;color:var(--ink);font-size:16px}.detail-section .sub{display:block;margin-top:3px;color:var(--ink-soft);font-size:11px}.detail-icon{width:28px;height:28px;flex:0 0 28px;object-fit:contain;border:1px solid rgba(126,89,40,.2);border-radius:5px;background:#f4ead6}.detail-icon.is-large{width:36px;height:36px;flex-basis:36px}.row-title,.effect-row,.summon-row,.mastery-row,.factor{display:flex;align-items:flex-start;gap:8px}.row-title{min-width:0}.row-title>div,.effect-copy,.summon-copy,.mastery-copy,.factor-copy{min-width:0;flex:1}.factor-grid{display:grid;grid-template-columns:1fr;gap:7px}.factor{min-width:0;padding:8px;border-bottom:1px solid rgba(126,89,40,.18);background:rgba(255,253,247,.72)}.factor header{display:flex;justify-content:space-between;gap:8px}.factor b{overflow:hidden;color:var(--ink);font-size:12px;text-overflow:ellipsis;white-space:nowrap}.factor em{color:#98703a;font-size:10px;font-style:normal}.factor p{margin:5px 0 0;color:var(--ink-soft);font-size:10px;line-height:1.4}.detail-chips{display:flex;flex-wrap:wrap;gap:6px}.detail-chips span.detail-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid rgba(126,89,40,.22);border-radius:4px;background:#fffdf7;color:var(--ink-soft);font-size:11px}.detail-chip small{font-size:9px}.trait-pair,.summon-traits{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.trait-pair-item{display:inline-flex;align-items:center;gap:4px;max-width:100%;color:var(--ink-soft);font-size:10px}.trait-pair-item .detail-icon{width:20px;height:20px;flex-basis:20px}.effect-rows,.summon-list,.mastery-list,.skill-ledger{display:grid;gap:6px}.effect-row,.summon-row,.mastery-row{min-width:0;padding:8px 9px;border-left:2px solid rgba(137,99,49,.58);background:rgba(255,253,247,.68)}.effect-row header,.summon-row header,.mastery-row header{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.effect-row b,.summon-row b,.mastery-row b{color:var(--ink);font-size:12px}.effect-row em,.summon-row em,.mastery-row em{flex:none;color:#98703a;font-size:10px;font-style:normal}.effect-row p,.summon-row p,.mastery-row p{margin:4px 0 0;color:var(--ink-soft);font-size:10px;line-height:1.45}.skill-entry{display:grid;grid-template-columns:auto minmax(0,1fr) auto;border:0;border-left:3px solid #94703f;background:rgba(255,253,247,.75)}.skill-entry summary{display:contents;cursor:pointer;list-style:none}.skill-entry summary::-webkit-details-marker{display:none}.skill-entry summary>.detail-icon{margin:9px 0 0 10px}.skill-entry summary>span:nth-of-type(1){padding:9px 8px}.skill-entry summary b{display:block;color:var(--ink);font-size:12px}.skill-entry summary small{display:block;margin-top:2px;color:#98703a;font-size:9px}.skill-level{text-align:right;padding:9px 10px}.skill-level strong{display:block;color:#6e4e28;font-size:13px}.skill-body{grid-column:1/-1;padding:0 10px 10px;border-top:1px solid rgba(126,89,40,.12)}.skill-body p{margin:8px 0 0;color:var(--ink-soft);font-size:10px;line-height:1.55}.skill-sources{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}.skill-sources span{padding:2px 5px;background:#efe2c8;color:#756044;font-size:9px}
   .skill-entry{display:block}.skill-entry summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px 10px}.skill-entry summary>.detail-icon{margin:0}.skill-entry summary>span:nth-of-type(1){padding:0}.skill-level{padding:0}.skill-body{padding:0 10px 10px}
   @media(max-width:1100px){.detail-layout{grid-template-columns:minmax(240px,.9fr) minmax(280px,1.1fr)}.detail-layout>.detail-column:last-child{grid-column:1/-1}}
@@ -1001,23 +1295,33 @@ function catalogScript(_origin, fixedCharacter = '', lang = 'zh') {
   function visitorKey(){const key='gbfr-share-visitor';let value=localStorage.getItem(key);if(!value){value=crypto.randomUUID();localStorage.setItem(key,value)}return value}
   async function likeCard(button){if(button.dataset.pending==='true')return;const code=button.dataset.code;const previousLiked=button.getAttribute('aria-pressed')==='true';const previousLikes=Math.max(0,Number(button.querySelector('b').textContent)||0);const liked=!previousLiked;paintLike(button,liked,previousLikes+(liked?1:-1));button.dataset.pending='true';button.classList.add('pending');button.setAttribute('aria-busy','true');try{const response=await fetch('/api/v1/loadouts/'+encodeURIComponent(code)+'/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorKey:visitorKey(),liked})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Like failed');rememberLike(code,Boolean(data.liked));const item=catalogItems.find(x=>x.code===code);if(item)item.likes=Math.max(0,Number(data.likes)||0);paintLike(button,Boolean(data.liked),data.likes);button.removeAttribute('title');if(document.querySelector('#sort')?.value==='likes')renderCatalog()}catch(error){paintLike(button,previousLiked,previousLikes);button.title=String(error.message||error)}finally{delete button.dataset.pending;button.classList.remove('pending');button.removeAttribute('aria-busy')}}
   let catalogItems=[];
+  let nextCursor='';
+  let loading=false;
   function sortedItems(){const mode=document.querySelector('#sort')?.value||'time';return [...catalogItems].sort((a,b)=>{if(mode==='likes')return (Number(b.likes)||0)-(Number(a.likes)||0)||Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0);if(mode==='name')return String(a.title||a.characterName||'').localeCompare(String(b.title||b.characterName||''),lang==='en'?'en':'zh-CN')||Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0);return Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0)})}
   function renderCatalog(){const g=document.querySelector('#grid');if(!catalogItems.length){g.innerHTML='<div class="empty">'+t.empty+'</div>';return}g.innerHTML=sortedItems().map(renderCard).join('')}
-  async function load(){
+  async function load(more=false){
+    if(loading||(more&&!nextCursor))return;
+    loading=true;
     const query=document.querySelector('#q')?.value.trim()||'';
     const params=new URLSearchParams();
     if(fixedCharacter)params.set('character',fixedCharacter);
     if(query)params.set('q',query);
+    params.set('sort',document.querySelector('#sort')?.value||'time');
+    if(more&&nextCursor)params.set('cursor',nextCursor);
     params.set('lang',lang);
     const suffix=params.toString()?'?'+params.toString():'';
-    const r=await fetch('/api/v1/loadouts'+suffix);
-    const d=await r.json();catalogItems=d.items||[];
-    const count=document.querySelector('#character-count');if(count)count.textContent=(d.items?.length||0)+' '+t.publicCount;
-    renderCatalog();
+    const button=document.querySelector('#load-more');if(button)button.disabled=true;
+    try{const r=await fetch('/api/v1/loadouts'+suffix);const d=await r.json();if(!r.ok)throw new Error(d.error||'Catalog unavailable');
+      const incoming=d.items||[];catalogItems=more?[...new Map([...catalogItems,...incoming].map(item=>[item.code,item])).values()]:incoming;
+      nextCursor=d.cursor||'';if(button){button.hidden=!d.truncated||!nextCursor;button.disabled=false}
+      const count=document.querySelector('#character-count');if(count)count.textContent=catalogItems.length+' '+t.publicCount;
+      renderCatalog();
+    }finally{loading=false;if(button)button.disabled=false}
   }
   document.querySelector('#grid')?.addEventListener('click',event=>{const button=event.target.closest('.card-like');if(button){event.preventDefault();event.stopPropagation();likeCard(button)}});
   const prefetchedCodes=new Set();document.querySelector('#grid')?.addEventListener('pointerover',event=>{const link=event.target.closest('.loadout-card-main');if(!link||prefetchedCodes.has(link.dataset.code))return;prefetchedCodes.add(link.dataset.code);const hint=document.createElement('link');hint.rel='prefetch';hint.href=link.href;document.head.append(hint)});
-  document.querySelector('#sort')?.addEventListener('change',renderCatalog);
+  document.querySelector('#sort')?.addEventListener('change',load);
+  document.querySelector('#load-more')?.addEventListener('click',()=>load(true));
   document.querySelector('#q')?.addEventListener('keydown',event=>{if(event.key==='Enter')load()});
   requestAnimationFrame(()=>document.querySelector('.roster .active')?.scrollIntoView({block:'nearest',inline:'center'}));
   load();
@@ -1084,6 +1388,50 @@ function detailScript(_origin, code, lang = 'zh') {
       const masteryEmpty=(p.masteryCount||0)===0?t.noMastery:t.oldMastery;
       const direction=p.masteryLabel||t.noDirection;
       document.querySelector('#preview').innerHTML='<div class="detail-column"><section class="detail-section"><h3>'+t.weapon+'</h3><div class="row-title">'+icon(p.weaponIcon,p.weaponName)+'<div><b class="lead">'+esc(p.weaponName||t.unknownWeapon)+'</b><span class="sub">'+esc(p.weaponHash||'')+'</span></div></div></section><section class="detail-section"><h3>'+t.weaponSkills+'</h3>'+effectRows(p.weaponSkills||[])+'</section><section class="detail-section"><h3>'+t.wrightstone+'</h3>'+wrightstone+'</section><section class="detail-section"><h3>'+t.abilities+'</h3>'+chips(p.abilities||p.skills||[])+'</section><section class="detail-section"><h3>'+t.summons+' <small>'+t.summonMeta+'</small></h3>'+summons(p.summons||[])+'</section></div><div class="detail-column"><section class="detail-section"><h3>'+t.sigils+' <small>'+t.slots+'</small></h3>'+factors(p.sigils||[])+'</section><section class="detail-section"><h3>'+t.masterySkills+' <small>'+t.direction+': '+esc(direction)+' · '+esc(p.masteryCount||0)+' '+t.nodes+'</small></h3>'+mastery(p.masterySkills||[],masteryEmpty)+'</section></div><div class="detail-column"><section class="detail-section"><h3>'+t.overLimit+' <small>'+t.overLimitMeta+'</small></h3>'+overLimit(p.overLimit||[])+'</section><section class="detail-section"><h3>'+t.merged+' <small>'+t.mergedMeta+'</small></h3>'+ledger(p.combinedSkills||[])+'</section></div>';
+      const shareButton=document.querySelector('#share-image');
+      if(shareButton)shareButton.onclick=async()=>{
+        if(shareButton.disabled)return;
+        const idle=shareButton.textContent;
+        shareButton.disabled=true;
+        shareButton.textContent=en?'Rendering…':'正在生成…';
+        try{
+          const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+          canvas.width=1600;canvas.height=900;
+          const background=ctx.createLinearGradient(0,0,1600,900);
+          background.addColorStop(0,'#f3e7cd');background.addColorStop(.58,'#ddc79f');background.addColorStop(1,'#c5a876');
+          ctx.fillStyle=background;ctx.fillRect(0,0,1600,900);
+          ctx.strokeStyle='rgba(93,62,28,.48)';ctx.lineWidth=3;ctx.strokeRect(38,38,1524,824);
+          ctx.strokeStyle='rgba(255,250,235,.52)';ctx.lineWidth=1;ctx.strokeRect(52,52,1496,796);
+          const title=document.querySelector('.detail-title h2')?.textContent?.trim()||'GBFR Loadout';
+          const character=document.querySelector('.detail-title small')?.textContent?.split('·')[0]?.trim()||'';
+          const code=document.querySelector('.detail-code')?.textContent?.trim()||'';
+          const loadImage=src=>new Promise(resolve=>{if(!src){resolve(null);return}const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>resolve(null);image.src=src});
+          const [avatar,weapon]=await Promise.all([loadImage(document.querySelector('.detail-avatar-stack img')?.src),loadImage(p.weaponIcon)]);
+          if(avatar)ctx.drawImage(avatar,86,82,126,126);
+          ctx.fillStyle='#725127';ctx.font='700 22px system-ui,sans-serif';ctx.fillText(character,238,112);
+          ctx.fillStyle='#2e2419';ctx.font='700 48px Georgia,serif';
+          const fit=(value,max)=>{let text=String(value);while(text.length>1&&ctx.measureText(text).width>max)text=text.slice(0,-2)+'…';return text};
+          ctx.fillText(fit(title,920),238,174);
+          ctx.fillStyle='#8a6737';ctx.font='700 18px ui-monospace,Consolas,monospace';ctx.fillText(code,1240,116);
+          ctx.fillStyle='#3d3021';ctx.font='700 24px system-ui,sans-serif';ctx.fillText(en?'WEAPON':'装备武器',86,274);
+          if(weapon)ctx.drawImage(weapon,86,300,160,100);
+          ctx.fillStyle='#2e2419';ctx.font='700 29px system-ui,sans-serif';ctx.fillText(fit(p.weaponName||t.unknownWeapon,510),270,338);
+          ctx.fillStyle='#6d5739';ctx.font='18px system-ui,sans-serif';ctx.fillText(String(p.weaponHash||''),270,374);
+          const section=(labelText,x,y)=>{ctx.fillStyle='#725127';ctx.font='700 23px system-ui,sans-serif';ctx.fillText(labelText,x,y);ctx.strokeStyle='rgba(114,81,39,.32)';ctx.beginPath();ctx.moveTo(x,y+12);ctx.lineTo(x+650,y+12);ctx.stroke()};
+          section(en?'SIGILS':'因子配置',86,462);section(en?'COMBINED SKILLS':'合并技能等级',850,274);
+          ctx.font='18px system-ui,sans-serif';
+          (p.sigils||[]).slice(0,12).forEach((item,index)=>{const x=index<6?86:455,y=504+(index%6)*49;ctx.fillStyle='#8a6737';ctx.fillText(String(index+1).padStart(2,'0'),x,y);ctx.fillStyle='#382c20';ctx.fillText(fit(label(item.name||item.primary||t.sigil),315),x+38,y)});
+          (p.combinedSkills||[]).slice(0,11).forEach((item,index)=>{const y=318+index*47;ctx.fillStyle='rgba(255,252,241,.52)';ctx.fillRect(850,y-28,650,37);ctx.fillStyle='#382c20';ctx.fillText(fit(label(item.name||t.skill),470),866,y);ctx.fillStyle='#7d5a2f';ctx.font='700 18px ui-monospace,Consolas,monospace';ctx.fillText('Lv'+String(item.level||0),1430,y);ctx.font='18px system-ui,sans-serif'});
+          ctx.fillStyle='#6d5739';ctx.font='16px system-ui,sans-serif';ctx.fillText(en?'Generated from the sanitized community preview · GBFR PE Patch Tool':'由社区脱敏预览生成 · GBFR PE Patch Tool',86,820);
+          const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('PNG encode failed')),'image/png'));
+          let copied=false;
+          if(navigator.clipboard?.write&&typeof ClipboardItem!=='undefined'){try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);copied=true}catch{}}
+          if(!copied){const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=title.replace(/[\\\\/:*?"<>|]+/g,'_').slice(0,80)+'.png';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+          shareButton.textContent=copied?(en?'Image Copied':'图片已复制'):(en?'PNG Downloaded':'PNG 已下载');
+          setTimeout(()=>{if(!shareButton.disabled)shareButton.textContent=idle},1600);
+        }catch(error){shareButton.title=String(error?.message||error);shareButton.textContent=en?'Try Again':'生成失败，重试'}
+        finally{shareButton.disabled=false}
+      };
     }catch{document.querySelector('#preview').innerHTML='<div class="empty">'+t.failed+'</div>'}
   })()
   </script>`
@@ -1097,20 +1445,20 @@ function landingPage(origin, code, metadata = null, lang = 'zh') {
   const safeTitle = escapeHtml(title)
   const download = `${origin}/download/${code}.gbfr-loadout`
   const en = lang === 'en'
-  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><meta name="description" content="GBFR ${en ? 'loadout share' : '配装分享'} ${shown}"><title>${safeTitle}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'LOADOUT DETAILS' : '配装详情'}</div><h1>${en ? 'Loadout Details' : '配装详情'}</h1></div><div class="masthead-tools"><p>${en ? 'Review equipment, sigils, skills, and mastery before importing.' : '按桌面应用的结构核对装备、因子、技能和专精，再决定是否导入。'}</p>${projectReleaseLink(lang)}${languageSwitch(`/s/${code}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="showcase" style="--character-accent:${character.accent}"><div class="panel"><header class="detail-head"><div class="detail-avatar-stack"><a class="detail-back" href="${withLanguage(`/c/${character.slug}`, lang)}">← ${en ? `Back to ${characterName}` : `返回${characterName}配装`}</a><img src="/assets/avatars/${character.iconFile}" alt="${characterName}"></div><div class="detail-title"><small>${characterName} · ${en ? 'CHARACTER LOADOUT' : '角色配装'}</small><h2>${safeTitle}</h2></div><div class="detail-actions"><span class="detail-code">${shown}</span><a class="button primary" href="${download}">${en ? 'Download' : '下载配装'}</a><button class="button" type="button" onclick="navigator.clipboard.writeText('${shown}').then(()=>this.textContent='${en ? 'Copied' : '已复制'}')">${en ? 'Copy Code' : '复制短码'}</button></div></header><p class="panel-copy">${en ? 'This is a sanitized preview. The website never modifies save data.' : '这是一份脱敏预览。网页不会修改存档，导入范围仍由桌面工具确认。'}</p><div class="detail-layout" id="preview"><div class="empty">${en ? 'Loading loadout details…' : '正在读取配装详情…'}</div></div><section class="community"><h3>${en ? 'Guestbook' : '旅人留言板'}</h3><div class="community-actions"><button class="button community-like" id="like" type="button" aria-pressed="false"><span class="community-heart" aria-hidden="true">♡</span> ${en ? 'Like' : '喜欢'} <span class="community-like-count">0</span></button><small id="community-note">${en ? 'No account required.' : '无需登录，浏览器会保存匿名标识。'}</small></div><textarea id="comment" maxlength="500" placeholder="${en ? 'Leave a plain-text comment' : '给这套配装留一句话（纯文本）'}"></textarea><button class="button" id="send" type="button" style="margin-top:8px">${en ? 'Post' : '发布留言'}</button><div id="comments" class="comments"></div></section></div></section><p class="footer">${en ? 'Only the compressed loadout frame and sanitized preview are stored online.' : '线上只保存压缩配装帧与脱敏预览，不包含存档、路径或本机身份信息。'}</p>${detailScript(origin, code, lang)}${communityScript(origin, code, lang)}</main></body></html>`
+  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><meta name="description" content="GBFR ${en ? 'loadout share' : '配装分享'} ${shown}"><title>${safeTitle}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'LOADOUT DETAILS' : '配装详情'}</div><h1>${en ? 'Loadout Details' : '配装详情'}</h1></div><div class="masthead-tools"><p>${en ? 'Review equipment, sigils, skills, and mastery before importing.' : '按桌面应用的结构核对装备、因子、技能和专精，再决定是否导入。'}</p>${projectReleaseLink(lang)}${languageSwitch(`/s/${code}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="showcase" style="--character-accent:${character.accent}"><div class="panel"><header class="detail-head"><div class="detail-avatar-stack"><a class="detail-back" href="${withLanguage(`/c/${character.slug}`, lang)}">← ${en ? `Back to ${characterName}` : `返回${characterName}配装`}</a><img src="/assets/avatars/${character.iconFile}" alt="${characterName}"></div><div class="detail-title"><small>${characterName} · ${en ? 'CHARACTER LOADOUT' : '角色配装'}</small><h2>${safeTitle}</h2></div><div class="detail-actions"><span class="detail-code">${shown}</span><a class="button primary" href="${download}">${en ? 'Download' : '下载配装'}</a><button class="button" type="button" id="share-image">${en ? 'Share Image' : '生成分享图'}</button><button class="button" type="button" onclick="navigator.clipboard.writeText('${shown}').then(()=>this.textContent='${en ? 'Copied' : '已复制'}')">${en ? 'Copy Code' : '复制短码'}</button></div></header><p class="panel-copy">${en ? 'This is a sanitized preview. The website never modifies save data.' : '这是一份脱敏预览。网页不会修改存档，导入范围仍由桌面工具确认。'}</p><div class="detail-layout" id="preview"><div class="empty">${en ? 'Loading loadout details…' : '正在读取配装详情…'}</div></div><section class="community"><h3>${en ? 'Guestbook' : '旅人留言板'}</h3><div class="community-actions"><button class="button community-like" id="like" type="button" aria-pressed="false"><span class="community-heart" aria-hidden="true">♡</span> ${en ? 'Like' : '喜欢'} <span class="community-like-count">0</span></button><small id="community-note">${en ? 'No account required.' : '无需登录，浏览器会保存匿名标识。'}</small></div><textarea id="comment" maxlength="500" placeholder="${en ? 'Leave a plain-text comment' : '给这套配装留一句话（纯文本）'}"></textarea><button class="button" id="send" type="button" style="margin-top:8px">${en ? 'Post' : '发布留言'}</button><div id="comments" class="comments"></div></section></div></section><p class="footer">${en ? 'Only the compressed loadout frame and sanitized preview are stored online.' : '线上只保存压缩配装帧与脱敏预览，不包含存档、路径或本机身份信息。'}</p>${detailScript(origin, code, lang)}${communityScript(origin, code, lang)}</main></body></html>`
 }
 
 function catalogPage(origin, lang = 'zh') {
   const en = lang === 'en'
   const uploadScript = `<script>(()=>{const input=document.querySelector('#loadout-file'),zone=document.querySelector('#upload-zone'),status=document.querySelector('#upload-status');zone.querySelector('small').textContent='${en ? 'Drop or choose a v10/v11 .gbfr-loadout.json file. Save data is never uploaded.' : '拖入或选择 v10/v11 .gbfr-loadout.json；只上传脱敏配装，不上传存档。'}';async function upload(file){if(!file)return;status.textContent='${en ? 'Uploading and validating…' : '正在校验并上传…'}';try{const r=await fetch('/api/v1/loadouts/import',{method:'POST',headers:{'Content-Type':'application/json'},body:await file.arrayBuffer()});const d=await r.json();if(!r.ok)throw new Error(d.error||'${en ? 'Upload failed' : '上传失败'}');status.innerHTML='<a href="/s/'+d.compactCode+'?lang=${lang}">${en ? 'Uploaded. Open loadout' : '上传成功，打开配装'} · '+d.code+'</a>';await load()}catch(e){status.textContent=e.message}}input.onchange=()=>upload(input.files[0]);zone.onclick=()=>input.click();zone.ondragover=e=>{e.preventDefault();zone.classList.add('drag')};zone.ondragleave=()=>zone.classList.remove('drag');zone.ondrop=e=>{e.preventDefault();zone.classList.remove('drag');upload(e.dataTransfer.files[0])}})()</script>`
-  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><title>GBFR ${en ? 'Loadout Archive' : '配装图鉴'}</title>${showcaseStyles()}<style>.upload-zone{margin-top:14px;padding:14px 18px;border:1px dashed rgba(126,89,40,.42);border-radius:7px;background:rgba(255,253,247,.7);color:var(--ink-soft);cursor:pointer;transition:.16s}.upload-zone:hover,.upload-zone.drag{border-color:#896331;background:#fffdf7;box-shadow:0 5px 14px rgba(72,50,22,.08)}.upload-zone strong{display:block;color:var(--ink);font-size:14px}.upload-zone small{display:block;margin-top:3px}.upload-status{margin-top:7px;min-height:18px;color:#6e4e28;font-size:12px}.upload-status a{color:#6e4e28;font-weight:800}</style></head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'COMMUNITY LOADOUT ARCHIVE' : '社区配装图鉴'}</div><h1>${en ? 'Loadout Archive' : '配装图鉴'}</h1></div><div class="masthead-tools"><p>${en ? 'Choose a character, then compare weapons, skills, sigils, and mastery.' : '先选角色，再用卡片快速比较武器、技能、因子和专精方向。'}</p>${projectReleaseLink(lang)}${languageSwitch('/', lang)}</div></header>${rosterBar('', true, lang)}<section class="upload-zone" id="upload-zone" tabindex="0"><strong>${en ? 'Publish an exported loadout' : '发布应用导出的单套配装'}</strong><small>${en ? 'Drop or choose a v10 .gbfr-loadout.json file. Save data is never uploaded.' : '拖入或选择 v10 v11 .gbfr-loadout.json；只上传脱敏配装，不上传存档。'}</small><input id="loadout-file" type="file" accept=".json,.gbfr-loadout.json,application/json" hidden><div class="upload-status" id="upload-status"></div></section><div class="code"><strong>${en ? 'All Public Loadouts' : '全部公开配装'}</strong><div class="actions"><input id="q" aria-label="${en ? 'Search loadouts' : '搜索配装'}" placeholder="${en ? 'Search characters, weapons, sigils, traits, or mastery' : '搜索角色、武器、因子、祝福、技能、专精'}" style="min-height:38px;padding:0 10px;border:1px solid rgba(126,89,40,.26);background:#fffdf7;color:#3f3932"><select id="sort" class="sort-select" aria-label="${en ? 'Sort loadouts' : '排序配装'}"><option value="time">${en ? 'Newest' : '最新'}</option><option value="name">${en ? 'Name' : '名称'}</option><option value="likes">${en ? 'Likes' : '点赞'}</option></select><button class="button primary" onclick="load()">${en ? 'Search' : '搜索'}</button></div></div><section id="grid" class="catalog"><div class="empty">${en ? 'Loading archive…' : '正在读取配装目录…'}</div></section><p class="footer">${en ? 'Open a card for the complete preview. Import choices remain in the desktop app.' : '点开卡片查看完整预览；导入仍由桌面工具逐项确认。'}</p>${catalogScript(origin, '', lang)}${uploadScript}</main></body></html>`
+  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><title>GBFR ${en ? 'Loadout Archive' : '配装图鉴'}</title>${showcaseStyles()}<style>.upload-zone{margin-top:14px;padding:14px 18px;border:1px dashed rgba(126,89,40,.42);border-radius:7px;background:rgba(255,253,247,.7);color:var(--ink-soft);cursor:pointer;transition:.16s}.upload-zone:hover,.upload-zone.drag{border-color:#896331;background:#fffdf7;box-shadow:0 5px 14px rgba(72,50,22,.08)}.upload-zone strong{display:block;color:var(--ink);font-size:14px}.upload-zone small{display:block;margin-top:3px}.upload-status{margin-top:7px;min-height:18px;color:#6e4e28;font-size:12px}.upload-status a{color:#6e4e28;font-weight:800}</style></head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'COMMUNITY LOADOUT ARCHIVE' : '社区配装图鉴'}</div><h1>${en ? 'Loadout Archive' : '配装图鉴'}</h1></div><div class="masthead-tools"><p>${en ? 'Choose a character, then compare weapons, skills, sigils, and mastery.' : '先选角色，再用卡片快速比较武器、技能、因子和专精方向。'}</p>${projectReleaseLink(lang)}${languageSwitch('/', lang)}</div></header>${rosterBar('', true, lang)}<section class="upload-zone" id="upload-zone" tabindex="0"><strong>${en ? 'Publish an exported loadout' : '发布应用导出的单套配装'}</strong><small>${en ? 'Drop or choose a v10 .gbfr-loadout.json file. Save data is never uploaded.' : '拖入或选择 v10 v11 .gbfr-loadout.json；只上传脱敏配装，不上传存档。'}</small><input id="loadout-file" type="file" accept=".json,.gbfr-loadout.json,application/json" hidden><div class="upload-status" id="upload-status"></div></section><div class="code"><strong>${en ? 'All Public Loadouts' : '全部公开配装'}</strong><div class="actions"><input id="q" aria-label="${en ? 'Search loadouts' : '搜索配装'}" placeholder="${en ? 'Search characters, weapons, sigils, traits, or mastery' : '搜索角色、武器、因子、祝福、技能、专精'}" style="min-height:38px;padding:0 10px;border:1px solid rgba(126,89,40,.26);background:#fffdf7;color:#3f3932"><select id="sort" class="sort-select" aria-label="${en ? 'Sort loadouts' : '排序配装'}"><option value="time">${en ? 'Newest' : '最新'}</option><option value="name">${en ? 'Name' : '名称'}</option><option value="likes">${en ? 'Likes' : '点赞'}</option></select><button class="button primary" onclick="load()">${en ? 'Search' : '搜索'}</button></div></div><section id="grid" class="catalog"><div class="empty">${en ? 'Loading archive…' : '正在读取配装目录…'}</div></section><div class="catalog-more"><button class="button" id="load-more" type="button" hidden>${en ? 'Load more' : '加载更多'}</button></div><p class="footer">${en ? 'Open a card for the complete preview. Import choices remain in the desktop app.' : '点开卡片查看完整预览；导入仍由桌面工具逐项确认。'}</p>${catalogScript(origin, '', lang)}${uploadScript}</main></body></html>`
 }
 
 function characterPage(origin, slug, lang = 'zh') {
   const character = CHARACTER_ROSTER.find(item => item.slug === slug) || CHARACTER_ROSTER[0]
   const en = lang === 'en'
   const name = en ? character.nameEn : character.name
-  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><title>${name} · GBFR ${en ? 'Loadouts' : '配装'}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'CHARACTER LOADOUTS' : '角色配装'}</div><h1>${en ? `${name} Loadouts` : `${name} 的配装`}</h1></div><div class="masthead-tools"><p>${en ? 'Compare weapons, skills, sigils, and mastery for this character.' : '比较这个角色的武器、技能、因子和专精方向，点开卡片查看完整配置。'}</p>${projectReleaseLink(lang)}${languageSwitch(`/c/${character.slug}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="character-bar" style="--character-accent:${character.accent}"><img src="/assets/avatars/${character.iconFile}" alt="${name}"><div><small>${en ? 'CHARACTER LOADOUT ARCHIVE' : '角色配装目录'} · ${character.plId.toUpperCase()}</small><h2>${name}</h2><p>${en ? 'Public loadouts' : '公开配装目录'}</p></div><div class="character-tools"><input id="q" aria-label="${en ? `Search ${name} loadouts` : '搜索当前角色配装'}" placeholder="${en ? 'Search weapons, sigils, traits, skills, or mastery' : '搜索此角色的武器、因子、祝福、技能或专精'}"><select id="sort" class="sort-select" aria-label="${en ? 'Sort loadouts' : '排序配装'}"><option value="time">${en ? 'Newest' : '最新'}</option><option value="name">${en ? 'Name' : '名称'}</option><option value="likes">${en ? 'Likes' : '点赞'}</option></select><button class="button primary" onclick="load()">${en ? 'Search' : '搜索'}</button><em id="character-count">${en ? 'Loading…' : '正在读取…'}</em></div></section><section id="grid" class="catalog"><div class="empty">${en ? `Loading ${name} loadouts…` : `正在读取 ${name} 的配装…`}</div></section><p class="footer">${en ? `Use the fixed ` : '固定栏的 '}<a href="${withLanguage('/', lang)}" style="color:#6e4e28;font-weight:800">All</a>${en ? ' button to return to the full archive.' : ' 可返回全部配装。'}</p>${catalogScript(origin, en ? character.nameEn : character.name, lang)}</main></body></html>`
+  return `<!doctype html><html lang="${en ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#e9dfcc"><title>${name} · GBFR ${en ? 'Loadouts' : '配装'}</title>${showcaseStyles()}</head><body><main class="page"><header class="masthead"><div><div class="eyebrow">GBFR · ${en ? 'CHARACTER LOADOUTS' : '角色配装'}</div><h1>${en ? `${name} Loadouts` : `${name} 的配装`}</h1></div><div class="masthead-tools"><p>${en ? 'Compare weapons, skills, sigils, and mastery for this character.' : '比较这个角色的武器、技能、因子和专精方向，点开卡片查看完整配置。'}</p>${projectReleaseLink(lang)}${languageSwitch(`/c/${character.slug}`, lang)}</div></header>${rosterBar(character.slug, false, lang)}<section class="character-bar" style="--character-accent:${character.accent}"><img src="/assets/avatars/${character.iconFile}" alt="${name}"><div><small>${en ? 'CHARACTER LOADOUT ARCHIVE' : '角色配装目录'} · ${character.plId.toUpperCase()}</small><h2>${name}</h2><p>${en ? 'Public loadouts' : '公开配装目录'}</p></div><div class="character-tools"><input id="q" aria-label="${en ? `Search ${name} loadouts` : '搜索当前角色配装'}" placeholder="${en ? 'Search weapons, sigils, traits, skills, or mastery' : '搜索此角色的武器、因子、祝福、技能或专精'}"><select id="sort" class="sort-select" aria-label="${en ? 'Sort loadouts' : '排序配装'}"><option value="time">${en ? 'Newest' : '最新'}</option><option value="name">${en ? 'Name' : '名称'}</option><option value="likes">${en ? 'Likes' : '点赞'}</option></select><button class="button primary" onclick="load()">${en ? 'Search' : '搜索'}</button><em id="character-count">${en ? 'Loading…' : '正在读取…'}</em></div></section><section id="grid" class="catalog"><div class="empty">${en ? `Loading ${name} loadouts…` : `正在读取 ${name} 的配装…`}</div></section><div class="catalog-more"><button class="button" id="load-more" type="button" hidden>${en ? 'Load more' : '加载更多'}</button></div><p class="footer">${en ? `Use the fixed ` : '固定栏的 '}<a href="${withLanguage('/', lang)}" style="color:#6e4e28;font-weight:800">All</a>${en ? ' button to return to the full archive.' : ' 可返回全部配装。'}</p>${catalogScript(origin, en ? character.nameEn : character.name, lang)}</main></body></html>`
 }
 
 export default {
@@ -1139,6 +1487,9 @@ export default {
       if (!CHARACTER_ROSTER.some(character => character.slug === slug)) return errorResponse('角色页面不存在', 404)
       return new Response(characterPage(origin, slug, lang), { status: 200, headers: { ...baseHeaders, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'" } })
     }
+    if (request.method === 'POST' && url.pathname === '/api/internal/catalog/backfill') {
+      return backfillCatalog(request, env, url)
+    }
     if (request.method === 'POST' && url.pathname === '/api/v1/loadouts') {
       return publish(request, env, origin)
     }
@@ -1147,48 +1498,37 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/loadouts') {
-      if (!env.LOADOUTS?.list) return errorResponse('当前分享服务未启用目录索引', 503)
       const character = cleanText(url.searchParams.get('character'), 40).toLowerCase()
       const query = cleanText(url.searchParams.get('q') || url.searchParams.get('search'), 80).toLowerCase()
+      const sort = ['time', 'name', 'likes'].includes(url.searchParams.get('sort')) ? url.searchParams.get('sort') : 'time'
       const maximumLimit = query ? MAX_SEARCH_LIMIT : MAX_CATALOG_LIMIT
       const fallbackLimit = query ? MAX_CATALOG_LIMIT : DEFAULT_CATALOG_LIMIT
       const requestedLimit = Math.max(1, Math.min(maximumLimit, Number(url.searchParams.get('limit') || fallbackLimit)))
       const cursor = cleanText(url.searchParams.get('cursor'), 256)
-      const items = []
-      const filtered = Boolean(character || query)
-      let nextCursor = cursor
-      let truncated = false
-      let scanned = 0
-      do {
-        const pageLimit = filtered ? Math.max(1, Math.min(requestedLimit - items.length, 128)) : requestedLimit
-        const listed = await env.LOADOUTS.list({ prefix: 'meta/v1/', limit: pageLimit, ...(nextCursor ? { cursor: nextCursor } : {}) })
-        scanned += (listed.objects || []).length
-        truncated = Boolean(listed.truncated)
-        nextCursor = truncated ? String(listed.cursor || '') : ''
-        for (const { code, meta } of await readMetadataInBatches(env, listed.objects || [], lang)) {
-          if (!hasPublicCatalogPreview(meta)) continue
-          const identity = characterByIdentity(meta?.characterName, meta?.characterHash)
-          const characterTerms = [meta?.characterName, identity.name, identity.nameEn, identity.slug].filter(Boolean).map(value => String(value).toLowerCase())
-          if (!meta || (character && !characterTerms.some(value => value === character))) continue
-          if (query && !previewSearchText(meta).includes(query)) continue
-          items.push({
-            code, title: meta.title || '', characterName: lang === 'en' ? identity.nameEn : identity.name,
-            characterHash: meta.characterHash || identity.hash, characterSlug: identity.slug,
-            avatarPath: `/assets/avatars/${identity.iconFile}`, accent: identity.accent, weaponName: meta.preview?.weaponName || '',
-            preview: catalogCardPreview(meta.preview), createdAt: meta.createdAt || '',
-          })
+      const options = { character, query, sort, limit: requestedLimit, cursor, lang }
+      let result
+      if (env.COMMUNITY_DB) {
+        try { result = await readD1Catalog(env, options) } catch (error) {
+          if (error?.code === 'INVALID_CATALOG_CURSOR') return errorResponse(error.message, 400)
+          /* Deployed schema or D1 may be temporarily unavailable. */
         }
-        if (!filtered || !truncated || items.length >= requestedLimit || scanned >= 1000) break
-      } while (nextCursor)
-      const likes = await communityLikesForCodes(env, items.map(item => item.code))
-      for (const item of items) item.likes = likes.get(item.code) || 0
-      return jsonResponse({ items, truncated, cursor: truncated ? nextCursor : '' }, 200, { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=30' })
+      }
+      if (!result) {
+        if (!env.LOADOUTS?.list) return errorResponse('当前分享服务未启用目录索引', 503)
+        try { result = await readR2Catalog(env, options, Boolean(env.COMMUNITY_DB)) } catch (error) {
+          if (error?.code === 'INVALID_CATALOG_CURSOR') return errorResponse(error.message, 400)
+          if (error?.code === 'R2_LIKES_UNAVAILABLE') return errorResponse(error.message, 503)
+          throw error
+        }
+      }
+      return jsonResponse(result, 200, { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=30' })
     }
 
     const apiMatch = url.pathname.match(/^\/api\/v1\/loadouts\/([^/]+)$/)
     if ((request.method === 'GET' || request.method === 'HEAD') && apiMatch) {
-      const code = normalizeCode(apiMatch[1])
-      if (!code) return errorResponse('短码格式无效', 400)
+      const resolved = await resolveStoredCode(env, apiMatch[1])
+      if (!resolved.code) return errorResponse(resolved.error, resolved.status)
+      const code = resolved.code
       const frame = await loadFrame(env, code)
       if (!frame) return errorResponse('没有找到这套配装', 404)
       if (request.method === 'HEAD') {
@@ -1230,8 +1570,9 @@ export default {
 
     const downloadMatch = url.pathname.match(/^\/download\/([^/]+)\.gbfr-loadout$/)
     if (request.method === 'GET' && downloadMatch) {
-      const code = normalizeCode(downloadMatch[1])
-      if (!code) return errorResponse('短码格式无效', 400)
+      const resolved = await resolveStoredCode(env, downloadMatch[1])
+      if (!resolved.code) return errorResponse(resolved.error, resolved.status)
+      const code = resolved.code
       const frame = await loadFrame(env, code)
       if (!frame) return errorResponse('没有找到这套配装', 404)
       return binaryResponse(frame, `GBFR-${displayCode(code)}.gbfr-loadout`)
@@ -1239,8 +1580,9 @@ export default {
 
     const shareMatch = url.pathname.match(/^\/s\/([^/]+)$/)
     if (request.method === 'GET' && shareMatch) {
-      const code = normalizeCode(shareMatch[1])
-      if (!code) return errorResponse('短码格式无效', 400)
+      const resolved = await resolveStoredCode(env, shareMatch[1])
+      if (!resolved.code) return errorResponse(resolved.error, resolved.status)
+      const code = resolved.code
       const object = await env.LOADOUTS.head(objectKey(code))
       if (!object) return errorResponse('没有找到这套配装', 404)
       return new Response(landingPage(origin, code, await readMetadata(env, code, lang), lang), {

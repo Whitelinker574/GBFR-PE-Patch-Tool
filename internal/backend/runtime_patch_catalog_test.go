@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const runtimePatchCatalogSHA256 = "BEF3E11ADA622980B03147940811AF4E96239C68A8FC7F052EE9D859188A3969"
+const runtimePatchCatalogSHA256 = "952D1CF3D5B372BFE352A19C3BE414F7B4D0F53AC96DF1B6C1303C633EBECC0B"
 
 func readRuntimePatchCatalogFile(t *testing.T) RuntimePatchCatalog {
 	t.Helper()

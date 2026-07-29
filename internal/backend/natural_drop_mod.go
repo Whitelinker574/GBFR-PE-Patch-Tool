@@ -1,0 +1,1277 @@
+package backend
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/cespare/xxhash/v2"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+const (
+	naturalDropGameVersion         = "2.0.2"
+	naturalDropModID               = "gbfr.codex.natural-drop-lab"
+	naturalDropForcedWeight uint32 = 1_000_000
+	naturalDropLowWeight    uint32 = 1
+	summonTableRowSize             = 36
+	summonLotRowSize               = 20
+	rewardSummonLotRowSize         = 16
+)
+
+var naturalDropRequiredTables = []struct {
+	Name   string
+	Size   int
+	SHA256 string
+}{
+	{"summon.tbl", 6812, "80BBDF59F5F56FC10DF7CDDC57ACDEC1FFC389941D3C5162D287D4DC56EE07BE"},
+	{"summon_lot.tbl", 14528, "25FAA86FB94A076B8DF02AF20232C878FD517E0DE325A497CAA6BF5644040F97"},
+	{"reward_summon_lot.tbl", 9400, "20A8EAA16BDF6413EB57D39952B6313E758DF1B9F85C634400997047407DC4A1"},
+}
+
+type NaturalDropTableStatus struct {
+	Name     string `json:"name"`
+	Size     int    `json:"size"`
+	SHA256   string `json:"sha256"`
+	Expected string `json:"expected"`
+	Valid    bool   `json:"valid"`
+}
+
+type NaturalDropTraitOption struct {
+	Hash   string `json:"hash"`
+	NameZh string `json:"nameZh"`
+	NameEn string `json:"nameEn"`
+}
+
+type NaturalDropSummonOption struct {
+	TypeHash    string                   `json:"typeHash"`
+	NameZh      string                   `json:"nameZh"`
+	NameEn      string                   `json:"nameEn"`
+	Tier        string                   `json:"tier"`
+	TypeNameZh  string                   `json:"typeNameZh"`
+	TypeNameEn  string                   `json:"typeNameEn"`
+	RewardPools int                      `json:"rewardPools"`
+	MainTraits  []NaturalDropTraitOption `json:"mainTraits"`
+	SubParams   []NaturalDropTraitOption `json:"subParams"`
+}
+
+type NaturalDropConflict struct {
+	ModID string `json:"modId"`
+	Path  string `json:"path"`
+	File  string `json:"file"`
+	Scope string `json:"scope"`
+}
+
+type NaturalDropWorkspace struct {
+	GameVersion            string                         `json:"gameVersion"`
+	SourceDir              string                         `json:"sourceDir"`
+	GameExePath            string                         `json:"gameExePath"`
+	GameDir                string                         `json:"gameDir"`
+	IndexPath              string                         `json:"indexPath"`
+	Installed              bool                           `json:"installed"`
+	Owned                  bool                           `json:"owned"`
+	BackupReady            bool                           `json:"backupReady"`
+	IndexValid             bool                           `json:"indexValid"`
+	IndexSummary           string                         `json:"indexSummary"`
+	Tables                 []NaturalDropTableStatus       `json:"tables"`
+	Summons                []NaturalDropSummonOption      `json:"summons"`
+	Wrightstones           []NaturalDropWrightstoneOption `json:"wrightstones"`
+	SummonTablesReady      bool                           `json:"summonTablesReady"`
+	WrightstoneTablesReady bool                           `json:"wrightstoneTablesReady"`
+	Conflicts              []NaturalDropConflict          `json:"conflicts"`
+}
+
+type NaturalDropSelection struct {
+	TypeHash  string `json:"typeHash"`
+	MainTrait string `json:"mainTrait"`
+	SubParam  string `json:"subParam"`
+}
+
+type NaturalDropDeployRequest struct {
+	SourceDir       string                            `json:"sourceDir"`
+	GameExePath     string                            `json:"gameExePath"`
+	Selections      []NaturalDropSelection            `json:"selections"`
+	Wrightstones    []NaturalDropWrightstoneSelection `json:"wrightstones"`
+	WrightstoneOnly bool                              `json:"wrightstoneOnly"`
+}
+
+type NaturalDropRestoreRequest struct {
+	GameExePath string `json:"gameExePath"`
+}
+
+type NaturalDropDeployResult struct {
+	ModDir               string   `json:"modDir"`
+	GeneratedFiles       []string `json:"generatedFiles"`
+	SelectedSummons      int      `json:"selectedSummons"`
+	SelectedWrightstones int      `json:"selectedWrightstones"`
+	AffectedRewardPools  int      `json:"affectedRewardPools"`
+	SourceDigest         string   `json:"sourceDigest"`
+}
+
+type naturalDropManifest struct {
+	SchemaVersion       int                               `json:"schemaVersion"`
+	Owner               string                            `json:"owner"`
+	GameVersion         string                            `json:"gameVersion"`
+	GameExecutableSHA   string                            `json:"gameExecutableSha256"`
+	GeneratedAt         string                            `json:"generatedAt"`
+	OriginalIndexSHA    string                            `json:"originalIndexSha256"`
+	DeployedIndexSHA    string                            `json:"deployedIndexSha256"`
+	SourceFiles         map[string]string                 `json:"sourceFiles"`
+	GeneratedFiles      map[string]string                 `json:"generatedFiles"`
+	Selections          []NaturalDropSelection            `json:"selections"`
+	Wrightstones        []NaturalDropWrightstoneSelection `json:"wrightstones,omitempty"`
+	WrightstoneOnly     bool                              `json:"wrightstoneOnly,omitempty"`
+	AffectedRewardPools int                               `json:"affectedRewardPools"`
+}
+
+type naturalDropTables struct {
+	Summon          []byte
+	SummonLot       []byte
+	RewardSummonLot []byte
+}
+
+type naturalDropSummonRow struct {
+	Offset    int
+	SkillPool uint32
+	EquipPool uint32
+	TypeHash  uint32
+}
+
+func tableRowCount(data []byte, rowSize int) (int, error) {
+	if len(data) < 8 {
+		return 0, errors.New("table header is truncated")
+	}
+	count := int(binary.LittleEndian.Uint32(data[:4]))
+	if count < 0 || 8+count*rowSize != len(data) {
+		return 0, fmt.Errorf("table shape mismatch: rows=%d rowSize=%d bytes=%d", count, rowSize, len(data))
+	}
+	if binary.LittleEndian.Uint32(data[4:8]) != 0 {
+		return 0, errors.New("table reserved header is not zero")
+	}
+	return count, nil
+}
+
+func fileSHA256(data []byte) string {
+	sum := sha256.Sum256(data)
+	return strings.ToUpper(hex.EncodeToString(sum[:]))
+}
+
+func loadNaturalDropTables(sourceDir string, strictHash bool) (*naturalDropTables, []NaturalDropTableStatus, error) {
+	sourceDir = filepath.Clean(strings.TrimSpace(sourceDir))
+	if sourceDir == "." || sourceDir == "" {
+		return nil, nil, errors.New("请选择 2.0.2 解包表目录")
+	}
+	values := make(map[string][]byte, len(naturalDropRequiredTables))
+	statuses := make([]NaturalDropTableStatus, 0, len(naturalDropRequiredTables))
+	for _, required := range naturalDropRequiredTables {
+		path := filepath.Join(sourceDir, required.Name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, statuses, fmt.Errorf("读取 %s 失败: %w", required.Name, err)
+		}
+		hash := fileSHA256(data)
+		valid := len(data) == required.Size && strings.EqualFold(hash, required.SHA256)
+		statuses = append(statuses, NaturalDropTableStatus{Name: required.Name, Size: len(data), SHA256: hash, Expected: required.SHA256, Valid: valid})
+		if strictHash && !valid {
+			return nil, statuses, fmt.Errorf("%s 不是已验证的 DLC 2.0.2 原表（大小 %d，SHA-256 %s）", required.Name, len(data), hash)
+		}
+		values[required.Name] = data
+	}
+	if _, err := tableRowCount(values["summon.tbl"], summonTableRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("summon.tbl: %w", err)
+	}
+	if _, err := tableRowCount(values["summon_lot.tbl"], summonLotRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("summon_lot.tbl: %w", err)
+	}
+	if _, err := tableRowCount(values["reward_summon_lot.tbl"], rewardSummonLotRowSize); err != nil {
+		return nil, statuses, fmt.Errorf("reward_summon_lot.tbl: %w", err)
+	}
+	return &naturalDropTables{Summon: values["summon.tbl"], SummonLot: values["summon_lot.tbl"], RewardSummonLot: values["reward_summon_lot.tbl"]}, statuses, nil
+}
+
+func naturalDropSummonRows(data []byte) (map[uint32]naturalDropSummonRow, error) {
+	count, err := tableRowCount(data, summonTableRowSize)
+	if err != nil {
+		return nil, err
+	}
+	rows := make(map[uint32]naturalDropSummonRow, count)
+	for i := 0; i < count; i++ {
+		offset := 8 + i*summonTableRowSize
+		row := naturalDropSummonRow{
+			Offset:    offset,
+			SkillPool: binary.LittleEndian.Uint32(data[offset:]),
+			EquipPool: binary.LittleEndian.Uint32(data[offset+8:]),
+			TypeHash:  binary.LittleEndian.Uint32(data[offset+16:]),
+		}
+		if row.TypeHash == 0 || row.TypeHash == summonInvalidTypeHash {
+			continue
+		}
+		if _, duplicate := rows[row.TypeHash]; duplicate {
+			return nil, fmt.Errorf("summon.tbl contains duplicate type 0x%08X", row.TypeHash)
+		}
+		rows[row.TypeHash] = row
+	}
+	return rows, nil
+}
+
+func naturalDropLotRows(data []byte, pool uint32) ([][]byte, error) {
+	count, err := tableRowCount(data, summonLotRowSize)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([][]byte, 0, 12)
+	for i := 0; i < count; i++ {
+		offset := 8 + i*summonLotRowSize
+		if binary.LittleEndian.Uint32(data[offset:]) == pool {
+			rows = append(rows, data[offset:offset+summonLotRowSize])
+		}
+	}
+	return rows, nil
+}
+
+func naturalDropRewardPoolCounts(data []byte) (map[uint32]int, map[uint32]int, error) {
+	count, err := tableRowCount(data, rewardSummonLotRowSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	typeCounts := make(map[uint32]int)
+	poolCounts := make(map[uint32]int)
+	for i := 0; i < count; i++ {
+		offset := 8 + i*rewardSummonLotRowSize
+		pool := binary.LittleEndian.Uint32(data[offset:])
+		typeHash := binary.LittleEndian.Uint32(data[offset+4:])
+		typeCounts[typeHash]++
+		poolCounts[pool]++
+	}
+	return typeCounts, poolCounts, nil
+}
+
+func parseNaturalDropNameCatalog() (map[uint32][2]string, map[uint32][2]string, map[uint32][2]string, map[uint32][2]string, error) {
+	var types summonTypeFile
+	var skills summonSkillFile
+	var subs summonSubParamFile
+	if err := json.Unmarshal(summonTypesJSON, &types); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if err := json.Unmarshal(summonSkillsJSON, &skills); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if err := json.Unmarshal(summonSubParamsJSON, &subs); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	typeNames, typeKinds := make(map[uint32][2]string), make(map[uint32][2]string)
+	mainNames, subNames := make(map[uint32][2]string), make(map[uint32][2]string)
+	for _, item := range types.Summons {
+		hash, err := ParseHashHex(item.Hash)
+		if err != nil {
+			continue
+		}
+		typeNames[hash] = [2]string{item.DisplayName, item.DisplayNameEN}
+		typeKinds[hash] = [2]string{item.TypeName, item.TypeNameEN}
+	}
+	for _, item := range skills.Skills {
+		hash, err := ParseHashHex(item.Hash)
+		if err != nil {
+			continue
+		}
+		mainNames[hash] = [2]string{item.DisplayName, item.DisplayNameEN}
+	}
+	for _, item := range subs.SubParams {
+		hash, err := ParseHashHex(item.Hash)
+		if err != nil {
+			continue
+		}
+		subNames[hash] = [2]string{item.DisplayName, item.DisplayNameEN}
+	}
+	return typeNames, typeKinds, mainNames, subNames, nil
+}
+
+func naturalDropTraitOptions(hashes []string, rows [][]byte, names map[uint32][2]string) []NaturalDropTraitOption {
+	available := make(map[uint32]bool, len(rows))
+	for _, row := range rows {
+		available[binary.LittleEndian.Uint32(row[4:])] = true
+	}
+	result := make([]NaturalDropTraitOption, 0, len(hashes))
+	seen := make(map[uint32]bool)
+	for _, raw := range hashes {
+		hash, err := ParseHashHex(raw)
+		if err != nil || !available[hash] || seen[hash] {
+			continue
+		}
+		seen[hash] = true
+		name := names[hash]
+		zh, en := strings.TrimSpace(name[0]), strings.TrimSpace(name[1])
+		if zh == "" {
+			zh = fmt.Sprintf("0x%08X", hash)
+		}
+		if en == "" {
+			en = fmt.Sprintf("0x%08X", hash)
+		}
+		result = append(result, NaturalDropTraitOption{Hash: fmt.Sprintf("0x%08X", hash), NameZh: zh, NameEn: en})
+	}
+	return result
+}
+
+func buildNaturalDropCatalog(tables *naturalDropTables) ([]NaturalDropSummonOption, error) {
+	rules, err := loadSummonNaturalRules()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := naturalDropSummonRows(tables.Summon)
+	if err != nil {
+		return nil, err
+	}
+	rewardTypes, _, err := naturalDropRewardPoolCounts(tables.RewardSummonLot)
+	if err != nil {
+		return nil, err
+	}
+	typeNames, typeKinds, mainNames, subNames, err := parseNaturalDropNameCatalog()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]NaturalDropSummonOption, 0, len(rules))
+	for _, rule := range rules {
+		if rule.Mode == "固定" {
+			continue
+		}
+		typeHash, err := ParseHashHex(rule.TypeHash)
+		if err != nil {
+			continue
+		}
+		row, exists := rows[typeHash]
+		if !exists || rewardTypes[typeHash] == 0 {
+			continue
+		}
+		mainRows, err := naturalDropLotRows(tables.SummonLot, row.SkillPool)
+		if err != nil {
+			return nil, err
+		}
+		subRows, err := naturalDropLotRows(tables.SummonLot, row.EquipPool)
+		if err != nil {
+			return nil, err
+		}
+		mainOptions := naturalDropTraitOptions(rule.MainTraitHashes, mainRows, mainNames)
+		subOptions := naturalDropTraitOptions(rule.SubParamHashes, subRows, subNames)
+		if len(mainOptions) == 0 || len(subOptions) == 0 {
+			continue
+		}
+		name, kind := typeNames[typeHash], typeKinds[typeHash]
+		nameZh, nameEn := strings.TrimSpace(name[0]), strings.TrimSpace(name[1])
+		if nameZh == "" {
+			nameZh = rule.Name + " · " + rule.Tier
+		}
+		if nameEn == "" {
+			nameEn = fmt.Sprintf("Summon 0x%08X", typeHash)
+		}
+		result = append(result, NaturalDropSummonOption{
+			TypeHash: fmt.Sprintf("0x%08X", typeHash), NameZh: nameZh, NameEn: nameEn,
+			Tier: rule.Tier, TypeNameZh: kind[0], TypeNameEn: kind[1], RewardPools: rewardTypes[typeHash],
+			MainTraits: mainOptions, SubParams: subOptions,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Tier != result[j].Tier {
+			return result[i].Tier > result[j].Tier
+		}
+		return result[i].NameZh < result[j].NameZh
+	})
+	return result, nil
+}
+
+const (
+	naturalDropManifestName = "data.i.gbfr-codex-natural-drop.json"
+	naturalDropBackupName   = "data.i.gbfr-codex-natural-drop.bak"
+)
+
+var naturalDropSummonTablePaths = []string{
+	"system/table/summon.tbl",
+	"system/table/summon_lot.tbl",
+	"system/table/reward_summon_lot.tbl",
+}
+
+var naturalDropWrightstoneTablePaths = []string{
+	"system/table/item_pendulum.tbl",
+	"system/table/gacha_lot.tbl",
+	"system/table/gacha_rate_group.tbl",
+	"system/table/gacha.tbl",
+}
+
+func naturalDropSourceFiles(includeSummons, includeWrightstones bool) map[string]string {
+	result := make(map[string]string, len(naturalDropRequiredTables)+len(naturalWrightstoneRequiredTables))
+	if includeSummons {
+		for _, required := range naturalDropRequiredTables {
+			result[required.Name] = required.SHA256
+		}
+	}
+	if includeWrightstones {
+		for _, required := range naturalWrightstoneRequiredTables {
+			result[required.Name] = required.SHA256
+		}
+	}
+	return result
+}
+
+func naturalDropSourceDigest(sourceFiles map[string]string) string {
+	parts := make([]string, 0, len(sourceFiles))
+	for name, hash := range sourceFiles {
+		parts = append(parts, name+":"+hash)
+	}
+	sort.Strings(parts)
+	digest := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	return strings.ToUpper(hex.EncodeToString(digest[:]))
+}
+
+func naturalDropFileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+	return strings.ToUpper(hex.EncodeToString(hasher.Sum(nil))), nil
+}
+
+func naturalDropCleanPath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	return filepath.Clean(path)
+}
+
+func naturalDropInstallPaths(gameExePath string) (gameDir, indexPath, backupPath, manifestPath string) {
+	gameDir = filepath.Dir(gameExePath)
+	indexPath = filepath.Join(gameDir, "data.i")
+	backupPath = filepath.Join(gameDir, naturalDropBackupName)
+	manifestPath = filepath.Join(gameDir, naturalDropManifestName)
+	return
+}
+
+func naturalDropGamePathHash(path string) uint64 {
+	normalized := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	return xxhash.Sum64String(normalized)
+}
+
+func validateNaturalDropGameExecutable(path string) (string, error) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" {
+		return "", errors.New("请选择 granblue_fantasy_relink.exe")
+	}
+	if !strings.EqualFold(filepath.Base(path), gameExeName) {
+		return "", fmt.Errorf("所选文件不是 %s", gameExeName)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("读取游戏程序失败: %w", err)
+	}
+	if info.IsDir() || info.Size() != 123522016 {
+		return "", errors.New("所选游戏程序不是已验证的 DLC 2.0.2 版本")
+	}
+	digest, err := naturalDropFileSHA256(path)
+	if err != nil {
+		return "", fmt.Errorf("校验游戏程序失败: %w", err)
+	}
+	if !strings.EqualFold(digest, runtimePatchCatalogGameSHA256) {
+		return "", fmt.Errorf("游戏程序版本不匹配（SHA-256 %s）", digest)
+	}
+	_, indexPath, _, _ := naturalDropInstallPaths(path)
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return "", fmt.Errorf("读取 data.i 失败: %w", err)
+	}
+	if _, err := parseGBFRDataIndex(data); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func naturalDropRelativeTarget(gamePath string) string {
+	return filepath.ToSlash(filepath.Join("data", filepath.FromSlash(gamePath)))
+}
+
+func naturalDropTargetPath(gameDir, gamePath string) string {
+	return filepath.Join(gameDir, "data", filepath.FromSlash(gamePath))
+}
+
+func naturalDropReadManifest(gameDir string) (*naturalDropManifest, []byte, error) {
+	path := filepath.Join(gameDir, naturalDropManifestName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	var manifest naturalDropManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, data, err
+	}
+	if manifest.SchemaVersion != 2 || manifest.Owner != naturalDropModID ||
+		manifest.GameVersion != naturalDropGameVersion ||
+		!strings.EqualFold(manifest.GameExecutableSHA, runtimePatchCatalogGameSHA256) {
+		return nil, data, errors.New("天然掉落清单不属于当前版本的本工具")
+	}
+	for relative := range manifest.GeneratedFiles {
+		clean := filepath.Clean(filepath.FromSlash(relative))
+		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return nil, data, fmt.Errorf("天然掉落清单包含越界路径: %q", relative)
+		}
+	}
+	return &manifest, data, nil
+}
+
+func naturalDropOwnedInstall(gameDir string) (*naturalDropManifest, bool) {
+	manifest, _, err := naturalDropReadManifest(gameDir)
+	if err != nil {
+		return nil, false
+	}
+	backupPath := filepath.Join(gameDir, naturalDropBackupName)
+	digest, err := naturalDropFileSHA256(backupPath)
+	if err != nil || !strings.EqualFold(digest, manifest.OriginalIndexSHA) {
+		return nil, false
+	}
+	if data, err := os.ReadFile(backupPath); err != nil {
+		return nil, false
+	} else if index, err := parseGBFRDataIndex(data); err != nil || !strings.EqualFold(index.Codename, "relink") {
+		return nil, false
+	}
+	return manifest, true
+}
+
+func naturalDropGeneratedFilesMatch(gameDir string, manifest *naturalDropManifest) bool {
+	for relative, expected := range manifest.GeneratedFiles {
+		digest, err := naturalDropFileSHA256(filepath.Join(gameDir, filepath.FromSlash(relative)))
+		if err != nil || !strings.EqualFold(digest, expected) {
+			return false
+		}
+	}
+	return true
+}
+
+func naturalDropIndexSummary(index *gbfrDataIndex) string {
+	if index == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s · %d 个归档文件 · %d 个外部文件", index.Codename, len(index.ArchiveFileHashes), len(index.ExternalFileHashes))
+}
+
+func naturalDropConflicts(gameDir string, index *gbfrDataIndex, owned bool) []NaturalDropConflict {
+	if index == nil || owned {
+		return nil
+	}
+	type scopedPath struct{ path, scope string }
+	paths := make([]scopedPath, 0, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths))
+	for _, path := range naturalDropSummonTablePaths {
+		paths = append(paths, scopedPath{path: path, scope: "summon"})
+	}
+	for _, path := range naturalDropWrightstoneTablePaths {
+		paths = append(paths, scopedPath{path: path, scope: "wrightstone"})
+	}
+	result := make([]NaturalDropConflict, 0, len(paths))
+	for _, candidate := range paths {
+		gamePath := candidate.path
+		hash := naturalDropGamePathHash(gamePath)
+		externalAt := sort.Search(len(index.ExternalFileHashes), func(i int) bool { return index.ExternalFileHashes[i] >= hash })
+		target := naturalDropTargetPath(gameDir, gamePath)
+		_, fileErr := os.Stat(target)
+		if (externalAt < len(index.ExternalFileHashes) && index.ExternalFileHashes[externalAt] == hash) || fileErr == nil {
+			result = append(result, NaturalDropConflict{
+				ModID: "external-file",
+				Path:  target,
+				File:  naturalDropRelativeTarget(gamePath),
+				Scope: candidate.scope,
+			})
+		}
+	}
+	return result
+}
+
+func (a *App) SelectNaturalDropTableDirectory() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 DLC 2.0.2 解包表目录（system/table）"})
+}
+
+func (a *App) SelectNaturalDropGameExecutable() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:   "选择 granblue_fantasy_relink.exe",
+		Filters: []runtime.FileFilter{{DisplayName: "Granblue Fantasy: Relink", Pattern: "granblue_fantasy_relink.exe"}},
+	})
+}
+
+func (a *App) GetNaturalDropWorkspace(sourceDir, gameExePath string) (*NaturalDropWorkspace, error) {
+	a.naturalDropMu.Lock()
+	defer a.naturalDropMu.Unlock()
+
+	workspace := &NaturalDropWorkspace{
+		GameVersion: naturalDropGameVersion,
+		SourceDir:   naturalDropCleanPath(sourceDir),
+		GameExePath: naturalDropCleanPath(gameExePath),
+	}
+	if strings.TrimSpace(sourceDir) != "" {
+		tables, statuses, err := loadNaturalDropTables(sourceDir, true)
+		workspace.Tables = statuses
+		if err != nil {
+			return nil, err
+		}
+		workspace.SummonTablesReady = true
+		workspace.Summons, err = buildNaturalDropCatalog(tables)
+		if err != nil {
+			return nil, err
+		}
+		wrightstoneTables, wrightstoneStatuses, wrightstoneErr := loadNaturalWrightstoneTables(sourceDir, false)
+		workspace.Tables = append(workspace.Tables, wrightstoneStatuses...)
+		if wrightstoneErr != nil {
+			return nil, wrightstoneErr
+		}
+		if wrightstoneTables != nil {
+			workspace.WrightstoneTablesReady = true
+			workspace.Wrightstones, err = buildNaturalWrightstoneCatalog()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if strings.TrimSpace(gameExePath) == "" {
+		return workspace, nil
+	}
+	validated, err := validateNaturalDropGameExecutable(gameExePath)
+	if err != nil {
+		return nil, err
+	}
+	workspace.GameExePath = validated
+	gameDir, indexPath, backupPath, _ := naturalDropInstallPaths(validated)
+	workspace.GameDir, workspace.IndexPath = gameDir, indexPath
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	index, err := parseGBFRDataIndex(indexData)
+	if err != nil {
+		return nil, err
+	}
+	workspace.IndexValid = true
+	workspace.IndexSummary = naturalDropIndexSummary(index)
+	manifest, owned := naturalDropOwnedInstall(gameDir)
+	workspace.Owned = owned
+	workspace.BackupReady = owned
+	if owned {
+		currentDigest := fileSHA256(indexData)
+		workspace.Installed = strings.EqualFold(currentDigest, manifest.DeployedIndexSHA) && naturalDropGeneratedFilesMatch(gameDir, manifest)
+	} else if _, err := os.Stat(backupPath); err == nil {
+		workspace.BackupReady = true
+	}
+	workspace.Conflicts = naturalDropConflicts(gameDir, index, owned)
+	return workspace, nil
+}
+
+func parseNaturalDropSelection(value string, label string) (uint32, error) {
+	hash, err := ParseHashHex(strings.TrimSpace(value))
+	if err != nil || hash == 0 || hash == summonInvalidTypeHash {
+		return 0, fmt.Errorf("%s哈希无效: %q", label, value)
+	}
+	return hash, nil
+}
+
+func uniqueNaturalDropPoolHash(typeHash uint32, occupied map[uint32]bool) (uint32, error) {
+	for attempt := 0; attempt < 128; attempt++ {
+		candidate := gbfrHash32(fmt.Sprintf("CODEX_NATURAL_DROP_%08X_%02d", typeHash, attempt))
+		if candidate != 0 && candidate != summonInvalidTypeHash && !occupied[candidate] {
+			occupied[candidate] = true
+			return candidate, nil
+		}
+	}
+	return 0, fmt.Errorf("无法为召唤石 0x%08X 分配独立掉落池", typeHash)
+}
+
+func cloneAndPinNaturalDropPool(sourceRows [][]byte, newPool, chosen uint32) ([]byte, error) {
+	if len(sourceRows) == 0 {
+		return nil, errors.New("天然附加词条池为空")
+	}
+	found := false
+	result := make([]byte, 0, len(sourceRows)*summonLotRowSize)
+	for _, source := range sourceRows {
+		if len(source) != summonLotRowSize {
+			return nil, errors.New("天然附加词条池行宽异常")
+		}
+		row := append([]byte(nil), source...)
+		binary.LittleEndian.PutUint32(row[0:4], newPool)
+		value := binary.LittleEndian.Uint32(row[4:8])
+		weight := naturalDropLowWeight
+		if value == chosen {
+			weight = naturalDropForcedWeight
+			found = true
+		}
+		binary.LittleEndian.PutUint32(row[12:16], weight)
+		result = append(result, row...)
+	}
+	if !found {
+		return nil, fmt.Errorf("所选词条 0x%08X 不在对应原始掉落池", chosen)
+	}
+	return result, nil
+}
+
+func patchNaturalDropTables(source *naturalDropTables, selections []NaturalDropSelection) (*naturalDropTables, int, error) {
+	if source == nil {
+		return nil, 0, errors.New("天然掉落原表为空")
+	}
+	summon := append([]byte(nil), source.Summon...)
+	lot := append([]byte(nil), source.SummonLot...)
+	reward := append([]byte(nil), source.RewardSummonLot...)
+	rows, err := naturalDropSummonRows(summon)
+	if err != nil {
+		return nil, 0, err
+	}
+	_, poolCounts, err := naturalDropRewardPoolCounts(reward)
+	if err != nil {
+		return nil, 0, err
+	}
+	occupied := make(map[uint32]bool)
+	for pool := range poolCounts {
+		occupied[pool] = true
+	}
+	seenTypes := make(map[uint32]bool)
+	selectedRows := make(map[uint32]naturalDropSummonRow)
+	for _, selection := range selections {
+		typeHash, err := parseNaturalDropSelection(selection.TypeHash, "召唤石种类")
+		if err != nil {
+			return nil, 0, err
+		}
+		mainHash, err := parseNaturalDropSelection(selection.MainTrait, "主加护")
+		if err != nil {
+			return nil, 0, err
+		}
+		subHash, err := parseNaturalDropSelection(selection.SubParam, "附加词条")
+		if err != nil {
+			return nil, 0, err
+		}
+		if seenTypes[typeHash] {
+			return nil, 0, fmt.Errorf("召唤石 0x%08X 被重复配置", typeHash)
+		}
+		seenTypes[typeHash] = true
+		row, exists := rows[typeHash]
+		if !exists {
+			return nil, 0, fmt.Errorf("召唤石 0x%08X 不在 summon.tbl", typeHash)
+		}
+		mainRows, err := naturalDropLotRows(lot, row.SkillPool)
+		if err != nil {
+			return nil, 0, err
+		}
+		newSkillPool, err := uniqueNaturalDropPoolHash(typeHash, occupied)
+		if err != nil {
+			return nil, 0, err
+		}
+		appendedMain, err := cloneAndPinNaturalDropPool(mainRows, newSkillPool, mainHash)
+		if err != nil {
+			return nil, 0, fmt.Errorf("召唤石 0x%08X 主加护: %w", typeHash, err)
+		}
+		lot = append(lot, appendedMain...)
+		binary.LittleEndian.PutUint32(lot[:4], uint32((len(lot)-8)/summonLotRowSize))
+		binary.LittleEndian.PutUint32(summon[row.Offset:row.Offset+4], newSkillPool)
+
+		subRows, err := naturalDropLotRows(lot, row.EquipPool)
+		if err != nil {
+			return nil, 0, err
+		}
+		newPool, err := uniqueNaturalDropPoolHash(typeHash, occupied)
+		if err != nil {
+			return nil, 0, err
+		}
+		appended, err := cloneAndPinNaturalDropPool(subRows, newPool, subHash)
+		if err != nil {
+			return nil, 0, fmt.Errorf("召唤石 0x%08X 附加词条: %w", typeHash, err)
+		}
+		lot = append(lot, appended...)
+		binary.LittleEndian.PutUint32(lot[:4], uint32((len(lot)-8)/summonLotRowSize))
+		binary.LittleEndian.PutUint32(summon[row.Offset+8:row.Offset+12], newPool)
+		row.SkillPool, row.EquipPool = newSkillPool, newPool
+		selectedRows[typeHash] = row
+	}
+	binary.LittleEndian.PutUint32(lot[:4], uint32((len(lot)-8)/summonLotRowSize))
+
+	rewardCount, err := tableRowCount(reward, rewardSummonLotRowSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	affectedPools := make(map[uint32]bool)
+	for i := 0; i < rewardCount; i++ {
+		offset := 8 + i*rewardSummonLotRowSize
+		pool := binary.LittleEndian.Uint32(reward[offset:])
+		typeHash := binary.LittleEndian.Uint32(reward[offset+4:])
+		if _, selected := selectedRows[typeHash]; selected {
+			affectedPools[pool] = true
+		}
+	}
+	for i := 0; i < rewardCount; i++ {
+		offset := 8 + i*rewardSummonLotRowSize
+		pool := binary.LittleEndian.Uint32(reward[offset:])
+		if !affectedPools[pool] {
+			continue
+		}
+		typeHash := binary.LittleEndian.Uint32(reward[offset+4:])
+		weight := naturalDropLowWeight
+		if _, selected := selectedRows[typeHash]; selected {
+			weight = naturalDropForcedWeight
+		}
+		binary.LittleEndian.PutUint32(reward[offset+8:offset+12], weight)
+	}
+	if _, err := tableRowCount(summon, summonTableRowSize); err != nil {
+		return nil, 0, fmt.Errorf("生成后的 summon.tbl: %w", err)
+	}
+	if _, err := tableRowCount(lot, summonLotRowSize); err != nil {
+		return nil, 0, fmt.Errorf("生成后的 summon_lot.tbl: %w", err)
+	}
+	return &naturalDropTables{Summon: summon, SummonLot: lot, RewardSummonLot: reward}, len(affectedPools), nil
+}
+
+func naturalDropRequireStoppedProcesses() error {
+	if _, err := findProcessByName(charaProcessName); err == nil {
+		return errors.New("部署或恢复天然掉落前请先完全退出游戏")
+	}
+	return nil
+}
+
+func cloneGBFRDataIndex(index *gbfrDataIndex) *gbfrDataIndex {
+	if index == nil {
+		return nil
+	}
+	clone := *index
+	clone.ArchiveFileHashes = append([]uint64(nil), index.ArchiveFileHashes...)
+	clone.FileToChunkIndexers = append([]gbfrFileToChunkIndexer(nil), index.FileToChunkIndexers...)
+	clone.Chunks = append([]gbfrDataChunk(nil), index.Chunks...)
+	clone.ExternalFileHashes = append([]uint64(nil), index.ExternalFileHashes...)
+	clone.ExternalFileSizes = append([]uint64(nil), index.ExternalFileSizes...)
+	clone.CachedChunkIndices = append([]uint32(nil), index.CachedChunkIndices...)
+	return &clone
+}
+
+func naturalDropBuildIndex(base []byte, files map[string][]byte) ([]byte, error) {
+	index, err := parseGBFRDataIndex(base)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(index.Codename, "relink") {
+		return nil, fmt.Errorf("data.i 标识为 %q；请先恢复游戏原始索引，避免覆盖其他加载器的临时索引", index.Codename)
+	}
+	patched := cloneGBFRDataIndex(index)
+	paths := make([]string, 0, len(files))
+	for gamePath := range files {
+		paths = append(paths, gamePath)
+	}
+	sort.Strings(paths)
+	for _, gamePath := range paths {
+		data := files[gamePath]
+		registerGBFRExternalFile(patched, naturalDropGamePathHash(gamePath), uint64(len(data)))
+	}
+	result, err := buildGBFRDataIndex(patched)
+	if err != nil {
+		return nil, err
+	}
+	readback, err := parseGBFRDataIndex(result)
+	if err != nil {
+		return nil, err
+	}
+	for _, gamePath := range paths {
+		hash := naturalDropGamePathHash(gamePath)
+		at := sort.Search(len(readback.ExternalFileHashes), func(i int) bool { return readback.ExternalFileHashes[i] >= hash })
+		if at >= len(readback.ExternalFileHashes) || readback.ExternalFileHashes[at] != hash || readback.ExternalFileSizes[at] != uint64(len(files[gamePath])) {
+			return nil, fmt.Errorf("生成索引未正确登记 %s", gamePath)
+		}
+	}
+	return result, nil
+}
+
+func naturalDropWriteAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	replaced := false
+	defer func() {
+		_ = tmp.Close()
+		if !replaced {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := replaceFileAtomic(tmpPath, path); err != nil {
+		return err
+	}
+	replaced = true
+	readback, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if fileSHA256(readback) != fileSHA256(data) {
+		return fmt.Errorf("写后校验失败: %s", path)
+	}
+	return nil
+}
+
+func naturalDropCleanupBackup(path string, cause error, removeFile func(string) error) error {
+	cleanupErr := removeFile(path)
+	if cleanupErr == nil || os.IsNotExist(cleanupErr) {
+		return cause
+	}
+	cleanupErr = fmt.Errorf("清理未完成的 data.i 备份失败: %w", cleanupErr)
+	if cause == nil {
+		return cleanupErr
+	}
+	return errors.Join(cause, cleanupErr)
+}
+
+func naturalDropCreateBackup(path string, data []byte) (resultErr error) {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	complete := false
+	closed := false
+	defer func() {
+		if !closed {
+			if closeErr := file.Close(); closeErr != nil {
+				resultErr = errors.Join(resultErr, closeErr)
+			}
+		}
+		if !complete {
+			resultErr = naturalDropCleanupBackup(path, resultErr, os.Remove)
+		}
+	}()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	closeErr := file.Close()
+	closed = true
+	if closeErr != nil {
+		return closeErr
+	}
+	readback, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if fileSHA256(readback) != fileSHA256(data) {
+		return errors.New("data.i 备份写后校验失败")
+	}
+	complete = true
+	return nil
+}
+
+func naturalDropVerifyOwnedCurrent(gameDir string, manifest *naturalDropManifest, indexData []byte) error {
+	if !strings.EqualFold(fileSHA256(indexData), manifest.DeployedIndexSHA) {
+		return errors.New("当前 data.i 已被其他程序改动；请先恢复或验证游戏文件，拒绝叠加覆盖")
+	}
+	if !naturalDropGeneratedFilesMatch(gameDir, manifest) {
+		return errors.New("本工具部署的掉落表已被其他程序改动；拒绝覆盖未知内容")
+	}
+	return nil
+}
+
+func naturalDropRollback(gameDir string, oldIndex []byte, oldFiles map[string][]byte, oldManifest []byte, removeBackup bool) error {
+	var rollbackErrors []error
+	_, indexPath, backupPath, manifestPath := naturalDropInstallPaths(filepath.Join(gameDir, gameExeName))
+	if err := naturalDropWriteAtomic(indexPath, oldIndex); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复旧 data.i: %w", err))
+	}
+	for relative, oldData := range oldFiles {
+		path := filepath.Join(gameDir, filepath.FromSlash(relative))
+		if oldData == nil {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("清理 %s: %w", relative, err))
+			}
+			continue
+		}
+		if err := naturalDropWriteAtomic(path, oldData); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 %s: %w", relative, err))
+		}
+	}
+	if oldManifest == nil {
+		if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+			rollbackErrors = append(rollbackErrors, err)
+		}
+	} else if err := naturalDropWriteAtomic(manifestPath, oldManifest); err != nil {
+		rollbackErrors = append(rollbackErrors, err)
+	}
+	if removeBackup {
+		if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+			rollbackErrors = append(rollbackErrors, err)
+		}
+	}
+	return errors.Join(rollbackErrors...)
+}
+
+func naturalDropSnapshotExistingFile(path string, readFile func(string) ([]byte, error)) ([]byte, error) {
+	data, err := readFile(path)
+	if err == nil {
+		return data, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return nil, err
+}
+
+func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDropDeployResult, error) {
+	a.naturalDropMu.Lock()
+	defer a.naturalDropMu.Unlock()
+	if err := naturalDropRequireStoppedProcesses(); err != nil {
+		return nil, err
+	}
+	if len(request.Selections) == 0 && len(request.Wrightstones) == 0 {
+		return nil, errors.New("请至少选择一颗召唤石或祝福石")
+	}
+	gameExePath, err := validateNaturalDropGameExecutable(request.GameExePath)
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string][]byte, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths))
+	affectedPools := 0
+	if len(request.Selections) > 0 {
+		source, _, loadErr := loadNaturalDropTables(request.SourceDir, true)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		patched, poolCount, patchErr := patchNaturalDropTables(source, request.Selections)
+		if patchErr != nil {
+			return nil, patchErr
+		}
+		affectedPools = poolCount
+		files[naturalDropSummonTablePaths[0]] = patched.Summon
+		files[naturalDropSummonTablePaths[1]] = patched.SummonLot
+		files[naturalDropSummonTablePaths[2]] = patched.RewardSummonLot
+	}
+	if len(request.Wrightstones) > 0 {
+		source, _, loadErr := loadNaturalWrightstoneTables(request.SourceDir, true)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		patched, _, patchErr := patchNaturalWrightstoneTables(source, request.Wrightstones, request.WrightstoneOnly)
+		if patchErr != nil {
+			return nil, patchErr
+		}
+		files[naturalDropWrightstoneTablePaths[0]] = patched.Items
+		files[naturalDropWrightstoneTablePaths[1]] = patched.Lots
+		files[naturalDropWrightstoneTablePaths[2]] = patched.RateGroups
+		files[naturalDropWrightstoneTablePaths[3]] = patched.Gacha
+	}
+	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
+	currentIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	currentParsed, err := parseGBFRDataIndex(currentIndex)
+	if err != nil {
+		return nil, err
+	}
+	manifest, oldManifest, manifestErr := naturalDropReadManifest(gameDir)
+	owned := manifestErr == nil
+	if manifestErr != nil && !os.IsNotExist(manifestErr) {
+		return nil, fmt.Errorf("发现无法验证的天然掉落清单: %w", manifestErr)
+	}
+	var baseIndex []byte
+	backupCreated := false
+	if owned {
+		if err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex); err != nil {
+			return nil, err
+		}
+		baseIndex, err = os.ReadFile(backupPath)
+		if err != nil || !strings.EqualFold(fileSHA256(baseIndex), manifest.OriginalIndexSHA) {
+			return nil, errors.New("天然掉落原始 data.i 备份缺失或校验失败")
+		}
+	} else {
+		if _, err := os.Stat(backupPath); err == nil {
+			return nil, errors.New("发现无有效清单对应的 data.i 备份；拒绝覆盖，请先人工核对")
+		}
+		selectedTargets := make(map[string]bool, len(files))
+		for gamePath := range files {
+			selectedTargets[naturalDropRelativeTarget(gamePath)] = true
+		}
+		conflictCount := 0
+		for _, conflict := range naturalDropConflicts(gameDir, currentParsed, false) {
+			if selectedTargets[conflict.File] {
+				conflictCount++
+			}
+		}
+		if conflictCount > 0 {
+			return nil, fmt.Errorf("所选目标表已被其他外部文件方案占用（%d 项），拒绝覆盖", conflictCount)
+		}
+		baseIndex = currentIndex
+		if err := naturalDropCreateBackup(backupPath, baseIndex); err != nil {
+			return nil, fmt.Errorf("创建原始 data.i 备份失败: %w", err)
+		}
+		backupCreated = true
+	}
+	cleanupNewBackup := func(cause error) error {
+		if !backupCreated {
+			return cause
+		}
+		return naturalDropCleanupBackup(backupPath, cause, os.Remove)
+	}
+	deployedIndex, err := naturalDropBuildIndex(baseIndex, files)
+	if err != nil {
+		return nil, cleanupNewBackup(err)
+	}
+
+	oldFiles := make(map[string][]byte, len(files))
+	generated := make(map[string]string, len(files))
+	for gamePath, data := range files {
+		relative := naturalDropRelativeTarget(gamePath)
+		target := filepath.Join(gameDir, filepath.FromSlash(relative))
+		oldFiles[relative], err = naturalDropSnapshotExistingFile(target, os.ReadFile)
+		if err != nil {
+			return nil, cleanupNewBackup(fmt.Errorf("读取目标表 %s 的原始内容失败，部署已取消: %w", relative, err))
+		}
+		generated[relative] = fileSHA256(data)
+	}
+	var staleGenerated []string
+	if owned {
+		for relative := range manifest.GeneratedFiles {
+			if _, retained := generated[relative]; retained {
+				continue
+			}
+			target := filepath.Join(gameDir, filepath.FromSlash(relative))
+			oldFiles[relative], err = naturalDropSnapshotExistingFile(target, os.ReadFile)
+			if err != nil {
+				return nil, cleanupNewBackup(fmt.Errorf("读取旧生成表 %s 的原始内容失败，部署已取消: %w", relative, err))
+			}
+			staleGenerated = append(staleGenerated, relative)
+		}
+	}
+	rollback := func(cause error) error {
+		if rollbackErr := naturalDropRollback(gameDir, currentIndex, oldFiles, oldManifest, backupCreated); rollbackErr != nil {
+			return errors.Join(cause, fmt.Errorf("自动回滚未完全成功: %w", rollbackErr))
+		}
+		return cause
+	}
+	for gamePath, data := range files {
+		if err := naturalDropWriteAtomic(naturalDropTargetPath(gameDir, gamePath), data); err != nil {
+			return nil, rollback(fmt.Errorf("部署 %s 失败: %w", gamePath, err))
+		}
+	}
+	if err := naturalDropWriteAtomic(indexPath, deployedIndex); err != nil {
+		return nil, rollback(fmt.Errorf("部署 data.i 失败: %w", err))
+	}
+	for _, relative := range staleGenerated {
+		if err := os.Remove(filepath.Join(gameDir, filepath.FromSlash(relative))); err != nil && !os.IsNotExist(err) {
+			return nil, rollback(fmt.Errorf("清理旧生成表 %s 失败: %w", relative, err))
+		}
+	}
+	selectionCopy := append([]NaturalDropSelection(nil), request.Selections...)
+	sort.Slice(selectionCopy, func(i, j int) bool { return selectionCopy[i].TypeHash < selectionCopy[j].TypeHash })
+	newManifest := naturalDropManifest{
+		SchemaVersion:       2,
+		Owner:               naturalDropModID,
+		GameVersion:         naturalDropGameVersion,
+		GameExecutableSHA:   runtimePatchCatalogGameSHA256,
+		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
+		OriginalIndexSHA:    fileSHA256(baseIndex),
+		DeployedIndexSHA:    fileSHA256(deployedIndex),
+		SourceFiles:         naturalDropSourceFiles(len(selectionCopy) > 0, len(request.Wrightstones) > 0),
+		GeneratedFiles:      generated,
+		Selections:          selectionCopy,
+		Wrightstones:        append([]NaturalDropWrightstoneSelection(nil), request.Wrightstones...),
+		WrightstoneOnly:     request.WrightstoneOnly,
+		AffectedRewardPools: affectedPools,
+	}
+	manifestData, err := json.MarshalIndent(newManifest, "", "  ")
+	if err != nil {
+		return nil, rollback(err)
+	}
+	manifestData = append(manifestData, '\n')
+	if err := naturalDropWriteAtomic(manifestPath, manifestData); err != nil {
+		return nil, rollback(fmt.Errorf("写入部署清单失败: %w", err))
+	}
+	fileList := make([]string, 0, len(generated)+1)
+	for path := range generated {
+		fileList = append(fileList, path)
+	}
+	fileList = append(fileList, "data.i")
+	sort.Strings(fileList)
+	return &NaturalDropDeployResult{
+		ModDir:               gameDir,
+		GeneratedFiles:       fileList,
+		SelectedSummons:      len(selectionCopy),
+		SelectedWrightstones: len(request.Wrightstones),
+		AffectedRewardPools:  affectedPools,
+		SourceDigest:         naturalDropSourceDigest(newManifest.SourceFiles),
+	}, nil
+}
+
+func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) error {
+	a.naturalDropMu.Lock()
+	defer a.naturalDropMu.Unlock()
+	if err := naturalDropRequireStoppedProcesses(); err != nil {
+		return err
+	}
+	gameExePath, err := validateNaturalDropGameExecutable(request.GameExePath)
+	if err != nil {
+		return err
+	}
+	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
+	manifest, _, err := naturalDropReadManifest(gameDir)
+	if err != nil {
+		return errors.New("未找到本工具拥有的天然掉落部署")
+	}
+	backup, err := os.ReadFile(backupPath)
+	if err != nil || !strings.EqualFold(fileSHA256(backup), manifest.OriginalIndexSHA) {
+		return errors.New("原始 data.i 备份缺失或校验失败，拒绝恢复")
+	}
+	if _, err := parseGBFRDataIndex(backup); err != nil {
+		return fmt.Errorf("原始 data.i 备份无效: %w", err)
+	}
+	if err := naturalDropWriteAtomic(indexPath, backup); err != nil {
+		return fmt.Errorf("恢复原始 data.i 失败: %w", err)
+	}
+	var leftovers []string
+	for relative, expected := range manifest.GeneratedFiles {
+		target := filepath.Join(gameDir, filepath.FromSlash(relative))
+		digest, err := naturalDropFileSHA256(target)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil || !strings.EqualFold(digest, expected) {
+			leftovers = append(leftovers, relative)
+			continue
+		}
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			leftovers = append(leftovers, relative)
+		}
+	}
+	if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("原索引已恢复，但清理部署清单失败: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("原索引已恢复，但清理备份副本失败: %w", err)
+	}
+	for _, path := range []string{
+		filepath.Join(gameDir, "data", "system", "table"),
+		filepath.Join(gameDir, "data", "system"),
+	} {
+		_ = os.Remove(path)
+	}
+	if len(leftovers) > 0 {
+		sort.Strings(leftovers)
+		return fmt.Errorf("原始 data.i 已恢复；%d 个后来被改动的外部文件未删除: %s", len(leftovers), strings.Join(leftovers, ", "))
+	}
+	return nil
+}

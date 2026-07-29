@@ -66,6 +66,31 @@ func TestLoadoutShareExportUsesReadableCompactJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeLoadoutShareFileAcceptsJSONAndDownloadedFrame(t *testing.T) {
+	share := loadoutShareCodeFixture()
+	share.Name = "下载导入测试"
+	jsonPayload, err := marshalLoadoutShare(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromJSON, err := decodeLoadoutShareFile(jsonPayload)
+	if err != nil || fromJSON.CharaHash != share.CharaHash || fromJSON.Name != share.Name {
+		t.Fatalf("decode JSON: share=%+v err=%v", fromJSON, err)
+	}
+	encoded, err := encodeLoadoutShareCode(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := loadoutShareFrameFromCompatibilityCode(encoded.CompatibilityCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromFrame, err := decodeLoadoutShareFile(frame)
+	if err != nil || fromFrame.CharaHash != share.CharaHash || fromFrame.Name != share.Name {
+		t.Fatalf("decode downloaded frame: share=%+v err=%v", fromFrame, err)
+	}
+}
+
 func TestLoadoutShareStillReadsLegacyEnhancementNodeObjects(t *testing.T) {
 	payload := []byte(`{"format":"gbfr-loadout","version":9,"character":{"enhancementNodes":[{"index":1,"value":2},{"index":7,"value":3}]}}`)
 	var share LoadoutShare

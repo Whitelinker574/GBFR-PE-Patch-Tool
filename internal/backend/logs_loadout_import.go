@@ -44,7 +44,104 @@ type LogsLoadoutShareCandidate struct {
 }
 
 type logsLoadoutEncounter struct {
-	PlayerData [4]*logsLoadoutPlayer `cbor:"playerData" json:"playerData"`
+	PlayerData  [4]*logsLoadoutPlayer `cbor:"playerData" json:"playerData"`
+	EventLog    []logsTimedDamage     `cbor:"eventLog" json:"eventLog"`
+	RawEventLog []logsTimedMessage    `cbor:"rawEventLog" json:"rawEventLog"`
+}
+
+type logsActor struct {
+	Index           uint32 `cbor:"index"`
+	ActorType       uint32 `cbor:"actor_type"`
+	ParentIndex     uint32 `cbor:"parent_index"`
+	ParentActorType uint32 `cbor:"parent_actor_type"`
+}
+
+type logsActionType struct {
+	Kind string
+	ID   uint32
+}
+
+func (value *logsActionType) UnmarshalCBOR(data []byte) error {
+	var kind string
+	if err := cbor.Unmarshal(data, &kind); err == nil {
+		value.Kind = kind
+		value.ID = 0
+		return nil
+	}
+	var variants map[string]uint32
+	if err := cbor.Unmarshal(data, &variants); err != nil || len(variants) != 1 {
+		return fmt.Errorf("decode action type")
+	}
+	for key, id := range variants {
+		value.Kind, value.ID = key, id
+	}
+	return nil
+}
+
+type logsDamageEvent struct {
+	Source          logsActor          `cbor:"source"`
+	Target          logsActor          `cbor:"target"`
+	Damage          int32              `cbor:"damage"`
+	Flags           uint64             `cbor:"flags"`
+	ActionID        logsActionType     `cbor:"action_id"`
+	DamageCap       *int32             `cbor:"damage_cap"`
+	BaseDamage      *float32           `cbor:"base_damage"`
+	Details         *logsDamageDetails `cbor:"details"`
+	TargetCurrentHP *uint64            `cbor:"target_current_hp"`
+	TargetMaxHP     *uint64            `cbor:"target_max_hp"`
+}
+
+// logsDamageDetails is the independently published djeetamod v1 extension.
+// Other detail fields remain intentionally ignored until a UI consumes them.
+type logsDamageDetails struct {
+	UncappedDamage float32 `cbor:"uncapped_damage"`
+	DamageCap      int32   `cbor:"damage_cap"`
+}
+
+type logsTimedDamage struct {
+	Time  int64
+	Event logsDamageEvent
+}
+
+func (value *logsTimedDamage) UnmarshalCBOR(data []byte) error {
+	var row []cbor.RawMessage
+	if err := cbor.Unmarshal(data, &row); err != nil || len(row) != 2 {
+		return fmt.Errorf("decode timed damage")
+	}
+	if err := cbor.Unmarshal(row[0], &value.Time); err != nil {
+		return err
+	}
+	return cbor.Unmarshal(row[1], &value.Event)
+}
+
+type logsTimedMessage struct {
+	Time   int64
+	Damage *logsDamageEvent
+}
+
+func (value *logsTimedMessage) UnmarshalCBOR(data []byte) error {
+	var row []cbor.RawMessage
+	if err := cbor.Unmarshal(data, &row); err != nil || len(row) != 2 {
+		return fmt.Errorf("decode timed message")
+	}
+	if err := cbor.Unmarshal(row[0], &value.Time); err != nil {
+		return err
+	}
+	var variants map[string]cbor.RawMessage
+	if err := cbor.Unmarshal(row[1], &variants); err != nil {
+		return err
+	}
+	for kind, raw := range variants {
+		if kind != "DamageEvent" {
+			return nil
+		}
+		var event logsDamageEvent
+		if err := cbor.Unmarshal(raw, &event); err != nil {
+			return err
+		}
+		value.Damage = &event
+	}
+	return nil
 }
 
 type logsLoadoutPlayer struct {
@@ -971,6 +1068,10 @@ func readLogsLoadoutShares(path string) ([]LogsLoadoutShareCandidate, error) {
 	if err := validateLogsDatabaseSchema(db); err != nil {
 		return nil, err
 	}
+	return readLogsLoadoutSharesDB(db)
+}
+
+func readLogsLoadoutSharesDB(db *sql.DB) ([]LogsLoadoutShareCandidate, error) {
 	versions, err := logsVersionList(db)
 	if err != nil {
 		return nil, fmt.Errorf("读取 Logs 协议版本失败: %w", err)
@@ -1044,6 +1145,24 @@ func readLogsLoadoutShares(path string) ([]LogsLoadoutShareCandidate, error) {
 }
 
 func (a *App) SelectLogsLoadoutShares() ([]LogsLoadoutShareCandidate, error) {
+	a.logsArchiveMu.Lock()
+	if strings.TrimSpace(a.logsArchivePath) != "" {
+		if err := a.ensureLogsArchiveSessionLocked(); err != nil {
+			a.logsArchiveMu.Unlock()
+			return nil, err
+		}
+		result, err := readLogsLoadoutSharesDB(a.logsArchiveDB)
+		a.logsArchiveMu.Unlock()
+		return result, err
+	}
+	a.logsArchiveMu.Unlock()
+	return a.SelectLogsLoadoutSharesFresh()
+}
+
+// SelectLogsLoadoutSharesFresh is the explicit "change database" path. The
+// normal selector reuses the read-only Logs session opened by the battle
+// archive, so both views operate on one selected file.
+func (a *App) SelectLogsLoadoutSharesFresh() ([]LogsLoadoutShareCandidate, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "选择 GBFR Logs 数据库",
 		Filters: []runtime.FileFilter{
@@ -1054,5 +1173,11 @@ func (a *App) SelectLogsLoadoutShares() ([]LogsLoadoutShareCandidate, error) {
 	if err != nil || path == "" {
 		return nil, err
 	}
-	return readLogsLoadoutShares(path)
+	if err := a.replaceLogsArchiveSession(path); err != nil {
+		return nil, err
+	}
+	a.logsArchiveMu.Lock()
+	result, readErr := readLogsLoadoutSharesDB(a.logsArchiveDB)
+	a.logsArchiveMu.Unlock()
+	return result, readErr
 }

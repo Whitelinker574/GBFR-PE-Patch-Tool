@@ -26,6 +26,7 @@ var wrightstoneTraitCN = map[string]string{
 	"Held Under Resistance":   "水牢抗性",
 	"Burn Resistance":         "灼热抗性",
 	"Slow Resistance":         "缓速抗性",
+	"ATK Down Resistance":     "攻击DOWN抗性",
 }
 
 func cnWrightstone(en string) string {
