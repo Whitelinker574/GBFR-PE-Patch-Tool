@@ -1,6 +1,6 @@
 {
     "schemaVersion": 1,
-    "description": "GBFR 2.0.2 sigil catalog rebuilt from a fresh local data.i extraction. gem.tbl is authoritative for item/primary/fixed-secondary identity; skill_type_lot.tbl and skill_lot.tbl are authoritative for random secondary pools. Task-reward sigils with hash-form table keys are included when their item and trait rows are both verified.",
+    "description": "GBFR 2.0.2 sigil catalog rebuilt from a fresh local data.i extraction. gem.tbl is authoritative for item/primary/fixed-secondary identity; skill_type_lot.tbl and skill_lot.tbl are authoritative for random secondary pools. Three legacy IDs absent from gem.tbl are retained only by read-only name fallbacks, not this constructible catalog.",
     "sources": [
         {
             "name": "Fresh local GBFR 2.0.2 data.i extraction",
@@ -3568,7 +3568,11 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_114_01",
-            "defaultSecondaryTraitName": "Fearless Spirit"
+            "defaultSecondaryTraitName": "Fearless Spirit",
+            "allowedOwnerCodes": [
+                "PL0000",
+                "PL0100"
+            ]
         },
         {
             "internalId": "GEEN_114_91",
@@ -3660,7 +3664,11 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0000",
+                "PL0100"
+            ]
         },
         {
             "internalId": "GEEN_114_92",
@@ -3752,7 +3760,11 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0000",
+                "PL0100"
+            ]
         },
         {
             "internalId": "GEEN_114_93",
@@ -3844,7 +3856,11 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0000",
+                "PL0100"
+            ]
         },
         {
             "internalId": "GEEN_115_90",
@@ -3874,7 +3890,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_115_01",
-            "defaultSecondaryTraitName": "Guardian's Honor"
+            "defaultSecondaryTraitName": "Guardian's Honor",
+            "allowedOwnerCodes": [
+                "PL0200"
+            ]
         },
         {
             "internalId": "GEEN_115_91",
@@ -3966,7 +3985,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0200"
+            ]
         },
         {
             "internalId": "GEEN_115_92",
@@ -4058,7 +4080,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0200"
+            ]
         },
         {
             "internalId": "GEEN_115_93",
@@ -4150,7 +4175,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0200"
+            ]
         },
         {
             "internalId": "GEEN_116_90",
@@ -4180,7 +4208,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_116_01",
-            "defaultSecondaryTraitName": "Helmsman's Tenacity"
+            "defaultSecondaryTraitName": "Helmsman's Tenacity",
+            "allowedOwnerCodes": [
+                "PL0300"
+            ]
         },
         {
             "internalId": "GEEN_116_91",
@@ -4272,7 +4303,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0300"
+            ]
         },
         {
             "internalId": "GEEN_116_92",
@@ -4364,7 +4398,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0300"
+            ]
         },
         {
             "internalId": "GEEN_116_93",
@@ -4456,7 +4493,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0300"
+            ]
         },
         {
             "internalId": "GEEN_117_90",
@@ -4486,7 +4526,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_117_01",
-            "defaultSecondaryTraitName": "Mage's Savvy"
+            "defaultSecondaryTraitName": "Mage's Savvy",
+            "allowedOwnerCodes": [
+                "PL0400"
+            ]
         },
         {
             "internalId": "GEEN_117_91",
@@ -4578,7 +4621,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0400"
+            ]
         },
         {
             "internalId": "GEEN_117_92",
@@ -4670,7 +4716,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0400"
+            ]
         },
         {
             "internalId": "GEEN_117_93",
@@ -4762,7 +4811,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0400"
+            ]
         },
         {
             "internalId": "GEEN_118_90",
@@ -4792,7 +4844,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_118_01",
-            "defaultSecondaryTraitName": "Veteran's Vision"
+            "defaultSecondaryTraitName": "Veteran's Vision",
+            "allowedOwnerCodes": [
+                "PL0500"
+            ]
         },
         {
             "internalId": "GEEN_118_91",
@@ -4884,7 +4939,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0500"
+            ]
         },
         {
             "internalId": "GEEN_118_92",
@@ -4976,7 +5034,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0500"
+            ]
         },
         {
             "internalId": "GEEN_118_93",
@@ -5068,7 +5129,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0500"
+            ]
         },
         {
             "internalId": "GEEN_119_90",
@@ -5098,7 +5162,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_119_01",
-            "defaultSecondaryTraitName": "Rose's Profusion"
+            "defaultSecondaryTraitName": "Rose's Profusion",
+            "allowedOwnerCodes": [
+                "PL0600"
+            ]
         },
         {
             "internalId": "GEEN_119_91",
@@ -5190,7 +5257,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0600"
+            ]
         },
         {
             "internalId": "GEEN_119_92",
@@ -5282,7 +5352,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0600"
+            ]
         },
         {
             "internalId": "GEEN_119_93",
@@ -5374,7 +5447,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0600"
+            ]
         },
         {
             "internalId": "GEEN_120_90",
@@ -5404,7 +5480,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_120_01",
-            "defaultSecondaryTraitName": "Phantasm's Concord"
+            "defaultSecondaryTraitName": "Phantasm's Concord",
+            "allowedOwnerCodes": [
+                "PL0700"
+            ]
         },
         {
             "internalId": "GEEN_120_91",
@@ -5496,7 +5575,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0700"
+            ]
         },
         {
             "internalId": "GEEN_120_92",
@@ -5588,7 +5670,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0700"
+            ]
         },
         {
             "internalId": "GEEN_120_93",
@@ -5680,7 +5765,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0700"
+            ]
         },
         {
             "internalId": "GEEN_121_90",
@@ -5710,7 +5798,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_121_01",
-            "defaultSecondaryTraitName": "White Dragon's Glory"
+            "defaultSecondaryTraitName": "White Dragon's Glory",
+            "allowedOwnerCodes": [
+                "PL0800"
+            ]
         },
         {
             "internalId": "GEEN_121_91",
@@ -5802,7 +5893,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0800"
+            ]
         },
         {
             "internalId": "GEEN_121_92",
@@ -5894,7 +5988,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0800"
+            ]
         },
         {
             "internalId": "GEEN_121_93",
@@ -5986,7 +6083,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0800"
+            ]
         },
         {
             "internalId": "GEEN_122_90",
@@ -6016,7 +6116,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_122_01",
-            "defaultSecondaryTraitName": "Hero's Will"
+            "defaultSecondaryTraitName": "Hero's Will",
+            "allowedOwnerCodes": [
+                "PL0900"
+            ]
         },
         {
             "internalId": "GEEN_122_91",
@@ -6108,7 +6211,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0900"
+            ]
         },
         {
             "internalId": "GEEN_122_92",
@@ -6200,7 +6306,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0900"
+            ]
         },
         {
             "internalId": "GEEN_122_93",
@@ -6292,7 +6401,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL0900"
+            ]
         },
         {
             "internalId": "GEEN_123_90",
@@ -6322,7 +6434,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_123_01",
-            "defaultSecondaryTraitName": "Lord's Ambition"
+            "defaultSecondaryTraitName": "Lord's Ambition",
+            "allowedOwnerCodes": [
+                "PL1000"
+            ]
         },
         {
             "internalId": "GEEN_123_91",
@@ -6414,7 +6529,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1000"
+            ]
         },
         {
             "internalId": "GEEN_123_92",
@@ -6506,7 +6624,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1000"
+            ]
         },
         {
             "internalId": "GEEN_123_93",
@@ -6598,7 +6719,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1000"
+            ]
         },
         {
             "internalId": "GEEN_124_90",
@@ -6628,7 +6752,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_124_01",
-            "defaultSecondaryTraitName": "Dragonslayer's Ingenuity"
+            "defaultSecondaryTraitName": "Dragonslayer's Ingenuity",
+            "allowedOwnerCodes": [
+                "PL1100"
+            ]
         },
         {
             "internalId": "GEEN_124_91",
@@ -6720,7 +6847,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1100"
+            ]
         },
         {
             "internalId": "GEEN_124_92",
@@ -6812,7 +6942,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1100"
+            ]
         },
         {
             "internalId": "GEEN_124_93",
@@ -6904,7 +7037,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1100"
+            ]
         },
         {
             "internalId": "GEEN_125_90",
@@ -6934,7 +7070,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_125_01",
-            "defaultSecondaryTraitName": "Holy Knight's Grandeur"
+            "defaultSecondaryTraitName": "Holy Knight's Grandeur",
+            "allowedOwnerCodes": [
+                "PL1200"
+            ]
         },
         {
             "internalId": "GEEN_125_91",
@@ -7026,7 +7165,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1200"
+            ]
         },
         {
             "internalId": "GEEN_125_92",
@@ -7118,7 +7260,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1200"
+            ]
         },
         {
             "internalId": "GEEN_125_93",
@@ -7210,7 +7355,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1200"
+            ]
         },
         {
             "internalId": "GEEN_126_90",
@@ -7240,7 +7388,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_126_01",
-            "defaultSecondaryTraitName": "Swordmaster's Art"
+            "defaultSecondaryTraitName": "Swordmaster's Art",
+            "allowedOwnerCodes": [
+                "PL1300"
+            ]
         },
         {
             "internalId": "GEEN_126_91",
@@ -7332,7 +7483,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1300"
+            ]
         },
         {
             "internalId": "GEEN_126_92",
@@ -7424,7 +7578,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1300"
+            ]
         },
         {
             "internalId": "GEEN_126_93",
@@ -7516,7 +7673,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1300"
+            ]
         },
         {
             "internalId": "GEEN_127_90",
@@ -7546,7 +7706,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_127_01",
-            "defaultSecondaryTraitName": "Butterfly's Valor"
+            "defaultSecondaryTraitName": "Butterfly's Valor",
+            "allowedOwnerCodes": [
+                "PL1400"
+            ]
         },
         {
             "internalId": "GEEN_127_91",
@@ -7638,7 +7801,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1400"
+            ]
         },
         {
             "internalId": "GEEN_127_92",
@@ -7730,7 +7896,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1400"
+            ]
         },
         {
             "internalId": "GEEN_127_93",
@@ -7822,7 +7991,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1400"
+            ]
         },
         {
             "internalId": "GEEN_128_90",
@@ -7852,7 +8024,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_128_01",
-            "defaultSecondaryTraitName": "Eternal Rage's Ethos"
+            "defaultSecondaryTraitName": "Eternal Rage's Ethos",
+            "allowedOwnerCodes": [
+                "PL1500"
+            ]
         },
         {
             "internalId": "GEEN_128_91",
@@ -7944,7 +8119,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1500"
+            ]
         },
         {
             "internalId": "GEEN_128_92",
@@ -8036,7 +8214,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1500"
+            ]
         },
         {
             "internalId": "GEEN_128_93",
@@ -8128,7 +8309,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1500"
+            ]
         },
         {
             "internalId": "GEEN_129_90",
@@ -8158,7 +8342,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_129_01",
-            "defaultSecondaryTraitName": "Founder's Truth"
+            "defaultSecondaryTraitName": "Founder's Truth",
+            "allowedOwnerCodes": [
+                "PL1800"
+            ]
         },
         {
             "internalId": "GEEN_129_91",
@@ -8250,7 +8437,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1800"
+            ]
         },
         {
             "internalId": "GEEN_129_92",
@@ -8342,7 +8532,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1800"
+            ]
         },
         {
             "internalId": "GEEN_129_93",
@@ -8434,7 +8627,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1800"
+            ]
         },
         {
             "internalId": "GEEN_130_90",
@@ -8464,7 +8660,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_130_01",
-            "defaultSecondaryTraitName": "Versalis Ignition"
+            "defaultSecondaryTraitName": "Versalis Ignition",
+            "allowedOwnerCodes": [
+                "PL1900"
+            ]
         },
         {
             "internalId": "GEEN_130_91",
@@ -8556,7 +8755,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1900"
+            ]
         },
         {
             "internalId": "GEEN_130_92",
@@ -8648,7 +8850,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1900"
+            ]
         },
         {
             "internalId": "GEEN_130_93",
@@ -8740,7 +8945,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1900"
+            ]
         },
         {
             "internalId": "GEEN_131_90",
@@ -8770,7 +8978,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_131_01",
-            "defaultSecondaryTraitName": "Crimson's Flight"
+            "defaultSecondaryTraitName": "Crimson's Flight",
+            "allowedOwnerCodes": [
+                "PL1600"
+            ]
         },
         {
             "internalId": "GEEN_131_91",
@@ -8862,7 +9073,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1600"
+            ]
         },
         {
             "internalId": "GEEN_131_92",
@@ -8954,7 +9168,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1600"
+            ]
         },
         {
             "internalId": "GEEN_131_93",
@@ -9046,7 +9263,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1600"
+            ]
         },
         {
             "internalId": "GEEN_132_90",
@@ -9076,7 +9296,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_132_01",
-            "defaultSecondaryTraitName": "Ebony's Poise"
+            "defaultSecondaryTraitName": "Ebony's Poise",
+            "allowedOwnerCodes": [
+                "PL1700"
+            ]
         },
         {
             "internalId": "GEEN_132_91",
@@ -9168,7 +9391,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1700"
+            ]
         },
         {
             "internalId": "GEEN_132_92",
@@ -9260,7 +9486,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1700"
+            ]
         },
         {
             "internalId": "GEEN_132_93",
@@ -9352,7 +9581,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL1700"
+            ]
         },
         {
             "internalId": "GEEN_133_02",
@@ -10580,7 +10812,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_066_00",
-            "defaultSecondaryTraitName": "Regen"
+            "defaultSecondaryTraitName": "Regen",
+            "allowedOwnerCodes": [
+                "PL2200"
+            ]
         },
         {
             "internalId": "GEEN_170_90",
@@ -10610,7 +10845,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_170_01",
-            "defaultSecondaryTraitName": "Spirit Edge's Fury"
+            "defaultSecondaryTraitName": "Spirit Edge's Fury",
+            "allowedOwnerCodes": [
+                "PL2200"
+            ]
         },
         {
             "internalId": "GEEN_170_91",
@@ -10702,7 +10940,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2200"
+            ]
         },
         {
             "internalId": "GEEN_170_92",
@@ -10794,7 +11035,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2200"
+            ]
         },
         {
             "internalId": "GEEN_170_93",
@@ -10886,7 +11130,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2200"
+            ]
         },
         {
             "internalId": "GEEN_171_74",
@@ -10916,7 +11163,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_066_00",
-            "defaultSecondaryTraitName": "Regen"
+            "defaultSecondaryTraitName": "Regen",
+            "allowedOwnerCodes": [
+                "PL2300"
+            ]
         },
         {
             "internalId": "GEEN_171_90",
@@ -10946,7 +11196,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_171_01",
-            "defaultSecondaryTraitName": "Dark Huntress's Surge"
+            "defaultSecondaryTraitName": "Dark Huntress's Surge",
+            "allowedOwnerCodes": [
+                "PL2300"
+            ]
         },
         {
             "internalId": "GEEN_171_91",
@@ -11038,7 +11291,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2300"
+            ]
         },
         {
             "internalId": "GEEN_171_92",
@@ -11130,7 +11386,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2300"
+            ]
         },
         {
             "internalId": "GEEN_171_93",
@@ -11222,7 +11481,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2300"
+            ]
         },
         {
             "internalId": "GEEN_172_74",
@@ -11252,7 +11514,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_066_00",
-            "defaultSecondaryTraitName": "Regen"
+            "defaultSecondaryTraitName": "Regen",
+            "allowedOwnerCodes": [
+                "PL2100"
+            ]
         },
         {
             "internalId": "GEEN_172_90",
@@ -11282,7 +11547,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_172_01",
-            "defaultSecondaryTraitName": "Supreme Primarch's Nimbus"
+            "defaultSecondaryTraitName": "Supreme Primarch's Nimbus",
+            "allowedOwnerCodes": [
+                "PL2100"
+            ]
         },
         {
             "internalId": "GEEN_172_91",
@@ -11374,7 +11642,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2100"
+            ]
         },
         {
             "internalId": "GEEN_172_92",
@@ -11466,7 +11737,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2100"
+            ]
         },
         {
             "internalId": "GEEN_172_93",
@@ -11558,7 +11832,10 @@
             "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
-            "defaultSecondaryTraitName": null
+            "defaultSecondaryTraitName": null,
+            "allowedOwnerCodes": [
+                "PL2100"
+            ]
         },
         {
             "internalId": "GEEN_233_24",
@@ -11768,19 +12045,61 @@
             "category": "special_sigil",
             "isPlusSigil": false,
             "supportsSecondaryTrait": false,
-            "allowedSigilLevels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            "allowedSigilLevels": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20
+            ],
             "defaultSigilLevel": 20,
             "maxSigilLevel": 20,
             "primaryTraitId": "BF78FBFC",
             "primaryTraitName": "可怕的漆黑钳蟹因子",
             "firstTraitMaxLevel": 20,
-            "allowedFirstTraitLevels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            "allowedFirstTraitLevels": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20
+            ],
             "allowedSecondaryTraitIds": [],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Fresh local 2.0.2 gem.tbl verifies the unique task item and SkillId1 BF78FBFC; local saves verify the level-20 item/trait state.",
-            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_status.tbl; read-only local save observation",
+            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 BF78FBFC; no fixed SkillId2 and no random secondary lot.",
+            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
             "defaultSecondaryTraitName": null
@@ -11792,19 +12111,51 @@
             "category": "special_sigil",
             "isPlusSigil": false,
             "supportsSecondaryTrait": false,
-            "allowedSigilLevels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            "allowedSigilLevels": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15
+            ],
             "defaultSigilLevel": 15,
             "maxSigilLevel": 15,
             "primaryTraitId": "46EE3116",
             "primaryTraitName": "漆黑之谊",
             "firstTraitMaxLevel": 15,
-            "allowedFirstTraitLevels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            "allowedFirstTraitLevels": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15
+            ],
             "allowedSecondaryTraitIds": [],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Fresh local 2.0.2 gem.tbl verifies the unique task item and SkillId1 46EE3116; local saves verify the level-15 item/trait state.",
-            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_status.tbl; read-only local save observation",
+            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 46EE3116; no fixed SkillId2 and no random secondary lot.",
+            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
             "defaultSecondaryTraitName": null
@@ -11816,19 +12167,31 @@
             "category": "special_sigil",
             "isPlusSigil": false,
             "supportsSecondaryTrait": false,
-            "allowedSigilLevels": [1, 2, 3, 4, 5],
+            "allowedSigilLevels": [
+                1,
+                2,
+                3,
+                4,
+                5
+            ],
             "defaultSigilLevel": 5,
             "maxSigilLevel": 5,
             "primaryTraitId": "89C66ACB",
             "primaryTraitName": "相扑斗力",
             "firstTraitMaxLevel": 5,
-            "allowedFirstTraitLevels": [1, 2, 3, 4, 5],
+            "allowedFirstTraitLevels": [
+                1,
+                2,
+                3,
+                4,
+                5
+            ],
             "allowedSecondaryTraitIds": [],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Fresh local 2.0.2 gem.tbl verifies the unique task item and SkillId1 89C66ACB; local saves verify levels 1 and 5.",
-            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_status.tbl; read-only local save observation",
+            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 89C66ACB; no fixed SkillId2 and no random secondary lot.",
+            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": null,
             "defaultSecondaryTraitName": null
@@ -11840,22 +12203,28 @@
             "category": "special_sigil",
             "isPlusSigil": true,
             "supportsSecondaryTrait": true,
-            "allowedSigilLevels": [15],
+            "allowedSigilLevels": [
+                15
+            ],
             "defaultSigilLevel": 15,
             "maxSigilLevel": 15,
             "primaryTraitId": "BF78FBFC",
             "primaryTraitName": "可怕的漆黑钳蟹因子",
             "firstTraitMaxLevel": 20,
-            "allowedFirstTraitLevels": [20],
-            "allowedSecondaryTraitIds": ["SKILL_141_00"],
+            "allowedFirstTraitLevels": [
+                20
+            ],
+            "allowedSecondaryTraitIds": [
+                "SKILL_141_00"
+            ],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 BF78FBFC and fixed SkillId2 SKILL_141_00.",
-            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_status.tbl",
+            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 BF78FBFC; SkillId2 is fixed to SKILL_141_00; no random secondary lot.",
+            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_141_00",
-            "defaultSecondaryTraitName": "钳蟹的报恩"
+            "defaultSecondaryTraitName": "Crabvestment Returns"
         },
         {
             "internalId": "76786869",
@@ -11864,22 +12233,28 @@
             "category": "special_sigil",
             "isPlusSigil": true,
             "supportsSecondaryTrait": true,
-            "allowedSigilLevels": [15],
+            "allowedSigilLevels": [
+                15
+            ],
             "defaultSigilLevel": 15,
             "maxSigilLevel": 15,
             "primaryTraitId": "46EE3116",
             "primaryTraitName": "漆黑之谊",
             "firstTraitMaxLevel": 15,
-            "allowedFirstTraitLevels": [15],
-            "allowedSecondaryTraitIds": ["SKILL_141_00"],
+            "allowedFirstTraitLevels": [
+                15
+            ],
+            "allowedSecondaryTraitIds": [
+                "SKILL_141_00"
+            ],
             "disallowedSecondaryTraitIds": [],
             "secondaryTraitLevelOverrides": {},
             "compatibilityRuleIds": [],
-            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 46EE3116 and fixed SkillId2 SKILL_141_00.",
-            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_status.tbl",
+            "notes": "Fresh local 2.0.2 gem.tbl verifies SkillId1 46EE3116; SkillId2 is fixed to SKILL_141_00; no random secondary lot.",
+            "source": "fresh local 2.0.2 gem.tbl from data.i; local 2.0.2 skill_type_lot.tbl; local 2.0.2 skill_lot.tbl",
             "confidence": "high",
             "defaultSecondaryTraitId": "SKILL_141_00",
-            "defaultSecondaryTraitName": "钳蟹的报恩"
+            "defaultSecondaryTraitName": "Crabvestment Returns"
         }
     ],
     "todos": [

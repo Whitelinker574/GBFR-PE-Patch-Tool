@@ -104,6 +104,10 @@ test('function portrait speakers stay aligned with their assigned character iden
   assert.match(shell, /loadoutPresets:\s*\{[\s\S]*?speaker:\s*'古兰'[\s\S]*?note:\s*'先备份，再确认角色和目标槽；已有配装会被覆盖。'/)
   assert.match(shell, /wrightstoneMemory:\s*\{[\s\S]*?speaker:\s*'玛琪拉菲菈'[\s\S]*?note:\s*'写入后旧记录会失效。回到游戏里重新选中目标，再继续。'/)
   assert.match(shell, /summonSave:\s*\{[\s\S]*?speaker:\s*'圣德芬'[\s\S]*?note:\s*'系统未开放只会提示；种类、加护和副词条核对一致，再写入。'/)
+  assert.match(shell, /spatialTools:\s*\{[\s\S]*?speaker:\s*'泽塔'[\s\S]*?note:\s*'先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。'/)
+  assert.match(shell, /selectedItemMonitor:\s*\{[\s\S]*?speaker:\s*'齐格飞'[\s\S]*?note:\s*'换了物品要重新选中再读取；这里只看，不会写入。'/)
+  assert.match(shell, /camera:\s*\{[\s\S]*?speaker:\s*'索恩'[\s\S]*?note:\s*'先看准距离和高度；顶部显示常驻后，切页也不会停。'/)
+  assert.match(shell, /runtimeQOL:\s*\{[\s\S]*?speaker:\s*'夏洛特'[\s\S]*?note:\s*'只开验证过的选项；没实测的继续锁住，F12 可以恢复。'/)
 })
 
 test('offline summon save owns Sandalphon art instead of repeating the runtime summon guide', () => {

@@ -34,6 +34,15 @@ test('connection catalog and connected views keep every feature discoverable', (
   assert.doesNotMatch(source, /runtimeCatalog\.slice\(/)
 })
 
+test('connection catalog centers an even card grid while card content shares a left edge', () => {
+  assert.match(source, /class="preflight-copy"/)
+  assert.match(source, /class="preflight-status"/)
+  assert.match(scopedStyle, /\.preflight-grid\s*\{[\s\S]*?width\s*:\s*min\(100%,960px\)[\s\S]*?margin-inline\s*:\s*auto[\s\S]*?grid-template-columns\s*:\s*repeat\(2,minmax\(0,1fr\)\)/)
+  assert.match(scopedStyle, /\.preflight-grid article\s*\{[\s\S]*?align-items\s*:\s*flex-start[\s\S]*?text-align\s*:\s*left/)
+  assert.match(scopedStyle, /\.preflight-status\s*\{[\s\S]*?margin-top\s*:\s*auto[\s\S]*?justify-content\s*:\s*flex-start/)
+  assert.match(scopedStyle, /@container\s+runtime-page\s*\(max-width\s*:\s*480px\)\s*\{[\s\S]*?\.preflight-grid\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,1fr\)/)
+})
+
 test('technical bytes are collapsed into shared disclosures', () => {
   assert.match(source, /class="memory-diagnostics ui-disclosure"/)
   assert.match(source, /<summary>技术详情<\/summary>/)

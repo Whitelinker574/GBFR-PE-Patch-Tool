@@ -284,6 +284,25 @@ test('gravity status accepts only the owned verified 2.0.2 entry and matching in
   assert.throws(() => view.normalizeRuntimeSpatialGravityStatus({ ...status, currentBytes: 'CC CC CC CC CC CC CC CC' }, ownerToken, processInfo.pid), /instruction bytes/i)
 })
 
+test('spatial arrow-key status stays bound to the owner, process, foreground guard, and speed range', () => {
+  const status = view.normalizeRuntimeSpatialHotkeyStatus({
+    enabled: true,
+    foregroundOnly: true,
+    speed: 8,
+    ownerLeaseId: ownerToken,
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    gameVersion: '2.0.2',
+    source: 'game_runtime_spatial_hotkeys_2.0.2',
+    lastError: '',
+  }, ownerToken, processInfo.pid)
+  assert.equal(status.enabled, true)
+  assert.equal(status.foregroundOnly, true)
+  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, foregroundOnly: false }, ownerToken, processInfo.pid), /foreground/i)
+  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, speed: 1001 }, ownerToken, processInfo.pid), /speed/i)
+  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, ownerLeaseId: 'stale' }, ownerToken, processInfo.pid), /owner/i)
+})
+
 test('unavailable party capabilities cannot masquerade as real zero values', () => {
   assert.ok(view, 'runtimePatchMonitorView.js must exist')
   const snapshot = validPartySnapshot()

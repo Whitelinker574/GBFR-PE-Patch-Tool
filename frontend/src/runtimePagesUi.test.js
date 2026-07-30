@@ -103,6 +103,17 @@ test('live sigil editor auto-repairs shell coupling and blocks unresolved invali
   assert.doesNotMatch(source, /legality\.value\.status === 'forced'/)
 })
 
+test('live sigil write errors explain invalid secondary traits without exposing hash jargon', () => {
+  const source = sources['SigilMemoryGenerator.vue']
+  const writeStart = source.indexOf('async function performWrite()')
+  const writeEnd = source.indexOf('\nasync function write()', writeStart)
+  const writeBody = source.slice(writeStart, writeEnd)
+  assert.ok(writeStart >= 0 && writeEnd > writeStart, 'performWrite implementation is missing')
+  assert.match(writeBody, /explainRuntimeSigilWriteError\(e,\s*\{\s*hasSecondaryTrait:\s*!!form\.secondaryTraitHash\s*\}\)/)
+  assert.doesNotMatch(writeBody, /show\(String\(e\),\s*'error'\)/)
+  assert.match(source, /message:\s*form\.secondaryTraitHash\s*\?\s*invalidSecondaryTraitMessage\(\)\s*:\s*invalidRuntimeSigilMessage\(\)/)
+})
+
 test('sigil memory has an explicit stop action and locks draft controls until a row is captured', () => {
   const source = sources['SigilMemoryGenerator.vue']
   assert.match(source, /async function disable\(\)[\s\S]*?releaseRuntimeLease\([^;]*SigilMemoryRelease\)/)

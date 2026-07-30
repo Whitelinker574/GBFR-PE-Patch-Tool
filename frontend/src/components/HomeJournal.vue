@@ -6,17 +6,18 @@ const emit = defineEmits(['open', 'warm'])
 
 const groups = [
   {
-    id: 'save', mark: '档', label: '存档修改', hint: '完全退出游戏后再改；保存前自动备份，需要时可恢复',
+    id: 'save', mark: '档', label: '存档与配装（离线）', hint: '完全退出游戏后编辑；保存前自动备份，写入后回读',
     items: [
       { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看整套配装，手动编辑或按技能目标配因子' },
       { id: 'sigil', icon: '◇', title: '因子修改', copy: '给存档新增、批量生成或删除因子' },
       { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '给存档新增祝福石并设置三条技能' },
-      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '补素材，调整数量、武器等级与强化进度' },
       { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增召唤石，或修改已有实例和装备引用' },
+      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '补素材，调整数量、武器等级与强化进度' },
+      { id: 'saveDiff', icon: '⇄', title: '存档对比与复制', copy: '并排找差异，直接把右侧记录复制到左侧或反向复制' },
     ],
   },
   {
-    id: 'memory', mark: '注', label: '常用即时修改', hint: '先启动游戏，再修改当前选中的装备或当前会话资源',
+    id: 'memory', mark: '改', label: '游戏内即时编辑', hint: '先启动并连接游戏，再修改当前选中的装备或会话资源',
     items: [
       { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '读取并修改游戏里当前高亮的因子' },
       { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '读取并修改游戏里当前高亮的祝福石' },
@@ -26,16 +27,24 @@ const groups = [
     ],
   },
   {
-    id: 'liveExtras', mark: '拓', label: '配装与实时扩展', hint: '按需主动开启；切页后会继续运行，停用时恢复',
+    id: 'loadoutFlow', mark: '配', label: '配装采集与复刻', hint: '检测不会默认开启；点击后可持续后台采集',
     items: [
       { id: 'runtimeMonitor', icon: '队', title: '队友配装持续检测', copy: '点击开启后持续后台归档稳定队伍配装' },
       { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '逐颗记录十二个因子，导出分享或写到备用因子' },
-      { id: 'virtualSigils', icon: '◇', title: '虚拟因子槽', copy: '运行时读取额外库存因子，不扩存档十二槽' },
+    ],
+  },
+  {
+    id: 'runtimeTools', mark: '运', label: '单机运行时工具', hint: '按需主动开启；切页后保持运行，停用时安全恢复',
+    items: [
       { id: 'runtimeQOL', icon: '显', title: '显示与房间工具', copy: '精确显示、房间 ID 与主线队长替换' },
+      { id: 'virtualSigils', icon: '◇', title: '虚拟因子槽', copy: '运行时读取额外库存因子，不扩存档十二槽' },
+      { id: 'audioMixer', icon: '声', title: '角色语音混音台', copy: '按角色调整后续语音与界面音效音量' },
+      { id: 'camera', icon: '镜', title: '城镇镜头工坊', copy: '调整城镇镜头距离、高度与滚轮缩放' },
       { id: 'spatialTools', icon: '标', title: '坐标与移动工具', copy: '离线使用书签、传送、世界轴移动和重力控制' },
       { id: 'patchCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'patchCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'patchQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
+      { id: 'monster', icon: '怪', title: '怪物倍率与状态控制', copy: '离线实验怪物倍率、昏厥与 Overdrive 状态' },
     ],
   },
 ]
@@ -67,7 +76,7 @@ const groups = [
         </nav>
 
         <div class="small-tabs">
-          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'compatibility')" @pointerdown="emit('warm', 'compatibility')" @focus="emit('warm', 'compatibility')" @click="emit('open', 'compatibility')"><i>⚙</i>工具与设置</button>
+          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'naturalDrop')" @pointerdown="emit('warm', 'naturalDrop')" @focus="emit('warm', 'naturalDrop')" @click="emit('open', 'naturalDrop')"><i>⚙</i>游戏文件、诊断与设置</button>
           <span>工具版本 {{ version }}</span>
         </div>
       </div>

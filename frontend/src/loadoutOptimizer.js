@@ -6,7 +6,7 @@ function targetMap(targets) {
   return new Map((targets || []).filter(item => item?.name).map(item => [normalized(item.name), {
     name: item.name,
     weight: Math.max(1, Number(item.weight) || 1),
-    cap: Math.max(1, Number(item.cap) || 65),
+    cap: Math.max(1, Number(item.cap ?? item.targetLevel) || 65),
   }]))
 }
 
@@ -24,14 +24,24 @@ function candidateKey(candidate) {
   return [candidate.name, ...(candidate.traits || []).map(item => `${item.name}:${item.level}`), candidate.slotId || 0].join('|')
 }
 
-export function buildCatalogCandidates(atlas, targets) {
+function sigilAllowedForOwner(entry, ownerCode) {
+  if (entry?.category !== 'character_sigil' && !(entry?.allowedOwnerCodes || []).length) return true
+  const owner = String(ownerCode || '').trim().toUpperCase()
+  if (!owner) return false
+  return (entry.allowedOwnerCodes || []).some(item => String(item || '').trim().toUpperCase() === owner)
+}
+
+export function buildCatalogCandidates(atlas, targets, ownerCode = '') {
   const wanted = targetMap(targets)
+  const exactSecondaryIDs = new Set((targets || []).map(item => String(item?.secondaryTraitId || '')).filter(Boolean))
   const result = []
   for (const entry of atlas?.sigils || []) {
     if (!entry.constructible) continue
+    if (!sigilAllowedForOwner(entry, ownerCode)) continue
     const primaryRecord = (atlas?.traits || []).find(item => item.internalId === entry.primaryTraitId)
     const primary = { id: entry.primaryTraitId, name: entry.primaryTraitName, level: entry.firstTraitMaxLevel || 0 }
-    const secondaryMatches = (entry.secondaryTraits || []).filter(item => wanted.has(normalized(item.displayName)))
+    const secondaryMatches = (entry.secondaryTraits || []).filter(item =>
+      wanted.has(normalized(item.displayName)) || exactSecondaryIDs.has(String(item.internalId || '')))
     const requiresSecondary = entry.supportsSecondaryTrait === true
     const legalSecondaries = entry.secondaryTraits || []
     if (requiresSecondary && !legalSecondaries.length) continue
@@ -53,6 +63,8 @@ export function buildCatalogCandidates(atlas, targets) {
         exactSigilHash: entry.hash || '',
         exactPrimaryTraitHash: primaryRecord?.hash || '',
         exactSecondaryTraitHash: secondary?.hash || '',
+        characterSpecific: entry.category === 'character_sigil',
+        allowedOwnerCodes: entry.allowedOwnerCodes || [],
         tableExact: entry.tableExact === true,
         traits: [primary, ...(secondary ? [{ id: secondary.internalId, name: secondary.displayName, level: secondary.maxLevel }] : [])],
       }
@@ -66,14 +78,27 @@ export function buildInventoryCandidates(sigils, targets, atlas = null) {
   const wanted = targetMap(targets)
   const traitByHash = new Map((atlas?.traits || []).map(item => [String(item.hash || '').replace(/^0x/i, '').toUpperCase(), item.internalId]))
   const traitByName = new Map((atlas?.traits || []).map(item => [normalized(item.displayName), item.internalId]))
+  const sigilByHash = new Map((atlas?.sigils || []).map(item => [String(item.hash || '').replace(/^0x/i, '').toUpperCase(), item.internalId]))
   const traitId = (hash, name, explicit) => explicit || traitByHash.get(String(hash || '').replace(/^0x/i, '').toUpperCase()) || traitByName.get(normalized(name)) || ''
-  return (sigils || []).filter(item => !item.missing).map(item => ({
-    id: `slot:${item.slotId}`, slotId: item.slotId, source: 'inventory', name: item.name, hash: item.hash,
-    traits: [
-      ...(item.primaryTraitName ? [{ id: traitId(item.primaryTraitHash, item.primaryTraitName, item.primaryTraitId), name: item.primaryTraitName, level: item.primaryTraitLevel }] : []),
-      ...(item.secondaryTraitName ? [{ id: traitId(item.secondaryTraitHash, item.secondaryTraitName, item.secondaryTraitId), name: item.secondaryTraitName, level: item.secondaryTraitLevel }] : []),
-    ],
-  })).filter(candidate => contribution(candidate, wanted).size)
+  return (sigils || []).filter(item => !item.missing).map(item => {
+    const primaryTraitId = traitId(item.primaryTraitHash, item.primaryTraitName, item.primaryTraitId)
+    const secondaryTraitId = traitId(item.secondaryTraitHash, item.secondaryTraitName, item.secondaryTraitId)
+    const sigilId = item.sigilId || item.internalId || sigilByHash.get(String(item.hash || '').replace(/^0x/i, '').toUpperCase()) || ''
+    return {
+      id: `slot:${item.slotId}`, slotId: item.slotId, source: 'inventory', name: item.name, hash: item.hash,
+      sigilId,
+      primaryTraitId,
+      primaryTraitName: item.primaryTraitName || '',
+      primaryTraitLevel: Number(item.primaryTraitLevel || 0),
+      secondaryTraitId,
+      secondaryTraitName: item.secondaryTraitName || '',
+      secondaryTraitLevel: Number(item.secondaryTraitLevel || 0),
+      traits: [
+        ...(item.primaryTraitName ? [{ id: primaryTraitId, name: item.primaryTraitName, level: item.primaryTraitLevel }] : []),
+        ...(item.secondaryTraitName ? [{ id: secondaryTraitId, name: item.secondaryTraitName, level: item.secondaryTraitLevel }] : []),
+      ],
+    }
+  }).filter(candidate => contribution(candidate, wanted).size)
     .sort((a, b) => Number(a.slotId) - Number(b.slotId))
 }
 
@@ -87,7 +112,7 @@ function targetVector(candidate, orderedTargets, wanted) {
 // leave only unmatched rows as constructor candidates. Matching is maximum
 // cardinality rather than a greedy first-fit so a flexible owned sigil cannot
 // steal the only slot that can satisfy a later row.
-export function synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates = [], targets = [] }) {
+export function synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates = [], targets = [], scenario = null }) {
   if (!desired?.picked?.length) return null
   const wanted = targetMap(targets)
   const orderedTargets = [...wanted.values()]
@@ -144,14 +169,20 @@ export function synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates = 
   const constructedCount = picked.length - ownedCount
   const slotChanges = picked.map((item, index) => `${index + 1}: ${item.source === 'inventory' ? `背包 #${item.slotId}` : '新建'} ${item.name}`).join('；')
   const slotChangesEn = picked.map((item, index) => `${index + 1}: ${item.source === 'inventory' ? `owned #${item.slotId}` : 'create'} ${item.name}`).join('; ')
+  const combat = scenario?.mode === 'combat' ? evaluateCombatBuild(picked, scenario) : null
   return {
     ...desired,
     domain: 'owned-first',
     domainRank: 1,
     rank: 1,
-    score: totals.reduce((sum, total) => sum + total.effective * total.weight, 0),
+    score: combat ? combat.rawScore : totals.reduce((sum, total) => sum + total.effective * total.weight, 0),
     picked,
-    totals,
+    totals: combat ? combatTraitTotals(picked, scenario) : totals,
+    ...(combat ? {
+      combat,
+      coverageScores: combatCoverageScores(picked, scenario),
+      slotReasons: combatSlotReasons(picked, scenario),
+    } : {}),
     ownedCount,
     constructedCount,
     deploymentMode: 'owned-first',
@@ -166,6 +197,21 @@ export function synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates = 
 }
 
 const evidenceIndexes = new WeakMap()
+const RUNTIME_TRAIT_CANONICAL_IDS = Object.freeze({
+  MEMORY_TRAIT_0DE887A0: 'SKILL_320_00',
+  MEMORY_TRAIT_A7726190: 'SKILL_321_00',
+  MEMORY_TRAIT_9232DC17: 'SKILL_322_00',
+  MEMORY_TRAIT_36E3848D: 'SKILL_323_00',
+  MEMORY_TRAIT_A898E283: 'SKILL_324_00',
+  MEMORY_TRAIT_D029FE08: 'SKILL_325_00',
+  MEMORY_TRAIT_73220725: 'SKILL_326_00',
+  MEMORY_TRAIT_F26BAEA5: 'SKILL_327_00',
+})
+
+function canonicalOptimizerTraitId(traitId) {
+  const id = String(traitId || '')
+  return RUNTIME_TRAIT_CANONICAL_IDS[id] || id
+}
 
 function evidenceIndex(evidence) {
   if (!evidence || typeof evidence !== 'object') return new Map()
@@ -174,6 +220,9 @@ function evidenceIndex(evidence) {
   for (const curve of evidence.traits || []) {
     const levels = new Map((curve.levels || []).map(item => [Number(item.level || 0), item]))
     result.set(String(curve.traitId || ''), { ...curve, levels })
+  }
+  for (const [runtimeID, canonicalID] of Object.entries(RUNTIME_TRAIT_CANONICAL_IDS)) {
+    if (result.has(canonicalID)) result.set(runtimeID, result.get(canonicalID))
   }
   evidenceIndexes.set(evidence, result)
   return result
@@ -192,7 +241,16 @@ function effectLevel(curve, level) {
   return available.length ? curve.levels.get(available[0]) : null
 }
 
-function applyEffectTotal(metrics, total) {
+function actionSpecificDamageBonusApplies(label, actionType) {
+  const action = String(actionType || 'normal')
+  if (label.includes('奥义连锁') || label.includes('连锁攻击') || label.includes('连锁造成')) return action === 'chain'
+  if (label.includes('普通攻击')) return action === 'normal'
+  if (label.includes('能力')) return action === 'ability'
+  if (label.includes('奥义')) return action === 'sba'
+  return true
+}
+
+function applyEffectTotal(metrics, total, actionType = 'normal') {
   const label = String(total?.label || '').trim()
   const value = Number(total?.value || 0)
   const unit = String(total?.unit || '')
@@ -205,7 +263,7 @@ function applyEffectTotal(metrics, total) {
   else if (label === '能力伤害上限') addMetric(metrics, 'abilityCap', value)
   else if (label === '奥义伤害上限') addMetric(metrics, 'sbaCap', value)
   else if (label === '奥义连锁伤害上限' || label === '连锁伤害上限') addMetric(metrics, 'chainCap', value)
-  else if (label.includes('造成的伤害')) addMetric(metrics, 'outsideCapBonus', value)
+  else if (label.includes('造成的伤害') && actionSpecificDamageBonusApplies(label, actionType)) addMetric(metrics, 'outsideCapBonus', value)
   else if (label.includes('冷却时间')) addMetric(metrics, 'cooldownReduction', -value)
   else if (label.includes('防御力')) addMetric(metrics, 'generalDefense', value)
   else if (label.includes('霸体')) addMetric(metrics, 'superArmor', value)
@@ -216,10 +274,10 @@ function effectTotalKey(total) {
   return `${String(total?.unit || '')}|${String(total?.label || '').trim()}`
 }
 
-function applyEffectTotalDelta(metrics, currentTotals, baselineTotals) {
+function applyEffectTotalDelta(metrics, currentTotals, baselineTotals, actionType) {
   const baseline = new Map((baselineTotals || []).map(total => [effectTotalKey(total), Number(total?.value || 0)]))
   for (const total of currentTotals || []) {
-    applyEffectTotal(metrics, { ...total, value: Number(total?.value || 0) - Number(baseline.get(effectTotalKey(total)) || 0) })
+    applyEffectTotal(metrics, { ...total, value: Number(total?.value || 0) - Number(baseline.get(effectTotalKey(total)) || 0) }, actionType)
   }
 }
 
@@ -232,6 +290,12 @@ const CONDITIONAL_TRAIT_CURVES = new Map([
   ['SKILL_006_00', 'stamina'],
   ['SKILL_036_00', 'garrison'],
   ['SKILL_144_00', 'sturdy'],
+])
+
+const EXPLICITLY_MODELLED_CHARACTER_TRAITS = new Set([
+  'SKILL_146_00', 'SKILL_151_00', 'SKILL_233_00', 'SKILL_234_00',
+  'SKILL_320_00', 'SKILL_321_00', 'SKILL_323_00', 'SKILL_324_00',
+  'SKILL_325_00', 'SKILL_326_00',
 ])
 
 function exactConditionalCurveValue(scenario, curveName, input) {
@@ -261,6 +325,7 @@ function normalizedCoverage(value, fallback = 1) {
 }
 
 function applySpecialTrait(metrics, traitId, level, scenario, traitLevels) {
+  traitId = canonicalOptimizerTraitId(traitId)
   const coverage = normalizedCoverage(scenario.coverage)
   const baseAttack = Number(scenario.baseStats?.attack || 0)
   const baseHP = Number(scenario.baseStats?.hp || 0)
@@ -416,19 +481,22 @@ function actionCapKey(actionType) {
 
 function evaluateCombatTraitLevels(levels, scenario) {
   const metrics = { crabSetActive: false, unresolvedConditions: [] }
-  for (const total of scenario.fixedTotals || []) applyEffectTotal(metrics, total)
+  for (const total of scenario.fixedTotals || []) applyEffectTotal(metrics, total, scenario.actionType)
   const curves = evidenceIndex(scenario.evidence)
   const fixedLevels = fixedTraitLevelMap(scenario.fixedBonuses)
+  const conditionalTraitIds = new Set((scenario.conditionalTraitIds || []).map(String))
   applyFixedDefenseZones(metrics, scenario.fixedDefenseZones, fixedLevels, curves)
   for (const [traitId, rawLevel] of levels) {
     const curve = curves.get(traitId)
     const level = effectLevel(curve, rawLevel)
     if (!level) continue
-    if (!CONDITIONAL_TRAIT_CURVES.has(traitId)) {
+    const unresolvedCharacterCondition = conditionalTraitIds.has(traitId) && !EXPLICITLY_MODELLED_CHARACTER_TRAITS.has(traitId)
+    if (!CONDITIONAL_TRAIT_CURVES.has(traitId) && !unresolvedCharacterCondition) {
       const fixedLevel = effectLevel(curve, fixedLevels.get(traitId) || 0)
-      applyEffectTotalDelta(metrics, level.totals || [], fixedLevel?.totals || [])
+      applyEffectTotalDelta(metrics, level.totals || [], fixedLevel?.totals || [], scenario.actionType)
     }
-    applySpecialTrait(metrics, traitId, level, scenario, levels)
+    if (unresolvedCharacterCondition) markUnresolvedCondition(metrics, traitId, 'character-condition', normalizedCoverage(scenario.coverage))
+    else applySpecialTrait(metrics, traitId, level, scenario, levels)
   }
 
   const baseAttack = Math.max(1, Number(scenario.baseStats?.attack || 1))
@@ -469,29 +537,166 @@ function evaluateCombatTraitLevels(levels, scenario) {
   const minimumHP = Math.max(0, Number(scenario.minimumHp || 0))
   const minimumDefense = Math.max(0, Number(scenario.minimumDefense || 0))
   const requiredHits = Math.max(0, Number(scenario.surviveHits || 0))
-  const valid = hp >= minimumHP && defense >= minimumDefense && (!requiredHits || hp >= incoming.finalDamage * requiredHits)
+  const missingRequiredTraits = (scenario.requiredTraitTargets || []).map(item => {
+    const traitId = String(item?.traitId || '')
+    const targetLevel = Math.max(0, Number(item?.targetLevel || 0))
+    const currentLevel = Math.max(0, Number(levels.get(traitId) || 0))
+    return { traitId, targetLevel, currentLevel, missingLevel: Math.max(0, targetLevel - currentLevel) }
+  }).filter(item => item.traitId && item.missingLevel > 0)
+  const requiredTraitGap = missingRequiredTraits.reduce((sum, item) => sum + item.missingLevel, 0)
+  const survivalValid = hp >= minimumHP && defense >= minimumDefense && (!requiredHits || hp >= incoming.finalDamage * requiredHits)
+  const valid = survivalValid && missingRequiredTraits.length === 0
   const direction = String(scenario.direction || scenario.actionType || 'normal')
   const utility = Math.max(0, Number(metrics.cooldownReduction || 0)) * 500 + Math.max(0, Number(metrics.stunPower || 0)) * 25
   const survival = hp * 0.02 + defense * 500
+  const tieBreakScore = utility + survival
   let score = damage.finalDamage
   if (direction === 'stun') score = damage.finalDamage * 0.55 + Math.max(0, Number(metrics.stunPower || 0)) * 1500
   else if (direction === 'cooldown') score = damage.finalDamage * 0.7 + utility * 10
   else if (direction === 'support') score = damage.finalDamage * 0.35 + utility * 4 + survival
-  const constraintPenalty = valid ? 0 : 1e15 + Math.max(0, minimumHP - hp) * 1e6 + Math.max(0, minimumDefense - defense) * 1e8
+  const constraintPenalty = valid ? 0
+    : 1e15
+      + requiredTraitGap * 1e12
+      + Math.max(0, minimumHP - hp) * 1e6
+      + Math.max(0, minimumDefense - defense) * 1e8
   return {
-    valid, score: score - constraintPenalty, rawScore: score,
+    valid, score: score - constraintPenalty, rawScore: score, tieBreakScore,
     metrics: {
       ...metrics, attack, hp, critRate, criticalMultiplier, defense, incomingDamage: incoming.finalDamage,
       actionCapBonus: capBonus, effectiveCap, uncappedDamage: uncapped,
       finalDamage: damage.finalDamage, elementalAdvantage: Number(metrics.elementalAdvantage || 0),
       defenseBuff: Number(metrics.defenseBuff || 0), whiteShield: Number(metrics.whiteShield || 0),
       crabSetActive: metrics.crabSetActive === true,
+      missingRequiredTraits,
+      requiredTraitGap,
     },
   }
 }
 
 export function evaluateCombatBuild(picked, scenario = {}) {
   return evaluateCombatTraitLevels(traitLevelMap(picked, scenario.fixedBonuses), scenario)
+}
+
+function fixedRouteCandidateScore(candidate, scenario) {
+  if (scenario?.mode !== 'combat') {
+    return (candidate?.traits || []).slice(1).reduce((sum, item) => sum + Math.max(0, Number(item?.level || 0)), 0)
+  }
+  return Number(evaluateCombatBuild([candidate], scenario).rawScore || 0)
+}
+
+function fixedRoutePrimaryLevel(candidate) {
+  if (Number(candidate?.primaryTraitLevel || candidate?.primaryLevel || 0) > 0) {
+    return Number(candidate.primaryTraitLevel || candidate.primaryLevel)
+  }
+  const primary = (candidate?.traits || []).find(item => item?.id === candidate?.primaryTraitId) || candidate?.traits?.[0]
+  return Number(primary?.level || 0)
+}
+
+// A frame-verified character route already fixes the twelve primary sigil
+// slots. Matching those slots is a small assignment problem, not a fresh
+// combinatorial search across the entire backpack. This path is deliberately
+// linear in inventory size: reuse distinct owned SlotIDs first, then create
+// only the exact missing primary shells.
+export function solveFixedCharacterRoute({
+  inventoryCandidates = [],
+  catalogCandidates = [],
+  targets = [],
+  slotCount = 12,
+  scenario = {},
+}) {
+  const requestedSlots = []
+  for (const target of targets || []) {
+    const count = Math.max(1, Math.floor(Number(target?.slotCount || 1)))
+    const perSlotLevel = Math.max(1, Math.ceil(Number(target?.targetLevel || target?.cap || 1) / count))
+    for (let index = 0; index < count; index++) {
+      requestedSlots.push({
+        traitId: String(target?.traitId || ''),
+        name: String(target?.name || target?.traitId || ''),
+        level: perSlotLevel,
+        sigilId: String(target?.exactSigilIds?.[index] || target?.sigilId || ''),
+        secondaryTraitId: String(target?.exactSecondaryTraitIds?.[index] || target?.secondaryTraitId || ''),
+      })
+    }
+  }
+  const candidateScores = new Map()
+  const candidateScore = candidate => {
+    if (!candidateScores.has(candidate)) candidateScores.set(candidate, fixedRouteCandidateScore(candidate, scenario))
+    return candidateScores.get(candidate)
+  }
+  const stableRank = (left, right) => candidateScore(right) - candidateScore(left)
+    || Number(left?.slotId || 0) - Number(right?.slotId || 0)
+    || candidateKey(left).localeCompare(candidateKey(right), 'en')
+  const ownedByPrimary = new Map()
+  const catalogByPrimary = new Map()
+  for (const candidate of inventoryCandidates || []) {
+    const id = String(candidate?.primaryTraitId || candidate?.traits?.[0]?.id || '')
+    if (!id) continue
+    const rows = ownedByPrimary.get(id) || []
+    rows.push(candidate)
+    ownedByPrimary.set(id, rows)
+  }
+  for (const candidate of catalogCandidates || []) {
+    const id = String(candidate?.primaryTraitId || candidate?.traits?.[0]?.id || '')
+    if (!id) continue
+    const rows = catalogByPrimary.get(id) || []
+    rows.push(candidate)
+    catalogByPrimary.set(id, rows)
+  }
+  for (const rows of [...ownedByPrimary.values(), ...catalogByPrimary.values()]) rows.sort(stableRank)
+
+  const picked = []
+  const missingSlots = []
+  const usedInventorySlots = new Set()
+  for (const requested of requestedSlots.slice(0, slotCount)) {
+    const owned = (ownedByPrimary.get(requested.traitId) || []).find(candidate => {
+      const slotId = Number(candidate?.slotId || 0)
+      const exactShell = !requested.sigilId || String(candidate?.sigilId || '') === requested.sigilId
+      const exactSecondary = !requested.secondaryTraitId || String(candidate?.secondaryTraitId || '') === requested.secondaryTraitId
+      return slotId > 0 && !usedInventorySlots.has(slotId) && exactShell && exactSecondary && fixedRoutePrimaryLevel(candidate) >= requested.level
+    })
+    if (owned) {
+      usedInventorySlots.add(Number(owned.slotId))
+      picked.push(owned)
+      continue
+    }
+    const constructed = (catalogByPrimary.get(requested.traitId) || []).find(candidate => {
+      const exactShell = !requested.sigilId || String(candidate?.sigilId || '') === requested.sigilId
+      const exactSecondary = !requested.secondaryTraitId || String(candidate?.secondaryTraitId || '') === requested.secondaryTraitId
+      return exactShell && exactSecondary && fixedRoutePrimaryLevel(candidate) >= requested.level
+    })
+    if (constructed) picked.push(constructed)
+    else missingSlots.push(requested)
+  }
+
+  const wanted = targetMap(targets)
+  const totals = [...wanted.values()].map(target => {
+    const raw = picked.reduce((sum, item) => sum + Number(contribution(item, wanted).get(target.name) || 0), 0)
+    return { ...target, level: raw, effective: Math.min(target.cap, raw) }
+  })
+  const combat = scenario?.mode === 'combat' ? evaluateCombatBuild(picked, scenario) : null
+  const exact = missingSlots.length === 0
+    && requestedSlots.length === slotCount
+    && totals.every(item => item.effective >= item.cap)
+  const raw = {
+    score: combat ? combat.score : scoreTotals(totals.map(item => item.effective), totals),
+    picked,
+    totals,
+    combat,
+    method: 'fixed-route-linear',
+    exact,
+    exploredStates: inventoryCandidates.length + catalogCandidates.length,
+    ownedCount: picked.filter(item => item?.source === 'inventory').length,
+    constructedCount: picked.filter(item => item?.source !== 'inventory').length,
+    missingSlots,
+    domain: 'owned-first',
+    domainRank: 1,
+    rank: 1,
+  }
+  const annotated = annotateOptimizerAlternatives([raw], { ...scenario, slotCount })[0] || raw
+  return [{
+    ...annotated,
+    explanation: resultExplanation(annotated, { ...scenario, domain: 'owned-first', slotCount }, annotated),
+  }]
 }
 
 function combatTraitTotals(picked, scenario) {
@@ -520,31 +725,61 @@ function combatStateSignature(picked) {
 
 function compareCombatStates(left, right) {
   if (left.combat.valid !== right.combat.valid) return left.combat.valid ? -1 : 1
-  return right.combat.score - left.combat.score || left.picked.length - right.picked.length || pickedSignature(left.picked).localeCompare(pickedSignature(right.picked), 'en')
+  return right.combat.score - left.combat.score
+    || Number(right.combat.tieBreakScore || 0) - Number(left.combat.tieBreakScore || 0)
+    || left.picked.length - right.picked.length
+    || right.picked.filter(item => item?.retained === true).length - left.picked.filter(item => item?.retained === true).length
+    || pickedSignature(left.picked).localeCompare(pickedSignature(right.picked), 'en')
 }
 
-function prepareCombatCandidates(candidates, scenario, slotCount) {
-  const baseline = evaluateCombatBuild([], scenario)
-  const special = new Set(['SKILL_146_00', 'SKILL_151_00', 'SKILL_233_00', 'SKILL_234_00', 'SKILL_141_00', 'BF78FBFC', '46EE3116'])
-  const ranked = (candidates || []).filter(candidate => combatCandidateSignature(candidate)).map(candidate => {
-    const combat = evaluateCombatBuild([candidate], scenario)
-    const hasSpecial = (candidate.traits || []).some(trait => special.has(String(trait.id || '')))
-    return { candidate, combat, hasSpecial, gain: combat.rawScore - baseline.rawScore }
-  }).sort((left, right) => Number(right.hasSpecial) - Number(left.hasSpecial) || right.gain - left.gain || candidateKey(left.candidate).localeCompare(candidateKey(right.candidate), 'en'))
+const COMBAT_SYNERGY_TRAITS = Object.freeze(['SKILL_020_00', 'SKILL_146_00', 'SKILL_151_00', 'SKILL_233_00', 'SKILL_234_00', 'SKILL_141_00', 'BF78FBFC', '46EE3116'])
 
-  const byEffect = new Map()
-  for (const row of ranked) {
-    const signature = combatCandidateSignature(row.candidate)
-    const bucket = byEffect.get(signature) || []
-    const limit = row.candidate.source === 'inventory' ? slotCount : 1
-    if (bucket.length < limit) bucket.push(row)
-    byEffect.set(signature, bucket)
+function prepareCombatCandidateGroups(candidates, scenario, slotCount, resultLimit) {
+  const baseline = evaluateCombatBuild([], scenario)
+  const special = new Set(COMBAT_SYNERGY_TRAITS)
+  const grouped = new Map()
+  for (const candidate of candidates || []) {
+    const signature = combatCandidateSignature(candidate)
+    if (!signature) continue
+    const combat = evaluateCombatBuild([candidate], scenario)
+    const row = grouped.get(signature) || { signature, gain: combat.rawScore - baseline.rawScore, members: [], specialIds: new Set() }
+    row.gain = Math.max(row.gain, combat.rawScore - baseline.rawScore)
+    row.members.push(candidate)
+    for (const trait of candidate.traits || []) if (special.has(String(trait.id || ''))) row.specialIds.add(String(trait.id))
+    grouped.set(signature, row)
   }
-  const reduced = [...byEffect.values()].flat()
-  const always = reduced.filter(row => row.hasSpecial)
-  const regular = reduced.filter(row => !row.hasSpecial).slice(0, 88)
-  return [...new Map([...always, ...regular].map(row => [row.candidate.id, row.candidate])).values()]
-    .sort((left, right) => candidateKey(left).localeCompare(candidateKey(right), 'en'))
+
+  const sourceRank = candidate => candidate?.source === 'inventory' ? 0 : candidate?.source === 'table-exact' ? 1 : candidate?.source === 'catalog' ? 2 : 3
+  const groups = [...grouped.values()].map(group => {
+    group.members.sort((left, right) => sourceRank(left) - sourceRank(right)
+      || Number(left.slotId || 0) - Number(right.slotId || 0)
+      || candidateKey(left).localeCompare(candidateKey(right), 'en'))
+    group.hasRetained = group.members.some(item => item?.retained === true)
+    const inventoryMembers = group.members.filter(item => item.source === 'inventory').slice(0, slotCount)
+    const reusable = group.members.find(item => item.source === 'catalog' || item.source === 'table-exact') || null
+    const finiteMembers = group.members.filter(item => item.source !== 'inventory' && item !== reusable).slice(0, slotCount)
+    group.maxUses = Math.min(slotCount, inventoryMembers.length + (reusable ? slotCount : finiteMembers.length))
+    group.pick = useIndex => useIndex < inventoryMembers.length
+      ? inventoryMembers[useIndex]
+      : reusable || finiteMembers[useIndex - inventoryMembers.length]
+    return group
+  }).filter(group => group.maxUses > 0)
+    .sort((left, right) => right.gain - left.gain || left.signature.localeCompare(right.signature, 'en'))
+
+  const maxGroups = Math.max(64, Math.min(96, Math.max(1, Number(resultLimit || 10)) * 8))
+  const selected = new Map()
+  // Catalog/table domains also receive the twelve currently equipped instances.
+  // Keep every one of those groups reachable before pruning by standalone gain:
+  // their value often comes from a complete build rather than one isolated slot.
+  groups.filter(group => group.hasRetained).forEach(group => selected.set(group.signature, group))
+  for (const traitId of COMBAT_SYNERGY_TRAITS) {
+    groups.filter(group => group.specialIds.has(traitId)).slice(0, 4).forEach(group => selected.set(group.signature, group))
+  }
+  for (const group of groups) {
+    if (selected.size >= maxGroups) break
+    selected.set(group.signature, group)
+  }
+  return [...selected.values()].sort((left, right) => left.signature.localeCompare(right.signature, 'en'))
 }
 
 function combatSlotReasons(picked, scenario) {
@@ -585,39 +820,45 @@ function combatCoverageScores(picked, scenario) {
 }
 
 function solveCombatRanked(candidates, slotCount, limit, scenario) {
-  const pool = prepareCombatCandidates(candidates, scenario, slotCount)
-  if (!pool.length) return []
-  const reusable = pool.every(item => item.source === 'catalog' || item.source === 'table-exact')
-  const beamWidth = Math.max(160, Math.min(720, limit * 72))
+  const groups = prepareCombatCandidateGroups(candidates, scenario, slotCount, limit)
+  if (!groups.length) return []
+  const beamWidth = Math.max(96, Math.min(192, limit * 12))
   let exploredStates = 1
-  let beam = [{ picked: [], nextIndex: 0, combat: evaluateCombatBuild([], scenario) }]
-  const finalists = []
+  let beam = [{ picked: [], groupCounts: new Uint8Array(groups.length), combat: evaluateCombatBuild([], scenario) }]
+  let deepestBeam = beam
 
   for (let depth = 0; depth < slotCount; depth++) {
-    const expanded = []
+    const unique = new Map()
     for (const state of beam) {
-      for (let index = state.nextIndex; index < pool.length; index++) {
-        const picked = [...state.picked, pool[index]]
-        expanded.push({ picked, nextIndex: reusable ? index : index + 1, combat: evaluateCombatBuild(picked, scenario) })
+      for (let index = 0; index < groups.length; index++) {
+        const group = groups[index]
+        const used = Number(state.groupCounts[index] || 0)
+        if (used >= group.maxUses) continue
+        const candidate = group.pick(used)
+        if (!candidate) continue
+        const picked = [...state.picked, candidate]
+        const groupCounts = state.groupCounts.slice()
+        groupCounts[index] = used + 1
+        const expanded = {
+          picked,
+          groupCounts,
+          combat: evaluateCombatBuild(picked, scenario),
+        }
+        exploredStates++
+        const signature = combatStateSignature(picked)
+        const previous = unique.get(signature)
+        if (!previous || compareCombatStates(expanded, previous) < 0) {
+          unique.set(signature, expanded)
+        }
       }
     }
-    exploredStates += expanded.length
-    if (!expanded.length) break
-    expanded.sort(compareCombatStates)
-    const unique = new Map()
-    for (const state of expanded) {
-      const signature = combatStateSignature(state.picked)
-      const bucket = unique.get(signature) || []
-      if (bucket.length < 2) bucket.push(state)
-      unique.set(signature, bucket)
-      if ([...unique.values()].reduce((sum, rows) => sum + rows.length, 0) >= beamWidth) break
-    }
-    beam = [...unique.values()].flat().sort(compareCombatStates).slice(0, beamWidth)
-    finalists.push(...beam.slice(0, Math.max(limit * 3, 20)))
+    if (!unique.size) break
+    beam = [...unique.values()].sort(compareCombatStates).slice(0, beamWidth)
+    deepestBeam = beam
   }
 
   const uniqueFinal = new Map()
-  for (const state of finalists.sort(compareCombatStates)) {
+  for (const state of deepestBeam.sort(compareCombatStates)) {
     if (!state.picked.length) continue
     const signature = pickedSignature(state.picked)
     if (!uniqueFinal.has(signature)) uniqueFinal.set(signature, state)
@@ -627,6 +868,7 @@ function solveCombatRanked(candidates, slotCount, limit, scenario) {
     picked: state.picked,
     totals: combatTraitTotals(state.picked, scenario),
     method: 'combat-beam', exact: false, exploredStates,
+    candidatePoolSize: groups.length,
     combat: state.combat,
     coverageScores: combatCoverageScores(state.picked, scenario),
     slotReasons: combatSlotReasons(state.picked, scenario),
@@ -1067,8 +1309,8 @@ export function solveMixedOptimizerDomains({ inventorySnapshot, domains = {}, si
 // the unpacked table layer. It is a separate evidence domain, not a synonym
 // for the legal catalog: an empty table domain is more honest than silently
 // treating every catalog row as a proven game-table optimum.
-export function buildTableExactCandidates(atlas, targets) {
-  const candidates = buildCatalogCandidates(atlas, targets)
+export function buildTableExactCandidates(atlas, targets, ownerCode = '', preparedCatalog = null) {
+  const candidates = preparedCatalog || buildCatalogCandidates(atlas, targets, ownerCode)
   return candidates.filter(item => item.tableExact === true || item.source === 'table-exact')
     .map(item => ({ ...item, source: 'table-exact' }))
 }
@@ -1296,11 +1538,15 @@ function resultExplanation(result, scenario = {}, domainPrimary = null) {
   const inventorySlots = (result.picked || []).filter(item => Number(item.slotId || 0) > 0).length
   const inventoryReason = scenario.domain === 'inventory'
     ? `使用 ${inventorySlots} 个存档实例，按 SlotID 去重且不复用库存。`
+    : scenario.domain === 'owned-first'
+      ? `优先复用 ${inventorySlots} 个背包实例；确认保存时只为 ${constructedCount(result.picked || [])} 个缺口创建独立新因子。`
     : scenario.domain === 'table'
       ? '只使用明确标记为解包表精确行的候选。'
       : '使用工具合法目录构造，不代表当前存档持有。'
   const inventoryReasonEn = scenario.domain === 'inventory'
     ? `Uses ${inventorySlots} save instances, deduplicated by SlotID without inventory reuse.`
+    : scenario.domain === 'owned-first'
+      ? `Reuses ${inventorySlots} owned instances first; save confirmation creates ${constructedCount(result.picked || [])} independent sigils only for the remaining gaps.`
     : scenario.domain === 'table'
       ? 'Uses only candidates explicitly marked as exact unpacked-table rows.'
       : 'Uses legal tool-catalog constructions and does not claim current-save ownership.'

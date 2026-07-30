@@ -496,8 +496,8 @@ onBeforeUnmount(() => {
       </template>
       <div v-else class="preflight-grid ui-card-grid">
         <article v-for="item in runtimeCatalog" :key="item[0]" class="ui-card ui-panel is-compact">
-          <div><strong>{{ item[0] }}</strong><p>{{ item[1] }}</p></div>
-          <span :class="{ waiting: item[2] === '等待适配' }">{{ item[2] }}</span>
+          <div class="preflight-copy"><strong>{{ item[0] }}</strong><p>{{ item[1] }}</p></div>
+          <span class="preflight-status" :class="{ waiting: item[2] === '等待适配' }">{{ item[2] }}</span>
         </article>
         <div class="empty ui-empty">连接游戏进程后显示读取值和操作按钮</div>
       </div>
@@ -579,17 +579,25 @@ onBeforeUnmount(() => {
 
 .preflight-grid {
   --ui-grid-min:260px;
+  width:min(100%,960px);
+  margin-inline:auto;
+  grid-template-columns:repeat(2,minmax(0,1fr));
 }
 
 .preflight-grid article {
   display:flex;
-  min-height:76px;
-  align-items:center;
-  justify-content:space-between;
-  gap:var(--space-4);
+  min-height:112px;
+  align-items:flex-start;
+  justify-content:flex-start;
+  gap:var(--space-3);
   border-color:var(--border-default);
   border-radius:var(--radius-md);
   background:var(--surface-card-pop);
+  text-align:left;
+}
+
+.preflight-copy {
+  width:100%;
 }
 
 .preflight-grid strong {
@@ -605,7 +613,12 @@ onBeforeUnmount(() => {
   line-height:var(--lh-normal);
 }
 
-.preflight-grid article > span {
+.preflight-status {
+  display:inline-flex;
+  min-height:26px;
+  margin-top:auto;
+  align-items:center;
+  justify-content:flex-start;
   flex:0 0 auto;
   padding:var(--space-1) var(--space-2);
   border:1px solid var(--border-default);
@@ -615,7 +628,7 @@ onBeforeUnmount(() => {
   font-size:var(--fs-xs);
 }
 
-.preflight-grid article > span.waiting {
+.preflight-status.waiting {
   border-color:var(--warning);
   background:var(--warning-bg);
   color:var(--warning-ink);
@@ -806,6 +819,10 @@ onBeforeUnmount(() => {
 }
 
 @container runtime-page (max-width:480px) {
+  .preflight-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+
   .header {
     align-items:flex-start;
   }

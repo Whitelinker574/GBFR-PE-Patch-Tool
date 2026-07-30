@@ -23,7 +23,7 @@ test('tool entry copy tells users what changes, how to apply it, and how to reco
   assert.match(shell, /sigilMemory:\s*\{[\s\S]*?当前高亮的那一颗因子[\s\S]*?写入的是当前游戏进程/)
   assert.match(shell, /wrightstone:\s*\{[\s\S]*?新增祝福石实例[\s\S]*?技能曲线[\s\S]*?存档保护/)
   assert.match(shell, /runtime:\s*\{[\s\S]*?title:\s*'货币、素材与任务掉落'[\s\S]*?当前游戏会话/)
-  assert.match(shell, /saveDiff:\s*\{[\s\S]*?本页始终只读[\s\S]*?对应编辑器/)
+  assert.match(shell, /saveDiff:\s*\{[\s\S]*?不需要跳转到其他编辑页[\s\S]*?自动备份、原子写入并逐条回读/)
 })
 
 test('embedded natural-drop catalogs are described as app-owned data, not a user-supplied folder', () => {
@@ -56,8 +56,9 @@ test('offline and live equipment editors present an explicit read, review, and w
   assert.doesNotMatch(wrightstoneMemory, /detail:\s*`\$\{changeDetail\}\\n\\n重复/u)
 })
 
-test('read-only and runtime pages state their write boundary and recovery action', () => {
-  assert.match(saveDiff, /左边选“改动前”，右边选“改动后”/)
+test('save comparison and runtime pages state their write boundary and recovery action', () => {
+  assert.match(saveDiff, /把需要的差异从一侧拖到另一侧/)
+  assert.match(saveDiff, /默认存档写入要求游戏完全退出/)
   assert.match(saveDiff, /脱敏差分已导出到：\$\{path\}/)
   assert.match(runtimeCopy, /坐标移动与重力抑制是两个独立功能；穿墙仍未开放/)
   assert.match(runtimeCopy, /这里.*没有修改数量、Hash 或 Flags 的入口/)

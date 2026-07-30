@@ -46,8 +46,8 @@ const COPY = Object.freeze({
   spatialBefore: ['传送前', 'Before Teleport'],
   spatialObserved: ['写入回读', 'Observed After Write'],
   spatialUnsupported: ['本工具无法可靠识别联机状态，请自行确认只在离线/单机中使用。', 'The app cannot reliably detect online state; confirm that you are offline or solo.'],
-  spatialFlightTitle: ['按住方向连续移动', 'Hold to Move Continuously'],
-  spatialFlightSummary: ['按住方向键沿世界 X/Y/Z 轴移动；松开按键、切换页面或游戏对象变化都会立即停止。', 'Hold a direction to move along the world X/Y/Z axes. Releasing it, switching pages, or a game-object change stops movement immediately.'],
+  spatialFlightTitle: ['世界轴连续移动', 'Continuous World-Axis Movement'],
+  spatialFlightSummary: ['页面内可以按住轴向按钮；开启游戏内方向键后，切回游戏直接按 ← ↑ ↓ → 即可移动，不必再切回工具。', 'Hold the axis buttons in the app, or enable in-game arrow keys and move with ← ↑ ↓ → while the game is focused without switching back to the tool.'],
   spatialFlightDirections: ['世界轴移动方向', 'World-axis movement directions'],
   spatialFlightUp: ['上升', 'Up'],
   spatialFlightDown: ['下降', 'Down'],
@@ -55,6 +55,13 @@ const COPY = Object.freeze({
   spatialFlightStep: ['移动速度（单位/秒）', 'Movement speed (units/s)'],
   spatialFlightMoving: ['按住移动中', 'Moving While Held'],
   spatialFlightInvalidStep: ['移动速度必须在 0.1 到 1000 单位/秒之间。', 'Movement speed must be between 0.1 and 1000 units/s.'],
+  spatialHotkeys: ['游戏内方向键', 'In-Game Arrow Keys'],
+  spatialHotkeysReady: ['仅游戏窗口在前台时响应：←/→ 移动 X，↑/↓ 移动 Z。', 'Active only while the game window is focused: ←/→ move X and ↑/↓ move Z.'],
+  spatialHotkeysEnabled: ['已启用；回到游戏后直接使用方向键。F12、断开或退出会停用。', 'Enabled. Return to the game and use the arrow keys. F12, disconnecting, or exiting disables them.'],
+  spatialHotkeysEnable: ['启用方向键', 'Enable Arrow Keys'],
+  spatialHotkeysDisable: ['停用方向键', 'Disable Arrow Keys'],
+  spatialHotkeysChanging: ['正在切换…', 'Changing…'],
+  spatialHotkeysError: ['方向键移动已自动停用：{error}', 'Arrow-key movement stopped automatically: {error}'],
   spatialGravity: ['重力锁定', 'Gravity Lock'],
   spatialGravityReady: ['2.0.2 原始指令已核对', 'Verified 2.0.2 Instructions'],
   spatialGravityEnabled: ['重力已抑制', 'Gravity Suppressed'],
@@ -173,6 +180,8 @@ const COPY = Object.freeze({
   statusSpatialTeleport: ['一次性传送已写入并完成回读。', 'One-shot teleport was written and verified.'],
   statusSpatialFlightActive: ['持续坐标飞行已开始；松开按键立即停止。', 'Continuous coordinate flight started; release the button to stop.'],
   statusSpatialFlightStopped: ['持续坐标飞行已停止：{error}', 'Continuous coordinate flight stopped: {error}'],
+  statusSpatialHotkeysEnabled: ['游戏内方向键已启用；只在游戏窗口位于前台时响应。', 'In-game arrow keys enabled; they respond only while the game window is focused.'],
+  statusSpatialHotkeysDisabled: ['游戏内方向键已停用。', 'In-game arrow keys disabled.'],
   statusSpatialGravityEnabled: ['重力写入指令已暂停，并完成回读验证。', 'The gravity write instruction was suppressed and verified.'],
   statusSpatialGravityDisabled: ['重力原始指令已恢复，并完成回读验证。', 'The original gravity instruction was restored and verified.'],
   statusCaptureEnabled: ['两个只读捕获器已启用。', 'Both read-only captures are enabled.'],
@@ -541,6 +550,36 @@ export function normalizeRuntimeSpatialGravityStatus(value, expectedOwnerToken, 
   }
   if (normalized.available && normalized.error) throw new TypeError('available spatial gravity status must not contain an error')
   return deepFreeze(normalized)
+}
+
+export function normalizeRuntimeSpatialHotkeyStatus(value, expectedOwnerToken, expectedPID) {
+  const status = objectValue(value, 'spatial hotkey status')
+  const enabled = booleanValue(status.enabled, 'spatial hotkey enabled')
+  const foregroundOnly = booleanValue(status.foregroundOnly, 'spatial hotkey foreground guard')
+  const ownerLeaseId = typeof status.ownerLeaseId === 'string' ? status.ownerLeaseId : ''
+  const pid = unsignedInteger(status.pid, 'spatial hotkey process', 0xFFFFFFFF)
+  const processCreated = unsignedInteger(status.processCreated, 'spatial hotkey process creation identity', Number.MAX_SAFE_INTEGER)
+  const speed = finiteNumber(status.speed, 'spatial hotkey speed')
+  stringValue(status.gameVersion, 'spatial hotkey game version', '2.0.2')
+  stringValue(status.source, 'spatial hotkey source', 'game_runtime_spatial_hotkeys_2.0.2')
+  if (!foregroundOnly) throw new TypeError('spatial hotkeys must be guarded by the foreground game window')
+  if (speed < 0.1 || speed > 1000) throw new TypeError('spatial hotkey speed is outside the supported range')
+  if (enabled || ownerLeaseId || pid || processCreated) {
+    if (ownerLeaseId !== expectedOwnerToken) throw new TypeError('spatial hotkey owner token is stale')
+    if (pid !== expectedPID) throw new TypeError('spatial hotkey process identity changed')
+    if (!processCreated) throw new TypeError('spatial hotkey process creation identity is missing')
+  }
+  return deepFreeze({
+    enabled,
+    foregroundOnly,
+    speed,
+    ownerLeaseId,
+    pid,
+    processCreated,
+    gameVersion: status.gameVersion,
+    source: status.source,
+    lastError: typeof status.lastError === 'string' ? status.lastError : '',
+  })
 }
 
 function normalizeCapture(value, expectedKind) {

@@ -72,6 +72,47 @@ func TestDLCSupplementCelestialSigilsReachSaveAndLoadoutConstructors(t *testing.
 	}
 }
 
+func TestCommunityRouteExactRuntimeShellsReachUnifiedCatalog(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fatebreaker, err := catalog.RequireSigil("MEMORY_SIGIL_5BF84FD1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fatebreakerPrimary, err := catalog.RequireTrait(fatebreaker.PrimaryTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fatebreakerPrimary.Hash != "0xD029FE08" {
+		t.Fatalf("Fatebreaker primary hash = %s; want 0xD029FE08", fatebreakerPrimary.Hash)
+	}
+
+	ventus, err := catalog.RequireSigil("MEMORY_SIGIL_9300FADB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ventusPrimary, err := catalog.RequireTrait(ventus.PrimaryTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ventusPrimary.Hash != "0x73220725" {
+		t.Fatalf("Celestial Ventus primary hash = %s; want 0x73220725", ventusPrimary.Hash)
+	}
+	hasLumenSecondary := false
+	for _, traitID := range ventus.AllowedSecondaryTraitIDs {
+		if traitID == "MEMORY_TRAIT_A7726190" {
+			hasLumenSecondary = true
+			break
+		}
+	}
+	if !hasLumenSecondary {
+		t.Fatal("Celestial Ventus V+ does not expose the recorded Celestial Lumen secondary")
+	}
+}
+
 func TestPreciseWrathVPlusRuntimeHashUsesTheUnifiedCatalog(t *testing.T) {
 	previousLanguage := getCurrentLanguage()
 	setCurrentLanguage("zh")

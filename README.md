@@ -2,14 +2,15 @@
   <img src="build/appicon.png" width="112" alt="GBFR PE Patch Tool" />
 </p>
 
-<h1 align="center">GBFR PE Patch Tool</h1>
+<h1 align="center">GBFR PE Patch Tool 测试版</h1>
 
 <p align="center">
-  《碧蓝幻想：Relink》DLC 2.0.2 Windows 工具：编辑存档与配装、修改游戏内数据、启用单机补丁、监测角色面板。
+  《碧蓝幻想：Relink》DLC 2.0.2 Windows 实验测试工具：编辑存档与配装、修改游戏内数据、启用单机补丁、监测角色面板。
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>下载 v2.0.0</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases"><strong>下载测试版预发布</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">稳定版 v1.92.0</a> ·
   <a href="README_EN.md">English</a> ·
   <a href="docs/README.md">文档索引</a>
 </p>
@@ -23,6 +24,8 @@
 </p>
 
 > 适用游戏版本：DLC 2.0.2。修改前保留备份；实时功能仅用于本地单人游戏。
+>
+> 当前源码位于实验分支，GitHub 预发布包不会替换稳定版 `master` 或 v1.92.0。
 
 ## 先选你要做的事
 

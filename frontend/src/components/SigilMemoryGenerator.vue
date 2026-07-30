@@ -5,6 +5,7 @@ import { matchText } from '../utils/matchText.js'
 import { backendLanguageReady } from '../backendLanguage'
 import { traitAssetIcon } from '../gameAssetIcons'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
+import { explainRuntimeSigilWriteError, invalidRuntimeSigilMessage, invalidSecondaryTraitMessage } from '../utils/runtimeSigilErrors.js'
 import { clearHistory, deleteTemplate, history, pushHistory, renameTemplate, saveTemplate, templates } from '../utils/sigilMemoryStore.js'
 import SigilMemoryPicker from './SigilMemoryPicker.vue'
 import LegalityIndicator from './LegalityIndicator.vue'
@@ -267,7 +268,11 @@ async function performWrite() {
     applyStatus(next)
     pushHistory(snapshot)
     show(`已把修改写入游戏中当前选中的因子：${status.sigilName}。继续修改前请重新选择目标。`, 'success')
-  } catch (e) { if (!disposed && epoch === lifecycleEpoch) show(String(e), 'error') }
+  } catch (e) {
+    if (!disposed && epoch === lifecycleEpoch) {
+      show(explainRuntimeSigilWriteError(e, { hasSecondaryTrait: !!form.secondaryTraitHash }), 'error')
+    }
+  }
   finally { if (!disposed && epoch === lifecycleEpoch) applying.value = false }
 }
 async function write() { await performWrite() }
@@ -324,7 +329,7 @@ function repairFormForSigil(opt) {
   if (secondaryInvalid) {
     form.secondaryTraitHash = 0
     form.secondaryTraitLevel = 0
-    corrections.push('清除与该因子不兼容的副词条')
+    corrections.push('已清空不兼容的副词条；它在游戏中不会生效，不用写入')
   } else if (secondaryHash) {
     const secondary = traitByHash.value.get(secondaryHash)
     const validLevels = Array.isArray(secondary?.allowedLevels) ? secondary.allowedLevels : []
@@ -424,13 +429,13 @@ const warnings = computed(() => {
     out.push(`主词条「${primary?.displayName || hex(form.primaryTraitHash)}」与副词条「${secondary?.displayName || hex(form.secondaryTraitHash)}」重复冲突`)
   }
   if (form.secondaryTraitHash && sigil && sigil.supportsSecondaryTrait === false) {
-    out.push('该因子不支持副词条')
+    out.push(invalidSecondaryTraitMessage())
   } else if (
     form.secondaryTraitHash && sigil &&
     Array.isArray(sigil.allowedSecondaryTraitHashes) && sigil.allowedSecondaryTraitHashes.length > 0 &&
     !sigil.allowedSecondaryTraitHashes.map(h => h >>> 0).includes(form.secondaryTraitHash >>> 0)
   ) {
-    out.push('副词条不在该因子允许名单中')
+    out.push(invalidSecondaryTraitMessage())
   }
   return out
 })
@@ -445,9 +450,16 @@ const legality = computed(() => {
   const selectedSigilOption = sigilByHash.value.get(form.sigilHash >>> 0)
   const selectedPrimaryOption = traitByHash.value.get(form.primaryTraitHash >>> 0)
   const selectedSecondaryOption = traitByHash.value.get(form.secondaryTraitHash >>> 0)
-  if (!selectedSigilOption || selectedSigilOption.source === 'runtime') reasons.push('因子 Hash 不在本地资料库中')
-  if (!selectedPrimaryOption || selectedPrimaryOption.source === 'runtime') reasons.push('主词条 Hash 不在本地资料库中')
-  if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) reasons.push('副词条 Hash 不在本地资料库中')
+  if (!selectedSigilOption || selectedSigilOption.source === 'runtime') {
+    return {
+      status: 'impossible',
+      message: form.secondaryTraitHash ? invalidSecondaryTraitMessage() : invalidRuntimeSigilMessage(),
+    }
+  }
+  if (!selectedPrimaryOption || selectedPrimaryOption.source === 'runtime') reasons.push('当前因子的主词条无法验证，请从因子列表重新选择')
+  if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) {
+    return { status: 'impossible', message: invalidSecondaryTraitMessage() }
+  }
   if (reasons.length) return { status: 'impossible', message: `${reasons.join('；')}；请先修正后再写入` }
   const sigil = sigilByHash.value.get(form.sigilHash >>> 0)
   if (form.secondaryTraitHash && (!sigil || !Array.isArray(sigil.allowedSecondaryTraitHashes) || !sigil.allowedSecondaryTraitHashes.length)) {

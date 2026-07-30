@@ -1031,6 +1031,9 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		if err != nil {
 			return nil, fmt.Errorf("构造第 %d 个因子失败: %w", draft.Index+1, err)
 		}
+		if err := validateKnownSigilOwner(cat, prepared.sigilHash, ownerCode); err != nil {
+			return nil, fmt.Errorf("构造第 %d 个因子失败: %w", draft.Index+1, err)
+		}
 		constructedIndexes[draft.Index] = true
 		rw.constructed = append(rw.constructed, prepared)
 	}
@@ -1062,6 +1065,9 @@ func validateLoadoutWrite(save *SaveData, ix *loadoutIndex, cat *Catalog, w Load
 		h := ix.gemHash[gu]
 		if h == nil {
 			return nil, fmt.Errorf("因子 SlotID %d 无 hash", sid)
+		}
+		if err := validateKnownSigilOwner(cat, h.Uint32(), ownerCode); err != nil {
+			return nil, fmt.Errorf("因子 SlotID %d 不可用于当前角色: %w", sid, err)
 		}
 	}
 
@@ -1823,7 +1829,7 @@ func (a *App) loadoutEditContextFromLoaded(save *SaveData, charaHex string) (*Lo
 			continue
 		}
 		hv := h.Uint32()
-		generic, allowed := loadoutSigilAccess(cat, hv, precSigils)
+		generic, allowed := loadoutSigilAccess(cat, hv, ownerCode, precSigils)
 		if !allowed {
 			continue
 		}

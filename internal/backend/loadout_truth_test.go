@@ -2,6 +2,7 @@ package backend
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -12,12 +13,14 @@ func TestLoadoutSigilAccessFailsClosedForUnknownHashes(t *testing.T) {
 	}
 	const knownGeneric = uint32(0x2D7F2E70) // Attack Power V+
 	var knownCharacter uint32
+	var knownCharacterOwner string
 	for _, def := range cat.Sigils {
-		if def.Category != nil && *def.Category == "character_sigil" {
+		if def.Category != nil && *def.Category == "character_sigil" && len(def.AllowedOwnerCodes) > 0 {
 			knownCharacter, err = ParseHashHex(def.Hash)
 			if err != nil {
 				t.Fatal(err)
 			}
+			knownCharacterOwner = def.AllowedOwnerCodes[0]
 			break
 		}
 	}
@@ -25,25 +28,105 @@ func TestLoadoutSigilAccessFailsClosedForUnknownHashes(t *testing.T) {
 		t.Fatal("测试目录里没有角色专属因子")
 	}
 
-	if generic, allowed := loadoutSigilAccess(cat, knownGeneric, nil); !generic || !allowed {
+	if generic, allowed := loadoutSigilAccess(cat, knownGeneric, knownCharacterOwner, nil); !generic || !allowed {
 		t.Fatalf("已知通用因子应放行且标为通用: generic=%v allowed=%v", generic, allowed)
 	}
-	if generic, allowed := loadoutSigilAccess(cat, knownCharacter, nil); generic || allowed {
-		t.Fatalf("无先例的角色因子应拒绝: generic=%v allowed=%v", generic, allowed)
+	if generic, allowed := loadoutSigilAccess(cat, knownCharacter, "PL9999", nil); generic || allowed {
+		t.Fatalf("其他角色的专属因子应拒绝: generic=%v allowed=%v", generic, allowed)
 	}
-	if generic, allowed := loadoutSigilAccess(cat, knownCharacter, map[uint32]bool{knownCharacter: true}); generic || !allowed {
-		t.Fatalf("有本角色先例的角色因子应放行但不得标为通用: generic=%v allowed=%v", generic, allowed)
+	if generic, allowed := loadoutSigilAccess(cat, knownCharacter, knownCharacterOwner, nil); generic || !allowed {
+		t.Fatalf("解包表确认属于本角色的因子应放行但不得标为通用: generic=%v allowed=%v", generic, allowed)
 	}
 
 	const unknown = uint32(0xDEADC0DE)
 	if cat.LookupSigilByHash(unknown) != nil {
 		t.Fatalf("测试前提失效：%08X 已进入目录", unknown)
 	}
-	if generic, allowed := loadoutSigilAccess(cat, unknown, nil); generic || allowed {
+	if generic, allowed := loadoutSigilAccess(cat, unknown, knownCharacterOwner, nil); generic || allowed {
 		t.Fatalf("未知因子不得跨角色当通用因子暴露: generic=%v allowed=%v", generic, allowed)
 	}
-	if generic, allowed := loadoutSigilAccess(cat, unknown, map[uint32]bool{unknown: true}); generic || !allowed {
+	if generic, allowed := loadoutSigilAccess(cat, unknown, knownCharacterOwner, map[uint32]bool{unknown: true}); generic || !allowed {
 		t.Fatalf("未知因子仅可按本角色已有先例放行，且不得伪称通用: generic=%v allowed=%v", generic, allowed)
+	}
+}
+
+func TestCharacterSigilCatalogCarriesAuthoritativeOwners(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, def := range cat.Sigils {
+		if derefStr(def.Category) != "character_sigil" {
+			continue
+		}
+		count++
+		if len(def.AllowedOwnerCodes) == 0 {
+			t.Fatalf("角色因子 %s 缺少 gem.PlayerReq 归属", def.InternalID)
+		}
+	}
+	if count == 0 {
+		t.Fatal("目录中没有角色专属因子")
+	}
+}
+
+func TestKnownCharacterSigilWriteRejectsForeignOwnerWithReadableError(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range cat.Sigils {
+		if derefStr(def.Category) != "character_sigil" || len(def.AllowedOwnerCodes) == 0 {
+			continue
+		}
+		hash, parseErr := ParseHashHex(def.Hash)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		err = validateKnownSigilOwner(cat, hash, "PL9999")
+		if err == nil || !regexp.MustCompile(`角色专属因子.*不会按预期生效.*已阻止写入`).MatchString(err.Error()) {
+			t.Fatalf("跨角色因子错误应说明游戏内不生效且已阻止写入，got %v", err)
+		}
+		return
+	}
+	t.Fatal("目录中没有可验证的角色专属因子")
+}
+
+func TestDLCCharacterSigilsKeepTheirCharacterOwner(t *testing.T) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOwners := map[string]string{
+		"SKILL_173_": "PL2400",
+		"SKILL_174_": "PL2500",
+		"SKILL_175_": "PL2600",
+		"SKILL_176_": "PL2700",
+		"SKILL_177_": "PL2800",
+		"SKILL_178_": "PL2900",
+	}
+	found := map[string]int{}
+	for _, def := range cat.Sigils {
+		for prefix, ownerCode := range wantOwners {
+			if !strings.HasPrefix(def.PrimaryTraitID, prefix) {
+				continue
+			}
+			found[prefix]++
+			if len(def.AllowedOwnerCodes) != 1 || def.AllowedOwnerCodes[0] != ownerCode {
+				t.Fatalf("%s owner=%v; want only %s", def.InternalID, def.AllowedOwnerCodes, ownerCode)
+			}
+			if sigilAllowedForOwner(&def, "PL9999") {
+				t.Fatalf("%s incorrectly accepts a foreign character", def.InternalID)
+			}
+			if !sigilAllowedForOwner(&def, ownerCode) {
+				t.Fatalf("%s rejects its real owner %s", def.InternalID, ownerCode)
+			}
+		}
+	}
+	for prefix := range wantOwners {
+		if found[prefix] == 0 {
+			t.Fatalf("unified DLC catalog contains no factor with primary %s", prefix)
+		}
 	}
 }
 

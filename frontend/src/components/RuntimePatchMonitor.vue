@@ -11,6 +11,8 @@ import {
   RuntimePatchSelectedItemsStatusOwned,
   RuntimeSpatialGravitySetEnabledOwned,
   RuntimeSpatialGravityStatusOwned,
+  RuntimeSpatialHotkeysSetEnabledOwned,
+  RuntimeSpatialHotkeysStatusOwned,
   RuntimeSpatialMoveOwned,
   RuntimeSpatialTeleportOwned,
 } from '../../wailsjs/go/backend/App'
@@ -27,6 +29,7 @@ import {
   normalizeRuntimePatchSelectedRecord,
   normalizeRuntimePatchSelectedStatus,
   normalizeRuntimeSpatialGravityStatus,
+  normalizeRuntimeSpatialHotkeyStatus,
   normalizeRuntimeSpatialTeleport,
   runtimeMonitorRoleName,
   runtimeMonitorText,
@@ -58,6 +61,7 @@ const flightDirection = ref('')
 const flightPending = ref(false)
 const FLIGHT_FRAME_MS = 45
 const flightSpeed = ref(8)
+const hotkeyStatus = ref(null)
 const gravityStatus = ref(null)
 const gravityError = ref('')
 const spatialOrigin = ref(null)
@@ -75,6 +79,7 @@ let lifecycleEpoch = 0
 let connectionOwnerToken = ''
 let flightSession = 0
 let stopEmergencyEvents = null
+let stopSpatialHotkeyEvents = null
 
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value || flightPending.value || Boolean(flightDirection.value))
@@ -87,6 +92,11 @@ const captureRefreshing = computed(() => activeOperation.value?.kind === 'captur
 const captureChanging = computed(() => ['capture-enable', 'capture-disable'].includes(activeOperation.value?.kind))
 const gravityChanging = computed(() => activeOperation.value?.kind === 'gravity-change')
 const gravityRefreshing = computed(() => activeOperation.value?.kind === 'gravity-refresh')
+const hotkeyChanging = computed(() => activeOperation.value?.kind === 'hotkeys-change')
+const hotkeyDetail = computed(() => {
+  if (hotkeyStatus.value?.lastError) return t('spatialHotkeysError', { error: hotkeyStatus.value.lastError })
+  return t(hotkeyStatus.value?.enabled ? 'spatialHotkeysEnabled' : 'spatialHotkeysReady')
+})
 const gravityDetail = computed(() => {
   if (gravityError.value) return gravityError.value
   if (gravityStatus.value?.error) return gravityStatus.value.error
@@ -150,6 +160,7 @@ function clearRuntimeState() {
   resetSelectedItems()
   spatialSnapshot.value = null
   lastTeleport.value = null
+  hotkeyStatus.value = null
   gravityStatus.value = null
   gravityError.value = ''
   spatialOrigin.value = null
@@ -325,6 +336,11 @@ async function connect() {
     } catch (error) {
       gravityStatus.value = null
       gravityError.value = errorMessage(error)
+    }
+    try {
+      hotkeyStatus.value = normalizeRuntimeSpatialHotkeyStatus(await RuntimeSpatialHotkeysStatusOwned(acquiredOwnerToken), acquiredOwnerToken, acquired.pid)
+    } catch {
+      hotkeyStatus.value = null
     }
     announce(t('statusConnected', { pid: formatRuntimeInteger(acquired.pid, language.value) }), 'ok')
   } catch (error) {
@@ -575,6 +591,42 @@ async function setGravityEnabled(enabled) {
   }
 }
 
+function applySpatialHotkeyStatus(value) {
+  if (disposed || !connectionOwnerToken || !processInfo.value.pid) return
+  try {
+    const status = normalizeRuntimeSpatialHotkeyStatus(value, connectionOwnerToken, processInfo.value.pid)
+    hotkeyStatus.value = status
+    if (status.lastError) announce(t('spatialHotkeysError', { error: status.lastError }), 'danger')
+  } catch {
+    // Ignore stale events from an owner or game process that has already been replaced.
+  }
+}
+
+async function setSpatialHotkeysEnabled(enabled) {
+  if (!connected.value || releasePending.value) return
+  const operationToken = beginOperation('hotkeys-change')
+  if (!operationToken) return
+  const epoch = lifecycleEpoch
+  const ownerToken = connectionOwnerToken
+  stopFlight()
+  try {
+    const status = normalizeRuntimeSpatialHotkeyStatus(
+      await RuntimeSpatialHotkeysSetEnabledOwned(ownerToken, enabled, Number(flightSpeed.value)),
+      ownerToken,
+      processInfo.value.pid,
+    )
+    if (!operationIsCurrent(operationToken, epoch, ownerToken)) return
+    hotkeyStatus.value = status
+    announce(t(enabled ? 'statusSpatialHotkeysEnabled' : 'statusSpatialHotkeysDisabled'), 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch, ownerToken)) {
+      announce(t('statusActionFailed', { error: errorMessage(error) }), 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
 function capturePhase(kind) {
   return selectedCapturePhase(selectedStatus.value, kind, consumedSelections[kind])
 }
@@ -607,6 +659,8 @@ onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onEmergencyKeydown)
 	stopEmergencyEvents?.()
 	stopEmergencyEvents = null
+  stopSpatialHotkeyEvents?.()
+  stopSpatialHotkeyEvents = null
 })
 
 function onVisibilityChange() {
@@ -619,6 +673,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
 	window.addEventListener('keydown', onEmergencyKeydown)
 	stopEmergencyEvents = EventsOn('runtime-emergency-stop', applyEmergencyStopResult)
+  stopSpatialHotkeyEvents = EventsOn('runtime-spatial-hotkeys', applySpatialHotkeyStatus)
 })
 
 watch(activeTab, value => { if (value !== 'spatial') stopFlight() })
@@ -679,7 +734,8 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
             <span></span>
           </div>
           <div class="flight-settings">
-            <label><span>{{ t('spatialFlightStep') }}</span><input v-model.number="flightSpeed" class="ui-input" type="number" min="0.1" max="1000" step="0.1" inputmode="decimal" :disabled="Boolean(flightDirection)" /></label>
+            <label><span>{{ t('spatialFlightStep') }}</span><input v-model.number="flightSpeed" class="ui-input" type="number" min="0.1" max="1000" step="0.1" inputmode="decimal" :disabled="Boolean(flightDirection) || hotkeyStatus?.enabled" /></label>
+            <div class="flight-capability" :class="{ 'is-active': hotkeyStatus?.enabled, 'has-error': hotkeyStatus?.lastError }"><span><b>{{ t('spatialHotkeys') }}</b><small>{{ hotkeyDetail }}</small></span><button type="button" class="ui-btn is-sm" :class="hotkeyStatus?.enabled ? 'is-ghost' : 'is-primary'" :disabled="interactionLocked || !connected" @click="setSpatialHotkeysEnabled(!hotkeyStatus?.enabled)">{{ hotkeyChanging ? t('spatialHotkeysChanging') : t(hotkeyStatus?.enabled ? 'spatialHotkeysDisable' : 'spatialHotkeysEnable') }}</button></div>
             <div class="flight-capability" :class="{ 'is-active': gravityStatus?.enabled, 'has-error': gravityError || gravityStatus?.error }"><span><b>{{ t('spatialGravity') }}</b><small>{{ gravityDetail }}</small></span><button v-if="gravityStatus?.available" type="button" class="ui-btn is-sm" :class="gravityStatus.enabled ? 'is-ghost' : 'is-primary'" :disabled="interactionLocked || !connected" @click="setGravityEnabled(!gravityStatus.enabled)">{{ gravityChanging ? t('spatialGravityChanging') : t(gravityStatus.enabled ? 'spatialGravityDisable' : 'spatialGravityEnable') }}</button><button v-else type="button" class="ui-btn is-sm" :disabled="interactionLocked || !connected" @click="refreshGravityStatus">{{ gravityRefreshing ? t('refreshing') : t('refresh') }}</button></div>
             <div class="flight-capability"><span><b>{{ t('spatialNoclip') }}</b><small>{{ t('spatialNotLocated') }}</small></span><button type="button" class="ui-btn is-sm" disabled>{{ t('spatialUnavailable') }}</button></div>
           </div>

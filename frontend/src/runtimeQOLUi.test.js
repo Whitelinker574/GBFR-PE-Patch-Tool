@@ -7,7 +7,7 @@ const shell = readFileSync(new URL('./components/PatchTool.vue', import.meta.url
 
 test('convenience runtime has one themed persistent workspace', () => {
   assert.match(shell, /runtimeQOL:\s*\(\) => import\('\.\/RuntimeQOLLab\.vue'\)/)
-  assert.match(shell, /items: \['runtimeMonitor', 'loadout', 'virtualSigils', 'runtimeQOL'/)
+  assert.match(shell, /items: \['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera'/)
   assert.match(shell, /runtimeQOL:\s*\{[\s\S]*?title:\s*'显示与房间工具'/)
   assert.match(lab, /DeployRuntimeQOL/)
   assert.match(lab, /RemoveRuntimeQOL/)

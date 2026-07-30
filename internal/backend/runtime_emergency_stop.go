@@ -81,6 +81,7 @@ func (a *App) runRuntimeEmergencyWatcher(ctx context.Context, pressed func(int) 
 				trigger()
 			}
 			wasPressed = isPressed
+			a.pollRuntimeSpatialHotkeys(pressed, runtimeForegroundProcessID, interval)
 		}
 	}
 }

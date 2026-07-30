@@ -51,24 +51,47 @@ type SaveDiffSummary struct {
 }
 
 type SaveDiffEntry struct {
-	Key             string `json:"key"`
-	Section         string `json:"section"`
-	ValueType       string `json:"valueType"`
-	IDType          uint32 `json:"idType"`
-	UnitID          uint32 `json:"unitId"`
-	Occurrence      int    `json:"occurrence"`
-	LeftOccurrence  int    `json:"leftOccurrence"`
-	RightOccurrence int    `json:"rightOccurrence"`
-	SemanticName    string `json:"semanticName,omitempty"`
-	Status          string `json:"status"`
-	LeftIndex       int    `json:"leftIndex"`
-	RightIndex      int    `json:"rightIndex"`
-	LeftCount       int    `json:"leftCount"`
-	RightCount      int    `json:"rightCount"`
-	LeftHash        string `json:"leftHash,omitempty"`
-	RightHash       string `json:"rightHash,omitempty"`
-	LeftPreview     string `json:"leftPreview,omitempty"`
-	RightPreview    string `json:"rightPreview,omitempty"`
+	Key                string         `json:"key"`
+	Section            string         `json:"section"`
+	ValueType          string         `json:"valueType"`
+	IDType             uint32         `json:"idType"`
+	UnitID             uint32         `json:"unitId"`
+	Occurrence         int            `json:"occurrence"`
+	LeftOccurrence     int            `json:"leftOccurrence"`
+	RightOccurrence    int            `json:"rightOccurrence"`
+	SemanticName       string         `json:"semanticName,omitempty"`
+	Category           string         `json:"category"`
+	CategoryNameZh     string         `json:"categoryNameZh"`
+	CategoryNameEn     string         `json:"categoryNameEn"`
+	SemanticNameZh     string         `json:"semanticNameZh"`
+	SemanticNameEn     string         `json:"semanticNameEn"`
+	SemanticPurposeZh  string         `json:"semanticPurposeZh"`
+	SemanticPurposeEn  string         `json:"semanticPurposeEn"`
+	SemanticConfidence string         `json:"semanticConfidence"`
+	Status             string         `json:"status"`
+	LeftIndex          int            `json:"leftIndex"`
+	RightIndex         int            `json:"rightIndex"`
+	LeftCount          int            `json:"leftCount"`
+	RightCount         int            `json:"rightCount"`
+	LeftHash           string         `json:"leftHash,omitempty"`
+	RightHash          string         `json:"rightHash,omitempty"`
+	LeftPreview        string         `json:"leftPreview,omitempty"`
+	RightPreview       string         `json:"rightPreview,omitempty"`
+	LeftEntity         SaveDiffEntity `json:"leftEntity"`
+	RightEntity        SaveDiffEntity `json:"rightEntity"`
+	LeftDisplayZh      string         `json:"leftDisplayZh,omitempty"`
+	LeftDisplayEn      string         `json:"leftDisplayEn,omitempty"`
+	RightDisplayZh     string         `json:"rightDisplayZh,omitempty"`
+	RightDisplayEn     string         `json:"rightDisplayEn,omitempty"`
+	RiskLevel          string         `json:"riskLevel"`
+	RiskReasonZh       string         `json:"riskReasonZh,omitempty"`
+	RiskReasonEn       string         `json:"riskReasonEn,omitempty"`
+	CopySupported      bool           `json:"copySupported"`
+	CopyBlockReason    string         `json:"copyBlockReason,omitempty"`
+	CopyBlockReasonZh  string         `json:"copyBlockReasonZh,omitempty"`
+	CopyBlockReasonEn  string         `json:"copyBlockReasonEn,omitempty"`
+	leftValue          saveDiffValueSummary
+	rightValue         saveDiffValueSummary
 }
 
 type SaveDiffPageResult struct {
@@ -91,11 +114,16 @@ type saveDiffRecord struct {
 	hash         string
 	preview      string
 	semanticName string
+	value        saveDiffValueSummary
 }
 
 type saveDiffSession struct {
-	summary SaveDiffSummary
-	entries []SaveDiffEntry
+	summary   SaveDiffSummary
+	entries   []SaveDiffEntry
+	leftPath  string
+	rightPath string
+	leftSHA   [sha256.Size]byte
+	rightSHA  [sha256.Size]byte
 }
 
 type saveDiffExport struct {
@@ -150,15 +178,28 @@ func (a *App) OpenSaveDiff(leftPath, rightPath string) (*SaveDiffSummary, error)
 	if leftPath == "" || rightPath == "" {
 		return nil, saveDiffError("请选择两份存档", "Select two save files")
 	}
-	left, err := loadSaveDiffFile(leftPath)
+	leftAbsolute, err := filepath.Abs(leftPath)
+	if err != nil {
+		return nil, saveDiffWrap("解析左侧存档路径失败", "Failed to resolve the baseline save path", err)
+	}
+	rightAbsolute, err := filepath.Abs(rightPath)
+	if err != nil {
+		return nil, saveDiffWrap("解析右侧存档路径失败", "Failed to resolve the comparison save path", err)
+	}
+	if strings.EqualFold(filepath.Clean(leftAbsolute), filepath.Clean(rightAbsolute)) {
+		return nil, saveDiffError("左右两侧不能选择同一份存档", "Choose two different save files")
+	}
+	left, leftSHA, err := loadSaveDiffSnapshot(leftAbsolute)
 	if err != nil {
 		return nil, saveDiffWrap("解析左侧存档失败", "Failed to parse the baseline save", err)
 	}
-	right, err := loadSaveDiffFile(rightPath)
+	right, rightSHA, err := loadSaveDiffSnapshot(rightAbsolute)
 	if err != nil {
 		return nil, saveDiffWrap("解析右侧存档失败", "Failed to parse the comparison save", err)
 	}
-	session := buildSaveDiffSession(filepath.Base(leftPath), filepath.Base(rightPath), left, right)
+	session := buildSaveDiffSession(filepath.Base(leftAbsolute), filepath.Base(rightAbsolute), left, right)
+	session.leftPath, session.rightPath = leftAbsolute, rightAbsolute
+	session.leftSHA, session.rightSHA = leftSHA, rightSHA
 	a.saveDiffMu.Lock()
 	a.saveDiffSession = session
 	a.saveDiffMu.Unlock()
@@ -167,35 +208,45 @@ func (a *App) OpenSaveDiff(leftPath, rightPath string) (*SaveDiffSummary, error)
 }
 
 func loadSaveDiffFile(path string) (*SaveGameFile, error) {
+	save, _, err := loadSaveDiffSnapshot(path)
+	return save, err
+}
+
+func loadSaveDiffSnapshot(path string) (*SaveGameFile, [sha256.Size]byte, error) {
+	var digest [sha256.Size]byte
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, saveDiffWrap("读取文件失败", "Failed to read the file", err)
+		return nil, digest, saveDiffWrap("读取文件失败", "Failed to read the file", err)
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return nil, saveDiffWrap("读取文件信息失败", "Failed to read file information", err)
+		return nil, digest, saveDiffWrap("读取文件信息失败", "Failed to read file information", err)
 	}
 	if info.IsDir() {
-		return nil, saveDiffError("所选路径不是存档文件", "The selected path is not a save file")
+		return nil, digest, saveDiffError("所选路径不是存档文件", "The selected path is not a save file")
 	}
 	if info.Size() > saveDiffMaximumFileBytes {
 		limit := fmt.Sprintf("%d MiB", saveDiffMaximumFileBytes/(1024*1024))
-		return nil, saveDiffError("存档文件超过 "+limit+" 的只读比较上限", "The save file exceeds the "+limit+" read-only comparison limit")
+		return nil, digest, saveDiffError("存档文件超过 "+limit+" 的比较上限", "The save file exceeds the "+limit+" comparison limit")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, saveDiffMaximumFileBytes+1))
 	if err != nil {
-		return nil, saveDiffWrap("读取文件失败", "Failed to read the file", err)
+		return nil, digest, saveDiffWrap("读取文件失败", "Failed to read the file", err)
 	}
 	if int64(len(data)) > saveDiffMaximumFileBytes {
 		limit := fmt.Sprintf("%d MiB", saveDiffMaximumFileBytes/(1024*1024))
-		return nil, saveDiffError("存档文件超过 "+limit+" 的只读比较上限", "The save file exceeds the "+limit+" read-only comparison limit")
+		return nil, digest, saveDiffError("存档文件超过 "+limit+" 的比较上限", "The save file exceeds the "+limit+" comparison limit")
 	}
-	return ParseSaveData(data)
+	save, err := ParseSaveData(data)
+	if err != nil {
+		return nil, digest, err
+	}
+	return save, sha256.Sum256(data), nil
 }
 
-func (a *App) SaveDiffPage(cursor, limit int, search, status string) (*SaveDiffPageResult, error) {
+func (a *App) SaveDiffPage(cursor, limit int, search, status, category, copyability, semanticConfidence string) (*SaveDiffPageResult, error) {
 	if cursor < 0 {
 		cursor = 0
 	}
@@ -204,6 +255,9 @@ func (a *App) SaveDiffPage(cursor, limit int, search, status string) (*SaveDiffP
 	}
 	search = strings.ToLower(strings.TrimSpace(search))
 	status = strings.ToLower(strings.TrimSpace(status))
+	category = strings.ToLower(strings.TrimSpace(category))
+	copyability = strings.ToLower(strings.TrimSpace(copyability))
+	semanticConfidence = strings.ToLower(strings.TrimSpace(semanticConfidence))
 	a.saveDiffMu.Lock()
 	defer a.saveDiffMu.Unlock()
 	if a.saveDiffSession == nil {
@@ -215,6 +269,22 @@ func (a *App) SaveDiffPage(cursor, limit int, search, status string) (*SaveDiffP
 			continue
 		}
 		if status != "" && status != "all" && status != "different" && entry.Status != status {
+			continue
+		}
+		if category != "" && category != "all" && entry.Category != category {
+			continue
+		}
+		switch copyability {
+		case "copyable":
+			if !entry.CopySupported {
+				continue
+			}
+		case "blocked":
+			if entry.CopySupported {
+				continue
+			}
+		}
+		if semanticConfidence != "" && semanticConfidence != "all" && entry.SemanticConfidence != semanticConfidence {
 			continue
 		}
 		if search != "" && !saveDiffEntryMatches(entry, search) {
@@ -374,7 +444,14 @@ func writeSaveDiffFile(path string, data []byte) error {
 
 func saveDiffEntryMatches(entry SaveDiffEntry, search string) bool {
 	values := []string{
-		entry.Section, entry.ValueType, entry.SemanticName, entry.LeftHash, entry.RightHash,
+		entry.Section, entry.ValueType, entry.Category, entry.CategoryNameZh, entry.CategoryNameEn,
+		entry.SemanticName, entry.SemanticNameZh, entry.SemanticNameEn,
+		entry.SemanticPurposeZh, entry.SemanticPurposeEn, entry.SemanticConfidence,
+		entry.LeftEntity.NameZh, entry.LeftEntity.NameEn, entry.LeftEntity.DetailZh, entry.LeftEntity.DetailEn,
+		entry.RightEntity.NameZh, entry.RightEntity.NameEn, entry.RightEntity.DetailZh, entry.RightEntity.DetailEn,
+		entry.LeftDisplayZh, entry.LeftDisplayEn, entry.RightDisplayZh, entry.RightDisplayEn,
+		entry.RiskLevel, entry.RiskReasonZh, entry.RiskReasonEn,
+		entry.LeftHash, entry.RightHash,
 		strconv.FormatUint(uint64(entry.IDType), 10), fmt.Sprintf("0x%08X", entry.IDType),
 		strconv.FormatUint(uint64(entry.UnitID), 10), fmt.Sprintf("0x%08X", entry.UnitID),
 	}
@@ -391,24 +468,35 @@ func buildSaveDiffSession(leftName, rightName string, left, right *SaveGameFile)
 	rightRecords := flattenSaveRecords(right)
 	leftGroups := make(map[string][]saveDiffRecord)
 	rightGroups := make(map[string][]saveDiffRecord)
-	groupKeys := make([]string, 0, len(leftRecords)+len(rightRecords))
-	seen := make(map[string]bool, cap(groupKeys))
+	type groupOrderEntry struct {
+		key       string
+		section   string
+		valueType string
+		idType    uint32
+		unitID    uint32
+	}
+	groupOrder := make([]groupOrderEntry, 0, len(leftRecords)+len(rightRecords))
+	seen := make(map[string]bool, cap(groupOrder))
+	registerGroup := func(record saveDiffRecord) {
+		if seen[record.groupKey] {
+			return
+		}
+		seen[record.groupKey] = true
+		groupOrder = append(groupOrder, groupOrderEntry{
+			key: record.groupKey, section: record.section, valueType: record.valueType,
+			idType: record.idType, unitID: record.unitID,
+		})
+	}
 	for _, record := range leftRecords {
 		leftGroups[record.groupKey] = append(leftGroups[record.groupKey], record)
-		if !seen[record.groupKey] {
-			seen[record.groupKey] = true
-			groupKeys = append(groupKeys, record.groupKey)
-		}
+		registerGroup(record)
 	}
 	for _, record := range rightRecords {
 		rightGroups[record.groupKey] = append(rightGroups[record.groupKey], record)
-		if !seen[record.groupKey] {
-			seen[record.groupKey] = true
-			groupKeys = append(groupKeys, record.groupKey)
-		}
+		registerGroup(record)
 	}
-	sort.Slice(groupKeys, func(i, j int) bool {
-		a, b := firstSaveDiffRecord(leftGroups[groupKeys[i]], rightGroups[groupKeys[i]]), firstSaveDiffRecord(leftGroups[groupKeys[j]], rightGroups[groupKeys[j]])
+	sort.Slice(groupOrder, func(i, j int) bool {
+		a, b := groupOrder[i], groupOrder[j]
 		if a.section != b.section {
 			return a.section < b.section
 		}
@@ -421,7 +509,7 @@ func buildSaveDiffSession(leftName, rightName string, left, right *SaveGameFile)
 		if a.unitID != b.unitID {
 			return a.unitID < b.unitID
 		}
-		return a.groupKey < b.groupKey
+		return a.key < b.key
 	})
 	entries := make([]SaveDiffEntry, 0, len(leftRecords)+len(rightRecords))
 	summary := SaveDiffSummary{
@@ -429,20 +517,34 @@ func buildSaveDiffSession(leftName, rightName string, left, right *SaveGameFile)
 		LeftVersion: saveSlotVersion(left), RightVersion: saveSlotVersion(right),
 		LeftRecords: len(leftRecords), RightRecords: len(rightRecords),
 	}
-	for _, groupKey := range groupKeys {
+	type recordMatchKey struct {
+		count int
+		hash  string
+	}
+	for _, orderedGroup := range groupOrder {
+		groupKey := orderedGroup.key
 		leftGroup, rightGroup := leftGroups[groupKey], rightGroups[groupKey]
 		usedRight := make([]bool, len(rightGroup))
 		usedLeft := make([]bool, len(leftGroup))
+		rightMatches := make(map[recordMatchKey][]int, len(rightGroup))
+		rightMatchCursor := make(map[recordMatchKey]int, len(rightGroup))
+		for rightIndex, rightRecord := range rightGroup {
+			matchKey := recordMatchKey{count: rightRecord.count, hash: rightRecord.hash}
+			rightMatches[matchKey] = append(rightMatches[matchKey], rightIndex)
+		}
 		for leftIndex, leftRecord := range leftGroup {
-			for rightIndex, rightRecord := range rightGroup {
-				if usedRight[rightIndex] || leftRecord.count != rightRecord.count || leftRecord.hash != rightRecord.hash {
-					continue
-				}
-				usedLeft[leftIndex], usedRight[rightIndex] = true, true
-				entries = append(entries, makeSaveDiffEntry(groupKey, &leftRecord, &rightRecord, "unchanged"))
-				summary.Unchanged++
-				break
+			matchKey := recordMatchKey{count: leftRecord.count, hash: leftRecord.hash}
+			matchIndexes := rightMatches[matchKey]
+			cursor := rightMatchCursor[matchKey]
+			if cursor >= len(matchIndexes) {
+				continue
 			}
+			rightIndex := matchIndexes[cursor]
+			rightMatchCursor[matchKey] = cursor + 1
+			usedLeft[leftIndex], usedRight[rightIndex] = true, true
+			rightRecord := rightGroup[rightIndex]
+			entries = append(entries, makeSaveDiffEntry(groupKey, &leftRecord, &rightRecord, "unchanged"))
+			summary.Unchanged++
 		}
 		remainingLeft, remainingRight := make([]saveDiffRecord, 0), make([]saveDiffRecord, 0)
 		for index, record := range leftGroup {
@@ -469,33 +571,41 @@ func buildSaveDiffSession(leftName, rightName string, left, right *SaveGameFile)
 			summary.Added++
 		}
 	}
-	sort.SliceStable(entries, func(i, j int) bool {
-		if entries[i].Section != entries[j].Section {
-			return entries[i].Section < entries[j].Section
+	leftEntityIndex := newSaveDiffEntityIndex(left)
+	rightEntityIndex := newSaveDiffEntityIndex(right)
+	for index := range entries {
+		enrichSaveDiffEntry(&entries[index], leftEntityIndex, rightEntityIndex)
+	}
+	entryOrder := make([]int, len(entries))
+	for index := range entryOrder {
+		entryOrder[index] = index
+	}
+	sort.Slice(entryOrder, func(i, j int) bool {
+		a, b := entries[entryOrder[i]], entries[entryOrder[j]]
+		if a.Section != b.Section {
+			return a.Section < b.Section
 		}
-		if entries[i].ValueType != entries[j].ValueType {
-			return entries[i].ValueType < entries[j].ValueType
+		if a.ValueType != b.ValueType {
+			return a.ValueType < b.ValueType
 		}
-		if entries[i].IDType != entries[j].IDType {
-			return entries[i].IDType < entries[j].IDType
+		if a.IDType != b.IDType {
+			return a.IDType < b.IDType
 		}
-		if entries[i].UnitID != entries[j].UnitID {
-			return entries[i].UnitID < entries[j].UnitID
+		if a.UnitID != b.UnitID {
+			return a.UnitID < b.UnitID
 		}
-		return entries[i].Occurrence < entries[j].Occurrence
+		if a.Occurrence != b.Occurrence {
+			return a.Occurrence < b.Occurrence
+		}
+		return a.Key < b.Key
 	})
+	sortedEntries := make([]SaveDiffEntry, len(entries))
+	for index, sourceIndex := range entryOrder {
+		sortedEntries[index] = entries[sourceIndex]
+	}
+	entries = sortedEntries
 	summary.Different = summary.Added + summary.Removed + summary.Changed
 	return &saveDiffSession{summary: summary, entries: entries}
-}
-
-func firstSaveDiffRecord(left, right []saveDiffRecord) saveDiffRecord {
-	if len(left) > 0 {
-		return left[0]
-	}
-	if len(right) > 0 {
-		return right[0]
-	}
-	return saveDiffRecord{}
 }
 
 func makeSaveDiffEntry(groupKey string, left, right *saveDiffRecord, status string) SaveDiffEntry {
@@ -503,19 +613,39 @@ func makeSaveDiffEntry(groupKey string, left, right *saveDiffRecord, status stri
 	if left != nil {
 		base = left
 	}
+	semantic := saveDiffSemanticFor(base.idType)
 	entry := SaveDiffEntry{
 		Key:     fmt.Sprintf("%s/l%d-r%d/%s", groupKey, saveDiffOccurrence(left), saveDiffOccurrence(right), status),
 		Section: base.section, ValueType: base.valueType, IDType: base.idType, UnitID: base.unitID,
 		Occurrence:     max(saveDiffOccurrence(left), saveDiffOccurrence(right)),
 		LeftOccurrence: saveDiffOccurrence(left), RightOccurrence: saveDiffOccurrence(right),
-		SemanticName: base.semanticName, Status: status, LeftIndex: -1, RightIndex: -1,
+		SemanticName: semantic.NameEn,
+		Category:     semantic.Category, CategoryNameZh: semantic.CategoryZh, CategoryNameEn: semantic.CategoryEn,
+		SemanticNameZh: semantic.NameZh, SemanticNameEn: semantic.NameEn,
+		SemanticPurposeZh: semantic.PurposeZh, SemanticPurposeEn: semantic.PurposeEn,
+		SemanticConfidence: semantic.Confidence,
+		Status:             status, LeftIndex: -1, RightIndex: -1,
 	}
 	if left != nil {
 		entry.LeftIndex, entry.LeftCount, entry.LeftHash, entry.LeftPreview = left.index, left.count, left.hash, left.preview
+		entry.leftValue = left.value
 	}
 	if right != nil {
 		entry.RightIndex, entry.RightCount, entry.RightHash, entry.RightPreview = right.index, right.count, right.hash, right.preview
+		entry.rightValue = right.value
 	}
+	switch {
+	case left == nil || right == nil:
+		entry.CopyBlockReasonZh = "该记录只存在于一侧，不能在不重建存档结构的情况下安全复制"
+		entry.CopyBlockReasonEn = "This record exists on only one side and cannot be copied without rebuilding the save structure"
+	case left.count != right.count:
+		entry.CopyBlockReasonZh = "左右记录长度不同，不能原位替换"
+		entry.CopyBlockReasonEn = "The two records have different lengths and cannot be replaced in place"
+	case left.idType == SaveID_HashSeed:
+		entry.CopyBlockReasonZh = "校验种子由存档自身维护，不能从另一份存档复制"
+		entry.CopyBlockReasonEn = "The save owns its checksum seed; it cannot be copied from another save"
+	}
+	entry.CopyBlockReason = saveDiffText(entry.CopyBlockReasonZh, entry.CopyBlockReasonEn)
 	return entry
 }
 
@@ -592,7 +722,7 @@ func appendDiffRecord[T any](records []saveDiffRecord, section, valueType string
 	return append(records, saveDiffRecord{
 		section: section, valueType: valueType, idType: idType, unitID: unitID, index: index,
 		count: len(values), hash: hex.EncodeToString(digest[:8]), preview: saveValuePreview(values, valueType),
-		semanticName: saveRecordSemanticName(idType),
+		semanticName: saveRecordSemanticName(idType), value: summarizeSaveDiffValues(values),
 	})
 }
 
@@ -618,16 +748,9 @@ func saveValuePreview(values any, valueType string) string {
 }
 
 func saveRecordSemanticName(idType uint32) string {
-	names := map[uint32]string{
-		SaveID_HashSeed: "Hash Seed", SaveID_Rupees: "Rupees", SaveID_MasteryPoints: "Mastery Points",
-		SaveID_Commendations: "Commendations", SaveID_CurrentStageID: "Current Stage", SaveID_PartyHealth: "Party Health",
-		SaveID_ItemID: "Item ID", SaveID_ItemCount: "Item Count", SaveID_ItemFlags: "Item Flags",
-		SaveID_CurioRewardItemID: "Curio Reward", SaveID_CurioIDs: "Curio ID", SaveID_QuestIDs: "Quest ID",
-		SaveID_QuestCompleteCount: "Quest Clears", SaveID_GemID: "Sigil ID", SaveID_GemWornBy: "Sigil Equipped By",
-		SaveID_WeaponID: "Weapon ID", SaveID_WeaponXP: "Weapon XP", SaveID_CharacterID: "Character ID",
-		SaveID_CharacterQuestUse: "Character Quest Uses", SaveID_FavoriteChara: "Favorite Character",
-		SaveID_BadgeUnlocked: "Title Unlocked", SaveID_BadgeRewardClaimed: "Title Reward", SaveID_BadgeViewed: "Title Viewed",
-		SaveID_IsUnlocked: "Unlock State",
+	semantic := saveDiffSemanticFor(idType)
+	if semantic.Confidence == "unknown" {
+		return ""
 	}
-	return names[idType]
+	return semantic.NameEn
 }

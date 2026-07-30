@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildSaveDiffSessionLocatesTypedChanges(t *testing.T) {
@@ -31,6 +33,34 @@ func TestBuildSaveDiffSessionLocatesTypedChanges(t *testing.T) {
 		if entry.ValueType != "uint32" || entry.Section != "slotData" || entry.LeftHash == entry.RightHash && entry.Status == "changed" {
 			t.Fatalf("typed location/hash missing: %+v", entry)
 		}
+	}
+}
+
+func TestBuildSaveDiffSessionIndexesLargeEntitySetsOnce(t *testing.T) {
+	const recordCount = 4096
+	leftUnits := make([]UIntSaveDataUnit, recordCount)
+	rightUnits := make([]UIntSaveDataUnit, recordCount)
+	for index := range leftUnits {
+		unit := UIntSaveDataUnit{
+			IDType:    WrightstoneItemIDType,
+			UnitID:    uint32(index + 1),
+			ValueData: []uint32{0x60AC32C8},
+		}
+		leftUnits[index] = unit
+		rightUnits[index] = unit
+	}
+	left := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: leftUnits}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: rightUnits}}
+
+	started := time.Now()
+	session := buildSaveDiffSession("left.dat", "right.dat", left, right)
+	elapsed := time.Since(started)
+
+	if session.summary.Unchanged != recordCount || session.summary.Different != 0 {
+		t.Fatalf("large indexed comparison returned the wrong summary: %+v", session.summary)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("large indexed comparison took %s; entity catalogs or record lookups may be running once per row", elapsed)
 	}
 }
 
@@ -222,7 +252,7 @@ func TestSaveDiffRealLocalSaveIsReadOnlyAndPageable(t *testing.T) {
 	if summary.LeftRecords == 0 || summary.RightRecords == 0 {
 		t.Fatalf("real saves produced empty logical records: %+v", summary)
 	}
-	page, err := app.SaveDiffPage(0, 80, "", "all")
+	page, err := app.SaveDiffPage(0, 80, "", "all", "all", "all", "all")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,4 +268,304 @@ func TestSaveDiffRealLocalSaveIsReadOnlyAndPageable(t *testing.T) {
 			t.Fatalf("real source save was modified: %s", path)
 		}
 	}
+}
+
+func saveDiffTransferFixture(t *testing.T) string {
+	t.Helper()
+	candidates := []string{testLoadoutSave}
+	for slot := 1; slot <= 3; slot++ {
+		candidates = append(candidates, filepath.Join(defaultSaveGamesDir(), "SaveData"+string(rune('0'+slot))+".dat"))
+	}
+	for _, candidate := range candidates {
+		if candidate != "" {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+	t.Skip("no real save is available for a copy-only transfer test")
+	return ""
+}
+
+func prepareSaveDiffTransferPair(t *testing.T) (leftPath, rightPath string, changed SaveDiffEntry) {
+	t.Helper()
+	fixture := saveDiffTransferFixture(t)
+	original, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftPath = filepath.Join(t.TempDir(), "left.dat")
+	rightPath = filepath.Join(filepath.Dir(leftPath), "right.dat")
+	if err := os.WriteFile(leftPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	right := append([]byte(nil), original...)
+	parsed, err := ParseSaveData(right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record saveDiffRecord
+	for _, candidate := range flattenSaveRecords(parsed) {
+		semantic := saveDiffSemanticFor(candidate.idType)
+		if candidate.section == "slotData" &&
+			candidate.idType != SaveID_HashSeed &&
+			candidate.count > 0 &&
+			semantic.Confidence == "known" &&
+			!saveDiffEntityMustMatch(semantic.Category) {
+			record = candidate
+			break
+		}
+	}
+	if record.count == 0 {
+		t.Skip("real save has no safe uint32 record for a transfer test")
+	}
+	probe := SaveDiffEntry{
+		Section: record.section, ValueType: record.valueType, IDType: record.idType,
+		UnitID: record.unitID, LeftOccurrence: record.occurrence, RightOccurrence: record.occurrence,
+	}
+	vector, err := locateSaveDiffVector(right, probe, record.occurrence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vector.values[0] ^= 1
+	if err := os.WriteFile(rightPath, right, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	if _, err := app.OpenSaveDiff(leftPath, rightPath); err != nil {
+		t.Fatal(err)
+	}
+	page, err := app.SaveDiffPage(0, 200, "", "different", "all", "all", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range page.Items {
+		if entry.Section == record.section && entry.ValueType == record.valueType && entry.IDType == record.idType && entry.UnitID == record.unitID {
+			if !entry.CopySupported {
+				t.Fatalf("same-structure record was not copyable: %+v", entry)
+			}
+			return leftPath, rightPath, entry
+		}
+	}
+	t.Fatal("the prepared value change was not found in the diff")
+	return "", "", SaveDiffEntry{}
+}
+
+func TestApplySaveDiffTransfersCopiesBacksUpAndReadsBack(t *testing.T) {
+	leftPath, rightPath, entry := prepareSaveDiffTransferPair(t)
+	app := NewApp()
+	if _, err := app.OpenSaveDiff(leftPath, rightPath); err != nil {
+		t.Fatal(err)
+	}
+	result, err := app.ApplySaveDiffTransfers(SaveDiffTransferRequest{TargetSide: "left", Keys: []string{entry.Key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 1 || result.Verified != 1 || result.TargetName != filepath.Base(leftPath) {
+		t.Fatalf("unexpected transfer result: %+v", result)
+	}
+	if result.BackupPath == "" {
+		t.Fatal("in-place transfer did not report a backup")
+	}
+	if _, err := os.Stat(result.BackupPath); err != nil {
+		t.Fatalf("reported transfer backup is missing: %v", err)
+	}
+	left, err := os.ReadFile(leftPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := os.ReadFile(rightPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftVector, err := locateSaveDiffVector(left, entry, entry.LeftOccurrence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightVector, err := locateSaveDiffVector(right, entry, entry.RightOccurrence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(leftVector.values, rightVector.values) {
+		t.Fatal("target vector does not match its source after verified transfer")
+	}
+}
+
+func TestApplySaveDiffTransfersRejectsStaleTargetBeforeBackup(t *testing.T) {
+	leftPath, rightPath, entry := prepareSaveDiffTransferPair(t)
+	app := NewApp()
+	if _, err := app.OpenSaveDiff(leftPath, rightPath); err != nil {
+		t.Fatal(err)
+	}
+	left, err := os.ReadFile(leftPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	left[len(left)-1] ^= 1
+	if err := os.WriteFile(leftPath, left, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = app.ApplySaveDiffTransfers(SaveDiffTransferRequest{TargetSide: "left", Keys: []string{entry.Key}})
+	if err == nil || (!strings.Contains(err.Error(), "重新比较") && !strings.Contains(err.Error(), "Compare again")) {
+		t.Fatalf("stale target should fail closed, got %v", err)
+	}
+	backups, globErr := filepath.Glob(leftPath + ".pre-edit-*.bak")
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(backups) != 0 {
+		t.Fatalf("stale-target rejection created backups: %v", backups)
+	}
+}
+
+func TestOpenSaveDiffRejectsSelectingTheSameSaveTwice(t *testing.T) {
+	fixture := saveDiffTransferFixture(t)
+	if _, err := NewApp().OpenSaveDiff(fixture, fixture); err == nil {
+		t.Fatal("the same save was accepted on both sides")
+	}
+}
+
+func TestSaveDiffSemanticMetadataKeepsUnknownFieldsExplicit(t *testing.T) {
+	left := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: []UIntSaveDataUnit{
+		{IDType: SaveID_Rupees, UnitID: 0, ValueData: []uint32{100}},
+		{IDType: 9999, UnitID: 77, ValueData: []uint32{1}},
+	}}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: []UIntSaveDataUnit{
+		{IDType: SaveID_Rupees, UnitID: 0, ValueData: []uint32{200}},
+		{IDType: 9999, UnitID: 77, ValueData: []uint32{2}},
+	}}}
+	session := buildSaveDiffSession("left", "right", left, right)
+	var known, unknown *SaveDiffEntry
+	for index := range session.entries {
+		switch session.entries[index].IDType {
+		case SaveID_Rupees:
+			known = &session.entries[index]
+		case 9999:
+			unknown = &session.entries[index]
+		}
+	}
+	if known == nil || known.Category != "currency" || known.SemanticConfidence != "known" ||
+		known.SemanticNameZh != "卢比" || known.SemanticNameEn != "Rupees" ||
+		known.SemanticPurposeZh == "" || known.SemanticPurposeEn == "" {
+		t.Fatalf("known field lost bilingual semantics: %+v", known)
+	}
+	if unknown == nil || unknown.Category != "unknown" || unknown.SemanticConfidence != "unknown" ||
+		unknown.SemanticNameZh != "未知字段" || unknown.SemanticNameEn != "Unknown Field" ||
+		!strings.Contains(unknown.SemanticPurposeZh, "尚无可重复证据") ||
+		!strings.Contains(unknown.SemanticPurposeEn, "No repeatable evidence") {
+		t.Fatalf("unknown field was hidden or guessed: %+v", unknown)
+	}
+}
+
+func TestSaveDiffPageFiltersAndSearchesBilingualSemantics(t *testing.T) {
+	left := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: []UIntSaveDataUnit{
+		{IDType: SaveID_Rupees, UnitID: 0, ValueData: []uint32{100}},
+		{IDType: SaveID_HashSeed, UnitID: 0, ValueData: []uint32{1}},
+		{IDType: 9999, UnitID: 77, ValueData: []uint32{1}},
+	}}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{UIntTable: []UIntSaveDataUnit{
+		{IDType: SaveID_Rupees, UnitID: 0, ValueData: []uint32{200}},
+		{IDType: SaveID_HashSeed, UnitID: 0, ValueData: []uint32{2}},
+		{IDType: 9999, UnitID: 77, ValueData: []uint32{2}},
+	}}}
+	app := NewApp()
+	app.saveDiffSession = buildSaveDiffSession("left", "right", left, right)
+
+	assertIDs := func(search, category, copyability, confidence string, want ...uint32) {
+		t.Helper()
+		page, err := app.SaveDiffPage(0, 80, search, "different", category, copyability, confidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := make([]uint32, 0, len(page.Items))
+		for _, entry := range page.Items {
+			got = append(got, entry.IDType)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("filter (%q, %q, %q, %q) returned %v, want %v", search, category, copyability, confidence, got, want)
+		}
+	}
+
+	assertIDs("卢比", "all", "all", "all", SaveID_Rupees)
+	assertIDs("Rupees", "all", "all", "all", SaveID_Rupees)
+	assertIDs("0x00000450", "all", "all", "all", SaveID_Rupees)
+	assertIDs("", "currency", "copyable", "known", SaveID_Rupees)
+	assertIDs("", "system", "blocked", "known", SaveID_HashSeed)
+	assertIDs("", "unknown", "all", "unknown", 9999)
+}
+
+func TestSaveDiffResolvesCharacterLevelFromSameSideIdentity(t *testing.T) {
+	left := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: 1308, UnitID: 10004, ValueData: []int32{88}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_CharacterID, UnitID: 10004, ValueData: []uint32{0x4D0A60C3}}},
+	}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: 1308, UnitID: 10004, ValueData: []int32{100}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_CharacterID, UnitID: 10004, ValueData: []uint32{0x4D0A60C3}}},
+	}}
+	session := buildSaveDiffSession("left", "right", left, right)
+	var level *SaveDiffEntry
+	for index := range session.entries {
+		if session.entries[index].IDType == 1308 {
+			level = &session.entries[index]
+			break
+		}
+	}
+	if level == nil {
+		t.Fatal("character-level difference was not found")
+	}
+	if level.LeftEntity.NameZh != "伊欧" || level.LeftEntity.NameEn != "Io" ||
+		level.RightEntity.Key != level.LeftEntity.Key ||
+		level.LeftDisplayZh != "Lv88" || level.RightDisplayZh != "Lv100" ||
+		!level.CopySupported || level.RiskLevel != "low" {
+		t.Fatalf("character-level semantics were not resolved: %+v", level)
+	}
+}
+
+func TestSaveDiffBlocksSameUnitIDWhenCharacterIdentityChanged(t *testing.T) {
+	left := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: 1308, UnitID: 10004, ValueData: []int32{88}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_CharacterID, UnitID: 10004, ValueData: []uint32{0x4D0A60C3}}},
+	}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: 1308, UnitID: 10004, ValueData: []int32{100}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_CharacterID, UnitID: 10004, ValueData: []uint32{0xBDEF7181}}},
+	}}
+	session := buildSaveDiffSession("left", "right", left, right)
+	for _, entry := range session.entries {
+		if entry.IDType != 1308 {
+			continue
+		}
+		if entry.LeftEntity.NameZh != "伊欧" || entry.RightEntity.NameZh != "珀西瓦尔" ||
+			entry.CopySupported || entry.RiskLevel != "blocked" ||
+			!strings.Contains(entry.CopyBlockReasonZh, "具体对象不同") {
+			t.Fatalf("cross-character UnitID collision was not blocked: %+v", entry)
+		}
+		return
+	}
+	t.Fatal("character-level difference was not found")
+}
+
+func TestSaveDiffResolvesInventoryItemAndQuantityFromCatalog(t *testing.T) {
+	const unitID uint32 = 70001
+	left := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: SaveID_ItemCount, UnitID: unitID, ValueData: []int32{3}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_ItemID, UnitID: unitID, ValueData: []uint32{0xDB1D4F35}}},
+	}}
+	right := &SaveGameFile{SlotData: &SaveDataBinary{
+		IntTable:  []IntSaveDataUnit{{IDType: SaveID_ItemCount, UnitID: unitID, ValueData: []int32{9}}},
+		UIntTable: []UIntSaveDataUnit{{IDType: SaveID_ItemID, UnitID: unitID, ValueData: []uint32{0xDB1D4F35}}},
+	}}
+	session := buildSaveDiffSession("left", "right", left, right)
+	for _, entry := range session.entries {
+		if entry.IDType != SaveID_ItemCount {
+			continue
+		}
+		if entry.LeftEntity.NameZh != "圆石" || entry.LeftEntity.NameEn != "Cobblestone" ||
+			entry.LeftDisplayZh != "×3" || entry.RightDisplayZh != "×9" || !entry.CopySupported {
+			t.Fatalf("inventory item was not resolved from the 2.0.2 catalog: %+v", entry)
+		}
+		return
+	}
+	t.Fatal("item-count difference was not found")
 }

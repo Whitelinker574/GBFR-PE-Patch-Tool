@@ -218,6 +218,39 @@ function handleRuntimeCompanionVisibility() {
   void refreshRuntimeCompanionSummary()
 }
 
+const toolNavigationModes = Object.freeze({
+  progression: 'offline',
+  sigil: 'offline',
+  loadoutPresets: 'offline',
+  wrightstone: 'offline',
+  summonSave: 'offline',
+  chara: 'offline',
+  save: 'offline',
+  sigilMemory: 'live',
+  wrightstoneMemory: 'live',
+  summon: 'live',
+  overlimit: 'live',
+  runtime: 'live',
+  runtimeMonitor: 'background',
+  loadout: 'live',
+  runtimeQOL: 'live',
+  virtualSigils: 'live',
+  audioMixer: 'live',
+  camera: 'live',
+  spatialTools: 'live',
+  patchCombat: 'live',
+  patchCharacters: 'live',
+  patchQuest: 'live',
+  monster: 'live',
+  naturalDrop: 'file',
+  saveDiff: 'offline',
+  selectedItemMonitor: 'live',
+  formulaSampler: 'live',
+  compatibility: 'local',
+  patch: 'file',
+  language: 'local',
+})
+
 const toolMeta = {
   home: {
     group: 'home', title: '首页', eyebrow: '功能入口', status: 'DLC 2.0.2', tone: 'stable',
@@ -246,7 +279,7 @@ const toolMeta = {
     speaker: '萝赛塔', note: '游戏重新载入后，记得再选一次目标。旧的指针可不会一直等你哦。',
   },
   loadout: {
-    group: 'liveExtras', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
+    group: 'loadoutFlow', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
     description: '从游戏内依次读取角色当前的 12 个因子，用于导出和分享；也能把导入配装逐颗写到你准备好的备用因子上。',
     usage: ['启动游戏，打开角色因子列表并选中第一颗', '选择“录制”或载入配装进行“复刻”', '按页面提示逐颗向下移动，完成后预览、导出或分享'],
     caution: '复刻会改写当前选中的备用因子；不要使用已经装备或需要保留的因子。',
@@ -302,25 +335,25 @@ const toolMeta = {
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   runtimeMonitor: {
-    group: 'liveExtras', title: '队友配装持续检测', eyebrow: '队伍配装 · 后台服务', status: '点击开启后持续检测', tone: 'live',
+    group: 'loadoutFlow', title: '队友配装持续检测', eyebrow: '队伍配装 · 后台服务', status: '点击开启后持续检测', tone: 'live',
     description: '点击开启后持续在后台读取连续稳定的任务队伍快照；切换页面不会停止，直到你主动关闭。',
     usage: ['点击开启角色配装检测', '正常进入任务并与队友游玩', '在本地批次中预览、导出、部署或上传配装'],
     caution: '检测器不会默认开启；只读游戏数据，只有你点击关闭时才停止。',
     speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
   },
   spatialTools: {
-    group: 'liveExtras', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '2.0.2 实验', tone: 'live',
+    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '2.0.2 实验', tone: 'live',
     description: '单独提供坐标读取、书签、传送、世界轴连续移动与重力抑制，不再和队友配装检测混在一个入口。',
     usage: ['仅在离线或单机内容连接', '读取当前坐标并按需保存书签', '逐项使用传送、移动或重力控制'],
     caution: '世界轴移动加重力抑制不等于穿墙；noclip 与相机相对飞行仍未开放。',
-    speaker: '姬塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
+    speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
   },
   selectedItemMonitor: {
     group: 'tools', title: '选中物品查看（只读）', eyebrow: '诊断 · 内存查看', status: '低频工具', tone: 'live',
     description: '查看游戏中当前高亮素材或关键物品的名称、数量、Hash 与 Flags；页面没有任何修改入口。',
     usage: ['启动游戏并连接，点击“启用只读捕获”', '在游戏的素材或关键物品列表中高亮目标', '回到工具刷新并读取一次；查看下一件前重新选择'],
     caution: '这是低频诊断工具；点击“安全断开”会移除临时捕获并恢复游戏原始指令。',
-    speaker: '卡塔莉娜', note: '只读一次，记录清楚。诊断工具不应该挡住常用功能。',
+    speaker: '齐格飞', note: '换了物品要重新选中再读取；这里只看，不会写入。',
   },
   formulaSampler: {
     group: 'tools', title: '角色公式采样', eyebrow: '诊断 · 严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
@@ -330,21 +363,21 @@ const toolMeta = {
     speaker: '卡塔莉娜', note: '一次只动一项，等数字站稳再记。前后能复现，公式才算有证据。',
   },
   patchCombat: {
-    group: 'liveExtras', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
+    group: 'runtimeTools', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
     description: '在离线或单机游玩中调整闪避、格挡、Link、召唤限制和部位破坏等战斗规则。',
     usage: ['启动游戏并进入离线或单机内容', '连接后逐项开启需要的规则', '切页不会停止；用完点击断开，恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
     speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。切换页面不会打断，明确断开时才会全部恢复。',
   },
   patchCharacters: {
-    group: 'liveExtras', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
+    group: 'runtimeTools', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
     description: '按角色查找专属机制调整；每个开关都会说明作用，互相冲突的功能不会同时开启。',
     usage: ['启动游戏并进入离线或单机内容', '搜索角色或机制名称，查看说明后开启', '切换互斥功能前，先停用并确认原机制已恢复'],
     caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
     speaker: '巴萨拉卡', note: '冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。',
   },
   patchQuest: {
-    group: 'liveExtras', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
+    group: 'runtimeTools', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
     description: '在离线或单机任务中调整倒计时、宝箱、结算、支线奖励与养成便利功能。',
     usage: ['启动游戏并进入离线或单机任务', '按“任务规则”或“体验便利”选择功能', '用完在本页停用，或断开并恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
@@ -365,11 +398,11 @@ const toolMeta = {
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
   saveDiff: {
-    group: 'tools', title: '存档实验室', eyebrow: '存档与解包只读研究', status: '只读', tone: 'calibrate',
-    description: '比较两份存档哪里不同，并把已识别的配装、因子、祝福石、物品或召唤石差异带到对应编辑入口处理。',
-    usage: ['选择“改动前”基准存档和“改动后”对照存档', '按新增、缺少或变化筛选差异', '点击已知类型进入安全编辑器；未知记录可导出脱敏证据'],
-    caution: '本页始终只读，不会把一份存档直接覆盖到另一份；真正写入只在对应编辑器中完成，并走备份、预览和回读。',
-    speaker: '兰斯洛特', note: '先找出准确差异，再判断字段含义。没有证据的记录，只读，不写。',
+    group: 'save', title: '存档对比与复制', eyebrow: '双存档 · 页内替换', status: '离线存档', tone: 'stable',
+    description: '并排比较两份存档，把同结构差异直接从一侧拖到另一侧；不需要跳转到其他编辑页。',
+    usage: ['完全退出游戏，选择左右两份不同的存档', '选择写入左侧或右侧，把需要的差异拖入目标侧或加入变更单', '核对变更单后确认；应用会自动备份、原子写入并逐条回读'],
+    caution: '只会复制你确认的同结构记录；单侧新增、删除或长度不同的记录会保持禁用，避免破坏存档结构。',
+    speaker: '兰斯洛特', note: '先确认写入哪一侧，再逐条挑选。变更单核对无误后，一次写入就够了。',
   },
   naturalDrop: {
     group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
@@ -379,32 +412,32 @@ const toolMeta = {
     speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
   },
   audioMixer: {
-    group: 'tools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
     description: '分别调低或静音各角色后续播放的语音，也能调整界面音效；不会替换游戏音频文件。',
     usage: ['启动游戏并在本页确认已连接', '调整角色或界面音量，可先保存为本机预设', '点击“开启音频运行时”；之后保存会立即更新当前游戏'],
     caution: '只处理能够明确归属的语音事件，未知和共享事件保持原音；点击“停用并恢复”会移除本工具的音频 Hook。',
     speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
   },
   camera: {
-    group: 'tools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
     description: '调整城镇镜头能拉多远、看向角色的高度，以及每格滚轮缩放多少；战斗镜头不会改变。',
     usage: ['启动游戏并在本页确认已连接', '选择默认或舒适预设，也可手动调三个参数', '点击“开启镜头运行时”；之后保存会立即更新当前游戏'],
     caution: '只影响城镇镜头；点击“停用并恢复”会还原开启前的镜头值和本工具安装的 Hook。',
-    speaker: '萝赛塔', note: '远近与高低都留一点余裕，镜头才会从容。想换滚轮手感，重启以后再看效果。',
+    speaker: '索恩', note: '先看准距离和高度；顶部显示常驻后，切页也不会停。',
   },
   virtualSigils: {
-    group: 'liveExtras', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
     description: '让运行中的角色额外读取 1 至 8 颗真实库存因子的技能；它不会把存档的 12 个物理配装槽扩容。',
     usage: ['选择提供因子实例的存档和角色', '从未装备背包选择因子，或在退出游戏后制造新实例', '启动游戏并点击“开启虚拟因子”；切页后仍会保持运行'],
     caution: '同一个真实因子实例只能占一个虚拟槽；换存档、实例变化或校验失败会拒绝启用，停用时恢复所有相关 Hook。',
     speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
   },
 	runtimeQOL: {
-		group: 'liveExtras', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2 内置运行时', tone: 'live',
+		group: 'runtimeTools', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2 内置运行时', tone: 'live',
 		description: '集中开启显示精度、房间 ID 和主线队长替换；等级同步与重镶返还保留为待实测候选，不会在当前构建安装。',
 		usage: ['启动游戏', '选择需要的便利功能和显示精度', '开启后正常游玩；F12 可紧急恢复'],
 		caution: '所有入口必须唯一匹配 2.0.2；发现其他工具已修改同一入口时会拒绝接管。',
-		speaker: '拉卡姆', note: '常用的显示和房间信息放在一起，少绕路。要停就一次恢复干净。',
+		speaker: '夏洛特', note: '只开验证过的选项；没实测的继续锁住，F12 可以恢复。',
 	},
   compatibility: {
     group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
@@ -414,7 +447,7 @@ const toolMeta = {
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
   monster: {
-    group: 'liveExtras', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
+    group: 'runtimeTools', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
     description: '实验性调整当前怪物的血量、伤害、昏厥条与 Overdrive 状态，便于离线测试战斗。',
     usage: ['只在离线、单机或你明确控制的主机端测试', '连接后刷新并确认当前怪物状态', '一次调整一项，记录结果后恢复默认'],
     caution: '怪物切换、阶段变化和任务结束都可能让目标失效；不能把候选行为当作稳定联机功能。',
@@ -437,17 +470,18 @@ const toolMeta = {
 }
 
 const navigation = computed(() => [
-  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'wrightstone', 'progression', 'summonSave', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '常用即时修改' : 'Common Live Editing', caption: language.value === 'zh' ? '因子、祝福、召唤石与养成数据' : 'Sigils, wrightstones, summons, and progression', items: ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'] },
-  { id: 'liveExtras', mark: '拓', label: language.value === 'zh' ? '配装与实时扩展' : 'Loadouts & Live Tools', caption: language.value === 'zh' ? '队友配装、实时复刻与单机扩展' : 'Party loadouts, live restore, and solo extensions', items: ['runtimeMonitor', 'loadout', 'virtualSigils', 'runtimeQOL', 'spatialTools', 'camera', 'audioMixer', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
-  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '游戏文件 · 诊断 · 维护研究' : 'Game files, diagnostics, maintenance', items: ['naturalDrop', 'saveDiff', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'language', 'patch'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档与配装（离线）' : 'Saves & Loadouts', caption: language.value === 'zh' ? '退出游戏后编辑；备份、写入并回读' : 'Edit offline with backup and readback', items: ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'] },
+  { id: 'memory', mark: '改', label: language.value === 'zh' ? '游戏内即时编辑' : 'In-Game Live Editing', caption: language.value === 'zh' ? '选中目标后读取、修改并保存' : 'Select, read, edit, and save in game', items: ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'] },
+  { id: 'loadoutFlow', mark: '配', label: language.value === 'zh' ? '配装采集与复刻' : 'Loadout Capture & Restore', caption: language.value === 'zh' ? '队友后台检测与十二因子录制' : 'Party detection and 12-sigil recording', items: ['runtimeMonitor', 'loadout'] },
+  { id: 'runtimeTools', mark: '运', label: language.value === 'zh' ? '单机运行时工具' : 'Solo Runtime Tools', caption: language.value === 'zh' ? '显示、因子、音频、镜头与规则补丁' : 'Display, sigils, audio, camera, and rules', items: ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '游戏文件、诊断与设置' : 'Files, Diagnostics & Settings', caption: language.value === 'zh' ? '掉落表、实时诊断、适配与维护' : 'Drop tables, live diagnostics, compatibility, maintenance', items: ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'] },
 ])
 
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
-    baselineSummary: '28 个实际工具页 + 1 个主页已接入。',
+    baselineSummary: '30 个实际工具页 + 1 个主页已接入。',
   baselineBoundary: '关键运行时路径已完成 DLC 2.0.2 现场验证；其余功能按页面证据标注',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
@@ -467,7 +501,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
-    baselineSummary: '28 tool pages plus the home page are integrated.',
+    baselineSummary: '30 tool pages plus the home page are integrated.',
   baselineBoundary: 'Critical runtime paths have DLC 2.0.2 field evidence; remaining features keep page-level evidence labels',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
@@ -486,20 +520,24 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
-  { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
-  { scope: '实时功能页面', status: '13 页接入', tone: 'flow', detail: '常用即时修改 5 页；配装检测、实时复刻、虚拟因子、便利与补丁扩展 8 页' },
-  { scope: '只读监测页面', status: '1 / 1', tone: 'ok', detail: '角色公式采样不安装 Hook，也不写进程或存档' },
-  { scope: '工具设置页面', status: '7 页已接入', tone: 'ok', detail: '存档实验室、天然掉落、角色语音混音台、城镇镜头、版本适配、语言与显示、游戏文件维护' },
+  { scope: '存档修改页面', status: '8 / 8', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录、双存档对比复制' },
+  { scope: '游戏内即时编辑', status: '5 / 5', tone: 'flow', detail: '因子、祝福石、召唤石、上限突破与当前会话资源；均需启动并连接游戏' },
+  { scope: '配装采集与复刻', status: '2 / 2', tone: 'flow', detail: '队友配装检测按点击开启后持续后台运行；十二因子录制与复刻使用实时捕获' },
+  { scope: '单机运行时工具', status: '9 页接入', tone: 'flow', detail: '显示与房间、虚拟因子、角色语音、城镇镜头、坐标移动、三类规则补丁与怪物控制' },
+  { scope: '实时只读诊断', status: '2 / 2', tone: 'ok', detail: '选中物品查看与角色公式采样需要连接游戏，但不会修改进程数据或存档' },
+  { scope: '游戏文件与设置', status: '4 页已接入', tone: 'ok', detail: '掉落与锻造规则、版本适配、游戏文件维护、语言与显示' },
   { scope: '运行时补丁覆盖', status: '58 已接入 / 4 待证据', tone: 'ok', detail: '58 个目录功能已接入；4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
   { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
   { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 现场修复', tone: 'ok', detail: '当前目录逐站点验证；祝福石捕获与自动完美格挡连招修复使用独立版本守卫和写后回读' },
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
-  { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
-  { scope: 'Live feature pages', status: '13 integrated', tone: 'flow', detail: '5 common live-editing pages plus 8 loadout detection, live restore, virtual sigil, convenience, and patch extension pages' },
-  { scope: 'Strict read-only monitor pages', status: '1 / 1', tone: 'ok', detail: 'Formula sampling installs no hooks and writes neither process nor save data; mixed runtime detection/spatial tools are classified under live memory tools' },
-  { scope: 'Utility pages', status: '7 pages integrated', tone: 'ok', detail: 'Save laboratory, natural drops, character voice mixer, town camera, version compatibility, language and display, game file maintenance' },
+  { scope: 'Save editing pages', status: '8 / 8', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records, and two-save copying' },
+  { scope: 'In-game live editing', status: '5 / 5', tone: 'flow', detail: 'Sigils, wrightstones, summons, overmastery, and current-session resources all require the running game' },
+  { scope: 'Loadout capture and restore', status: '2 / 2', tone: 'flow', detail: 'Party detection starts only on click and then runs in the background; 12-sigil recording and restore use live capture' },
+  { scope: 'Solo runtime tools', status: '9 pages integrated', tone: 'flow', detail: 'Display and room tools, virtual sigils, voice audio, town camera, spatial controls, three patch groups, and monster control' },
+  { scope: 'Live read-only diagnostics', status: '2 / 2', tone: 'ok', detail: 'Selected-item viewing and formula sampling require the running game but do not alter process data or saves' },
+  { scope: 'Game files and settings', status: '4 pages integrated', tone: 'ok', detail: 'Drop and crafting rules, version compatibility, game-file maintenance, and language/display' },
   { scope: 'Runtime patch coverage', status: '58 integrated / 4 pending', tone: 'ok', detail: '58 catalog features are integrated; 4 candidates remain hidden until field or layout evidence is sufficient' },
   { scope: 'Runtime patch catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
   { scope: 'DLC 2.0.2 delta audit', status: '58 stable entries + 1 field fix', tone: 'ok', detail: 'Every catalog site is validated; wrightstone capture and the auto-perfect-guard combo fix use independent version guards and writeback' },
@@ -539,20 +577,35 @@ function localizedMeta(meta) {
 function toolTabTitle(id) {
   const meta = localizedToolMeta.value[id]
   if (!meta) return ''
-  const hint = id === 'runtimeMonitor'
-    ? (language.value === 'en' ? 'Automatic background detection after start' : '开启后自动后台检测')
-    : meta.tone === 'live'
-      ? (language.value === 'en' ? 'Start the game and connect first' : '需先启动游戏并连接进程')
-      : meta.tone === 'stable'
-        ? (language.value === 'en' ? 'Fully exit the game first' : '需先完全退出游戏')
-        : ''
+  const mode = toolNavigationModes[id]
+  const hints = language.value === 'en'
+    ? {
+        offline: 'Fully exit the game first',
+        live: 'Start the game and connect first',
+        background: 'Starts only when you click; then keeps running in the background',
+        file: 'Edits or checks local game files',
+        readonly: 'Read-only local analysis',
+        local: 'Local tool; no game connection required',
+      }
+    : {
+        offline: '需先完全退出游戏',
+        live: '需先启动游戏并连接进程',
+        background: '点击后才开启，并持续在后台运行',
+        file: '修改或检查本地游戏文件',
+        readonly: '本地只读分析',
+        local: '本机工具，无需连接游戏',
+      }
+  const hint = hints[mode] || ''
   return [meta.title, meta.eyebrow, hint].filter(Boolean).join(' · ')
 }
+function toolNavigationMode(id) {
+  return toolNavigationModes[id] || ''
+}
 function toolTagLabel(id) {
-  if (id === 'runtimeMonitor') return language.value === 'en' ? 'Background' : '后台'
-  return localizedToolMeta.value[id]?.tone === 'live'
-    ? (language.value === 'en' ? 'Live' : '实时')
-    : (language.value === 'en' ? 'Offline' : '离线')
+  const labels = language.value === 'en'
+    ? { offline: 'Offline', live: 'Live', background: 'Background', file: 'Game File', readonly: 'Read Only', local: 'Local' }
+    : { offline: '离线', live: '实时', background: '后台', file: '游戏文件', readonly: '只读', local: '本机' }
+  return labels[toolNavigationMode(id)] || ''
 }
 const localizedToolMeta = computed(() => Object.fromEntries(Object.entries(toolMeta).map(([id, meta]) => [id, localizedMeta(meta)])))
 const currentMeta = computed(() => localizedToolMeta.value[activeTab.value] || localizedToolMeta.value.home)
@@ -931,9 +984,7 @@ function showStatus(message, type) {
               @click="selectTool(id)"
             >
               {{ localizedToolMeta[id].title.replace(/（[^）]*）/g, '') }}
-              <span v-if="id === 'runtimeMonitor'" class="switcher-tag live">{{ toolTagLabel(id) }}</span>
-              <span v-else-if="localizedToolMeta[id].tone === 'live'" class="switcher-tag live">{{ toolTagLabel(id) }}</span>
-              <span v-else-if="localizedToolMeta[id].tone === 'stable'" class="switcher-tag offline">{{ toolTagLabel(id) }}</span>
+              <span v-if="toolNavigationMode(id)" :class="['switcher-tag', toolNavigationMode(id)]">{{ toolTagLabel(id) }}</span>
               <span v-if="localizedToolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
           </nav>
@@ -999,7 +1050,7 @@ function showStatus(message, type) {
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
-            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" @open-tool="selectTool" />
+            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
             <LanguageSettings v-else-if="activeTab === 'language'" />
 
@@ -1672,6 +1723,10 @@ button,input,select { font:inherit; }
 }
 .switcher-tag.live { color:var(--info-ink); background:var(--info-bg); }
 .switcher-tag.offline { color:var(--success-ink); background:var(--success-bg); }
+.switcher-tag.background { color:var(--info-ink); background:color-mix(in srgb,var(--info-bg) 70%,var(--accent-soft)); }
+.switcher-tag.file { color:var(--accent-hover); background:var(--accent-soft); }
+.switcher-tag.readonly { color:var(--text-secondary); background:var(--surface-field); }
+.switcher-tag.local { color:var(--text-muted); background:rgba(121,104,78,.11); }
 .switcher-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); }
 
 .navigation-load-state {

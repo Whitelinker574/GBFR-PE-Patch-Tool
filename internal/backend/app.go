@@ -177,6 +177,8 @@ type App struct {
 	emergencyWatcherMu           sync.Mutex
 	emergencyWatcher             context.CancelFunc
 	emergencyWatcherWG           sync.WaitGroup
+	runtimeSpatialHotkeyMu       sync.Mutex
+	runtimeSpatialHotkey         runtimeSpatialHotkeyConfig
 	qolSessionWatcherMu          sync.Mutex
 	qolSessionWatcher            *runtimeQOLSessionWatcher
 	runtimeCompanionOwnerMu      sync.Mutex
@@ -762,6 +764,7 @@ func validatePotionSnapshot(name string, value int32) error {
 
 // CharaAttach finds the game process, opens a handle, reads module base and manager pointer.
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if len(a.runtimePatchPatchLeases) != 0 || len(a.runtimePatchPatchOrder) != 0 {
@@ -790,6 +793,7 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 
 // CharaAcquire attaches to the game and rotates the frontend owner lease.
 func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
@@ -1147,6 +1151,7 @@ func isCharaListData(data []byte, countIndex int) bool {
 
 // CharaDetach restores owned runtime hooks before closing the process handle.
 func (a *App) CharaDetach() error {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	liveMemoryWriteMu.Lock()
 	defer liveMemoryWriteMu.Unlock()
 	a.procMu.Lock()
@@ -1161,6 +1166,7 @@ func (a *App) CharaDetach() error {
 // CharaRelease detaches only when token still owns the logical connection.
 // A stale cleanup is an idempotent no-op and cannot close a newer page's lease.
 func (a *App) CharaRelease(token string) error {
+	a.disableRuntimeSpatialHotkeysOwned(token, false)
 	liveMemoryWriteMu.Lock()
 	defer liveMemoryWriteMu.Unlock()
 	a.procMu.Lock()

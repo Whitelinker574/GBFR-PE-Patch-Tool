@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain, synthesizeOwnedFirstSuggestion } from './loadoutOptimizer.js'
+import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveFixedCharacterRoute, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain, synthesizeOwnedFirstSuggestion } from './loadoutOptimizer.js'
 
 const targets = [{ name: '伤害上限', weight: 3, cap: 65 }, { name: '暴击率', weight: 2, cap: 45 }]
 
@@ -29,13 +29,91 @@ test('plus shells never become illegal single-trait candidates', () => {
   assert.equal(candidates.find(item => item.sigilId === 'SINGLE').secondaryTraitId, '')
 })
 
+test('catalog and table candidates exclude character sigils owned by another character', () => {
+  const characterTargets = [{ name: '战气', weight: 1, cap: 15 }]
+  const atlas = { sigils: [
+    { internalId: 'GENERIC', hash: '1', displayName: 'Generic', category: 'normal', constructible: true, supportsSecondaryTrait: false, primaryTraitId: 'GENERIC_TRAIT', primaryTraitName: '战气', firstTraitMaxLevel: 15, tableExact: true },
+    { internalId: 'IO', hash: '2', displayName: 'Io Warpath', category: 'character_sigil', allowedOwnerCodes: ['PL0400'], constructible: true, supportsSecondaryTrait: false, primaryTraitId: 'IO_TRAIT', primaryTraitName: '战气', firstTraitMaxLevel: 15, tableExact: true },
+    { internalId: 'FOREIGN', hash: '3', displayName: 'Foreign Warpath', category: 'character_sigil', allowedOwnerCodes: ['PL0300'], constructible: true, supportsSecondaryTrait: false, primaryTraitId: 'FOREIGN_TRAIT', primaryTraitName: '战气', firstTraitMaxLevel: 15, tableExact: true },
+    { internalId: 'DLC_OWNED', hash: '4', displayName: 'DLC Io Warpath', category: 'dlc_supplement', allowedOwnerCodes: ['PL0400'], constructible: true, supportsSecondaryTrait: false, primaryTraitId: 'DLC_IO_TRAIT', primaryTraitName: '战气', firstTraitMaxLevel: 15, tableExact: false },
+    { internalId: 'DLC_FOREIGN', hash: '5', displayName: 'DLC Foreign Warpath', category: 'dlc_supplement', allowedOwnerCodes: ['PL2900'], constructible: true, supportsSecondaryTrait: false, primaryTraitId: 'DLC_FOREIGN_TRAIT', primaryTraitName: '战气', firstTraitMaxLevel: 15, tableExact: false },
+  ] }
+
+  assert.deepEqual(buildCatalogCandidates(atlas, characterTargets, 'PL0400').map(item => item.sigilId), ['DLC_OWNED', 'GENERIC', 'IO'])
+  assert.deepEqual(buildTableExactCandidates(atlas, characterTargets, 'PL0400').map(item => item.sigilId), ['GENERIC', 'IO'])
+  assert.deepEqual(buildCatalogCandidates(atlas, characterTargets, '').map(item => item.sigilId), ['GENERIC'])
+})
+
+test('fixed character routes assign twelve primary slots in linear time and reuse distinct inventory first', () => {
+  const routeTargets = [
+    { traitId: 'T0', name: 'T0', targetLevel: 45, cap: 45, weight: 100, slotCount: 3 },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      traitId: `T${index + 1}`,
+      name: `T${index + 1}`,
+      targetLevel: 15,
+      cap: 15,
+      weight: 100,
+      slotCount: 1,
+    })),
+  ]
+  const inventoryCandidates = Array.from({ length: 1404 }, (_, index) => ({
+    id: `slot:${index + 1}`,
+    slotId: index + 1,
+    source: 'inventory',
+    name: `Owned T0 ${index + 1}`,
+    primaryTraitId: 'T0',
+    primaryTraitLevel: 15,
+    traits: [{ id: 'T0', name: 'T0', level: 15 }],
+  }))
+  const catalogCandidates = routeTargets.map(target => ({
+    id: `catalog:${target.traitId}`,
+    sigilId: `catalog:${target.traitId}`,
+    source: 'catalog',
+    name: `${target.name} shell`,
+    primaryTraitId: target.traitId,
+    primaryLevel: 15,
+    traits: [{ id: target.traitId, name: target.name, level: 15 }],
+  }))
+
+  const started = performance.now()
+  const [result] = solveFixedCharacterRoute({ inventoryCandidates, catalogCandidates, targets: routeTargets })
+  const elapsed = performance.now() - started
+  assert.ok(elapsed < 1000, `fixed route assignment took ${elapsed.toFixed(1)}ms`)
+  assert.equal(result.method, 'fixed-route-linear')
+  assert.equal(result.picked.length, 12)
+  assert.equal(result.ownedCount, 3)
+  assert.equal(result.constructedCount, 9)
+  assert.equal(result.exact, true)
+  assert.deepEqual(result.picked.slice(0, 3).map(item => item.slotId), [1, 2, 3])
+  assert.equal(new Set(result.picked.filter(item => item.source === 'inventory').map(item => item.slotId)).size, 3)
+  assert.deepEqual(result.totals.map(item => item.effective), [45, 15, 15, 15, 15, 15, 15, 15, 15, 15])
+})
+
+test('fixed character routes preserve exact awakening shells instead of matching only the primary trait', () => {
+  const candidates = [
+    { id: 'slot:1', slotId: 1, source: 'inventory', sigilId: 'REGULAR', secondaryTraitId: 'REGULAR_SECONDARY', primaryTraitId: 'CHARACTER', primaryTraitLevel: 15, traits: [{ id: 'CHARACTER', name: '角色词条', level: 15 }] },
+    { id: 'slot:2', slotId: 2, source: 'inventory', sigilId: 'AWAKENING', secondaryTraitId: 'WRONG_SECONDARY', primaryTraitId: 'CHARACTER', primaryTraitLevel: 15, traits: [{ id: 'CHARACTER', name: '角色词条', level: 15 }] },
+    { id: 'slot:3', slotId: 3, source: 'inventory', sigilId: 'AWAKENING', secondaryTraitId: 'FIXED_SECONDARY', primaryTraitId: 'CHARACTER', primaryTraitLevel: 15, traits: [{ id: 'CHARACTER', name: '角色词条', level: 15 }] },
+  ]
+  const [result] = solveFixedCharacterRoute({
+    inventoryCandidates: candidates,
+    catalogCandidates: [],
+    targets: [{ traitId: 'CHARACTER', name: '角色词条', targetLevel: 30, slotCount: 2, exactSigilIds: ['REGULAR', 'AWAKENING'], exactSecondaryTraitIds: ['REGULAR_SECONDARY', 'FIXED_SECONDARY'] }],
+    slotCount: 2,
+  })
+  assert.equal(result.exact, true)
+  assert.deepEqual(result.picked.map(item => item.sigilId), ['REGULAR', 'AWAKENING'])
+  assert.deepEqual(result.picked.map(item => item.slotId), [1, 3])
+})
+
 test('inventory candidates preserve independent real instances', () => {
   const candidates = buildInventoryCandidates([
-    { slotId: 4, name: 'A+', primaryTraitName: '伤害上限', primaryTraitLevel: 15, secondaryTraitName: '暴击率', secondaryTraitLevel: 15 },
+    { slotId: 4, hash: '0xABC', name: 'A+', primaryTraitName: '伤害上限', primaryTraitLevel: 15, secondaryTraitName: '暴击率', secondaryTraitLevel: 15 },
     { slotId: 9, name: 'A+', primaryTraitName: '伤害上限', primaryTraitLevel: 15, secondaryTraitName: '暴击率', secondaryTraitLevel: 15 },
     { slotId: 11, name: 'Other', primaryTraitName: '防御力', primaryTraitLevel: 15 },
-  ], targets)
+  ], targets, { sigils: [{ internalId: 'EXACT_A', hash: 'ABC' }] })
   assert.deepEqual(candidates.map(item => item.slotId), [4, 9])
+  assert.equal(candidates[0].sigilId, 'EXACT_A')
 })
 
 test('owned-first deployment maximizes real SlotID reuse before creating missing sigils', () => {
@@ -302,6 +380,33 @@ test('conditional HP traits use only exact unpacked curve nodes and never leak m
   assert.deepEqual(new Set(unresolved.metrics.unresolvedConditions.map(item => item.traitId)), new Set(['SKILL_005_00', 'SKILL_006_00', 'SKILL_036_00', 'SKILL_144_00']))
 })
 
+test('runtime celestial trait ids reuse canonical 2.0.2 curves without losing route requirements', () => {
+  const evidence = { ...combatEvidence, traits: [...combatEvidence.traits,
+    { traitId: 'SKILL_321_00', name: '天枢·阳', maxLevel: 15, levels: [{
+      level: 15,
+      totals: [],
+      components: [{ value: 20 }, { value: 70 }, { value: 75 }],
+    }] },
+  ] }
+  const runtimeCelestial = {
+    id: 'celestial-lumen',
+    source: 'catalog',
+    name: '天枢·阳',
+    traits: [{ id: 'MEMORY_TRAIT_A7726190', name: '天枢·阳', level: 15 }],
+  }
+  const result = evaluateCombatBuild([runtimeCelestial], {
+    ...combatScenario,
+    evidence,
+    currentHpRatio: 1,
+    requiredTraitTargets: [{ traitId: 'MEMORY_TRAIT_A7726190', targetLevel: 15 }],
+  })
+
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.metrics.missingRequiredTraits, [])
+  assert.equal(result.metrics.attackPercent, 20)
+  assert.equal(result.metrics.actionCapBonus, 70)
+})
+
 test('threshold proc traits do not invent a linear probability between audited endpoints', () => {
   const evidence = { ...combatEvidence, traits: [...combatEvidence.traits,
     { traitId: 'SKILL_233_00', maxLevel: 15, levels: [{ level: 15, totals: [], components: [{ value: 20000 }, { value: 20 }, { value: 25000 }] }] },
@@ -362,6 +467,23 @@ test('fixed non-panel totals and audited defense zones participate without dupli
   assert.equal(withTrait.metrics.stronghold, 22)
 })
 
+test('action-specific damage bonuses only score for their matching action type', () => {
+  const fixedTotals = [
+    { label: '造成的伤害', unit: 'pct', value: 5 },
+    { label: '普通攻击造成的伤害', unit: 'pct', value: 11 },
+    { label: '能力造成的伤害', unit: 'pct', value: 13 },
+    { label: '奥义造成的伤害', unit: 'pct', value: 17 },
+    { label: '连锁攻击造成的伤害', unit: 'pct', value: 19 },
+    { label: '奥义连锁造成的伤害', unit: 'pct', value: 23 },
+  ]
+  const evaluate = actionType => evaluateCombatBuild([], { ...combatScenario, actionType, fixedTotals })
+
+  assert.equal(evaluate('normal').metrics.outsideCapBonus, 16)
+  assert.equal(evaluate('ability').metrics.outsideCapBonus, 18)
+  assert.equal(evaluate('sba').metrics.outsideCapBonus, 22)
+  assert.equal(evaluate('chain').metrics.outsideCapBonus, 47)
+})
+
 test('combat evaluation uses cap curves instead of trait-level coverage', () => {
   const cap = { id: 'cap', source: 'catalog', name: 'Damage Cap', traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 15 }] }
   const attack = { id: 'attack', source: 'catalog', name: 'Attack', traits: [{ id: 'SKILL_000_00', name: '攻击力', level: 15 }] }
@@ -410,6 +532,237 @@ test('combat solver ranks formula output and returns deterministic top alternati
   assert.ok(first.slice(1).some(item => item.alternativeGroups.includes('least-change')))
   assert.ok(first.slice(1).some(item => item.alternativeGroups.includes('robust-coverage')))
   assert.equal(first[0].explanation.comparisonBasis, 'current-loadout')
+})
+
+test('combat solver finishes a 1404-instance backpack as a bounded twelve-slot cap-aware plan', () => {
+  const capLevels = Array.from({ length: 65 }, (_, index) => ({
+    level: index + 1,
+    totals: [
+      { label: '普通攻击伤害上限', unit: 'pct', value: Math.min(250, (index + 1) * 3.85) },
+      { label: '能力伤害上限', unit: 'pct', value: Math.min(250, (index + 1) * 3.85) },
+      { label: '奥义伤害上限', unit: 'pct', value: Math.min(250, (index + 1) * 3.85) },
+    ],
+    components: [],
+  }))
+  const attackLevels = Array.from({ length: 50 }, (_, index) => ({
+    level: index + 1,
+    totals: [{ label: '攻击力', unit: 'pct', value: (index + 1) * 2 }],
+    components: [],
+  }))
+  const definitions = [
+    { id: 'SKILL_020_00', name: '伤害上限', maxLevel: 65, levels: capLevels },
+    { id: 'SKILL_000_00', name: '攻击力', maxLevel: 50, levels: attackLevels },
+    { id: 'SKILL_146_00', name: '属性克制转换', maxLevel: 15, levels: [{ level: 15, totals: [], components: [] }] },
+    { id: 'SKILL_151_00', name: '追击', maxLevel: 45, levels: [{ level: 15, totals: [], components: [{ value: 100 }] }, { level: 45, totals: [], components: [{ value: 100 }] }] },
+    { id: 'SKILL_233_00', name: '狂战士', maxLevel: 15, levels: [{ level: 15, totals: [], components: [{ value: 20000 }, { value: 20 }, { value: 25000 }] }] },
+    { id: 'SKILL_234_00', name: '斯巴达', maxLevel: 15, levels: [{ level: 15, totals: [], components: [{ value: 50000 }, { value: 20 }, { value: 80000 }] }] },
+    { id: 'SKILL_324_00', name: '天星之耀', maxLevel: 15, levels: [{ level: 15, totals: [], components: [{ value: 15 }] }] },
+    { id: 'SKILL_001_00', name: '体力', maxLevel: 50, levels: [{ level: 15, totals: [{ label: '最大HP', unit: 'flat', value: 3000 }], components: [] }] },
+    { id: 'SKILL_069_00', name: '迅捷能力', maxLevel: 15, levels: [{ level: 15, totals: [{ label: '冷却时间', unit: 'pct', value: -10 }], components: [] }] },
+    { id: 'SKILL_072_00', name: '高扬', maxLevel: 45, levels: [{ level: 15, totals: [], components: [] }] },
+    { id: 'SKILL_070_00', name: '迅捷能力', maxLevel: 45, levels: [{ level: 15, totals: [{ label: '冷却时间', unit: 'pct', value: -10 }], components: [] }] },
+    { id: 'SKILL_044_00', name: '霸体', maxLevel: 15, levels: [{ level: 15, totals: [], components: [] }] },
+  ]
+  const evidence = {
+    dataVersion: '2.0.2',
+    traits: definitions.map(item => ({ traitId: item.id, name: item.name, maxLevel: item.maxLevel, levels: item.levels })),
+  }
+  const candidates = Array.from({ length: 1404 }, (_, index) => {
+    const primary = index % definitions.length
+    let secondary = Math.floor(index / definitions.length) % definitions.length
+    if (secondary === primary) secondary = (secondary + 1) % definitions.length
+    return {
+      id: `slot:${index + 1}`,
+      source: 'inventory',
+      slotId: index + 1,
+      name: `${definitions[primary].name}+${definitions[secondary].name}`,
+      traits: [
+        { id: definitions[primary].id, name: definitions[primary].name, level: 15 },
+        { id: definitions[secondary].id, name: definitions[secondary].name, level: 15 },
+      ],
+    }
+  })
+  const scenario = {
+    ...combatScenario,
+    evidence,
+    baseStats: { attack: 90000, hp: 100000, critRate: 100 },
+    baseDamageCap: 10000,
+    baseUncappedDamage: 90000,
+  }
+  const [result] = solveLoadoutSuggestions({ candidates, targets: [], slotCount: 12, limit: 10, scenario })
+  assert.equal(result.picked.length, 12)
+  assert.equal(new Set(result.picked.map(item => item.slotId)).size, result.picked.length)
+  const pickedTraits = new Set(result.picked.flatMap(item => item.traits.map(trait => trait.id)))
+  for (const traitId of ['SKILL_020_00', 'SKILL_146_00', 'SKILL_233_00', 'SKILL_234_00']) {
+    assert.ok(pickedTraits.has(traitId), `missing universal damage trait ${traitId}`)
+  }
+  assert.equal(result.combat.metrics.actionCapBonus, 250)
+  assert.ok(result.exploredStates <= 120000, `explored ${result.exploredStates} states`)
+})
+
+test('combat plans score the same complete slot set that the preview and apply flow receive', () => {
+  const retained = {
+    id: 'slot:1', slotId: 1, source: 'inventory', retained: true, name: 'Retained Attack',
+    traits: [{ id: 'SKILL_000_00', name: '攻击力', level: 15 }],
+  }
+  const replacement = {
+    id: 'replacement', source: 'catalog', name: 'Replacement Cap',
+    traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 15 }],
+  }
+  const [result] = solveLoadoutSuggestions({
+    candidates: [retained, replacement],
+    targets: [],
+    slotCount: 2,
+    limit: 1,
+    scenario: { ...combatScenario, baseSigils: [retained] },
+  })
+
+  assert.equal(result.picked.length, 2)
+  assert.ok(result.picked.some(item => item.retained === true))
+  assert.ok(result.picked.some(item => item.id === 'replacement'))
+  assert.equal(result.combat.rawScore, evaluateCombatBuild(result.picked, combatScenario).rawScore)
+})
+
+test('community routes satisfy locked trait levels before ranking optional damage', () => {
+  const evidence = {
+    dataVersion: '2.0.2',
+    traits: [
+      { traitId: 'SKILL_020_00', maxLevel: 65, levels: [{ level: 15, totals: [{ label: '普通攻击伤害上限', unit: 'pct', value: 15 }], components: [] }] },
+      { traitId: 'OPTIONAL_ATTACK', maxLevel: 15, levels: [{ level: 15, totals: [{ label: '攻击力', unit: 'pct', value: 200 }], components: [] }] },
+    ],
+  }
+  const cap = { id: 'cap', source: 'catalog', name: 'Damage Cap', traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 15 }] }
+  const optional = { id: 'optional', source: 'catalog', name: 'Optional Attack', traits: [{ id: 'OPTIONAL_ATTACK', name: '可选攻击', level: 15 }] }
+  const scenario = {
+    ...combatScenario,
+    evidence,
+    baseStats: { attack: 1000, hp: 100000, critRate: 0 },
+    baseUncappedDamage: 1000,
+    baseDamageCap: 100000,
+    requiredTraitTargets: [{ traitId: 'SKILL_020_00', targetLevel: 15 }],
+  }
+
+  const [result] = solveLoadoutSuggestions({ candidates: [optional, cap], targets: [], slotCount: 1, limit: 1, scenario })
+  assert.equal(result.picked[0].id, 'cap')
+  assert.equal(result.combat.valid, true)
+  assert.deepEqual(result.combat.metrics.missingRequiredTraits, [])
+})
+
+test('combat candidate pruning keeps the current twelve-slot build as a reachable fallback', () => {
+  const retainedTraits = Array.from({ length: 12 }, (_, index) => ({
+    traitId: `RETAINED_ATTACK_${index}`,
+    name: `Retained Attack ${index}`,
+    maxLevel: 15,
+    levels: [{ level: 15, totals: [{ label: '攻击力', unit: 'pct', value: 10 }], components: [] }],
+  }))
+  const decoyTraits = Array.from({ length: 70 }, (_, index) => ({
+    traitId: `CRIT_DECOY_${index}`,
+    name: `Crit Decoy ${index}`,
+    maxLevel: 15,
+    levels: [{ level: 15, totals: [{ label: '暴击率', unit: 'pct', value: 100 }], components: [] }],
+  }))
+  const retained = retainedTraits.map((trait, index) => ({
+    id: `slot:${index + 1}`,
+    slotId: index + 1,
+    source: 'inventory',
+    retained: true,
+    name: trait.name,
+    traits: [{ id: trait.traitId, name: trait.name, level: 15 }],
+  }))
+  const candidates = [
+    ...retained,
+    ...decoyTraits.map((trait, index) => ({
+      id: `decoy:${index}`,
+      source: 'catalog',
+      name: trait.name,
+      traits: [{ id: trait.traitId, name: trait.name, level: 15 }],
+    })),
+  ]
+  const scenario = {
+    ...combatScenario,
+    evidence: { dataVersion: '2.0.2', traits: [...retainedTraits, ...decoyTraits] },
+    baseStats: { attack: 1000, hp: 1000, critRate: 0 },
+    baseUncappedDamage: 1000,
+    baseDamageCap: 100000,
+  }
+  const baseline = evaluateCombatBuild(retained, scenario)
+  const [result] = solveLoadoutSuggestions({ candidates, targets: [], slotCount: 12, limit: 1, scenario })
+
+  assert.equal(result.picked.length, 12)
+  assert.ok(result.picked.filter(item => item.retained === true).length >= 11)
+  assert.ok(result.combat.rawScore >= baseline.rawScore)
+})
+
+test('owned-first combat synthesis preserves formula ranking after replacing catalog rows', () => {
+  const desired = solveLoadoutSuggestions({
+    candidates: [
+      { id: 'cap', source: 'catalog', name: 'Damage Cap', traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 15 }] },
+      { id: 'elemental', source: 'catalog', name: 'Elemental', traits: [{ id: 'SKILL_146_00', name: '属性克制转换', level: 15 }] },
+    ],
+    targets,
+    slotCount: 2,
+    limit: 1,
+    scenario: combatScenario,
+  })[0]
+  const inventoryCandidates = [
+    { id: 'slot:9', source: 'inventory', slotId: 9, name: 'Owned Cap', traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 15 }] },
+  ]
+  const result = synthesizeOwnedFirstSuggestion({ desired, inventoryCandidates, targets, scenario: combatScenario })
+  const recalculated = evaluateCombatBuild(result.picked, combatScenario)
+  assert.equal(result.score, recalculated.rawScore)
+  assert.deepEqual(result.combat, recalculated)
+  assert.equal(result.ownedCount, 1)
+  assert.equal(result.constructedCount, 1)
+})
+
+test('unmodelled character conditions are fail-closed instead of becoming permanent damage', () => {
+  const conditional = {
+    id: 'foreign-warpath',
+    source: 'catalog',
+    name: '条件战气',
+    traits: [{ id: 'SKILL_CHARACTER_CONDITION', name: '条件战气', level: 15 }],
+  }
+  const evidence = {
+    traits: [{
+      traitId: 'SKILL_CHARACTER_CONDITION',
+      name: '条件战气',
+      maxLevel: 15,
+      levels: [{ level: 15, totals: [{ label: '造成的伤害', unit: 'pct', value: 100 }], components: [] }],
+    }],
+  }
+  const scenario = { ...combatScenario, evidence, conditionalTraitIds: ['SKILL_CHARACTER_CONDITION'], coverage: 0.8 }
+  const baseline = evaluateCombatBuild([], scenario)
+  const result = evaluateCombatBuild([conditional], scenario)
+  assert.equal(result.rawScore, baseline.rawScore)
+  assert.deepEqual(result.metrics.unresolvedConditions, [{ traitId: 'SKILL_CHARACTER_CONDITION', curveName: 'character-condition', input: 0.8 }])
+})
+
+test('combat candidate pruning retains damage cap for later attack-cap synergy', () => {
+  const attackTraits = Array.from({ length: 70 }, (_, index) => ({
+    traitId: `ATTACK_${index}`,
+    name: `Attack ${index}`,
+    maxLevel: 10,
+    levels: [{ level: 10, totals: [{ label: '攻击力', unit: 'pct', value: 10 }], components: [] }],
+  }))
+  const evidence = {
+    traits: [
+      ...attackTraits,
+      { traitId: 'SKILL_020_00', name: '伤害上限', maxLevel: 45, levels: [{ level: 45, totals: [{ label: '普通攻击伤害上限', unit: 'pct', value: 45 }], components: [] }] },
+    ],
+  }
+  const candidates = [
+    ...attackTraits.map((trait, index) => ({ id: `attack-${index}`, source: 'catalog', name: trait.name, traits: [{ id: trait.traitId, name: trait.name, level: 10 }] })),
+    { id: 'cap', source: 'catalog', name: 'Damage Cap', traits: [{ id: 'SKILL_020_00', name: '伤害上限', level: 45 }] },
+  ]
+  const scenario = {
+    ...combatScenario,
+    evidence,
+    baseStats: { attack: 1000, hp: 1000, critRate: 0 },
+    baseUncappedDamage: 530,
+    baseDamageCap: 1000,
+  }
+  const [result] = solveLoadoutSuggestions({ candidates, targets: [], slotCount: 12, limit: 10, scenario })
+  assert.ok(result.picked.some(item => item.id === 'cap'), 'damage-cap candidate was pruned before attack synergy could make it useful')
 })
 
 test('combat solver normalizes non-finite coverage bounds', () => {

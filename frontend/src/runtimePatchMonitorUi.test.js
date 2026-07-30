@@ -118,6 +118,17 @@ test('held flight uses the planned 0.1-1000 units-per-second range with an 8 def
   assert.doesNotMatch(source, /const flightStep|v-model="flightStep"/)
 })
 
+test('spatial movement offers opt-in arrow keys that remain owned and game-foreground guarded', () => {
+  assert.match(source, /RuntimeSpatialHotkeysStatusOwned\(acquiredOwnerToken\)/)
+  assert.match(source, /RuntimeSpatialHotkeysSetEnabledOwned\(ownerToken, enabled, Number\(flightSpeed\.value\)\)/)
+  assert.match(source, /normalizeRuntimeSpatialHotkeyStatus/)
+  assert.match(source, /EventsOn\('runtime-spatial-hotkeys', applySpatialHotkeyStatus\)/)
+  assert.match(source, /t\('spatialHotkeys'\)/)
+  assert.match(source, /setSpatialHotkeysEnabled\(!hotkeyStatus\?\.enabled\)/)
+  assert.match(source, /hotkeyStatus\?\.enabled/)
+  assert.match(source, /stopSpatialHotkeyEvents\?\.\(\)/)
+})
+
 test('the runtime monitor exposes a global and focused emergency stop', () => {
   assert.match(source, /RuntimeEmergencyStop/)
   assert.match(source, /EventsOn\('runtime-emergency-stop'/)

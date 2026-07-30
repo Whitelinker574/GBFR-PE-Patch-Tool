@@ -17,19 +17,20 @@ import (
 // ── 前端交互数据结构 ──
 
 type SigilInfo struct {
-	InternalID              string `json:"internalId"`
-	Hash                    string `json:"hash"`
-	DisplayName             string `json:"displayName"`
-	Category                string `json:"category"`
-	Verified                bool   `json:"verified"`
-	Constructible           bool   `json:"constructible"`
-	SupportsSecondaryTrait  bool   `json:"supportsSecondaryTrait"`
-	AllowedSigilLevels      []int  `json:"allowedSigilLevels"`
-	DefaultSigilLevel       int    `json:"defaultSigilLevel"`
-	PrimaryTraitID          string `json:"primaryTraitId"`
-	PrimaryTraitName        string `json:"primaryTraitName"`
-	AllowedFirstTraitLevels []int  `json:"allowedFirstTraitLevels"`
-	FirstTraitMaxLevel      int    `json:"firstTraitMaxLevel"`
+	InternalID              string   `json:"internalId"`
+	Hash                    string   `json:"hash"`
+	DisplayName             string   `json:"displayName"`
+	Category                string   `json:"category"`
+	AllowedOwnerCodes       []string `json:"allowedOwnerCodes,omitempty"`
+	Verified                bool     `json:"verified"`
+	Constructible           bool     `json:"constructible"`
+	SupportsSecondaryTrait  bool     `json:"supportsSecondaryTrait"`
+	AllowedSigilLevels      []int    `json:"allowedSigilLevels"`
+	DefaultSigilLevel       int      `json:"defaultSigilLevel"`
+	PrimaryTraitID          string   `json:"primaryTraitId"`
+	PrimaryTraitName        string   `json:"primaryTraitName"`
+	AllowedFirstTraitLevels []int    `json:"allowedFirstTraitLevels"`
+	FirstTraitMaxLevel      int      `json:"firstTraitMaxLevel"`
 }
 
 type TraitInfo struct {
@@ -219,6 +220,7 @@ func (sg *SigilGen) GetSigilList() ([]SigilInfo, error) {
 			Hash:                    s.Hash,
 			DisplayName:             displaySigilName(s),
 			Category:                derefStr(s.Category),
+			AllowedOwnerCodes:       append([]string(nil), s.AllowedOwnerCodes...),
 			Verified:                isVerifiedSigilDefinition(s),
 			Constructible:           sg.catalog.IsSigilConstructible(s),
 			SupportsSecondaryTrait:  supportsGeneratedPlusSigil(s),

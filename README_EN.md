@@ -2,14 +2,15 @@
   <img src="build/appicon.png" width="112" alt="GBFR PE Patch Tool" />
 </p>
 
-<h1 align="center">GBFR PE Patch Tool</h1>
+<h1 align="center">GBFR PE Patch Tool Test Build</h1>
 
 <p align="center">
-  A Windows tool for <em>Granblue Fantasy: Relink</em> DLC 2.0.2: edit saves and loadouts, change live game data, apply single-player patches, and monitor final character stats.
+  An experimental Windows test tool for <em>Granblue Fantasy: Relink</em> DLC 2.0.2: edit saves and loadouts, change live game data, apply single-player patches, and monitor final character stats.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download v2.0.0</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases"><strong>Download a test pre-release</strong></a> ·
+  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest">Stable v1.92.0</a> ·
   <a href="README.md">简体中文</a> ·
   <a href="docs/README.md">Documentation index</a>
 </p>
@@ -23,6 +24,8 @@
 </p>
 
 > Supported game version: DLC 2.0.2. Keep backups before editing and use live features only in local single-player sessions.
+>
+> This source is published from the experimental branch. GitHub pre-release builds do not replace stable `master` or v1.92.0.
 
 ## Choose the right workspace
 

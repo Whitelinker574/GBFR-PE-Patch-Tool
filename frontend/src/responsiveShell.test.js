@@ -117,10 +117,11 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 })
 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
-  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'wrightstone', 'progression', 'summonSave', 'chara', 'save'])
+  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'])
   assert.deepEqual(navigationIds(patchTool, 'memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
-  assert.deepEqual(navigationIds(patchTool, 'liveExtras'), ['runtimeMonitor', 'loadout', 'virtualSigils', 'runtimeQOL', 'spatialTools', 'camera', 'audioMixer', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
-  assert.deepEqual(navigationIds(patchTool, 'tools'), ['naturalDrop', 'saveDiff', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'language', 'patch'])
+  assert.deepEqual(navigationIds(patchTool, 'loadoutFlow'), ['runtimeMonitor', 'loadout'])
+  assert.deepEqual(navigationIds(patchTool, 'runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
+  assert.deepEqual(navigationIds(patchTool, 'tools'), ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'])
   assert.doesNotMatch(patchTool, /\{ id: 'monitor',/)
   assert.match(patchTool, /@pointerenter="queueWarmToolIntent\(id\)"/)
   assert.match(patchTool, /@pointerleave="cancelWarmToolIntent\(id\)"/)
@@ -133,10 +134,35 @@ test('sidebar and top-tab groups put common functions first in an exact stable o
   assert.doesNotMatch(patchTool, /queueWarmTools\(Object\.keys\(functionArt\)\)/)
 })
 
+test('every top tab has one explicit work-mode badge independent from maturity status', () => {
+  const expectedModes = {
+    progression: 'offline', sigil: 'offline', loadoutPresets: 'offline', wrightstone: 'offline',
+    summonSave: 'offline', chara: 'offline', save: 'offline',
+    sigilMemory: 'live', wrightstoneMemory: 'live', summon: 'live', overlimit: 'live', runtime: 'live',
+    runtimeMonitor: 'background', loadout: 'live',
+    runtimeQOL: 'live', virtualSigils: 'live', audioMixer: 'live', camera: 'live', spatialTools: 'live',
+    patchCombat: 'live', patchCharacters: 'live', patchQuest: 'live', monster: 'live',
+    naturalDrop: 'file', saveDiff: 'offline', selectedItemMonitor: 'live', formulaSampler: 'live',
+    compatibility: 'local', patch: 'file', language: 'local',
+  }
+  for (const [id, mode] of Object.entries(expectedModes)) {
+    assert.match(patchTool, new RegExp(`\\b${id}: '${mode}'`), `${id} mode`)
+  }
+  assert.match(patchTool, /v-if="toolNavigationMode\(id\)"\s+:class="\['switcher-tag', toolNavigationMode\(id\)\]"/)
+  for (const label of ['离线', '实时', '后台', '游戏文件', '只读', '本机']) {
+    assert.match(patchTool, new RegExp(`'${label}'`))
+  }
+  assert.match(patchTool, /\.switcher-tag\.background/)
+  assert.match(patchTool, /\.switcher-tag\.file/)
+  assert.match(patchTool, /\.switcher-tag\.readonly/)
+  assert.match(patchTool, /\.switcher-tag\.local/)
+})
+
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
-  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'wrightstone', 'progression', 'summonSave'])
+  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'saveDiff'])
   assert.deepEqual(homeEntryIds('memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
-  assert.deepEqual(homeEntryIds('liveExtras'), ['runtimeMonitor', 'loadout', 'virtualSigils', 'runtimeQOL', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest'])
+  assert.deepEqual(homeEntryIds('loadoutFlow'), ['runtimeMonitor', 'loadout'])
+  assert.deepEqual(homeEntryIds('runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
   assert.doesNotMatch(homeJournal, /id: 'monitor'/)
 })
 
@@ -196,8 +222,8 @@ test('wrightstone live selection guidance is a compact inline notice, not a cent
 test('the obsolete experimental runtime page is removed while the verified monster page remains reachable', () => {
   assert.doesNotMatch(patchTool, /legacyRuntime|实验性实时功能|待适配运行时功能|兼容性实验室/)
   assert.doesNotMatch(patchTool, /<MiscTools[^>]*\bmode=/)
-  assert.match(patchTool, /id:\s*'liveExtras'[\s\S]*?items:\s*\[[^\]]*'monster'[^\]]*\]/)
-  assert.match(patchTool, /monster:\s*\{[\s\S]*?group:\s*'liveExtras'[\s\S]*?status:\s*'实验'[\s\S]*?tone:\s*'live'/)
+  assert.match(patchTool, /id:\s*'runtimeTools'[\s\S]*?items:\s*\[[^\]]*'monster'[^\]]*\]/)
+  assert.match(patchTool, /monster:\s*\{[\s\S]*?group:\s*'runtimeTools'[\s\S]*?status:\s*'实验'[\s\S]*?tone:\s*'live'/)
   assert.match(patchTool, /:class="\{ active: activeTab === id,/)
 })
 

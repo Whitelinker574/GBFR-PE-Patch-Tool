@@ -96,7 +96,7 @@ test('the three live-patch routes share one persistent categorized session and u
   assert.match(patchTool, /@session-change="updateCTFeatureSession"/)
   assert.match(patchTool, /ctFeatureSession\.connected[\s\S]*?实时补丁常驻/)
 
-  assert.match(patchTool, /id:\s*'liveExtras'[\s\S]*?items:\s*\[[^\]]*'patchCombat'[^\]]*'patchCharacters'[^\]]*'patchQuest'[^\]]*\]/)
+  assert.match(patchTool, /id:\s*'runtimeTools'[\s\S]*?items:\s*\[[^\]]*'patchCombat'[^\]]*'patchCharacters'[^\]]*'patchQuest'[^\]]*\]/)
   assert.match(home, /id:\s*'patchCombat'/)
   assert.match(home, /id:\s*'patchCharacters'/)
   assert.match(home, /id:\s*'patchQuest'/)

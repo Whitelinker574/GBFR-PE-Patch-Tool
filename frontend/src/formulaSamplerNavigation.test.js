@@ -12,7 +12,7 @@ test('formula sampler remains a strict read-only diagnostics page under tools an
   assert.match(shell, /formulaSampler:\s*\{\s*group:\s*['"]tools['"]/)
   assert.match(shell, /id:\s*['"]tools['"][^\n]*items:\s*\[[^\]]*['"]formulaSampler['"]/)
   assert.doesNotMatch(shell, /id:\s*['"]monitor['"]/)
-  assert.match(shell, /runtimeMonitor:\s*\{\s*group:\s*['"]liveExtras['"]/)
+  assert.match(shell, /runtimeMonitor:\s*\{\s*group:\s*['"]loadoutFlow['"]/)
   assert.match(shell, /cachedRuntimePages = Object\.freeze\(\{[\s\S]*?formulaSampler:\s*FormulaSampler/)
   assert.match(shell, /<KeepAlive>[\s\S]*?<component v-if="activeCachedRuntimePage"/)
   assert.doesNotMatch(home, /id:\s*['"]monitor['"]/)

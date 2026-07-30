@@ -46,6 +46,13 @@ test('loadout presets and virtual sigils reuse the shared save-source picker', (
   assert.match(virtualSigils, /@select="selectKnownSave"[\s\S]*?@browse="chooseSave"/u)
 })
 
+test('virtual sigil slot count shares the save-source detail row instead of occupying its own setup row', () => {
+  assert.match(picker, /class="source-details"[\s\S]*?<slot name="details" \/>/u)
+  assert.match(virtualSigils, /<SaveSourcePicker[\s\S]*?<template #details>[\s\S]*?class="slot-count"[\s\S]*?<\/SaveSourcePicker>/u)
+  assert.match(virtualSigils, /\.slot-count\s*\{[\s\S]*?display:grid[\s\S]*?grid-template-columns:minmax\(148px,1fr\) 72px/u)
+  assert.doesNotMatch(virtualSigils, /\.slot-count\s*\{[^}]*grid-column/u)
+})
+
 test('share-image workshop reuses a published short link while retaining manual fallback', () => {
   assert.match(workshop, /published: \{ type: Object, default: null \}/u)
   assert.match(workshop, /watch\(\(\) => props\.published\?\.url/u)

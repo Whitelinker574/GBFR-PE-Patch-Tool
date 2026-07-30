@@ -1004,7 +1004,7 @@ function stageOptimizerPlan(payload) {
     })
     appliedCandidates++
   }
-  if (!appliedCandidates) return equipmentApplied
+  if (!appliedCandidates) return false
   const usedBag = new Set(next.filter(entry => entry?.kind === 'bag').map(entry => Number(entry.slotId)))
   for (const entry of baseSlots) {
     if (cursor >= 12) break

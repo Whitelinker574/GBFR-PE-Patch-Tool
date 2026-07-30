@@ -47,6 +47,25 @@ func dlcSupplementTraitEnglishName(name string) string {
 	return name
 }
 
+func dlcCharacterTraitOwnerCode(traitID string) string {
+	switch {
+	case strings.HasPrefix(traitID, "SKILL_173_"):
+		return "PL2400"
+	case strings.HasPrefix(traitID, "SKILL_174_"):
+		return "PL2500"
+	case strings.HasPrefix(traitID, "SKILL_175_"):
+		return "PL2600"
+	case strings.HasPrefix(traitID, "SKILL_176_"):
+		return "PL2700"
+	case strings.HasPrefix(traitID, "SKILL_177_"):
+		return "PL2800"
+	case strings.HasPrefix(traitID, "SKILL_178_"):
+		return "PL2900"
+	default:
+		return ""
+	}
+}
+
 func dlcSupplementalTraitDefs() []TraitDef {
 	category := "dlc_supplement"
 	canAppear := true
@@ -139,6 +158,10 @@ func appendDLCSupplementCatalog(c *Catalog) {
 		if supportsSecondary {
 			allowedSecondary = append([]string(nil), secondaryIDs...)
 		}
+		allowedOwners := []string(nil)
+		if ownerCode := dlcCharacterTraitOwnerCode(primary.InternalID); ownerCode != "" {
+			allowedOwners = []string{ownerCode}
+		}
 		c.Sigils = append(c.Sigils, SigilDef{
 			InternalID:               fmt.Sprintf("MEMORY_SIGIL_%08X", entry.Hash),
 			Hash:                     fmt.Sprintf("0x%08X", entry.Hash),
@@ -147,6 +170,7 @@ func appendDLCSupplementCatalog(c *Catalog) {
 			Source:                   dlcSupplementSource,
 			Confidence:               "high",
 			Category:                 &category,
+			AllowedOwnerCodes:        allowedOwners,
 			SupportsSecondaryTrait:   &supportsSecondary,
 			AllowedSigilLevels:       []int{sigilLevel},
 			DefaultSigilLevel:        &sigilLevel,
