@@ -56,6 +56,7 @@ test('virtual sigil slot count shares the save-source detail row instead of occu
 test('share-image workshop reuses a published short link while retaining manual fallback', () => {
   assert.match(workshop, /published: \{ type: Object, default: null \}/u)
   assert.match(workshop, /watch\(\(\) => props\.published\?\.url/u)
+  assert.match(workshop, /watch\(shareUrl, scheduleQR, \{ immediate: true \}\)/u)
   assert.match(workshop, /HTTPS 分享链接（自动复用）/u)
   assert.match(workshop, /v-model="shareUrl"/u)
 })
@@ -73,10 +74,16 @@ test('share-image identity, equipment, and QR all stay bound to the selected loa
   assert.match(viewer, /:published="publishedShareFor\(lo\)"/u)
   assert.match(workshop, /characterSharePortraitProfile\(props\.group\?\.charaHash\)/u)
   assert.match(workshop, /characterAssetIcon\(props\.group\?\.charaHash\)/u)
-  assert.match(workshop, /weaponAssetIcon\(\{ hash: selected\.value\?\.weaponHash \}\)/u)
+  assert.match(workshop, /baseHash:\s*weapon\.baseHash/u)
+  assert.match(workshop, /storedHash:\s*weapon\.storedHash/u)
+  assert.match(workshop, /hash:\s*selected\.value\?\.weaponHash \|\| weapon\.storedHash/u)
   assert.match(workshop, /for \(const sigil of selected\.value\?\.sigils \|\| \[\]\)/u)
   assert.match(workshop, /watch\(\(\) => props\.published\?\.url/u)
   assert.match(workshop, /QRCode\.toDataURL\(value,[\s\S]*errorCorrectionLevel:\s*'M'/u)
+  assert.match(workshop, /async function waitForCurrentQR\(\)[\s\S]*?throw new Error/u)
+  assert.match(workshop, /await waitForCurrentQR\(\)[\s\S]*?await nextTick\(\)/u)
+  assert.match(workshop, /\(selected\?\.sigils \|\| \[\]\)\.slice\(0, 12\)/u)
+  assert.match(workshop, /canvas-icon-fallback/u)
 })
 
 test('progression editor uses the shared save-source picker with isolated language copy', () => {

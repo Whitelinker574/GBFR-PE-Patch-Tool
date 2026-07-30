@@ -582,8 +582,8 @@ func (a *App) LogsBattleArchiveDetail(id int64) (*LogsBattleDetail, error) {
 	if err := a.ensureLogsArchiveSessionLocked(); err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf("SELECT %s, data FROM logs WHERE id = ? AND version = 1", logsBattleSummarySelect(a.logsArchiveColumns))
-	rows, err := a.logsArchiveDB.Query(query, id)
+	query := fmt.Sprintf("SELECT %s, length(data), substr(data, 1, ?) FROM logs WHERE id = ? AND version = 1", logsBattleSummarySelect(a.logsArchiveColumns))
+	rows, err := a.logsArchiveDB.Query(query, logsLoadoutMaximumBlob, id)
 	if err != nil {
 		return nil, err
 	}
@@ -594,10 +594,14 @@ func (a *App) LogsBattleArchiveDetail(id int64) (*LogsBattleDetail, error) {
 	var summary LogsBattleSummary
 	var totalDamage, questID, primaryTarget, completed sql.NullInt64
 	var p1Name, p1Type, p2Name, p2Type, p3Name, p3Type, p4Name, p4Type sql.NullString
+	var blobLength int64
 	var blob []byte
 	if err := rows.Scan(&summary.ID, &summary.Time, &summary.Duration, &summary.Protocol, &totalDamage, &questID, &primaryTarget, &completed,
-		&p1Name, &p1Type, &p2Name, &p2Type, &p3Name, &p3Type, &p4Name, &p4Type, &blob); err != nil {
+		&p1Name, &p1Type, &p2Name, &p2Type, &p3Name, &p3Type, &p4Name, &p4Type, &blobLength, &blob); err != nil {
 		return nil, err
+	}
+	if blobLength <= 0 || blobLength > logsLoadoutMaximumBlob {
+		return nil, fmt.Errorf("战斗记录压缩数据大小 %d 字节，允许范围为 1 到 %d 字节", blobLength, logsLoadoutMaximumBlob)
 	}
 	// Reuse the summary scanner's normalization through a compact in-memory row
 	// would obscure errors; normalize the nullable metadata directly here.

@@ -870,7 +870,7 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">DLC 2.0.2</span>
-        <span class="build-chip test-build">{{ language === 'en' ? 'TEST BUILD' : '测试版' }}</span>
+        <span class="build-chip release-build">v2.0.3</span>
       </div>
       <div v-if="ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button

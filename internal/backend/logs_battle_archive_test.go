@@ -3,6 +3,7 @@ package backend
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -157,6 +158,25 @@ func TestLogsBattleArchiveDetailAggregatesStoredDamageAndLoadout(t *testing.T) {
 	}
 	if len(detail.Targets) != 1 || detail.Targets[0].Damage != 1900 || detail.Targets[0].MaxHP == nil || *detail.Targets[0].MaxHP != 10000 {
 		t.Fatalf("wrong target aggregation: %+v", detail.Targets)
+	}
+}
+
+func TestLogsBattleArchiveDetailRejectsOversizedBlobBeforeDecode(t *testing.T) {
+	path := createLogsArchiveFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE logs SET data = zeroblob(?) WHERE id = 3", logsLoadoutMaximumBlob+1); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	app := &App{logsArchivePath: path}
+	t.Cleanup(app.CloseLogsBattleArchive)
+	_, err = app.LogsBattleArchiveDetail(3)
+	if err == nil || !strings.Contains(err.Error(), "压缩数据大小") {
+		t.Fatalf("oversized battle blob was not rejected at the SQL boundary: %v", err)
 	}
 }
 

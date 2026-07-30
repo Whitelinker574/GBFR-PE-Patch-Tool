@@ -1090,7 +1090,11 @@ func readLogsLoadoutSharesDB(db *sql.DB) ([]LogsLoadoutShareCandidate, error) {
 		}
 		return nil, fmt.Errorf("数据库没有可导入的协议 v1 记录；实际版本：%s", label)
 	}
-	rows, err := db.Query(`SELECT time, data FROM logs WHERE version = 1 ORDER BY time DESC LIMIT ?`, logsLoadoutMaximumRecords)
+	rows, err := db.Query(
+		`SELECT time, length(data), substr(data, 1, ?) FROM logs WHERE version = 1 ORDER BY time DESC LIMIT ?`,
+		logsLoadoutMaximumBlob,
+		logsLoadoutMaximumRecords,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("读取 GBFR Logs 的 logs 表失败: %w", err)
 	}
@@ -1102,9 +1106,15 @@ func readLogsLoadoutSharesDB(db *sql.DB) ([]LogsLoadoutShareCandidate, error) {
 	for rows.Next() {
 		totalRows++
 		var logTime int64
+		var blobLength int64
 		var blob []byte
-		if err := rows.Scan(&logTime, &blob); err != nil {
+		if err := rows.Scan(&logTime, &blobLength, &blob); err != nil {
 			return nil, fmt.Errorf("读取 GBFR Logs 记录失败: %w", err)
+		}
+		if blobLength <= 0 || blobLength > logsLoadoutMaximumBlob {
+			skippedRows++
+			lastReason = fmt.Sprintf("压缩记录大小 %d 字节，允许范围为 1 到 %d 字节", blobLength, logsLoadoutMaximumBlob)
+			continue
 		}
 		encounter, decodeErr := decodeLogsLoadoutEncounter(blob)
 		if decodeErr != nil {

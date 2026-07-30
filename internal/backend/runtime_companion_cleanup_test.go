@@ -59,6 +59,26 @@ func TestRuntimeCompanionStatusMatchesCompleteProcessIdentity(t *testing.T) {
 	}
 }
 
+func TestRuntimeCompanionVerifiesExecutableBeforeOwnershipOrInjection(t *testing.T) {
+	source, err := os.ReadFile("runtime_companion.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(source)
+	start := strings.Index(body, "func (a *App) startRuntimeCompanion")
+	end := strings.Index(body[start:], "\nfunc waitRuntimeCompanionStopped")
+	if start < 0 || end < 0 {
+		t.Fatal("startRuntimeCompanion source block was not found")
+	}
+	block := body[start : start+end]
+	verifyAt := strings.Index(block, "verifyRuntimePatchExecutableLocked")
+	claimAt := strings.Index(block, "claimRuntimeCompanionOwnership")
+	injectAt := strings.Index(block, "extractAndInjectPatchCore")
+	if verifyAt < 0 || claimAt < 0 || injectAt < 0 || verifyAt > claimAt || verifyAt > injectAt {
+		t.Fatal("runtime companion must verify the 2.0.2 executable before ownership or DLL injection")
+	}
+}
+
 func TestRuntimeCompanionNeedsStopKeepsErrorStateOwned(t *testing.T) {
 	process := processInstanceID{PID: 42, Created: 100}
 	if !runtimeCompanionNeedsStop(runtimeCompanionStatus{PID: 42, Created: 100, State: "active"}, process) {

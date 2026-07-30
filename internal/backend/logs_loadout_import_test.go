@@ -227,6 +227,26 @@ func TestLogsBattleArchiveAndLoadoutImportReuseOneDatabaseSession(t *testing.T) 
 	}
 }
 
+func TestReadLogsLoadoutSharesRejectsOversizedBlobBeforeDecode(t *testing.T) {
+	path := createLogsTestDatabase(t, 1, nil)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(
+		`INSERT INTO logs (name, time, duration, data, version) VALUES (?, ?, ?, zeroblob(?), 1)`,
+		"oversized", 123, 1000, logsLoadoutMaximumBlob+1,
+	); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	_, err = readLogsLoadoutShares(path)
+	if err == nil || !strings.Contains(err.Error(), "压缩记录大小") {
+		t.Fatalf("oversized Logs blob was not rejected at the SQL boundary: %v", err)
+	}
+}
+
 func TestLogsPlayerLoadoutRejectsUnknownCharacter(t *testing.T) {
 	_, err := logsPlayerLoadoutShare(1, &logsLoadoutPlayer{CharacterType: logsCharacterType{UnknownHash: 1}, Sigils: []logsLoadoutSigil{{SigilID: 1}}})
 	if err == nil {

@@ -471,6 +471,10 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 		return err
 	}
 	process := a.currentProcessInstance()
+	if err := a.verifyRuntimePatchExecutableLocked(process, runtimePatchMonitorText("内置运行时组件", "Integrated runtime component")); err != nil {
+		a.procMu.Unlock()
+		return err
+	}
 	handle := a.hProcess
 	status := readRuntimeCompanionStatus(feature)
 	owned := a.ownsRuntimeCompanion(feature, process)

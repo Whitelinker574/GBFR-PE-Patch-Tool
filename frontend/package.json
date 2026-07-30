@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.3",
   "type": "module",
   "scripts": {
     "assets:generate": "node scripts/generate_function_assets.mjs",

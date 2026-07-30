@@ -12,7 +12,10 @@ import (
 	"unicode/utf8"
 )
 
-const virtualSigilDisabledFlag uint32 = 0x10
+const (
+	virtualSigilDisabledFlag              uint32 = 0x10
+	stableReleaseVirtualSigilWriteEnabled        = false
+)
 
 var virtualSigilModMu sync.Mutex
 
@@ -59,16 +62,18 @@ type VirtualSigilInventoryItem struct {
 }
 
 type VirtualSigilWorkspace struct {
-	SavePath         string                      `json:"savePath"`
-	Installed        bool                        `json:"installed"`
-	Owned            bool                        `json:"owned"`
-	RecoveryRequired bool                        `json:"recoveryRequired"`
-	State            string                      `json:"state"`
-	Detail           string                      `json:"detail"`
-	GameRunning      bool                        `json:"gameRunning"`
-	Config           VirtualSigilConfig          `json:"config"`
-	Characters       []VirtualSigilCharacter     `json:"characters"`
-	Inventory        []VirtualSigilInventoryItem `json:"inventory"`
+	SavePath          string                      `json:"savePath"`
+	Installed         bool                        `json:"installed"`
+	Owned             bool                        `json:"owned"`
+	RecoveryRequired  bool                        `json:"recoveryRequired"`
+	State             string                      `json:"state"`
+	Detail            string                      `json:"detail"`
+	GameRunning       bool                        `json:"gameRunning"`
+	Available         bool                        `json:"available"`
+	UnavailableReason string                      `json:"unavailableReason,omitempty"`
+	Config            VirtualSigilConfig          `json:"config"`
+	Characters        []VirtualSigilCharacter     `json:"characters"`
+	Inventory         []VirtualSigilInventoryItem `json:"inventory"`
 }
 
 type VirtualSigilDeployRequest struct {
@@ -323,10 +328,17 @@ func (a *App) GetVirtualSigilWorkspace(_ string, savePath string) (*VirtualSigil
 	status := readRuntimeCompanionStatus("virtual-sigils")
 	recoveryRequired := processIdentityErr == nil && runtimeCompanionRecoveryRequired(status, process)
 	characters := append([]VirtualSigilCharacter(nil), virtualSigilCharacterNames...)
-	return &VirtualSigilWorkspace{SavePath: savePath, Installed: active, Owned: owned, RecoveryRequired: recoveryRequired, State: status.State, Detail: status.Detail, GameRunning: processErr == nil, Config: readVirtualSigilConfig(), Characters: characters, Inventory: inventory}, nil
+	unavailableReason := ""
+	if !stableReleaseVirtualSigilWriteEnabled && !owned {
+		unavailableReason = "稳定版暂不开放新的虚拟因子会话：切角色、切场景、同角色队友隔离和多 Hook 长测尚未完成"
+	}
+	return &VirtualSigilWorkspace{SavePath: savePath, Installed: active, Owned: owned, RecoveryRequired: recoveryRequired, State: status.State, Detail: status.Detail, GameRunning: processErr == nil, Available: stableReleaseVirtualSigilWriteEnabled || owned, UnavailableReason: unavailableReason, Config: readVirtualSigilConfig(), Characters: characters, Inventory: inventory}, nil
 }
 
 func (a *App) DeployVirtualSigilMod(request VirtualSigilDeployRequest) (*VirtualSigilDeployResult, error) {
+	if !stableReleaseVirtualSigilWriteEnabled {
+		return nil, errors.New("虚拟因子运行时在稳定版中保持禁用：切角色、切场景、同角色队友隔离和多 Hook 长测尚未完成")
+	}
 	virtualSigilModMu.Lock()
 	defer virtualSigilModMu.Unlock()
 	inventory, err := loadVirtualSigilInventory(request.SavePath)

@@ -496,14 +496,20 @@ function applyProfile(value) {
   solved.value = false
 }
 function applyPendingTarget(target) {
-  const ids = (target?.traitIds || []).filter(id => atlas.value.traits.some(item => item.internalId === id))
+  const requestedTargets = Array.isArray(target?.targets) ? target.targets : []
+  const ids = [...new Set([
+    ...(target?.traitIds || []),
+    ...requestedTargets.map(item => item?.traitId),
+  ])].filter(id => atlas.value.traits.some(item => item.internalId === id))
   if (!ids.length) return
   cancelSolve()
   profile.value = 'custom'
   selected.value = [...new Set(ids)]
   targetLevels.value = Object.fromEntries(selected.value.map(id => {
     const trait = atlas.value.traits.find(item => item.internalId === id)
-    return [id, Math.max(1, Number(trait?.maxLevel || 15))]
+    const requested = Number(target?.targetLevels?.[id] || requestedTargets.find(item => item?.traitId === id)?.targetLevel || 0)
+    const max = Math.max(1, Number(trait?.maxLevel || 15))
+    return [id, Math.max(1, Math.min(max, requested || max))]
   }))
   customSelected.value = selected.value.slice()
   customTargetLevels.value = { ...targetLevels.value }

@@ -330,6 +330,10 @@ func buildRuntimePatchFeatureStatuses(features []RuntimePatchFeature, memory run
 		}
 		lease, active := leases[feature.ID]
 		if !active {
+			if !runtimePatchFeatureAvailableInStableRelease(feature) {
+				status.Available = false
+				status.Error = "稳定版未开放：该候选功能仍缺少可见游戏效果验收"
+			}
 			if conflict := findRuntimePatchCatalogConflict(feature, leases); conflict != "" {
 				status.Available = false
 				status.Error = fmt.Sprintf("conflicts with active RuntimePatch feature %s", conflict)
@@ -584,6 +588,9 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 	feature := findRuntimePatchCatalogFeature(catalog, id)
 	if feature == nil {
 		return empty, fmt.Errorf("unknown RuntimePatch feature: %s", strings.TrimSpace(id))
+	}
+	if enabled && !runtimePatchFeatureAvailableInStableRelease(*feature) {
+		return empty, fmt.Errorf("%s在稳定版中保持禁用：仍缺少可见游戏效果验收", feature.DisplayName)
 	}
 	memory := runtimePatchProcessMemory{handle: a.hProcess}
 	process := a.currentProcessInstance()

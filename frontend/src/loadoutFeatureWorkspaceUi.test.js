@@ -10,6 +10,7 @@ const optimizerWorker = readFileSync(new URL('./loadoutOptimizer.worker.js', imp
 const optimizerConfig = readFileSync(new URL('./loadoutScenarioConfig.js', import.meta.url), 'utf8')
 const workshop = readFileSync(new URL('./components/LoadoutShareWorkshop.vue', import.meta.url), 'utf8')
 const editor = readFileSync(new URL('./components/LoadoutEditor.vue', import.meta.url), 'utf8')
+const iconCatalog = JSON.parse(readFileSync(new URL('./gameAssetIcons.json', import.meta.url), 'utf8'))
 
 test('loadout workspace keeps only cross-loadout tools in the top navigation', () => {
   for (const id of ['view', 'atlas', 'battles']) {
@@ -43,6 +44,17 @@ test('save and character selectors state their downstream ownership and omit man
   assert.match(viewer, /第二步 · 选择角色/)
   assert.match(viewer, /优化和分享都会使用当前角色数据/)
   assert.doesNotMatch(viewer, />刷新<\/button>/)
+})
+
+test('known unmapped weapons keep a themed first-column placeholder in loadout cards', () => {
+  const knownUnmappedWeaponHashes = ['2C4CAADD', 'DFBB5727', '73D34F1B', 'DA807CA2']
+  for (const hash of knownUnmappedWeaponHashes) {
+    assert.equal(iconCatalog.weapons.byHash[hash] || '', '', `${hash} stays explicitly unmapped`)
+  }
+  assert.match(viewer, /<img v-if="loadoutWeaponIcon\(lo\)" class="loadout-weapon-icon"[\s\S]*?<span v-else class="loadout-weapon-icon loadout-weapon-icon-fallback"/)
+  assert.match(viewer, /:aria-label="tx\('武器图标未收录', 'Weapon icon not cataloged'\)"/)
+  assert.match(viewer, /\.loadout-weapon-icon \{[^}]*box-sizing:border-box;[^}]*width:62px;[^}]*height:44px;/)
+  assert.match(viewer, /\.loadout-weapon-icon-fallback \{[^}]*display:grid;[^}]*border:1px dashed var\(--border-default\);[^}]*background:var\(--surface-sunken\);/)
 })
 
 test('large workspace tools stay outside the initial page bundle', () => {
@@ -235,15 +247,16 @@ test('sigil atlas prefills the existing loadout constructor without writing a sa
   assert.doesNotMatch(atlas, /LoadoutApplyWithResources|WriteSave|SaveChanges/)
 })
 
-test('sigil atlas can hand a legal trait direction to optimizer and share description', () => {
+test('sigil atlas hands a legal trait direction only to the embedded optimizer', () => {
   assert.match(atlas, /emit\('optimize'/)
-  assert.match(atlas, /emit\('share-note'/)
   assert.match(atlas, /送入优化目标/)
-  assert.match(atlas, /加入分享图说明/)
-  assert.match(viewer, /@optimize="payload => openAtlasTool\('optimizer', payload\)"/)
-  assert.match(viewer, /@share-note="payload => openAtlasTool\('share', payload\)"/)
+  assert.match(viewer, /@optimize="openAtlasOptimizer"/)
   assert.match(optimizer, /pendingTarget/)
-  assert.match(workshop, /suggestedDescription/)
+  assert.doesNotMatch(atlas, /share-note|加入分享图说明|Add to Share Description/)
+  assert.match(atlas, /class="ui-btn[^"]*\batlas-constructor-action\b[^"]*"/)
+  assert.doesNotMatch(atlas, /class="ui-btn is-primary"[^>]*sendToConstructor/)
+  assert.doesNotMatch(viewer, /pendingShareDescription|suggested-description|@share-note/)
+  assert.doesNotMatch(workshop, /suggestedDescription/)
 })
 
 test('share image export waits for image decoding before capture', () => {
@@ -258,4 +271,58 @@ test('share image reuses capped combined skills from the application preview', (
   assert.match(workshop, /preview\.value\?\.combinedSkills/)
   assert.match(workshop, /trait\.rawLevel > trait\.level/)
   assert.match(workshop, /原始等级 · 未含召唤石/)
+})
+
+test('share image uses the blue card artwork, light actions, and bounded responsive preview', () => {
+  assert.match(workshop, /share-card-sky-frame-v2\.webp/)
+  assert.match(workshop, /backdropUrl/)
+  assert.match(workshop, /class="share-card-backdrop"/)
+  assert.doesNotMatch(workshop, /parchment-ui/)
+  assert.match(workshop, /const portraitOpacity = ref\(88\)/)
+  assert.match(workshop, /type="range" min="64" max="100"/)
+  assert.match(workshop, /profile\?\.weaponSafeFrame/)
+  assert.match(workshop, /--portrait-safe-scale/)
+  assert.match(workshop, /object-fit:var\(--portrait-fit,cover\)/)
+  assert.match(workshop, /object-position:var\(--portrait-focus,50% 28%\)/)
+  assert.match(workshop, /\.share-portrait \{[^}]*z-index:1;[^}]*width:88%;[^}]*height:138%;/)
+  assert.match(workshop, /\.share-wash \{ position:absolute; z-index:2;/)
+  assert.match(workshop, /\.canvas-title \{ position:relative; z-index:3;/)
+  assert.match(workshop, /\.canvas-weapon > img,[^}]*width:132px;[^}]*height:62px;/)
+  assert.match(workshop, /class="ui-btn share-action share-action-primary"/)
+  assert.doesNotMatch(workshop, /class="ui-btn is-primary"[^>]*@click="download"/)
+  assert.match(workshop, /new ResizeObserver\(updatePreviewScale\)/)
+  assert.match(workshop, /previewStageStyle/)
+  assert.match(workshop, /transform:scale\(var\(--preview-scale,1\)\)/)
+  assert.match(workshop, /\.share-preview-shell \{[^}]*overflow:hidden;/)
+})
+
+test('expanded atlas metadata stays flat and visually aligned with the factor icon', () => {
+  assert.match(atlas, /\.atlas-entry-detail dl div \{[^}]*min-height:42px;[^}]*border:1px solid var\(--border-soft\);[^}]*border-radius:var\(--radius-sm\);[^}]*background:var\(--surface-card-pop\);[^}]*box-shadow:none;/)
+  assert.doesNotMatch(atlas, /\.atlas-entry-detail dl div \{[^}]*background:var\(--surface-sunken\)/)
+})
+
+test('all three share formats keep fixed export pixels and an internal height budget', () => {
+  for (const output of ['1920x1080', '1440x1920', '1600x1600']) assert.match(workshop, new RegExp(output))
+  assert.match(workshop, /width: exportConfig\.value\.width,[\s\S]*?height: exportConfig\.value\.height/)
+  assert.match(workshop, /style: \{ transform: 'none'/)
+  assert.match(workshop, /\.canvas-content \{ position:absolute;[^}]*top:126px; right:42px; bottom:88px; left:42px;[^}]*grid-template-rows:82px minmax\(0,1fr\);[^}]*overflow:hidden;/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.canvas-content \{ top:176px; right:32px; bottom:90px;/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.share-wash \{[^}]*linear-gradient\(180deg,/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.canvas-content \{[^}]*grid-template-rows:auto minmax\(0,1fr\) auto;[^}]*align-content:stretch;/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.canvas-sigils \{[^}]*grid-template-rows:auto minmax\(0,1fr\);/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.canvas-sigils > div \{[^}]*grid-template-rows:repeat\(6,minmax\(0,1fr\)\);/)
+  assert.match(workshop, /\.share-canvas\.is-square \.canvas-content \{ top:132px; right:32px; bottom:72px;/)
+  assert.match(workshop, /\.share-canvas\.is-square \.canvas-content \{[^}]*grid-template-rows:auto auto auto;[^}]*align-content:start;/)
+  assert.match(workshop, /\.share-canvas\.is-square \.share-portrait \{ top:-24%;[^}]*height:130%;/)
+  assert.match(workshop, /\.share-canvas\.is-square \.canvas-levels \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\);/)
+  assert.match(workshop, /\.canvas-levels \{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\);/)
+  assert.match(workshop, /\.share-canvas\.is-portrait \.canvas-summary \{[^}]*grid-template-rows:auto;[^}]*align-content:start;/)
+  assert.match(workshop, /\.canvas-summary > div \{[^}]*align-content:start;/)
+  assert.match(workshop, /\(selected\?\.sigils \|\| \[\]\)\.slice\(0, 12\)/)
+  assert.match(workshop, /canvas-icon-fallback/)
+  assert.match(workshop, /watch\(shareUrl, scheduleQR, \{ immediate: true \}\)/)
+  assert.match(workshop, /await waitForCurrentQR\(\)[\s\S]*?await nextTick\(\)/)
+  assert.match(workshop, /assertCanvasFits\(canvasRef\.value\)/)
+  assert.match(workshop, /element\.scrollHeight > element\.clientHeight \+ 2/)
+  assert.match(workshop, /二维码生成失败，PNG 未导出/)
 })

@@ -9,7 +9,10 @@ import (
 	"unsafe"
 )
 
-const combatTuningHookSize = 5
+const (
+	combatTuningHookSize                  = 5
+	stableReleaseCombatTuningWriteEnabled = false
+)
 
 var (
 	combatCooldownMarker              = []byte("GBFRCD01")
@@ -145,6 +148,9 @@ func (a *App) CombatTuningSetCooldownOwned(token string, request CombatCooldownR
 	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "能力冷却调整"); err != nil {
 		return CombatTuningStatus{}, err
 	}
+	if request.Enabled && !stableReleaseCombatTuningWriteEnabled {
+		return CombatTuningStatus{}, errors.New("能力冷却调整在稳定版中保持禁用：仍缺少本机/全队范围与实际倍率的任务验收")
+	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
 	if err := validateCombatCooldownRequest(request); err != nil {
@@ -178,6 +184,9 @@ func (a *App) CombatTuningSetChargeOwned(token string, request CombatChargeReque
 	}
 	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "三角色共享蓄力调整"); err != nil {
 		return CombatTuningStatus{}, err
+	}
+	if request.Enabled && !stableReleaseCombatTuningWriteEnabled {
+		return CombatTuningStatus{}, errors.New("三角色共享蓄力调整在稳定版中保持禁用：仍缺少三名角色的可见计时样本")
 	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
@@ -412,6 +421,11 @@ func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuning
 		}
 	default:
 		return CombatTuningFeatureStatus{}, fmt.Errorf("未知战斗参数类型: %q", kind)
+	}
+	if lease == nil && !stableReleaseCombatTuningWriteEnabled {
+		status.Available = false
+		status.Error = "稳定版未开放：该候选入口仍缺少可见游戏效果验收"
+		return status, nil
 	}
 	if err != nil {
 		status.Error = err.Error()

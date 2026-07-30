@@ -75,6 +75,9 @@ test('save laboratory reflows without document-level horizontal overflow', () =>
   assert.match(source, /@container save-diff \(max-width:620px\)/)
   assert.match(source, /\.diff-row \{ grid-template-columns:minmax\(0,1fr\)/)
   assert.match(source, /\.compare-mark \{ pointer-events:none;/)
+  assert.match(source, /\.diff-summary \.ui-stat \{[^}]*display:grid;[^}]*grid-template-columns:minmax\(0,1fr\)/)
+  assert.match(source, /\.diff-summary small,\.diff-summary strong,\.diff-summary span \{[^}]*display:block;/)
+  assert.match(source, /\.diff-summary span \{[^}]*overflow-wrap:anywhere;/)
 })
 
 test('fate fields can be selected and written directly with explicit verification boundaries', () => {

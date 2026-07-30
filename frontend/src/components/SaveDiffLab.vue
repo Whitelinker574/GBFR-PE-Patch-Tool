@@ -678,12 +678,14 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
 .compare-button { align-self:center; }
 .known-save-pickers { min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); padding:var(--space-3); }.known-save-pickers > div,.fate-save-slots { min-width:0; display:grid; gap:6px; }.known-save-pickers > div > span,.fate-save-slots > span { color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }.known-save-pickers > div > div,.fate-save-slots > div { min-width:0; display:flex; flex-wrap:wrap; gap:6px; }
 .diff-summary { grid-template-columns:repeat(4,minmax(0,1fr)); }
-.diff-summary .ui-stat { min-width:0; padding:var(--space-3); border-top:2px solid var(--border-strong); }
+.diff-summary .ui-stat { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); align-content:start; gap:4px; padding:var(--space-3); border-top:2px solid var(--border-strong); }
 .diff-summary .ui-stat.is-changed { border-top-color:var(--warning); }
 .diff-summary .ui-stat.is-added { border-top-color:var(--success); }
 .diff-summary .ui-stat.is-removed { border-top-color:var(--danger); }
+.diff-summary small,.diff-summary strong,.diff-summary span { min-width:0; display:block; }
 .diff-summary small,.diff-summary span { color:var(--text-muted); font-size:var(--fs-2xs); }
-.diff-summary strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-xl); }
+.diff-summary span { overflow-wrap:anywhere; line-height:var(--lh-normal); }
+.diff-summary strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-xl); line-height:1.05; }
 .transfer-workbench { min-width:0; display:grid; gap:var(--space-3); padding:var(--space-3); border-left:3px solid var(--accent); }
 .transfer-workbench > header { min-width:0; display:grid; grid-template-columns:minmax(210px,.65fr) auto minmax(260px,1fr); gap:var(--space-4); align-items:center; }
 .transfer-workbench > header > div:first-child { min-width:0; display:grid; gap:2px; }

@@ -1607,6 +1607,12 @@ static bool StopVirtualSigilRuntime()
 
 static DWORD RunVirtualSigilRuntime()
 {
+    constexpr bool kStableReleaseVirtualSigilsEnabled = false;
+    if (!kStableReleaseVirtualSigilsEnabled)
+    {
+        WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"virtual sigils are disabled in the stable build pending field acceptance");
+        return 1;
+    }
     std::wstring configPath = RuntimePath(L"virtual-sigils.bin");
     if (configPath.empty() || !ReadVirtualSigilConfig(configPath, true))
     {
@@ -3458,6 +3464,12 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
     if (strcmp(patchId, "all") == 0)
     {
         swprintf_s(message, messageSize, L"batch patch id is unsupported");
+        return false;
+    }
+    constexpr bool kStableReleaseCandidateMonsterDamageEnabled = false;
+    if (!kStableReleaseCandidateMonsterDamageEnabled && PatchIdEquals(patchId, "monster_damage_new"))
+    {
+        swprintf_s(message, messageSize, L"candidate monster damage is disabled in the stable build pending field acceptance");
         return false;
     }
 

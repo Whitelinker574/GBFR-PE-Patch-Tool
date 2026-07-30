@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.0"
+	appVersion  = "v2.0.3"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -2961,13 +2961,13 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Available: true,
 	},
 	{
-		ID:        "monster_damage_new",
-		Name:      "怪物伤害（全队）",
-		RVA:       0x1F7A810,
-		Original:  []byte{0x48, 0x89, 0x51, 0x10, 0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC},
-		Hook:      true,
-		Available: true,
-		Candidate: true,
+		ID:           "monster_damage_new",
+		Name:         "怪物伤害（全队）",
+		RVA:          0x1F7A810,
+		Original:     []byte{0x48, 0x89, 0x51, 0x10, 0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC},
+		Hook:         true,
+		Available:    true,
+		Candidate:    true,
 		EvidenceNote: "2.0.2 EXE 入口、安装回读和恢复已验证；全队受击范围与倍率效果仍待多人实机样本。",
 	},
 	{
@@ -3119,6 +3119,9 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		}
 		return MonsterEnhanceResult{}, fmt.Errorf("%s不可用：%s", point.Name, reason)
 	}
+	if enabled && point != nil && point.Candidate && !stableReleaseCandidateWriteEnabled {
+		return MonsterEnhanceResult{}, fmt.Errorf("%s在稳定版中保持禁用：仍缺少可见游戏效果验收", point.Name)
+	}
 	if pointID == "all" || (point != nil && point.ID == "inventory_set_45") {
 		a.runtimePatchMu.Lock()
 		defer a.runtimePatchMu.Unlock()
@@ -3136,6 +3139,12 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	}
 
 	if enabled {
+		if err := a.verifyRuntimePatchExecutableLocked(
+			a.currentProcessInstance(),
+			runtimePatchMonitorText("怪物增强", "Monster enhancement"),
+		); err != nil {
+			return MonsterEnhanceResult{}, err
+		}
 		if pointID == "all" {
 			return MonsterEnhanceResult{}, fmt.Errorf("怪物增强批量 Hook 无法证明逐项所有权，请分别开启需要的功能")
 		}
@@ -3280,20 +3289,25 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 		} else {
 			enabled = bytesEqual(current, point.Patch)
 		}
-		if point.Available {
+		effectiveAvailable := point.Available && (!point.Candidate || enabled || stableReleaseCandidateWriteEnabled)
+		if effectiveAvailable {
 			available++
 		}
-		if enabled && point.Available {
+		if enabled && effectiveAvailable {
 			patched++
+		}
+		unavailableReason := point.UnavailableReason
+		if point.Candidate && !enabled && !stableReleaseCandidateWriteEnabled {
+			unavailableReason = "稳定版未开放：安装与恢复链路已验证，但可见游戏效果仍待实机验收"
 		}
 		items = append(items, MonsterEnhanceItem{
 			ID:                point.ID,
 			Name:              point.Name,
 			RVA:               uint64(point.RVA),
-			Available:         point.Available,
+			Available:         effectiveAvailable,
 			Candidate:         point.Candidate,
 			EvidenceNote:      point.EvidenceNote,
-			UnavailableReason: point.UnavailableReason,
+			UnavailableReason: unavailableReason,
 			Enabled:           enabled,
 			CurrentBytes:      currentHex,
 		})

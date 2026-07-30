@@ -5,7 +5,7 @@ import { language } from '../i18n.js'
 import { sigilAtlasStore } from '../sigilAtlasStore'
 import { matchText } from '../utils/matchText'
 
-const emit = defineEmits(['status', 'construct', 'optimize', 'share-note'])
+const emit = defineEmits(['status', 'construct', 'optimize'])
 const loading = ref(false)
 const error = ref('')
 const atlas = ref({ dataVersion: '', sigils: [], traits: [] })
@@ -61,18 +61,18 @@ function selectedTraits(entry) {
     ? (entry.secondaryTraits || []).find(trait => trait.internalId === secondTrait.value)
     : null
   return [
-    { internalId: entry.primaryTraitId, name: entry.primaryTraitName },
-    ...(secondary ? [{ internalId: secondary.internalId, name: secondary.displayName }] : []),
+    { internalId: entry.primaryTraitId, name: entry.primaryTraitName, maxLevel: entry.firstTraitMaxLevel },
+    ...(secondary ? [{ internalId: secondary.internalId, name: secondary.displayName, maxLevel: secondary.maxLevel }] : []),
   ].filter(item => item.internalId)
 }
 function sendToOptimizer(entry) {
   const traits = selectedTraits(entry)
-  emit('optimize', { traitIds: traits.map(item => item.internalId), traitNames: traits.map(item => item.name), requestId: Date.now() })
-}
-function sendToShareNote(entry) {
-  const names = selectedTraits(entry).map(item => item.name).filter(Boolean)
-  emit('share-note', {
-    description: tx(`核心因子方向：${names.join(' + ') || entry.displayName}`, `Core sigil direction: ${names.join(' + ') || entry.displayName}`),
+  emit('optimize', {
+    allowedOwnerCodes: [...(entry.allowedOwnerCodes || [])],
+    traitIds: traits.map(item => item.internalId),
+    traitNames: traits.map(item => item.name),
+    targets: traits.map(item => ({ traitId: item.internalId, traitName: item.name, targetLevel: Number(item.maxLevel || 0) })),
+    targetLevels: Object.fromEntries(traits.map(item => [item.internalId, Number(item.maxLevel || 0)])),
     requestId: Date.now(),
   })
 }
@@ -134,7 +134,7 @@ onMounted(load)
           <dl><div><dt>{{ tx('因子等级', 'Sigil Levels') }}</dt><dd>{{ entry.allowedSigilLevels?.join(' / ') || '—' }}</dd></div><div><dt>{{ tx('主词条等级', 'Primary Levels') }}</dt><dd>{{ entry.allowedFirstTraitLevels?.join(' / ') || '—' }}</dd></div><div><dt>{{ tx('目录来源', 'Catalog Source') }}</dt><dd>{{ entry.source || tx('本机 2.0.2 表', 'Local 2.0.2 Tables') }}</dd></div></dl>
           <div v-if="entry.secondaryTraits?.length" class="secondary-pool"><small>{{ tx('允许的副词条', 'Allowed Secondary Traits') }}</small><span v-for="trait in entry.secondaryTraits" :key="trait.internalId"><img v-if="traitIcon(trait)" :src="traitIcon(trait)" alt="" loading="lazy" />{{ trait.displayName }} <em>Lv{{ trait.maxLevel }}</em></span></div>
           <p v-else>{{ entry.supportsSecondaryTrait ? tx('当前正式目录没有通过写入验证的副词条。', 'No secondary trait has passed write validation in the current catalog.') : tx('该因子为单词条结构。', 'This sigil has a single-trait structure.') }}</p>
-          <div class="atlas-entry-actions"><span>{{ secondTrait ? tx('会同时使用当前反查的副词条', 'The selected lookup secondary trait will also be used') : tx('当前以主词条为目标，副词条可在后续页面继续选择', 'The primary trait is used now; choose a secondary trait later') }}</span><div><button type="button" class="ui-btn" @click="sendToOptimizer(entry)">{{ tx('送入优化目标', 'Use as Optimization Target') }}</button><button type="button" class="ui-btn" @click="sendToShareNote(entry)">{{ tx('加入分享图说明', 'Add to Share Description') }}</button><button type="button" class="ui-btn is-primary" :disabled="!entry.constructible" @click="sendToConstructor(entry)">{{ entry.constructible ? tx('送入配装构造器', 'Send to Loadout Constructor') : tx('该外壳不可构造', 'Shell Is Not Constructible') }}</button></div></div>
+          <div class="atlas-entry-actions"><span>{{ secondTrait ? tx('会同时使用当前反查的副词条', 'The selected lookup secondary trait will also be used') : tx('当前以主词条为目标，副词条可在后续页面继续选择', 'The primary trait is used now; choose a secondary trait later') }}</span><div><button type="button" class="ui-btn atlas-flat-action" @click="sendToOptimizer(entry)">{{ tx('送入优化目标', 'Use as Optimization Target') }}</button><button type="button" class="ui-btn atlas-constructor-action atlas-flat-action" :disabled="!entry.constructible" @click="sendToConstructor(entry)">{{ entry.constructible ? tx('送入配装构造器', 'Send to Loadout Constructor') : tx('该外壳不可构造', 'Shell Is Not Constructible') }}</button></div></div>
         </div>
       </article>
     </div>
@@ -175,9 +175,9 @@ onMounted(load)
 .atlas-entry.open .atlas-entry-head > b { transform:rotate(180deg); }
 .atlas-entry-detail { min-width:0; display:grid; gap:var(--space-3); padding:0 var(--space-4) var(--space-4) 69px; border-top:1px dashed var(--border-soft); }
 .atlas-entry-detail dl { min-width:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2); margin:var(--space-3) 0 0; }
-.atlas-entry-detail dl div { min-width:0; padding:var(--space-2); background:var(--surface-sunken); }
+.atlas-entry-detail dl div { min-width:0; min-height:42px; box-sizing:border-box; display:grid; grid-template-columns:max-content minmax(0,1fr); align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-card-pop); box-shadow:none; }
 .atlas-entry-detail dt { color:var(--text-muted); font-size:var(--fs-2xs); }
-.atlas-entry-detail dd { margin:2px 0 0; overflow-wrap:anywhere; color:var(--text-secondary); font-size:var(--fs-xs); }
+.atlas-entry-detail dd { min-width:0; margin:0; overflow-wrap:anywhere; color:var(--text-secondary); font-family:var(--font-data); font-size:var(--fs-xs); text-align:right; }
 .secondary-pool { min-width:0; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .secondary-pool > small { width:100%; color:var(--text-muted); font-size:var(--fs-xs); }
 .secondary-pool span { display:inline-flex; align-items:center; gap:5px; padding:3px 7px 3px 3px; border:1px solid var(--border-soft); border-radius:var(--radius-sm); color:var(--text-secondary); font-size:var(--fs-xs); }
@@ -188,6 +188,10 @@ onMounted(load)
 .atlas-entry-actions span { min-width:0; color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
 .atlas-entry-actions > div { min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:var(--space-2); }
 .atlas-entry-actions .ui-btn { flex:0 0 auto; }
+.atlas-flat-action { border-color:var(--border-default); background:var(--surface-card-pop); box-shadow:none; color:var(--text-primary); }
+.atlas-flat-action:hover:not(:disabled) { border-color:var(--accent-border); background:var(--surface-field-hover); box-shadow:none; }
+.atlas-constructor-action { border-color:var(--accent-border); background:var(--accent-soft); color:var(--accent-hover); }
+.atlas-constructor-action:hover:not(:disabled) { background:color-mix(in srgb,var(--accent-soft) 72%,var(--surface-card-pop)); }
 .atlas-pagination { display:flex; justify-content:center; align-items:center; gap:var(--space-3); }
 .atlas-pagination span { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
 @container atlas (max-width:760px) {

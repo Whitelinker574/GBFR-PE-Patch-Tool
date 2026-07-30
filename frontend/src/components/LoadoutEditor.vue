@@ -1100,6 +1100,9 @@ async function loadCtx() {
 
 watch(() => [props.savePath, props.charaHash], loadCtx, { immediate: true })
 watch(() => props.pendingOptimizerPlan?.requestId, consumePendingOptimizerPlan)
+watch(() => props.pendingOptimizerTarget?.requestId, requestId => {
+  if (requestId) factorWorkspaceMode.value = 'smart'
+}, { immediate: true })
 watch(() => props.preferredUnitId, value => {
   const unitId = Number(value || 0)
   if (ctx.value && unitId && slots.value.some(slot => Number(slot.unitId) === unitId)) selectTarget(unitId)

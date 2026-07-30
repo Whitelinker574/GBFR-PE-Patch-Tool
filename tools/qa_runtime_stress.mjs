@@ -129,17 +129,18 @@ class CdpClient {
 
 const pages = [
   { group: 0, tool: 'loadoutPresets' },
-  { group: 1, tool: 'loadout' },
-  { group: 1, tool: 'runtimeQOL' },
-  { group: 1, tool: 'runtimeMonitor' },
-  { group: 3, tool: 'saveDiff' },
+  { group: 2, tool: 'loadout' },
+  { group: 3, tool: 'runtimeQOL' },
+  { group: 2, tool: 'runtimeMonitor' },
+  { group: 0, tool: 'saveDiff' },
 ]
 
 const groups = [
   { id: 'save', firstTool: 'loadoutPresets' },
   { id: 'memory', firstTool: 'runtime' },
-  { id: 'monitor', firstTool: 'runtimeMonitor' },
-  { id: 'tools', firstTool: 'saveDiff' },
+  { id: 'loadoutFlow', firstTool: 'runtimeMonitor' },
+  { id: 'runtimeTools', firstTool: 'runtimeQOL' },
+  { id: 'tools', firstTool: 'naturalDrop' },
 ]
 
 async function waitFor(client, expression, label, timeout = 30000) {
@@ -156,14 +157,8 @@ async function navigate(client, target) {
   const group = groups[target.group]
   await waitFor(client, `document.querySelector('.tool-switcher-shell')?.dataset.group === ${JSON.stringify(group.id)}`, `${group.id} switcher`)
   const selector = `[data-tool="${target.tool}"]`
-  const visible = await client.evaluate(`Boolean(document.querySelector('.tool-switcher ${selector}'))`)
-  if (visible) {
-    await client.evaluate(`document.querySelector('.tool-switcher ${selector}')?.click()`)
-  } else {
-    await client.evaluate(`document.querySelector('.switcher-more-button')?.click()`)
-    await waitFor(client, `Boolean(document.querySelector('.switcher-more-list ${selector}'))`, `${target.tool} more-menu entry`)
-    await client.evaluate(`document.querySelector('.switcher-more-list ${selector}')?.click()`)
-  }
+  await waitFor(client, `Boolean(document.querySelector('.tool-switcher ${selector}'))`, `${target.tool} switcher entry`)
+  await client.evaluate(`document.querySelector('.tool-switcher ${selector}')?.click()`)
   await waitFor(client, `document.querySelector('.tool-stage')?.dataset.tool === ${JSON.stringify(target.tool)}`, target.tool)
   await delay(180)
 }
@@ -211,7 +206,7 @@ async function run(options) {
         const emptyStrings = new Set(['AutoDetect', 'SelectFile', 'SelectSaveFile', 'SelectDirectory'])
         const lists = /(?:List|History|Slots|Catalog|Presets|Characters|Inventory|Records|Items|Entries)$/
         const callable = name => (...args) => {
-          if (versions.has(name)) return Promise.resolve('v2.0.0')
+          if (versions.has(name)) return Promise.resolve('v2.0.3')
           if (emptyStrings.has(name)) return Promise.resolve('')
           if (lists.test(name)) return Promise.resolve([])
           return Promise.resolve(undefined)

@@ -84,6 +84,36 @@ func TestReleaseBatchUsesCleanWindowsAMD64Build(t *testing.T) {
 	}
 }
 
+func TestReleasePackagerIncludesThirdPartyNoticesAndNativeLicenses(t *testing.T) {
+	script, err := os.ReadFile(filepath.Join("..", "..", "tools", "package_windows_release.ps1"))
+	if err != nil {
+		t.Fatalf("read release packager: %v", err)
+	}
+	source := string(script)
+	for _, required := range []string{
+		"THIRD_PARTY_NOTICES.md",
+		`src_dll\thirdparty\libmem\licenses\*.txt`,
+		"RELEASE_NOTES_$Version.md",
+		"BUILD_PROVENANCE.json",
+		"status --porcelain=v1 --untracked-files=all",
+		"build-windows.bat",
+		"rev-parse HEAD",
+		"Compress-Archive",
+		"Get-FileHash -Algorithm SHA256",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("release packager does not include %q", required)
+		}
+	}
+	licenses, err := filepath.Glob(filepath.Join("..", "..", "src_dll", "thirdparty", "libmem", "licenses", "*.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(licenses) != 7 {
+		t.Fatalf("native license count = %d, want 7", len(licenses))
+	}
+}
+
 func TestPatchCoreProjectPublishesStableResource(t *testing.T) {
 	project, err := os.ReadFile(filepath.Join("..", "..", "src_dll", "patch_core", "patch_core.vcxproj"))
 	if err != nil {
@@ -123,6 +153,8 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 		`0x1FBDEB4`,
 		`0xB29128`,
 		`0x22CB316`,
+		`kStableReleaseCandidateMonsterDamageEnabled = false`,
+		`kStableReleaseVirtualSigilsEnabled = false`,
 	} {
 		if !strings.Contains(source, required) {
 			t.Errorf("patch_core source missing monster safety guard %q", required)

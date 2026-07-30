@@ -1,8 +1,10 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectLogsLoadoutSharesFresh, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { characterIdentityByPLID } from '../characterRoster.js'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
+import { planAtlasOptimizerRoute } from '../loadoutAtlasOptimizerRoute.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import { createOperationGate } from '../runtimeOperationGate.js'
 import { copyShareText, loadoutShareSessionKey, publishedLoadoutShare, rememberPublishedLoadoutShare } from '../loadoutShareSession.js'
@@ -45,7 +47,6 @@ const logsPublishResult = ref(null)
 const logsPublishGate = createOperationGate()
 const pendingAtlasConstruct = ref(null)
 const pendingOptimizerTarget = ref(null)
-const pendingShareDescription = ref(null)
 const editorTargetUnitId = ref(0)
 const activeCardTool = ref(null)
 let previewRequestId = 0
@@ -67,6 +68,15 @@ function skillIcon(skill) {
   return assetPath('skills', verifiedFile || 'Plain_Skill_Frame.png')
 }
 function traitIcon(name, hash = '') { return traitAssetIcon({ name, hash }) }
+function loadoutWeaponIcon(loadout) {
+  const weapon = loadout?.weapon || {}
+  return weaponAssetIcon({
+    internalId: weapon.internalId,
+    baseHash: weapon.baseHash,
+    storedHash: weapon.storedHash,
+    hash: loadout?.weaponHash || weapon.storedHash,
+  })
+}
 function logsFieldLabel(field) {
   const labels = LOGS_FIELD_LABELS[field]
   return labels ? tx(labels[0], labels[1]) : field
@@ -194,22 +204,56 @@ function publishedShareFor(loadout) {
 function firstEditableLoadout() {
   return currentGroup.value?.loadouts?.find(item => !item.isParty) || null
 }
-async function openAtlasTool(tool, payload) {
-  const loadout = firstEditableLoadout()
-  if (!loadout) {
-    emit('status', tx('当前角色没有可用的存档配装槽', 'The current character has no editable saved loadout slot'), 'info')
+function optimizerOwnerNames(ownerCodes) {
+  return (ownerCodes || []).map(ownerCode => {
+    const identity = characterIdentityByPLID(ownerCode)
+    return identity ? (language.value === 'en' ? identity.nameEn : identity.nameZh) : ownerCode
+  }).join(language.value === 'en' ? ' / ' : '／')
+}
+async function openAtlasOptimizer(payload) {
+  const route = planAtlasOptimizerRoute({
+    savePath: savePath.value,
+    groups: groups.value,
+    currentGroup: currentGroup.value,
+    payload,
+    requestId: Date.now(),
+  })
+  if (route.kind === 'needs-save') {
+    mode.value = 'view'
+    emit('status', tx('请先在角色配装页选择目标存档和角色，再回到因子图鉴点击“送入优化目标”', 'Choose a target save and character on the Character Loadouts page, then return to the atlas and choose “Use as Optimization Target”'), 'info')
     return
   }
-  if (tool === 'optimizer') {
-    pendingOptimizerTarget.value = { ...payload, requestId: Date.now() }
-    editorTargetUnitId.value = Number(loadout.unitId || 0)
-    mode.value = 'edit'
-  } else {
+  if (route.kind === 'needs-character') {
     mode.value = 'view'
-    expanded.value = new Set([...expanded.value, loadout.unitId])
-    activeCardTool.value = { unitId: loadout.unitId, tool }
-    pendingShareDescription.value = payload
+    emit('status', tx('请先选择要优化的角色；通用因子会送入该角色的配装详情', 'Choose the character to optimize first; general sigils will open that character’s loadout details'), 'info')
+    return
   }
+  if (route.kind === 'missing-owner') {
+    const names = optimizerOwnerNames(route.missingOwnerCodes)
+    mode.value = 'view'
+    emit('status', tx(
+      `该因子只适用于 ${names}，当前存档没有对应角色配装。请先在游戏中为该角色保存一套配装，再重新读取存档`,
+      `This sigil is limited to ${names}, but the current save has no loadout for that character. Save a loadout for that character in game, then reload the save`,
+    ), 'info')
+    return
+  }
+  if (route.kind === 'no-editable-slot') {
+    mode.value = 'view'
+    emit('status', tx(
+      `${route.targetGroup?.charaName || '目标角色'}没有可编辑的存档配装槽。请先在游戏中保存一套角色配装，再重新读取存档`,
+      `${route.targetGroup?.charaName || 'The target character'} has no editable saved loadout slot. Save a character loadout in game, then reload the save`,
+    ), 'info')
+    return
+  }
+
+  if (selectedChara.value !== route.targetGroup.charaName) {
+    selectedChara.value = route.targetGroup.charaName
+    // 切角色的 watcher 会清理上一角色的待处理状态，等它完成后再交付新意图。
+    await nextTick()
+  }
+  pendingOptimizerTarget.value = route.intent
+  editorTargetUnitId.value = Number(route.loadout.unitId || 0)
+  mode.value = 'edit'
   await nextTick()
 }
 
@@ -422,7 +466,6 @@ watch(currentGroup, value => {
   activeCardTool.value = null
   editorTargetUnitId.value = 0
   pendingOptimizerTarget.value = null
-  pendingShareDescription.value = null
   if (value && savePath.value) loadPreviews()
 })
 
@@ -602,7 +645,7 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	</section>
 
     <KeepAlive v-else-if="mode === 'atlas'">
-      <SigilAtlas class="loadout-tool-subpage" @construct="constructFromAtlas" @optimize="payload => openAtlasTool('optimizer', payload)" @share-note="payload => openAtlasTool('share', payload)" @status="(m, t) => emit('status', m, t)" />
+      <SigilAtlas class="loadout-tool-subpage" @construct="constructFromAtlas" @optimize="openAtlasOptimizer" @status="(m, t) => emit('status', m, t)" />
     </KeepAlive>
     <section v-else-if="mode === 'battles'" class="loadout-tool-subpage"><LogsBattleArchive @status="(m, t) => emit('status', m, t)" /></section>
 
@@ -647,7 +690,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
         <div class="card-grid ui-card-grid">
           <article v-for="lo in currentGroup.loadouts" :key="lo.unitId" class="loadout-card ui-card is-flat" :class="{ open: expanded.has(lo.unitId), party: lo.isParty }">
             <button type="button" class="loadout-card-toggle" :aria-expanded="expanded.has(lo.unitId)" @click="toggle(lo)">
-              <img v-if="weaponAssetIcon({ hash: lo.weaponHash })" class="loadout-weapon-icon" :src="weaponAssetIcon({ hash: lo.weaponHash })" alt="" />
+              <img v-if="loadoutWeaponIcon(lo)" class="loadout-weapon-icon" :src="loadoutWeaponIcon(lo)" alt="" />
+              <span v-else class="loadout-weapon-icon loadout-weapon-icon-fallback" role="img" :aria-label="tx('武器图标未收录', 'Weapon icon not cataloged')" :title="tx('武器图标未收录', 'Weapon icon not cataloged')">{{ tx('未收录', 'No icon') }}</span>
               <b v-if="!lo.isParty">槽{{ String(lo.slot).padStart(2, '0') }}</b>
               <b v-else class="party-tag">队伍{{ lo.slot }}</b>
               <strong>{{ lo.name || (lo.isParty ? '当前实时配装' : '(未命名)') }}</strong>
@@ -683,10 +727,10 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
               <div class="loadout-detail-actions" aria-label="当前配装操作">
                 <span><b>{{ lo.name || (lo.isParty ? '当前实时配装' : `槽 ${String(lo.slot).padStart(2, '0')}`) }}</b><small>所有操作都绑定 {{ currentGroup.charaName }} 和当前来源存档</small></span>
                 <button type="button" class="ui-btn" :disabled="lo.isParty" @click="enterEdit(lo.unitId)">编辑此配装</button>
-                <button type="button" class="ui-btn" :class="{ 'is-primary': cardToolOpen(lo, 'share') }" :disabled="lo.isParty" @click="cardToolOpen(lo, 'share') ? closeCardTool() : openCardTool(lo, 'share')">{{ cardToolOpen(lo, 'share') ? '收起分享图' : '生成分享图' }}</button>
+                <button type="button" class="ui-btn share-tool-button" :class="{ 'is-active': cardToolOpen(lo, 'share') }" :disabled="lo.isParty" @click="cardToolOpen(lo, 'share') ? closeCardTool() : openCardTool(lo, 'share')">{{ cardToolOpen(lo, 'share') ? '收起分享图' : '生成分享图' }}</button>
               </div>
               <section v-if="cardToolOpen(lo, 'share')" class="loadout-inline-tool">
-                <LoadoutShareWorkshop embedded :group="shareGroup(lo)" :preview-map="previews" :published="publishedShareFor(lo)" :suggested-description="pendingShareDescription" @status="(m, t) => emit('status', m, t)" />
+                <LoadoutShareWorkshop embedded :group="shareGroup(lo)" :preview-map="previews" :published="publishedShareFor(lo)" @status="(m, t) => emit('status', m, t)" />
               </section>
               <div class="detail-block sigil-detail-block">
                 <div class="detail-block-heading">
@@ -748,6 +792,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .loadout-detail-actions { min-width:0; display:grid; grid-template-columns:minmax(180px,1fr) repeat(2,auto); gap:var(--space-2); align-items:center; padding:var(--space-3); border:1px solid var(--border-strong); background:var(--surface-sunken); }
 .loadout-detail-actions > span { min-width:0; display:grid; gap:2px; }
 .loadout-detail-actions > span b,.loadout-detail-actions > span small { min-width:0; overflow-wrap:anywhere; }
+.share-tool-button { border-color:color-mix(in srgb,var(--accent) 22%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 90%,#e5f5ff); box-shadow:none; color:var(--text-secondary); }
+.share-tool-button:hover:not(:disabled),.share-tool-button.is-active { border-color:color-mix(in srgb,var(--accent) 42%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 74%,#d4efff); color:var(--accent-hover); }
 .loadout-detail-actions > span small { color:var(--text-muted); font-size:var(--fs-xs); }
 .loadout-inline-tool { min-width:0; padding:var(--space-3); border:1px solid var(--accent-border); background:rgba(255,253,247,.58); }
 .detail-block-heading { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom:var(--space-3); }
@@ -783,7 +829,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .loadout-card.party .loadout-card-toggle { grid-template-columns:62px auto minmax(120px,1.2fr) minmax(120px,.8fr) auto auto; }
 .loadout-card.open { border-color:var(--border-strong); grid-column:1/-1; }
 .loadout-card-toggle { width:100%; min-width:0; min-height:var(--control-height-sm); display:grid; grid-template-columns:62px auto minmax(120px,1fr) minmax(100px,.72fr) auto auto; align-items:center; gap:var(--space-3); padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; user-select:none; }
-.loadout-weapon-icon { width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
+.loadout-weapon-icon { box-sizing:border-box; width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
+.loadout-weapon-icon-fallback { display:grid; place-items:center; padding:3px; border:1px dashed var(--border-default); background:var(--surface-sunken); color:var(--text-muted); font-size:var(--fs-2xs); font-weight:var(--fw-semibold); line-height:1.1; text-align:center; }
 .loadout-card-toggle:hover strong { color:var(--accent-hover); }
 .loadout-card-toggle b { color:var(--accent); font-size:var(--fs-sm); }
 .loadout-card-toggle b.party-tag { color:var(--success-ink); }
