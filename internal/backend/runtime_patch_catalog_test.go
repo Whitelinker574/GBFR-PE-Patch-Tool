@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const runtimePatchCatalogSHA256 = "952D1CF3D5B372BFE352A19C3BE414F7B4D0F53AC96DF1B6C1303C633EBECC0B"
+const runtimePatchCatalogSHA256 = "4D396A66E0658E92EDC5233047FE4C863DB592068F801C5569DC0BB5E0E79388"
 
 func readRuntimePatchCatalogFile(t *testing.T) RuntimePatchCatalog {
 	t.Helper()
@@ -55,8 +55,8 @@ func TestRuntimePatchCatalogFileIdentityAndCoverage(t *testing.T) {
 	if catalog.SchemaVersion != 3 || catalog.GameVersion != "2.0.2" || catalog.GameExecutableSHA256 != runtimePatchCatalogGameSHA256 {
 		t.Fatalf("catalog identity=%+v", catalog)
 	}
-	if len(catalog.Features) != 58 {
-		t.Fatalf("features=%d, want 58", len(catalog.Features))
+	if len(catalog.Features) != 59 {
+		t.Fatalf("features=%d, want 59", len(catalog.Features))
 	}
 	sites := 0
 	aobs := make(map[string]struct{})
@@ -86,8 +86,8 @@ func TestRuntimePatchCatalogFileIdentityAndCoverage(t *testing.T) {
 			}
 		}
 	}
-	if sites != 81 || len(aobs) != 79 {
-		t.Fatalf("coverage=%d sites/%d AOBs, want 81/79", sites, len(aobs))
+	if sites != 82 || len(aobs) != 80 {
+		t.Fatalf("coverage=%d sites/%d AOBs, want 82/80", sites, len(aobs))
 	}
 }
 
@@ -169,6 +169,30 @@ func TestRuntimePatchCatalogKnownMultiSiteAndConflicts(t *testing.T) {
 		if !reflect.DeepEqual(feature.Conflicts, want) {
 			t.Errorf("catalog entry %d conflicts=%v, want %v", id, feature.Conflicts, want)
 		}
+	}
+}
+
+func TestRuntimePatchCatalogContainsGlassCannonStunRemoval(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	var feature *RuntimePatchFeature
+	for index := range catalog.Features {
+		if catalog.Features[index].CatalogID == 59 {
+			feature = &catalog.Features[index]
+			break
+		}
+	}
+	if feature == nil {
+		t.Fatal("catalog entry 59 is missing")
+	}
+	if feature.ID != "runtime-patch-059" || feature.Name != "刀上舞：免除自身眩晕" ||
+		feature.Mode != "combat" || feature.Group != "战斗功能" || len(feature.Sites) != 1 {
+		t.Fatalf("catalog entry 59 is malformed: %+v", feature)
+	}
+	site := feature.Sites[0]
+	if site.Symbol != "GBFR_PATCH_059_1" || site.Offset != 0 ||
+		!bytes.Equal(site.ExpectedOriginalBytes, []byte{0x75}) ||
+		!bytes.Equal(site.EnableBytes, []byte{0xEB}) {
+		t.Fatalf("catalog entry 59 site is malformed: %+v", site)
 	}
 }
 

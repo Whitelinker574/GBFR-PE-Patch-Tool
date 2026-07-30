@@ -23,12 +23,10 @@ func classifySharedRuntimePatch(current []byte) sharedRuntimePatchOwner {
 	if bytesEqual(current, sharedInventoryMaterialOriginal) {
 		return sharedRuntimePatchOwnerNone
 	}
-	if bytesEqual(current[:len(materialConsumePatch)], materialConsumePatch) &&
-		bytesEqual(current[len(materialConsumePatch):], sharedInventoryMaterialOriginal[len(materialConsumePatch):]) {
+	if bytesEqual(current, materialConsumeLegacyPatch) || isMaterialConsumeEntry(current) {
 		return sharedRuntimePatchOwnerMaterialConsume
 	}
-	if current[0] == 0xE9 &&
-		bytesEqual(current[5:], sharedInventoryMaterialOriginal[5:]) {
+	if current[0] == 0xE9 && current[5] == 0x90 && current[6] == 0x90 {
 		return sharedRuntimePatchOwnerInventoryQuantity
 	}
 	return sharedRuntimePatchOwnerUnknown

@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   CharaAcquire,
   CharaRelease,
+  CombatTuningGetStatusOwned,
+  CombatTuningSetChargeOwned,
+  CombatTuningSetCooldownOwned,
   ConfluxTimerGetStatusOwned,
   ConfluxTimerSetEnabledOwned,
   ConfluxTimerVerifyStatusOwned,
@@ -11,6 +14,16 @@ import {
   RuntimePatchReleaseOwned,
   RuntimePatchSetEnabledOwned,
 } from '../../wailsjs/go/backend/App'
+import {
+  buildChargeRequest,
+  buildCooldownRequest,
+  combatTuningStatusMatchesRequest,
+  COMBAT_TUNING_CHARGE_ID,
+  COMBAT_TUNING_COOLDOWN_ID,
+  emptyCombatTuningStatus,
+  normalizeCombatTuningStatus,
+  parseCombatTuningMultiplier,
+} from '../combatTuningUi.js'
 import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 import { language } from '../i18n.js'
 import {
@@ -41,10 +54,19 @@ const OFFLINE_CONFIRMATION_KEY = 'gbfr.runtimePatch.offline-only-confirmed'
 const EMPTY_STATUS = Object.freeze({ enabled: false, available: false, rvas: [], currentBytes: [], error: '' })
 const EMPTY_CONFLUX_STATUS = Object.freeze({ verified: false, available: false, enabled: false, owned: false, mode: 0, initialSeconds: 0, currentSeconds: 0, error: '' })
 const CONFLUX_FEATURE = Object.freeze({ id: 'conflux-fast-wait', name: '极沌空域快速等待' })
+const COOLDOWN_FEATURE = Object.freeze({ id: COMBAT_TUNING_COOLDOWN_ID, name: '能力冷却调整', kind: 'cooldown' })
+const CHARGE_FEATURE = Object.freeze({ id: COMBAT_TUNING_CHARGE_ID, name: '三角色共享蓄力调整', kind: 'charge' })
+const CHARGE_CONFLICT_PATCH_ID = 'runtime-patch-017'
 
 const catalog = ref([])
 const statuses = ref([])
 const confluxStatus = ref({ ...EMPTY_CONFLUX_STATUS })
+const combatTuningStatus = ref(emptyCombatTuningStatus())
+const cooldownMode = ref('multiplier')
+const cooldownMultiplier = ref('2')
+const cooldownScope = ref('self')
+const chargeMode = ref('multiplier')
+const chargeMultiplier = ref('2')
 const searchQuery = ref('')
 const activeGroupKey = ref('')
 const catalogLoading = ref(true)
@@ -93,14 +115,33 @@ const groups = computed(() => buildRuntimePatchGroups(catalog.value, props.mode,
   groupLabel: group => translateRuntimePatchGroupName(group, language.value),
 }))
 const currentGroup = computed(() => groups.value.find(group => group.key === activeGroupKey.value) || groups.value[0] || null)
-const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0) + (props.mode === 'quest' ? 1 : 0))
-const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length + (confluxStatus.value.enabled && confluxStatus.value.owned ? 1 : 0))
+const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0)
+  + (['combat', 'characters', 'quest'].includes(props.mode) ? 1 : 0))
+const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length
+  + (confluxStatus.value.enabled && confluxStatus.value.owned ? 1 : 0)
+  + Number(combatTuningStatus.value.cooldown.enabled)
+  + Number(combatTuningStatus.value.charge.enabled))
 const recoveryFeatureCount = computed(() => statuses.value.filter(status => !status.enabled && status.rvas.length > 0).length + (confluxStatus.value.owned && !confluxStatus.value.enabled ? 1 : 0))
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value)
 const connectionLoading = computed(() => ['connect', 'disconnect'].includes(activeOperation.value?.kind))
 const statusLoading = computed(() => activeOperation.value?.kind === 'refresh')
 const busyFeatureID = computed(() => activeOperation.value?.kind === 'feature' ? activeOperation.value.featureID : '')
+const cooldownMultiplierInvalid = computed(() => cooldownMode.value === 'multiplier' && !validMultiplier(cooldownMultiplier.value))
+const chargeMultiplierInvalid = computed(() => chargeMode.value === 'multiplier' && !validMultiplier(chargeMultiplier.value))
+const chargeCatalogConflict = computed(() => {
+  const status = statusIndex.value.get(CHARGE_CONFLICT_PATCH_ID)
+  return !!status && (status.enabled || status.rvas.length > 0)
+})
+
+function validMultiplier(value) {
+  try {
+    parseCombatTuningMultiplier(value, '倍率')
+    return true
+  } catch {
+    return false
+  }
+}
 
 function publishSession() {
   emit('session-change', Object.freeze({
@@ -161,9 +202,19 @@ function normalizeConfluxStatus(value) {
   }
 }
 
-function applyVerifiedSession(session) {
+function syncCombatTuningDrafts(status) {
+  cooldownMode.value = status.cooldown.noCooldown ? 'instant' : 'multiplier'
+  cooldownMultiplier.value = String(status.cooldown.speedMultiplier)
+  cooldownScope.value = status.cooldown.applyWholeParty ? 'party' : 'self'
+  chargeMode.value = status.charge.instant ? 'instant' : 'multiplier'
+  chargeMultiplier.value = String(status.charge.speedMultiplier)
+}
+
+function applyVerifiedSession(session, syncTuningDraft = false) {
   applyStatuses(session.statuses)
   confluxStatus.value = session.conflux
+  combatTuningStatus.value = session.combatTuning
+  if (syncTuningDraft) syncCombatTuningDrafts(session.combatTuning)
 }
 
 function beginOperation(kind, featureID = '') {
@@ -208,6 +259,7 @@ function clearConnectionState() {
   processInfo.value = { pid: 0, moduleBase: 0 }
   statuses.value = []
   confluxStatus.value = { ...EMPTY_CONFLUX_STATUS }
+  combatTuningStatus.value = emptyCombatTuningStatus()
 }
 
 function completeRuntimeRelease(expectedOwnerToken, expectedEpoch, notification) {
@@ -245,7 +297,7 @@ async function connect() {
     connectionOwnerToken = acquiredOwnerToken
     connected.value = true
     processInfo.value = { pid: Number(info?.pid || 0), moduleBase: Number(info?.moduleBase || 0) }
-    applyVerifiedSession(verifiedSession)
+    applyVerifiedSession(verifiedSession, true)
     announce(`已连接游戏进程 PID ${processInfo.value.pid}`, 'ok')
   } catch (error) {
     let cleanupError = null
@@ -295,11 +347,16 @@ async function fetchVerifiedStatuses(ownerToken) {
 }
 
 async function fetchVerifiedSession(ownerToken) {
-  const [nextStatuses, nextConfluxStatus] = await Promise.all([
+  const [nextStatuses, nextConfluxStatus, nextCombatTuningStatus] = await Promise.all([
     fetchVerifiedStatuses(ownerToken),
     ConfluxTimerGetStatusOwned(ownerToken),
+    CombatTuningGetStatusOwned(ownerToken),
   ])
-  return { statuses: nextStatuses, conflux: normalizeConfluxStatus(nextConfluxStatus) }
+  return {
+    statuses: nextStatuses,
+    conflux: normalizeConfluxStatus(nextConfluxStatus),
+    combatTuning: normalizeCombatTuningStatus(nextCombatTuningStatus),
+  }
 }
 
 async function refreshStatuses() {
@@ -311,7 +368,7 @@ async function refreshStatuses() {
   try {
     const verifiedSession = await fetchVerifiedSession(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
-    applyVerifiedSession(verifiedSession)
+    applyVerifiedSession(verifiedSession, true)
     announce('实时补丁状态已回读', 'ok')
   } catch (error) {
     if (operationIsCurrent(operationToken, epoch)) announce(`刷新状态失败：${errorMessage(error)}`, 'danger')
@@ -382,6 +439,73 @@ async function setConfluxEnabled(enabled) {
   }
 }
 
+function tuningFeature(kind) {
+  return kind === 'cooldown' ? COOLDOWN_FEATURE : CHARGE_FEATURE
+}
+
+function tuningRequest(kind, enabled) {
+  if (kind === 'cooldown') {
+    return buildCooldownRequest({
+      enabled,
+      mode: cooldownMode.value,
+      multiplier: cooldownMultiplier.value,
+      scope: cooldownScope.value,
+    })
+  }
+  return buildChargeRequest({
+    enabled,
+    mode: chargeMode.value,
+    multiplier: chargeMultiplier.value,
+  })
+}
+
+async function setCombatTuningEnabled(kind, enabled) {
+  if (releasePending.value) return
+  const feature = tuningFeature(kind)
+  let request
+  try {
+    if (kind === 'charge' && enabled && chargeCatalogConflict.value) {
+      throw new Error('先恢复冈达葛萨「瞬间直冲拳」，再应用共享蓄力调整')
+    }
+    request = tuningRequest(kind, enabled)
+  } catch (error) {
+    announce(`${feature.name}操作失败：${errorMessage(error)}`, 'danger')
+    return
+  }
+  const operationToken = beginOperation('feature', feature.id)
+  if (!operationToken) return
+  const ownerToken = connectionOwnerToken
+  const epoch = lifecycleEpoch
+  try {
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
+    if (kind === 'cooldown') await CombatTuningSetCooldownOwned(ownerToken, request)
+    else await CombatTuningSetChargeOwned(ownerToken, request)
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
+    const verifiedStatus = verifiedSession.combatTuning[kind]
+    if (!combatTuningStatusMatchesRequest(verifiedStatus, request, kind)) {
+      throw new Error(`${feature.name}写后回读状态不一致`)
+    }
+    applyVerifiedSession(verifiedSession, true)
+    announce(`${feature.name}已${enabled ? '应用并回读' : '恢复默认'}`, 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+      try {
+        const recoveredSession = await fetchVerifiedSession(ownerToken)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+          applyVerifiedSession(recoveredSession, true)
+        }
+      } catch {
+        // Retain the last verified state. The shared disconnect path still
+        // owns restoration for both parameterized hooks.
+      }
+      announce(`${feature.name}操作失败：${errorMessage(error)}`, 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
 async function verifyConfluxStatus() {
   if (releasePending.value) return
   const operationToken = beginOperation('feature', CONFLUX_FEATURE.id)
@@ -396,7 +520,7 @@ async function verifyConfluxStatus() {
     ])
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
     const normalized = normalizeConfluxStatus(nextConfluxStatus)
-    applyVerifiedSession({ statuses: nextStatuses, conflux: normalized })
+    applyVerifiedSession({ statuses: nextStatuses, conflux: normalized, combatTuning: combatTuningStatus.value })
     if (!normalized.verified) throw new Error(normalized.error || '游戏版本校验失败')
     announce(normalized.error ? `游戏版本已校验；${normalized.error}` : '游戏版本已校验，极沌空域计时器状态已回读', normalized.error ? 'info' : 'ok')
   } catch (error) {
@@ -442,6 +566,22 @@ function requestConfluxChange() {
   void setConfluxEnabled(enable)
 }
 
+function requestCombatTuningApply(kind) {
+  if (interactionLocked.value) return
+  const feature = tuningFeature(kind)
+  if (!offlineUseConfirmed()) {
+    confirmationReturnTarget = document.activeElement
+    pendingConfirmationFeature.value = feature
+    return
+  }
+  void setCombatTuningEnabled(kind, true)
+}
+
+function requestCombatTuningRestore(kind) {
+  if (interactionLocked.value) return
+  void setCombatTuningEnabled(kind, false)
+}
+
 function cancelOfflineConfirmation() {
   pendingConfirmationFeature.value = null
   const returnTarget = confirmationReturnTarget
@@ -463,6 +603,8 @@ async function confirmOfflineUse() {
   }
   pendingConfirmationFeature.value = null
   if (feature.id === CONFLUX_FEATURE.id) await setConfluxEnabled(true)
+  else if (feature.id === COOLDOWN_FEATURE.id) await setCombatTuningEnabled('cooldown', true)
+  else if (feature.id === CHARGE_FEATURE.id) await setCombatTuningEnabled('charge', true)
   else await setFeatureEnabled(feature, true)
   await nextTick()
   returnTarget?.focus?.()
@@ -495,10 +637,12 @@ function ownsFeature(feature) {
 }
 
 function activeConflictFor(feature) {
+  if (feature?.id === CHARGE_CONFLICT_PATCH_ID && combatTuningStatus.value.charge.enabled) return CHARGE_FEATURE
   return findActiveRuntimePatchConflict(feature, statusIndex.value, catalog.value)
 }
 
 function displayFeatureName(feature) {
+  if ([COOLDOWN_FEATURE.id, CHARGE_FEATURE.id].includes(feature?.id)) return tr(feature.name)
   return translateRuntimePatchFeatureName(feature, language.value)
 }
 
@@ -516,6 +660,47 @@ function featureDisabled(feature) {
   if (!connected.value || interactionLocked.value) return true
   if (ownsFeature(feature)) return false
   return !status.available || !!activeConflictFor(feature)
+}
+
+function tuningStatusFor(kind) {
+  return combatTuningStatus.value[kind]
+}
+
+function tuningStateLabel(kind) {
+  const feature = tuningFeature(kind)
+  if (busyFeatureID.value === feature.id) return tr('回读中')
+  const status = tuningStatusFor(kind)
+  if (status.enabled) return tr('已开启')
+  if (!connected.value) return tr('未连接')
+  if (!status.available) return tr('不可用')
+  return tr('默认')
+}
+
+function tuningDisabled(kind, action = 'apply') {
+  if (!connected.value || interactionLocked.value) return true
+  const status = tuningStatusFor(kind)
+  if (action === 'restore') return !status.enabled
+  if (!status.available) return true
+  if (kind === 'cooldown') return cooldownMultiplierInvalid.value
+  return chargeMultiplierInvalid.value || chargeCatalogConflict.value
+}
+
+function tuningProof(kind) {
+  const status = tuningStatusFor(kind)
+  if (!connected.value) return tr('连接后定位候选入口并读取原字节')
+  if (status.rvas.length) return tr(`已回读 ${status.rvas.length} 个候选入口`)
+  return tr('尚未定位到候选入口')
+}
+
+function tuningCurrentSetting(kind) {
+  const status = tuningStatusFor(kind)
+  if (!status.enabled) return tr('当前保持游戏默认')
+  if (kind === 'cooldown') {
+    const mode = status.noCooldown ? tr('无冷却') : `${status.speedMultiplier}×`
+    const scope = status.applyWholeParty ? tr('全队实验范围') : tr('仅自己')
+    return `${mode} · ${scope}`
+  }
+  return status.instant ? tr('瞬间蓄力') : `${status.speedMultiplier}×`
 }
 
 function featureStateLabel(feature) {
@@ -598,6 +783,216 @@ onBeforeUnmount(() => {
       <span class="live-mark" aria-hidden="true"></span>
       <span>{{ liveMessage }}</span>
     </div>
+
+    <section
+      v-if="mode === 'combat'"
+      class="tuning-priority ui-card ui-panel"
+      :class="{ 'is-on': combatTuningStatus.cooldown.enabled }"
+      :aria-label="tr('能力冷却调整')"
+    >
+      <header class="tuning-priority-head">
+        <div>
+          <p>{{ tr('靠前常用功能') }}</p>
+          <h2>{{ tr('能力冷却调整') }}</h2>
+          <span>{{ tr('先选调整方式和作用范围，再应用；不会因为切换补丁页而停止。') }}</span>
+        </div>
+        <div class="tuning-tags">
+          <span class="ui-tag is-warn">{{ tr('实验候选') }}</span>
+          <span class="ui-tag" :class="combatTuningStatus.cooldown.enabled ? 'is-ok' : combatTuningStatus.cooldown.available ? 'is-info' : 'is-danger'">
+            {{ tuningStateLabel('cooldown') }}
+          </span>
+        </div>
+      </header>
+
+      <form class="tuning-form" @submit.prevent="requestCombatTuningApply('cooldown')">
+        <div class="tuning-control-grid">
+          <fieldset class="tuning-control">
+            <legend>{{ tr('调整方式') }}</legend>
+            <div class="tuning-segment ui-seg" role="group" :aria-label="tr('冷却调整方式')">
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': cooldownMode === 'multiplier' }"
+                :aria-pressed="cooldownMode === 'multiplier'"
+                :disabled="interactionLocked"
+                @click="cooldownMode = 'multiplier'"
+              >{{ tr('速度倍率') }}</button>
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': cooldownMode === 'instant' }"
+                :aria-pressed="cooldownMode === 'instant'"
+                :disabled="interactionLocked"
+                @click="cooldownMode = 'instant'"
+              >{{ tr('无冷却') }}</button>
+            </div>
+          </fieldset>
+
+          <label v-if="cooldownMode === 'multiplier'" class="tuning-control ui-field">
+            <span class="ui-field-label">{{ tr('冷却速度倍率') }}</span>
+            <span class="tuning-number">
+              <input
+                v-model.trim="cooldownMultiplier"
+                class="ui-input"
+                type="number"
+                min="0.1"
+                max="100"
+                step="0.1"
+                inputmode="decimal"
+                :aria-invalid="cooldownMultiplierInvalid"
+                :disabled="interactionLocked"
+              >
+              <b aria-hidden="true">×</b>
+            </span>
+            <small :class="{ 'is-error': cooldownMultiplierInvalid }">
+              {{ tr(cooldownMultiplierInvalid ? '请输入 0.1 到 100。' : '倍率越大，候选路径推进越快；实际冷却效果待任务实测。') }}
+            </small>
+          </label>
+
+          <fieldset class="tuning-control">
+            <legend>{{ tr('作用范围') }}</legend>
+            <div class="tuning-segment ui-seg" role="group" :aria-label="tr('冷却作用范围')">
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': cooldownScope === 'self' }"
+                :aria-pressed="cooldownScope === 'self'"
+                :disabled="interactionLocked"
+                @click="cooldownScope = 'self'"
+              >{{ tr('仅自己（默认）') }}</button>
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': cooldownScope === 'party' }"
+                :aria-pressed="cooldownScope === 'party'"
+                :disabled="interactionLocked"
+                @click="cooldownScope = 'party'"
+              >{{ tr('应用全队（实验）') }}</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <p v-if="cooldownScope === 'party'" class="tuning-warning ui-notice is-warn">
+          {{ tr('全队识别仍待实机：只在离线任务中测试，并确认没有影响敌人或召唤物。') }}
+        </p>
+        <p v-if="combatTuningStatus.cooldown.error" class="feature-error ui-notice is-danger">{{ tr(combatTuningStatus.cooldown.error) }}</p>
+
+        <div class="tuning-evidence">
+          <span>{{ tr(combatTuningStatus.cooldown.evidenceNote || '三个候选入口会在连接后逐一校验；未通过时拒绝写入。') }}</span>
+          <strong>{{ tuningCurrentSetting('cooldown') }}</strong>
+        </div>
+
+        <footer class="tuning-actions">
+          <span class="feature-proof">{{ tuningProof('cooldown') }}</span>
+          <div class="ui-actions">
+            <button
+              v-if="combatTuningStatus.cooldown.enabled"
+              type="button"
+              class="ui-btn is-ghost is-sm"
+              :disabled="tuningDisabled('cooldown', 'restore')"
+              @click="requestCombatTuningRestore('cooldown')"
+            >{{ tr('恢复默认') }}</button>
+            <button type="submit" class="ui-btn is-primary is-sm" :disabled="tuningDisabled('cooldown')">
+              {{ tr(busyFeatureID === COOLDOWN_FEATURE.id ? '回读中…' : combatTuningStatus.cooldown.enabled ? '更新并回读' : '应用设置') }}
+            </button>
+          </div>
+        </footer>
+      </form>
+    </section>
+
+    <section
+      v-if="mode === 'characters'"
+      class="tuning-priority ui-card ui-panel"
+      :class="{ 'is-on': combatTuningStatus.charge.enabled }"
+      :aria-label="tr('三角色共享蓄力调整')"
+    >
+      <header class="tuning-priority-head">
+        <div>
+          <p>{{ tr('靠前常用功能') }}</p>
+          <h2>{{ tr('伊欧 / 巴萨拉卡 / 冈达葛萨：蓄力调整') }}</h2>
+          <span>{{ tr('这是一个共享候选入口：先选瞬间蓄力或速度倍率，再统一应用。') }}</span>
+        </div>
+        <div class="tuning-tags">
+          <span class="ui-tag is-warn">{{ tr('实验候选') }}</span>
+          <span class="ui-tag" :class="combatTuningStatus.charge.enabled ? 'is-ok' : combatTuningStatus.charge.available ? 'is-info' : 'is-danger'">
+            {{ tuningStateLabel('charge') }}
+          </span>
+        </div>
+      </header>
+
+      <form class="tuning-form" @submit.prevent="requestCombatTuningApply('charge')">
+        <div class="tuning-control-grid is-charge">
+          <fieldset class="tuning-control">
+            <legend>{{ tr('调整方式') }}</legend>
+            <div class="tuning-segment ui-seg" role="group" :aria-label="tr('蓄力调整方式')">
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': chargeMode === 'multiplier' }"
+                :aria-pressed="chargeMode === 'multiplier'"
+                :disabled="interactionLocked"
+                @click="chargeMode = 'multiplier'"
+              >{{ tr('速度倍率') }}</button>
+              <button
+                type="button"
+                class="ui-seg-btn"
+                :class="{ 'is-on': chargeMode === 'instant' }"
+                :aria-pressed="chargeMode === 'instant'"
+                :disabled="interactionLocked"
+                @click="chargeMode = 'instant'"
+              >{{ tr('瞬间蓄力') }}</button>
+            </div>
+          </fieldset>
+
+          <label v-if="chargeMode === 'multiplier'" class="tuning-control ui-field">
+            <span class="ui-field-label">{{ tr('蓄力速度倍率') }}</span>
+            <span class="tuning-number">
+              <input
+                v-model.trim="chargeMultiplier"
+                class="ui-input"
+                type="number"
+                min="0.1"
+                max="100"
+                step="0.1"
+                inputmode="decimal"
+                :aria-invalid="chargeMultiplierInvalid"
+                :disabled="interactionLocked"
+              >
+              <b aria-hidden="true">×</b>
+            </span>
+            <small :class="{ 'is-error': chargeMultiplierInvalid }">
+              {{ tr(chargeMultiplierInvalid ? '请输入 0.1 到 100。' : '倍率越大，候选蓄力推进越快；实际动作范围待逐角色实测。') }}
+            </small>
+          </label>
+        </div>
+
+        <p v-if="chargeCatalogConflict" class="tuning-warning ui-notice is-warn">
+          {{ tr('冈达葛萨「瞬间直冲拳」正在占用相关机制；先恢复它，再应用共享蓄力调整。') }}
+        </p>
+        <p v-if="combatTuningStatus.charge.error" class="feature-error ui-notice is-danger">{{ tr(combatTuningStatus.charge.error) }}</p>
+
+        <div class="tuning-evidence">
+          <span>{{ tr(combatTuningStatus.charge.evidenceNote || '共享候选入口会在连接后校验；未证明作用范围前不会标为正式功能。') }}</span>
+          <strong>{{ tuningCurrentSetting('charge') }}</strong>
+        </div>
+
+        <footer class="tuning-actions">
+          <span class="feature-proof">{{ tuningProof('charge') }}</span>
+          <div class="ui-actions">
+            <button
+              v-if="combatTuningStatus.charge.enabled"
+              type="button"
+              class="ui-btn is-ghost is-sm"
+              :disabled="tuningDisabled('charge', 'restore')"
+              @click="requestCombatTuningRestore('charge')"
+            >{{ tr('恢复默认') }}</button>
+            <button type="submit" class="ui-btn is-primary is-sm" :disabled="tuningDisabled('charge')">
+              {{ tr(busyFeatureID === CHARGE_FEATURE.id ? '回读中…' : combatTuningStatus.charge.enabled ? '更新并回读' : '应用设置') }}
+            </button>
+          </div>
+        </footer>
+      </form>
+    </section>
 
     <section class="patch-browser ui-card ui-panel">
       <header class="patch-browser-head">
@@ -852,6 +1247,163 @@ onBeforeUnmount(() => {
 }
 .live-mark { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:currentColor; }
 
+.tuning-priority {
+  position:relative;
+  gap:var(--space-4);
+  border-color:var(--accent-border);
+  background:color-mix(in srgb,var(--surface-card-pop) 94%,var(--accent-soft));
+  box-shadow:3px 0 0 var(--accent-border) inset;
+}
+.tuning-priority.is-on {
+  border-color:var(--success);
+  background:color-mix(in srgb,var(--success-bg) 28%,var(--surface-card-pop));
+  box-shadow:3px 0 0 var(--success) inset;
+}
+.tuning-priority-head {
+  min-width:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:var(--space-4);
+  padding-bottom:var(--space-3);
+  border-bottom:1px solid var(--border-soft);
+}
+.tuning-priority-head > div:first-child { min-width:0; }
+.tuning-priority-head p {
+  margin:0;
+  color:var(--accent);
+  font-size:var(--fs-xs);
+  font-weight:var(--fw-bold);
+  letter-spacing:.08em;
+}
+.tuning-priority-head h2 {
+  margin:var(--space-1) 0 0;
+  color:var(--text-primary);
+  font-family:var(--font-display);
+  font-size:var(--fs-lg);
+  line-height:var(--lh-tight);
+}
+.tuning-priority-head > div:first-child > span {
+  display:block;
+  margin-top:var(--space-2);
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-normal);
+}
+.tuning-tags {
+  flex:0 0 auto;
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:var(--space-2);
+}
+.tuning-form { min-width:0; }
+.tuning-control-grid {
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(180px,.72fr) minmax(0,1fr);
+  gap:var(--space-4);
+  align-items:start;
+}
+.tuning-control-grid.is-charge { grid-template-columns:minmax(0,1fr) minmax(200px,1fr); }
+.tuning-control {
+  min-width:0;
+  margin:0;
+  padding:0;
+  border:0;
+}
+.tuning-control legend,
+.tuning-control > .ui-field-label {
+  display:block;
+  margin:0 0 var(--space-2);
+  color:var(--text-secondary);
+  font-size:var(--fs-sm);
+  font-weight:var(--fw-semibold);
+}
+.tuning-segment.ui-seg {
+  width:100%;
+  display:flex;
+  gap:0;
+  padding:0;
+  border:0;
+  border-bottom:1px solid var(--border-default);
+  border-radius:0;
+  background:transparent;
+}
+.tuning-segment .ui-seg-btn {
+  min-width:0;
+  min-height:var(--control-height-sm);
+  flex:1 1 0;
+  padding:0 var(--space-3);
+  border:0;
+  border-bottom:2px solid transparent;
+  border-radius:0;
+  color:var(--text-muted);
+  background:transparent;
+  box-shadow:none;
+  white-space:normal;
+}
+.tuning-segment .ui-seg-btn:hover,.tuning-segment .ui-seg-btn:focus-visible { background:var(--state-hover); }
+.tuning-segment .ui-seg-btn.is-on {
+  border-bottom-color:var(--selected-bar);
+  color:var(--selected-fg);
+  background:color-mix(in srgb,var(--selected-bg) 54%,transparent);
+  box-shadow:none;
+}
+.tuning-number { position:relative; display:block; }
+.tuning-number .ui-input { width:100%; padding-right:36px; font-family:var(--font-data); }
+.tuning-number b {
+  position:absolute;
+  top:50%;
+  right:var(--space-3);
+  color:var(--text-muted);
+  font-family:var(--font-data);
+  transform:translateY(-50%);
+  pointer-events:none;
+}
+.tuning-control > small {
+  display:block;
+  margin-top:var(--space-2);
+  color:var(--text-muted);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-normal);
+}
+.tuning-control > small.is-error { color:var(--danger); }
+.tuning-warning { margin:var(--space-3) 0 0; }
+.tuning-evidence {
+  min-width:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:var(--space-4);
+  margin-top:var(--space-4);
+  padding:var(--space-3);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);
+  background:var(--surface-sunken);
+}
+.tuning-evidence span {
+  min-width:0;
+  color:var(--warning-ink);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-normal);
+}
+.tuning-evidence strong {
+  flex:0 0 auto;
+  color:var(--text-primary);
+  font-family:var(--font-data);
+  font-size:var(--fs-sm);
+  white-space:nowrap;
+}
+.tuning-actions {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--space-4);
+  margin-top:var(--space-3);
+}
+
 .patch-browser {
   gap:var(--space-4);
   border-color:var(--border-default);
@@ -1008,6 +1560,8 @@ onBeforeUnmount(() => {
   .patch-connection { align-items:stretch; flex-direction:column; }
   .patch-connection-actions { width:100%; }
   .patch-connection-actions .ui-btn { flex:1 1 150px; }
+  .tuning-control-grid,.tuning-control-grid.is-charge { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .tuning-control-grid .tuning-control:last-child:nth-child(3) { grid-column:1 / -1; }
 }
 
 @container tool-panel (max-width:520px) {
@@ -1017,6 +1571,14 @@ onBeforeUnmount(() => {
   .feature-switch { width:100%; }
   .patch-group-heading { align-items:flex-start; flex-direction:column; }
   .conflux-readback { grid-template-columns:minmax(0,1fr); }
+  .tuning-priority { padding:var(--space-4); }
+  .tuning-priority-head,.tuning-actions,.tuning-evidence { align-items:stretch; flex-direction:column; }
+  .tuning-tags { justify-content:flex-start; }
+  .tuning-control-grid,.tuning-control-grid.is-charge { grid-template-columns:minmax(0,1fr); }
+  .tuning-control-grid .tuning-control:last-child:nth-child(3) { grid-column:auto; }
+  .tuning-actions .ui-actions { width:100%; }
+  .tuning-actions .ui-btn { flex:1 1 130px; }
+  .tuning-evidence strong { white-space:normal; }
 }
 
 @container tool-panel (max-width:340px) {
@@ -1033,6 +1595,6 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .patch-feature-card,.patch-group-button,.switch-track,.switch-track i { transition:none; }
+  .patch-feature-card,.patch-group-button,.switch-track,.switch-track i,.tuning-segment .ui-seg-btn { transition:none; }
 }
 </style>

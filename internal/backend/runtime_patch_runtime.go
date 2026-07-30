@@ -626,6 +626,10 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 		a.poisonCurrentLiveMemoryWrites()
 		return status, errors.Join(fmt.Errorf("RuntimePatch feature requires recovery before it can be enabled again"), errLiveMemoryRollbackUnproven)
 	}
+	if err := validateRuntimePatchCombatChargeConflict(feature.ID, a.combatTuningChargeLease); err != nil {
+		return a.runtimePatchStatusForFeatureLocked(*feature, token, memory),
+			err
+	}
 	for activeID, activeLease := range a.runtimePatchPatchLeases {
 		if !runtimeOwnerTokenMatches(activeLease.OwnerToken, token) {
 			return a.runtimePatchStatusForFeatureLocked(*feature, token, memory), fmt.Errorf("RuntimePatch feature %s is owned by another page", activeID)
@@ -676,6 +680,13 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 	candidate.State = runtimePatchPatchEnabled
 	a.runtimePatchPatchLeases[feature.ID] = cloneRuntimePatchPatchLease(candidate)
 	return a.runtimePatchStatusForFeatureLocked(*feature, token, memory), nil
+}
+
+func validateRuntimePatchCombatChargeConflict(featureID string, chargeLease *combatTuningLease) error {
+	if featureID == "runtime-patch-017" && chargeLease != nil {
+		return fmt.Errorf("冈达葛萨“瞬间直冲拳”与三角色共享蓄力调整不能同时开启；请先恢复共享蓄力调整")
+	}
+	return nil
 }
 
 // RuntimePatchReleaseOwned restores all patches owned by the presented Chara token.

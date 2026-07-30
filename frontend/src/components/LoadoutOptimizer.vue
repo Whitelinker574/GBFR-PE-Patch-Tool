@@ -138,7 +138,7 @@ const chosen = computed(() => selected.value.map((id, index) => {
   if (!trait) return null
   const naturalMax = Math.max(1, Number(trait.maxLevel || 65))
   const requested = Math.max(1, Math.min(naturalMax, Number(targetLevels.value[id] || naturalMax)))
-  return { ...trait, weight: Math.max(1, 4 - index), cap: requested, targetLevel: requested }
+  return { ...trait, priority: index + 1, weight: 1, cap: requested, targetLevel: requested }
 }).filter(Boolean))
 const coverageInputsValid = computed(() => {
   if (!combatMode.value) return true
@@ -259,7 +259,7 @@ function addPendingTrait() {
   const id = pendingTraitId.value
   if (selected.value.includes(id)) {
     setTargetLevel(id, pendingTraitLevel.value)
-  } else if (selected.value.length < 4) {
+  } else {
     selected.value = [...selected.value, id]
     targetLevels.value = { ...targetLevels.value, [id]: pendingTraitLevel.value }
     cancelSolve()
@@ -276,11 +276,21 @@ function chooseTrait(id) {
     const next = { ...targetLevels.value }
     delete next[id]
     targetLevels.value = next
-  } else if (selected.value.length < 4) {
+  } else {
     const trait = atlas.value.traits.find(item => item.internalId === id)
     selected.value = [...selected.value, id]
     targetLevels.value = { ...targetLevels.value, [id]: Math.max(1, Number(trait?.maxLevel || 15)) }
   }
+  rememberCustomTargets()
+  solved.value = false
+}
+function moveTrait(index, offset) {
+  const target = index + offset
+  if (target < 0 || target >= selected.value.length) return
+  cancelSolve()
+  const next = selected.value.slice()
+  ;[next[index], next[target]] = [next[target], next[index]]
+  selected.value = next
   rememberCustomTargets()
   solved.value = false
 }
@@ -333,7 +343,11 @@ function compareDisplayResults(left, right) {
       || resultConstructionCount(left) - resultConstructionCount(right)
       || resultSignature(left).localeCompare(resultSignature(right), 'en')
   }
+  const leftPriority = targetFulfilment(left)
+  const rightPriority = targetFulfilment(right)
   return resultGroup(left) - resultGroup(right)
+    || rightPriority.completedPrefix - leftPriority.completedPrefix
+    || leftPriority.rows.reduce((order, row, index) => order || Number(rightPriority.rows[index]?.actual || 0) - Number(row.actual || 0), 0)
     || resultCoverage(right) - resultCoverage(left)
     || resultConstructionCount(left) - resultConstructionCount(right)
     || Number(left?.picked?.length || 0) - Number(right?.picked?.length || 0)
@@ -362,7 +376,11 @@ function resultRankReason(result) {
     )
   }
   if (!combatMode.value && !targetFulfilment(result).complete) {
-    return tx(`部分满足 · 目标覆盖 ${Math.round(resultCoverage(result) * 100)}% · 使用 ${slots} 槽`, `Partial match · ${Math.round(resultCoverage(result) * 100)}% target coverage · ${slots} slots`)
+    const fulfilment = targetFulfilment(result)
+    return tx(
+      `已按顺序完成前 ${fulfilment.completedPrefix} 项 · 第 ${fulfilment.completedPrefix + 1} 项“${fulfilment.firstUnmet?.name || '目标'}”还缺 Lv${fulfilment.firstUnmet?.missing || 0} · 后续 ${fulfilment.waitingCount} 项不抢占前序槽位`,
+      `Completed the first ${fulfilment.completedPrefix} target(s) in order · #${fulfilment.completedPrefix + 1} “${fulfilment.firstUnmet?.name || 'target'}” is short by Lv${fulfilment.firstUnmet?.missing || 0} · ${fulfilment.waitingCount} later target(s) do not displace earlier ones`,
+    )
   }
   if (count > 0) {
     return tx(`全部满足 · 背包缺少 ${count} 个实例 · 确认保存时才制造`, `Complete · ${count} inventory gaps · created only after save confirmation`)
@@ -470,7 +488,7 @@ function applyProfile(value) {
   const configured = value === 'character' ? directionProfile.value.traitIds : profiles[value].traitIds
   const inherited = value === 'character' ? characterProfileNames().map(name => atlas.value.traits.find(item => item.displayName === name || item.displayName.includes(name))?.internalId).filter(Boolean) : []
   const ids = [...configured, ...inherited].filter(id => atlas.value.traits.some(item => item.internalId === id))
-  selected.value = [...new Set(ids)].slice(0, 4)
+  selected.value = [...new Set(ids)]
   coverage.value = Math.round(Number(directionProfile.value.coverage || 1) * 100)
   coverageLow.value = Math.max(0, coverage.value - 15)
   coverageHigh.value = Math.min(100, coverage.value + 15)
@@ -482,7 +500,7 @@ function applyPendingTarget(target) {
   if (!ids.length) return
   cancelSolve()
   profile.value = 'custom'
-  selected.value = [...new Set(ids)].slice(0, 4)
+  selected.value = [...new Set(ids)]
   targetLevels.value = Object.fromEntries(selected.value.map(id => {
     const trait = atlas.value.traits.find(item => item.internalId === id)
     return [id, Math.max(1, Number(trait?.maxLevel || 15))]
@@ -506,11 +524,30 @@ function applyResult(result) {
 }
 function targetFulfilment(result) {
   const totals = new Map((result?.totals || []).map(item => [item.name, item]))
+  let blocked = false
   const rows = chosen.value.map(item => {
     const actual = Number(totals.get(item.displayName)?.effective || 0)
-    return { name: item.displayName, actual, target: item.targetLevel, met: actual >= item.targetLevel }
+    const met = actual >= item.targetLevel
+    const state = blocked ? 'waiting' : met ? 'met' : 'blocked'
+    if (!met) blocked = true
+    return {
+      name: item.displayName,
+      actual,
+      target: item.targetLevel,
+      missing: Math.max(0, item.targetLevel - actual),
+      met,
+      state,
+    }
   })
-  return { rows, complete: rows.length > 0 && rows.every(item => item.met) }
+  const firstGap = rows.findIndex(item => !item.met)
+  const completedPrefix = firstGap < 0 ? rows.length : firstGap
+  return {
+    rows,
+    complete: rows.length > 0 && rows.every(item => item.met),
+    completedPrefix,
+    firstUnmet: rows[completedPrefix] || null,
+    waitingCount: rows.slice(completedPrefix + 1).length,
+  }
 }
 function routeFulfilment(result) {
   if (!selectedRoute.value) return { rows: [], complete: true }
@@ -934,16 +971,17 @@ onBeforeUnmount(cancelSolve)
           <div class="skill-target-entry" aria-label="添加技能目标">
             <label class="target-skill-field"><span>{{ tx('目标技能', 'Target Skill') }}</span><CatalogSelect v-model="pendingTraitId" :options="availableTraits" :icon-resolver="icon" detail-key="levelHint" :placeholder="tx('搜索并选择技能', 'Search and choose a skill')" :search-placeholder="tx('输入技能名称、拼音或 ID', 'Enter a skill name or ID')" @pick="onPendingTraitPick" /></label>
             <label class="target-level-field"><span>{{ tx('目标等级', 'Target Level') }}</span><input v-model.number="pendingTraitLevel" class="ui-input" type="number" min="1" :max="pendingTrait?.maxLevel || 65" @change="clampPendingTraitLevel" /></label>
-            <button type="button" class="add-target-button ui-btn is-primary" :disabled="!pendingTraitId || (!selected.includes(pendingTraitId) && selected.length >= 4)" @click="addPendingTrait">{{ selected.includes(pendingTraitId) ? tx('更新目标', 'Update Target') : tx('加入目标', 'Add Target') }}</button>
+            <button type="button" class="add-target-button ui-btn is-primary" :disabled="!pendingTraitId" @click="addPendingTrait">{{ selected.includes(pendingTraitId) ? tx('更新目标', 'Update Target') : tx('加入目标', 'Add Target') }}</button>
           </div>
           <div class="chosen-traits">
-            <small>{{ tx('已选目标（最多 4 项，拖动不参与排序；显示顺序就是优先级）', 'Selected targets (up to 4; display order is priority)') }}</small>
+            <div class="chosen-order-copy"><small>{{ tx('可添加任意数量；从 #1 开始依次满足。12 槽放不下时会停在首个缺口，并说明后续目标。', 'Add as many as needed. Targets are fulfilled from #1 onward; if 12 slots are insufficient, the first gap and all later targets are explained.') }}</small><b>{{ chosen.length }} {{ tx('项目标', 'targets') }}</b></div>
             <div>
               <article v-for="(trait, index) in chosen" :key="trait.internalId" class="chosen-trait">
                 <img v-if="icon(trait)" :src="icon(trait)" alt="" />
-                <b>{{ index + 1 }}</b>
+                <b>#{{ index + 1 }}</b>
                 <span>{{ trait.displayName }}</span>
                 <label><small>Lv</small><input :value="trait.targetLevel" class="ui-input" type="number" min="1" :max="trait.maxLevel || 65" @change="setTargetLevel(trait.internalId, $event.target.value)" /></label>
+                <span class="chosen-order-actions"><button type="button" :disabled="index === 0" :aria-label="tx(`提高${trait.displayName}的优先级`, `Raise priority for ${trait.displayName}`)" @click="moveTrait(index, -1)">↑</button><button type="button" :disabled="index === chosen.length - 1" :aria-label="tx(`降低${trait.displayName}的优先级`, `Lower priority for ${trait.displayName}`)" @click="moveTrait(index, 1)">↓</button></span>
                 <button type="button" :aria-label="tx(`移除${trait.displayName}`, `Remove ${trait.displayName}`)" @click="chooseTrait(trait.internalId)">×</button>
               </article>
               <span v-if="!chosen.length" class="empty-choice">{{ tx('先选择一个技能和目标等级，再加入目标。', 'Choose a skill and target level, then add it here.') }}</span>
@@ -1105,7 +1143,7 @@ onBeforeUnmount(cancelSolve)
           <section class="result-final-levels">
             <header><strong>{{ selectedRoute ? tx('固定路线达成情况', 'Fixed Route Completion') : !combatMode ? tx('目标技能达成', 'Target Skill Completion') : tx('关键技能最终等级', 'Final Key Skill Levels') }}</strong><span>{{ tx('最终技能等级', 'Final Skill Levels') }}</span></header>
             <div v-if="selectedRoute && routeFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: routeFulfilment(result).complete }"><strong>{{ routeFulfilment(result).complete ? tx('12 槽路线要求全部达到', 'All 12-slot route requirements met') : tx('仍有路线等级缺口', 'Route levels are still short') }}</strong><span v-for="item in routeFulfilment(result).rows" :key="item.traitId" :class="{ met: item.met }">{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em></span></div>
-            <div v-else-if="!combatMode && targetFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: targetFulfilment(result).complete }"><strong>{{ targetFulfilment(result).complete ? tx('全部达到目标', 'All targets met') : tx('仍有等级缺口', 'Some levels are short') }}</strong><span v-for="item in targetFulfilment(result).rows" :key="item.name" :class="{ met: item.met }">{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em></span></div>
+            <div v-else-if="!combatMode && targetFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: targetFulfilment(result).complete }"><strong>{{ targetFulfilment(result).complete ? tx('已按顺序达到全部目标', 'All targets met in order') : tx(`按顺序完成前 ${targetFulfilment(result).completedPrefix} 项；第 ${targetFulfilment(result).completedPrefix + 1} 项还缺等级`, `First ${targetFulfilment(result).completedPrefix} met; target #${targetFulfilment(result).completedPrefix + 1} is short`) }}</strong><span v-for="(item, targetIndex) in targetFulfilment(result).rows" :key="item.name" :class="[item.state, { met: item.met }]"><i>#{{ targetIndex + 1 }}</i>{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em><small v-if="item.state === 'blocked'">{{ tx(`缺 Lv${item.missing}`, `Short Lv${item.missing}`) }}</small><small v-else-if="item.state === 'waiting'">{{ tx('等待前序', 'After earlier targets') }}</small></span></div>
             <div v-else class="result-level-preview"><span v-for="total in visibleResultTotals(result)" :key="total.traitId || total.displayName"><small>{{ total.displayName }}</small><b>Lv{{ total.effective }}</b></span></div>
           </section>
           <h4 class="slot-preview-title"><span>{{ tx('12 个因子槽预览', '12-Slot Sigil Preview') }}</span><small>{{ tx('缺少的实例会标为“待制造”；没有替换的槽保留当前因子。', 'Missing instances are marked “Create on Save”; unchanged slots keep their current sigils.') }}</small></h4>
@@ -1151,6 +1189,9 @@ onBeforeUnmount(cancelSolve)
 .optimizer-intent button.active { border-bottom-color:#765126; color:#765126; background:transparent; box-shadow:none; }
 .optimizer-control-group,.chosen-traits { min-width:0; display:grid; gap:8px; }
 .optimizer-control-group > small,.chosen-traits > small { color:var(--text-muted); font-size:12px; font-weight:var(--fw-semibold); }
+.chosen-order-copy { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.chosen-order-copy small { color:var(--text-muted); font-size:12px; font-weight:var(--fw-semibold); line-height:1.45; }
+.chosen-order-copy b { flex:0 0 auto; color:var(--accent-hover); font-size:12px; }
 .optimizer-control-group p { margin:0; color:var(--text-muted); font-size:13px; line-height:1.5; }
 .optimizer-control-group .optimizer-context-warning { padding:7px 9px; border-left:3px solid var(--warning); background:var(--warning-bg); color:var(--warning-ink); font-size:12px; }
 .character-research-card { min-width:0; display:grid; gap:8px; padding:10px; border:1px solid var(--line-soft); border-left:3px solid var(--accent); border-radius:8px; background:rgba(255,253,247,.62); }
@@ -1263,13 +1304,16 @@ onBeforeUnmount(cancelSolve)
 .profile-row { display:flex; flex-wrap:wrap; gap:6px; }
 .profile-row .ui-chip { min-height:34px; padding:0 10px; font-size:13px; }
 .chosen-traits > div { min-width:0; display:grid; gap:6px; }
-.chosen-trait { min-width:0; min-height:44px; display:grid; grid-template-columns:32px 20px minmax(92px,1fr) minmax(86px,112px) 32px; align-items:center; gap:8px; padding:5px 8px; border:1px solid var(--accent-border); border-left:3px solid var(--accent); border-radius:7px; background:linear-gradient(90deg,var(--accent-soft),rgba(255,253,247,.72)); color:var(--text-secondary); }
+.chosen-trait { min-width:0; min-height:44px; display:grid; grid-template-columns:32px 28px minmax(92px,1fr) minmax(86px,112px) 58px 32px; align-items:center; gap:8px; padding:5px 8px; border:1px solid var(--accent-border); border-left:3px solid var(--accent); border-radius:7px; background:linear-gradient(90deg,var(--accent-soft),rgba(255,253,247,.72)); color:var(--text-secondary); }
 .chosen-trait img { width:32px; height:32px; border-radius:6px; object-fit:cover; }
 .chosen-trait > b { color:var(--accent); font-family:var(--font-data); font-size:12px; }
 .chosen-trait span { overflow-wrap:anywhere; color:var(--text-primary); font-size:14px; font-weight:700; }
 .chosen-trait label { min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px; align-items:center; }
 .chosen-trait label small { color:var(--accent-hover); font-size:12px; font-weight:var(--fw-bold); }
 .chosen-trait label input { width:100%; min-height:34px; padding:2px 8px; font-family:var(--font-data); font-weight:var(--fw-bold); }
+.chosen-order-actions { display:flex; align-items:center; gap:2px; }
+.chosen-order-actions button { width:28px; height:28px; padding:0; border:1px solid var(--border-soft); border-radius:5px; color:var(--accent-hover); background:rgba(255,255,255,.48); cursor:pointer; }
+.chosen-order-actions button:disabled { color:var(--text-muted); opacity:.38; cursor:default; }
 .chosen-trait > button { width:32px; height:32px; border:0; border-radius:50%; color:var(--text-muted); background:transparent; cursor:pointer; }
 .chosen-trait > button:hover,.chosen-trait > button:focus-visible { color:var(--danger-ink); background:var(--danger-bg); }
 .empty-choice { padding:10px; border:1px dashed var(--line-soft); border-radius:7px; color:var(--text-muted); font-size:13px; text-align:center; }
@@ -1338,6 +1382,9 @@ onBeforeUnmount(cancelSolve)
 .target-fulfilment { min-width:0; display:flex; flex-wrap:wrap; gap:5px; align-items:center; padding:7px 8px; border:1px solid rgba(151,91,37,.3); border-radius:6px; background:var(--warning-bg); }
 .target-fulfilment > strong { margin-right:auto; color:var(--warning-ink); font-size:var(--fs-xs); }
 .target-fulfilment > span { display:inline-flex; align-items:baseline; gap:3px; padding:3px 7px; border:1px solid rgba(151,91,37,.2); border-radius:var(--radius-pill); color:var(--warning-ink); background:rgba(255,255,255,.38); font-size:var(--fs-2xs); }
+.target-fulfilment > span i { color:var(--text-muted); font-family:var(--font-data); font-size:10px; font-style:normal; }
+.target-fulfilment > span small { margin-left:3px; color:var(--warning-ink); font-size:10px; font-weight:700; }
+.target-fulfilment > span.waiting { border-style:dashed; color:var(--text-muted); background:rgba(255,255,255,.24); }
 .target-fulfilment > span b { font-family:var(--font-data); }
 .target-fulfilment > span em { color:var(--text-muted); font-style:normal; }
 .target-fulfilment.complete { border-color:rgba(47,108,70,.3); background:var(--success-bg); }
@@ -1372,6 +1419,6 @@ onBeforeUnmount(cancelSolve)
 .result-details[open] summary { margin-bottom:8px; }
 @container optimizer (max-width:760px) { .result-sigil-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @container optimizer (max-width:660px) { .battle-condition-grid { grid-template-columns:minmax(0,1fr); }.condition-field.is-wide { grid-column:1; grid-template-columns:minmax(108px,.75fr) minmax(112px,1fr); }.character-research-grid { grid-template-columns:minmax(0,1fr); } }
-@container optimizer (max-width:560px) { .optimizer-heading { align-items:start; }.skill-target-entry { grid-template-columns:minmax(0,1fr) 112px; }.add-target-button { grid-column:1/-1; }.optimizer-resource-row { grid-template-columns:minmax(0,1fr); }.optimizer-resource-row > small,.optimizer-source-details { grid-column:1; }.chosen-trait { grid-template-columns:32px 20px minmax(0,1fr) 32px; }.chosen-trait label { grid-column:3; }.chosen-trait > button { grid-column:4; grid-row:1; }.result-scope,.optimizer-apply-row { grid-template-columns:minmax(0,1fr); }.optimizer-apply-row .ui-btn { width:100%; }.slot-preview-title { align-items:flex-start; flex-direction:column; gap:2px; }.slot-preview-title small { text-align:left; }.result-cap-proof > div,.result-defense-proof > div { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container optimizer (max-width:560px) { .optimizer-heading { align-items:start; }.skill-target-entry { grid-template-columns:minmax(0,1fr) 112px; }.add-target-button { grid-column:1/-1; }.optimizer-resource-row { grid-template-columns:minmax(0,1fr); }.optimizer-resource-row > small,.optimizer-source-details { grid-column:1; }.chosen-order-copy { align-items:flex-start; flex-direction:column; gap:3px; }.chosen-trait { grid-template-columns:32px 28px minmax(0,1fr) 32px; }.chosen-trait label { grid-column:3; }.chosen-order-actions { grid-column:3; }.chosen-trait > button { grid-column:4; grid-row:1; }.result-scope,.optimizer-apply-row { grid-template-columns:minmax(0,1fr); }.optimizer-apply-row .ui-btn { width:100%; }.slot-preview-title { align-items:flex-start; flex-direction:column; gap:2px; }.slot-preview-title small { text-align:left; }.result-cap-proof > div,.result-defense-proof > div { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @container optimizer (max-width:380px) { .skill-target-entry { grid-template-columns:minmax(0,1fr); }.target-level-field,.add-target-button { grid-column:1; }.optimizer-advanced summary > span { align-items:flex-start; flex-direction:column; gap:2px; }.condition-field { grid-template-columns:minmax(0,1fr); }.condition-control { grid-template-columns:minmax(0,1fr) 48px; }.result-sigil-grid { grid-template-columns:minmax(0,1fr); }.result-group-heading,.result-cap-proof > header,.result-defense-proof > header,.character-research-card > header { align-items:flex-start; flex-direction:column; gap:2px; }.result-final-levels > header { align-items:flex-start; flex-direction:column; gap:2px; } }
 </style>

@@ -494,12 +494,14 @@ func TestNamedLocalTableAliasesNeverFallBackToOpaqueHashes(t *testing.T) {
 			0x2D85102A: "属性克制转换+",
 			0x99E8B892: "狂战士+",
 			0x97CF485D: "万能药+",
+			0x9A60FBF0: "万能药+",
 			0x4AE72C9E: "斯巴达+",
 		}},
 		{language: "en", names: map[uint32]string{
 			0x2D85102A: "War Elemental+",
 			0x99E8B892: "Berserker Echo+",
 			0x97CF485D: "Potent Greens+",
+			0x9A60FBF0: "Potent Greens+",
 			0x4AE72C9E: "Spartan Echo+",
 		}},
 	} {

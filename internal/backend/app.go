@@ -141,6 +141,11 @@ type App struct {
 	// The metadata is dropped only when this process connection is detached.
 	retiredRuntimeCaves         []retiredRuntimeCave
 	materialConsumeAddr         uintptr
+	materialConsumeLease        *materialConsumeHookLease
+	combatTuningCooldownAddrs   []uintptr
+	combatTuningChargeAddr      uintptr
+	combatTuningCooldownLease   *combatTuningLease
+	combatTuningChargeLease     *combatTuningLease
 	infiniteChallengeAddr       uintptr
 	infiniteChallengeOwnerToken string
 	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
@@ -1177,19 +1182,23 @@ func (a *App) CharaRelease(token string) error {
 	processLive := a.hProcess != 0 && processHandleAlive(a.hProcess)
 	if processLive {
 		a.runtimePatchMu.Lock()
+		tuningErr := a.restoreCombatTuningOwnedLocked(token, false)
+		materialErr := a.restoreMaterialConsumeOwnedLocked(token, false)
 		selectedErr := a.releaseRuntimePatchSelectedCaptureHooksLocked(token, false)
 		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
 		confluxErr := a.restoreConfluxTimerOwnedLocked(token, false)
 		gravityErr := a.restoreRuntimeSpatialGravityOwnedLocked(token, false)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(selectedErr, ctErr, confluxErr, gravityErr, challengeErr); combined != nil {
+		if combined := errors.Join(tuningErr, materialErr, selectedErr, ctErr, confluxErr, gravityErr, challengeErr); combined != nil {
 			return fmt.Errorf("runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
 			return fmt.Errorf("monster-enhance hook restoration failed; connection remains owned: %w", err)
 		}
 	} else {
+		a.dropCombatTuningOwnerLocked(token, false)
+		a.dropMaterialConsumeOwnerLocked(token, false)
 		a.dropRuntimePatchSelectedCaptureHooksLocked(token, false)
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
 		a.dropConfluxTimerOwnerLocked(token)
@@ -1244,6 +1253,12 @@ func (a *App) charaDetachLocked() error {
 	if a.hProcess != 0 && processHandleAlive(a.hProcess) {
 		var releaseErr error
 		a.runtimePatchMu.Lock()
+		if err := a.restoreCombatTuningOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("combat tuning: %w", err))
+		}
+		if err := a.restoreMaterialConsumeOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("material consumption: %w", err))
+		}
 		if err := a.restoreInfiniteChallengeOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous challenge: %w", err))
 		}
@@ -1318,6 +1333,11 @@ func (a *App) charaDetachLocked() error {
 	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
 	a.materialConsumeAddr = 0
+	a.materialConsumeLease = nil
+	a.combatTuningCooldownAddrs = nil
+	a.combatTuningChargeAddr = 0
+	a.combatTuningCooldownLease = nil
+	a.combatTuningChargeLease = nil
 	a.infiniteChallengeAddr = 0
 	a.infiniteChallengeOwnerToken = ""
 	a.charaOwnerToken = ""
@@ -2085,160 +2105,6 @@ func (a *App) readInfiniteChallengeStatusAt(addr uintptr) (InfiniteChallengeStat
 	}, nil
 }
 
-// ── 升级/强化材料消耗 (运行时 NOP add [r14+04],esi) ──
-
-type MaterialConsumeStatus struct {
-	RVA          uint64 `json:"rva"`
-	Enabled      bool   `json:"enabled"`
-	CurrentBytes string `json:"currentBytes"`
-}
-
-const materialConsumeRVA = uintptr(0x356621)
-
-var (
-	materialConsumeOrig  = []byte{0x41, 0x01, 0x76, 0x04}
-	materialConsumePatch = []byte{0x90, 0x90, 0x90, 0x90}
-)
-
-func (a *App) MaterialConsumeGetStatus() (MaterialConsumeStatus, error) {
-	if err := a.acquireGameProcessLease(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	return a.materialConsumeGetStatusLocked()
-}
-
-func (a *App) MaterialConsumeGetStatusOwned(token string) (MaterialConsumeStatus, error) {
-	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	return a.materialConsumeGetStatusLocked()
-}
-
-func (a *App) materialConsumeGetStatusLocked() (MaterialConsumeStatus, error) {
-	a.runtimePatchMu.Lock()
-	defer a.runtimePatchMu.Unlock()
-	if _, err := a.locateMaterialConsume(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.readMaterialConsumeStatus()
-}
-
-func (a *App) MaterialConsumeSetEnabled(enabled bool) (MaterialConsumeStatus, error) {
-	liveMemoryWriteMu.Lock()
-	defer liveMemoryWriteMu.Unlock()
-	if err := a.acquireGameProcessLease(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.materialConsumeSetEnabledLocked(enabled)
-}
-
-func (a *App) MaterialConsumeSetEnabledOwned(token string, enabled bool) (MaterialConsumeStatus, error) {
-	liveMemoryWriteMu.Lock()
-	defer liveMemoryWriteMu.Unlock()
-	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.materialConsumeSetEnabledLocked(enabled)
-}
-
-func (a *App) materialConsumeSetEnabledLocked(enabled bool) (MaterialConsumeStatus, error) {
-	a.runtimePatchMu.Lock()
-	defer a.runtimePatchMu.Unlock()
-	patch := materialConsumeOrig
-	if enabled {
-		patch = materialConsumePatch
-	}
-	addr, err := a.locateMaterialConsume()
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	current, err := a.readSharedRuntimePatch(addr)
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	if err := validateSharedRuntimePatchTransition(current, sharedRuntimePatchOwnerMaterialConsume, enabled); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	writer := func(data []byte) error { return writeCodeMemory(a.hProcess, addr, data) }
-	reader := func() ([]byte, error) { return a.readSharedRuntimePatch(addr) }
-	installResult, err := installCodeHookAtomic(current, patch, writer, reader)
-	if err != nil {
-		if installResult.RequiresRecoveryLease() {
-			a.poisonCurrentLiveMemoryWrites()
-		}
-		return MaterialConsumeStatus{}, fmt.Errorf("写入升级/强化材料消耗失败: %w", err)
-	}
-	return a.readMaterialConsumeStatus()
-}
-
-func (a *App) readMaterialConsumeStatus() (MaterialConsumeStatus, error) {
-	addr, err := a.locateMaterialConsume()
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	buf, err := a.readSharedRuntimePatch(addr)
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	owner := classifySharedRuntimePatch(buf)
-	if owner != sharedRuntimePatchOwnerNone && owner != sharedRuntimePatchOwnerMaterialConsume {
-		if owner == sharedRuntimePatchOwnerUnknown {
-			return MaterialConsumeStatus{}, fmt.Errorf("升级/强化材料消耗指令字节异常: %s", bytesToHex(buf))
-		}
-		return MaterialConsumeStatus{}, fmt.Errorf("共享补丁地址正由%s占用，请先恢复后再读取素材状态", sharedRuntimePatchOwnerLabel(owner))
-	}
-	return MaterialConsumeStatus{
-		RVA:          uint64(addr - a.moduleBase),
-		Enabled:      owner == sharedRuntimePatchOwnerMaterialConsume,
-		CurrentBytes: bytesToHex(buf),
-	}, nil
-}
-
-func (a *App) readSharedRuntimePatch(addr uintptr) ([]byte, error) {
-	buf := make([]byte, len(sharedInventoryMaterialOriginal))
-	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
-		return nil, fmt.Errorf("读取素材/小钳蟹共享指令失败: %w", err)
-	}
-	return buf, nil
-}
-
-func (a *App) locateMaterialConsume() (uintptr, error) {
-	if a.materialConsumeAddr != 0 {
-		return a.materialConsumeAddr, nil
-	}
-	fixed := a.moduleBase + materialConsumeRVA
-	if buf, err := a.readSharedRuntimePatch(fixed); err == nil {
-		owner := classifySharedRuntimePatch(buf)
-		if owner == sharedRuntimePatchOwnerNone || owner == sharedRuntimePatchOwnerMaterialConsume {
-			a.materialConsumeAddr = fixed
-			return fixed, nil
-		}
-		if owner == sharedRuntimePatchOwnerInventoryQuantity {
-			return 0, fmt.Errorf("共享补丁地址正由%s占用，请先恢复", sharedRuntimePatchOwnerLabel(owner))
-		}
-	}
-	mask := make([]bool, len(materialConsumeOrig))
-	for i := range mask {
-		mask[i] = true
-	}
-	addr, err := a.scanPatternUnique(materialConsumeOrig, mask, "升级/强化材料增减指令")
-	if err != nil {
-		return 0, fmt.Errorf("固定 RVA 已变化且特征扫描失败: %w", err)
-	}
-	a.materialConsumeAddr = addr
-	return addr, nil
-}
-
 // ── 其他皮肤紫色符文显示 (运行时 JNE/JE 切换) ──
 
 type OtherSkinPurpleRuneStatus struct {
@@ -2861,6 +2727,9 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.runtimePatchPatchOrder) != 0 ||
 		a.confluxTimerLease != nil ||
 		a.runtimeSpatialGravityLease != nil ||
+		a.materialConsumeLease != nil ||
+		a.combatTuningCooldownLease != nil ||
+		a.combatTuningChargeLease != nil ||
 		a.infiniteChallengeOwnerToken != "" ||
 		a.hasRuntimePatchSelectedCaptureLeaseLocked()
 }
@@ -3046,6 +2915,8 @@ type MonsterEnhanceItem struct {
 	Name              string `json:"name"`
 	RVA               uint64 `json:"rva"`
 	Available         bool   `json:"available"`
+	Candidate         bool   `json:"candidate,omitempty"`
+	EvidenceNote      string `json:"evidenceNote,omitempty"`
 	UnavailableReason string `json:"unavailableReason,omitempty"`
 	Enabled           bool   `json:"enabled"`
 	CurrentBytes      string `json:"currentBytes"`
@@ -3059,6 +2930,8 @@ type monsterPatchPoint struct {
 	Patch             []byte
 	Hook              bool
 	Available         bool
+	Candidate         bool
+	EvidenceNote      string
 	UnavailableReason string
 }
 
@@ -3088,12 +2961,22 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Available: true,
 	},
 	{
-		ID:        "monster_damage",
-		Name:      "怪物伤害",
-		RVA:       0x1FBDEB4,
-		Original:  []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05},
+		ID:        "monster_damage_new",
+		Name:      "怪物伤害（全队）",
+		RVA:       0x1F7A810,
+		Original:  []byte{0x48, 0x89, 0x51, 0x10, 0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC},
 		Hook:      true,
 		Available: true,
+		Candidate: true,
+		EvidenceNote: "2.0.2 EXE 入口、安装回读和恢复已验证；全队受击范围与倍率效果仍待多人实机样本。",
+	},
+	{
+		ID:                "monster_damage",
+		Name:              "怪物伤害（旧入口）",
+		RVA:               0x1FBDEB4,
+		Original:          []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05},
+		Hook:              true,
+		UnavailableReason: "旧入口只覆盖部分伤害路径，已由全队生效入口替代",
 	},
 	{
 		ID:                "crocodile_damage",
@@ -3261,7 +3144,7 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			return MonsterEnhanceResult{}, err
 		}
 		var auxiliary *monsterEnhanceAuxPreflight
-		if point != nil && point.ID == "monster_damage" {
+		if point != nil && (point.ID == "monster_damage" || point.ID == "monster_damage_new") {
 			auxiliary, err = a.prepareMonsterDamageAuxiliaryHook()
 			if err != nil {
 				return MonsterEnhanceResult{}, err
@@ -3408,6 +3291,8 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 			Name:              point.Name,
 			RVA:               uint64(point.RVA),
 			Available:         point.Available,
+			Candidate:         point.Candidate,
+			EvidenceNote:      point.EvidenceNote,
 			UnavailableReason: point.UnavailableReason,
 			Enabled:           enabled,
 			CurrentBytes:      currentHex,
@@ -3449,7 +3334,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 	}
 	invalidNumber := math.IsNaN(value) || math.IsInf(value, 0)
 	switch point.ID {
-	case "monster_hp", "monster_stun", "monster_damage", "crocodile_damage":
+	case "monster_hp", "monster_stun", "monster_damage", "monster_damage_new", "crocodile_damage":
 		if invalidNumber || value <= 0 || value > 9999 {
 			return fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
 		}
@@ -3470,7 +3355,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 }
 
 func monsterPatchNeedsArgument(id string) bool {
-	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "crocodile_damage" || id == "overdrive_state"
+	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "monster_damage_new" || id == "crocodile_damage" || id == "overdrive_state"
 }
 
 func monsterPatchActivity(available, patched int) (injected, allEnabled bool) {

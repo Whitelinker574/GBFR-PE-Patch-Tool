@@ -1315,19 +1315,32 @@ export function buildTableExactCandidates(atlas, targets, ownerCode = '', prepar
     .map(item => ({ ...item, source: 'table-exact' }))
 }
 
-function marginal(candidate, totals, targets) {
-  let score = 0
-  for (const [name, value] of contribution(candidate, targets)) {
-    const target = [...targets.values()].find(item => item.name === name)
-    const before = Math.min(target.cap, totals.get(name) || 0)
-    const after = Math.min(target.cap, before + value)
-    score += (after - before) * target.weight
-  }
-  return score
-}
-
 function scoreTotals(levels, orderedTargets) {
   return orderedTargets.reduce((sum, target, index) => sum + Math.min(target.cap, levels[index] || 0) * target.weight, 0)
+}
+
+// Skill-target mode is an ordered promise: target #1 may never be sacrificed
+// to improve #2, and so on. Keep this comparison separate from the aggregate
+// score so an arbitrary number of later targets cannot outweigh an earlier gap.
+function compareOrderedLevels(leftLevels, rightLevels, orderedTargets) {
+  for (let index = 0; index < orderedTargets.length; index++) {
+    const cap = orderedTargets[index].cap
+    const left = Math.min(cap, Number(leftLevels?.[index] || 0))
+    const right = Math.min(cap, Number(rightLevels?.[index] || 0))
+    if (left !== right) return right - left
+  }
+  return 0
+}
+
+function resultOrderedLevels(result, orderedTargets) {
+  const totals = new Map((result?.totals || []).map(item => [normalized(item?.name), Number(item?.effective || 0)]))
+  return orderedTargets.map(target => totals.get(normalized(target.name)) || 0)
+}
+
+function compareRankedTargetResults(left, right, orderedTargets, preferOwned = false) {
+  return compareOrderedLevels(resultOrderedLevels(left, orderedTargets), resultOrderedLevels(right, orderedTargets), orderedTargets)
+    || Number(right.score || 0) - Number(left.score || 0)
+    || compareCoverageStates(left, right, preferOwned)
 }
 
 function pickedSignature(picked) {
@@ -1405,7 +1418,9 @@ function solveExactRanked(candidates, targets, slotCount, limit, preferOwned = f
     ranked.push({ ...state, score: scoreTotals(state.levels, orderedTargets) })
   }
   return ranked
-    .sort((left, right) => right.score - left.score || compareCoverageStates(left, right, preferOwned))
+    .sort((left, right) => compareOrderedLevels(left.levels, right.levels, orderedTargets)
+      || right.score - left.score
+      || compareCoverageStates(left, right, preferOwned))
     .slice(0, limit)
     .map(resolved => {
       const rawLevels = orderedTargets.map(target => resolved.picked.reduce((sum, item) => sum + (contribution(item, wanted).get(target.name) || 0), 0))
@@ -1420,27 +1435,34 @@ function solveExactRanked(candidates, targets, slotCount, limit, preferOwned = f
 
 function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '', preferOwned = false) {
   const wanted = targetMap(targets)
+  const orderedTargets = [...wanted.values()]
   const totals = new Map([...wanted.values()].map(item => [item.name, 0]))
   const picked = []
   const pool = candidates.slice()
   while (picked.length < slotCount && pool.length) {
     let bestIndex = -1
-    let bestScore = 0
+    let bestVector = null
     let bestKey = ''
     for (let index = 0; index < pool.length; index++) {
       const item = pool[index]
       if (!picked.length && item.id === excludedFirstId) continue
-      const score = marginal(item, totals, wanted)
+      const values = contribution(item, wanted)
+      const vector = orderedTargets.map(target => {
+        const before = Math.min(target.cap, totals.get(target.name) || 0)
+        return Math.min(target.cap, before + Number(values.get(target.name) || 0)) - before
+      })
+      if (!vector.some(Boolean)) continue
       const key = candidateKey(item)
       const sourcePreferred = preferOwned && item.source === 'inventory' && bestIndex >= 0 && pool[bestIndex]?.source !== 'inventory'
       const sameSourcePriority = !preferOwned || bestIndex < 0 || (item.source === 'inventory') === (pool[bestIndex]?.source === 'inventory')
-      if (score > bestScore || (score === bestScore && score > 0 && (sourcePreferred || (sameSourcePriority && key < bestKey)))) {
+      const order = bestVector ? compareOrderedLevels(vector, bestVector, orderedTargets) : -1
+      if (order < 0 || (order === 0 && (sourcePreferred || (sameSourcePriority && key < bestKey)))) {
         bestIndex = index
-        bestScore = score
+        bestVector = vector
         bestKey = key
       }
     }
-    if (bestIndex < 0 || bestScore <= 0) break
+    if (bestIndex < 0) break
     const candidate = pool[bestIndex]
     picked.push(candidate)
     for (const [name, value] of contribution(candidate, wanted)) totals.set(name, (totals.get(name) || 0) + value)
@@ -1454,16 +1476,24 @@ function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '', p
   }
 }
 
+function solveOrderedGreedyRanked(candidates, targets, slotCount, limit, preferOwned = false) {
+  const primary = solveGreedyOnce(candidates, targets, slotCount, '', preferOwned)
+  const variants = [primary]
+  const rankedIds = [...new Set([...(primary.picked || []).map(item => item.id), ...(candidates || []).map(item => item.id)])].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'en'))
+  for (const id of rankedIds.slice(0, Math.max(0, limit * 2 - 1))) variants.push(solveGreedyOnce(candidates, targets, slotCount, id, preferOwned))
+  return variants
+}
+
 function solveRanked(candidates, targets, slotCount, limit, preferOwned = false) {
+  // More than four independent target axes can make exact DP grow
+  // exponentially. Ordered greedy is linear in the candidate pool and matches
+  // the UI contract: finish each earlier target before spending slots later.
+  if (targetMap(targets).size > 4) return solveOrderedGreedyRanked(candidates, targets, slotCount, limit, preferOwned)
   try {
     return solveExactRanked(candidates, targets, slotCount, limit, preferOwned)
   } catch (error) {
     if (error?.message !== 'optimizer.exact_state_limit') throw error
-    const primary = solveGreedyOnce(candidates, targets, slotCount, '', preferOwned)
-    const variants = [primary]
-    const rankedIds = [...new Set([...(primary.picked || []).map(item => item.id), ...(candidates || []).map(item => item.id)])].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'en'))
-    for (const id of rankedIds.slice(0, Math.max(0, limit * 2 - 1))) variants.push(solveGreedyOnce(candidates, targets, slotCount, id, preferOwned))
-    return variants
+    return solveOrderedGreedyRanked(candidates, targets, slotCount, limit, preferOwned)
   }
 }
 
@@ -1599,6 +1629,7 @@ export function solveLoadoutSuggestionsByDomain({ domains, targets, slotCount = 
 
 export function solveLoadoutSuggestions({ candidates, targets, slotCount = 12, limit = 10, scenario = {} }) {
   const preferOwned = scenario.domain === 'owned-first' || scenario.preferOwned === true
+  const orderedTargets = [...targetMap(targets || []).values()]
   const variants = scenario.mode === 'combat'
     ? solveCombatRanked(candidates || [], slotCount, limit, scenario)
     : solveRanked(candidates || [], targets || [], slotCount, limit, preferOwned)
@@ -1608,7 +1639,9 @@ export function solveLoadoutSuggestions({ candidates, targets, slotCount = 12, l
     if (!unique.has(key)) unique.set(key, result)
   }
   const ranked = [...unique.values()]
-    .sort((a, b) => b.score - a.score || compareCoverageStates(a, b, preferOwned))
+    .sort((a, b) => scenario.mode === 'combat'
+      ? Number(b.score || 0) - Number(a.score || 0) || compareCoverageStates(a, b, preferOwned)
+      : compareRankedTargetResults(a, b, orderedTargets, preferOwned))
     .slice(0, limit)
   const primary = ranked[0] || null
   const annotated = annotateOptimizerAlternatives(ranked, { ...scenario, slotCount })

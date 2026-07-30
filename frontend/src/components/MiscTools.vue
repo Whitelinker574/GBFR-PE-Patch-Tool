@@ -40,7 +40,7 @@ const runtimeCatalog = computed(() => {
     resources: [
       ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
-      ['素材不消耗', '强化、练成期间临时阻止素材变化', '已适配'],
+      ['素材不消耗', '只阻止素材扣减；正向获得路径待实机核对', '实验候选'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
     mission: [
@@ -422,10 +422,10 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: materialConsumeStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">素材不消耗</span>
-            <span class="info-dot" title="开启后材料数量不会减少；同一指令也会阻止材料增加。">!</span>
+            <span class="info-dot" title="条件 Hook 已通过安装、回读和恢复测试；实际扣减与正向获得仍需游戏内分别核对。">!</span>
             <span class="memory-hint">校验 RVA，失效时 AOB 重定位</span>
           </div>
-          <p class="feature-help">用途：强化或练成时让素材数量不减少；同一指令也会阻止素材增加，因此用完立刻恢复，开启时不要进入副本。</p>
+          <p class="feature-help">用途：强化或练成时尝试只跳过素材扣减。代码已验证安装、回读与恢复；任务奖励、拾取和药水等正向获得是否不受影响仍待实机验收。离开本页或退出工具时会尝试恢复原始指令。</p>
           <p v-if="inventorySet45Enabled" class="feature-help waiting">小钳蟹数量钩子正在占用同一指令地址；先恢复小钳蟹功能，才能切换素材不消耗。</p>
           <div class="memory-info">
             <span>RVA: {{ formatHex(materialConsumeStatus.rva) }}</span>

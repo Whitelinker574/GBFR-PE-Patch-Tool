@@ -6,7 +6,7 @@ import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLe
 const emit = defineEmits(['status'])
 const RUNTIME_LEASE_SCOPE = 'monster-enhance'
 
-const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage: '1', crocodile_damage: '1', sba_chain_timer: '3' }
+const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage_new: '1', crocodile_damage: '1', sba_chain_timer: '3' }
 const sessionMultipliers = window.gbfrMonsterEnhanceMultipliers || (window.gbfrMonsterEnhanceMultipliers = { ...defaultMultipliers })
 
 const loading = ref(false)
@@ -25,7 +25,9 @@ function applyResult(res) {
   result.injected = !!(res && res.injected)
   result.enabled = !!(res && res.enabled)
   result.currentBytes = (res && res.currentBytes) || ''
-  result.items = incoming.filter(item => item.id !== 'inventory_set_45').map((item) => Object.assign(previous.get(item.id) || {}, item))
+  result.items = incoming
+    .filter(item => item.id !== 'inventory_set_45' && item.id !== 'monster_damage')
+    .map((item) => Object.assign(previous.get(item.id) || {}, item))
 }
 
 async function refreshStatus() {
@@ -84,7 +86,7 @@ async function disconnect() {
 }
 
 function needsMultiplier(item) {
-  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage' || item.id === 'crocodile_damage' || item.id === 'sba_chain_timer'
+  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage_new' || item.id === 'crocodile_damage' || item.id === 'sba_chain_timer'
 }
 
 function needsOverdriveState(item) {
@@ -98,7 +100,7 @@ function needsSbaTimer(item) {
 function multiplierHint(item) {
   if (item.id === 'monster_hp') return '输入 10 = 怪物10倍血'
   if (item.id === 'monster_stun') return '输入 10 = 怪物10倍昏厥条'
-  if (item.id === 'monster_damage') return '输入 32 = 怪物伤害32倍'
+  if (item.id === 'monster_damage_new') return '输入 32 = 当前队伍承受的怪物伤害 32 倍'
   if (item.id === 'crocodile_damage') return '输入 10 = 鳄鱼10倍血'
   if (item.id === 'sba_chain_timer') return '游戏默认 3 秒'
   return ''
@@ -183,13 +185,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="result.items.length" class="card-grid ui-card-grid">
-        <article v-for="item in result.items" :key="item.id" class="feature-card ui-card ui-panel is-compact" :class="{ 'is-active': item.enabled, 'is-unavailable': !item.available }">
+        <article v-for="item in result.items" :key="item.id" class="feature-card ui-card ui-panel is-compact" :class="{ 'is-active': item.enabled, 'is-unavailable': !item.available, 'is-candidate': item.candidate }">
           <header class="feature-head ui-split">
             <h3 class="ui-section-title">{{ item.name }}</h3>
-            <span class="ui-tag" :class="item.enabled ? 'is-ok' : ''">{{ !item.available ? '待适配' : (item.enabled ? '已开启' : '已关闭') }}</span>
+            <span class="ui-tag" :class="item.enabled ? 'is-ok' : (item.candidate ? 'is-warn' : '')">{{ !item.available ? '待适配' : (item.candidate ? (item.enabled ? '实验候选 · 已开启' : '实验候选') : (item.enabled ? '已开启' : '已关闭')) }}</span>
           </header>
 
           <p v-if="!item.available" class="unavailable-copy">{{ item.unavailableReason || '当前游戏版本定位未闭环' }}</p>
+          <p v-else-if="item.candidate" class="candidate-copy">{{ item.evidenceNote || '安装与恢复路径已验证，实际游戏效果仍待实机验收。' }}</p>
 
           <label v-if="needsMultiplier(item)" class="ui-field">
             <span class="ui-field-label">参数值 <em>{{ multiplierHint(item) }}</em></span>
@@ -244,7 +247,9 @@ onBeforeUnmount(() => {
 .card-grid { --ui-grid-min:320px; }
 .feature-card { align-content:start; }
 .feature-card.is-active { border-color:var(--success); background:var(--success-bg); }
+.feature-card.is-candidate { border-left:3px solid var(--warning); }
 .feature-card.is-unavailable { border-style:dashed; }
+.candidate-copy { margin:0; color:var(--warning-ink); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .feature-head { align-items:flex-start; }
 .unavailable-copy { margin:0; color:var(--text-muted); font-size:var(--fs-sm); }
 .feature-actions { margin-top:auto; }

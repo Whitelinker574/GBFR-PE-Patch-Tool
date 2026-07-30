@@ -11,6 +11,8 @@ const uiI18n = read('./i18n-ui.js')
 const patchCatalogBackend = read('../../internal/backend/runtime_patch_catalog.go')
 const patchRuntimeBackend = read('../../internal/backend/runtime_patch_runtime.go')
 const confluxTimerBackend = read('../../internal/backend/conflux_timer.go')
+const combatTuningBackend = read('../../internal/backend/combat_tuning.go')
+const wailsBindings = read('../wailsjs/go/backend/App.js')
 const productionCatalog = JSON.parse(read('../../internal/backend/data/runtime_patch_catalog.json'))
 const assetManifest = JSON.parse(read('../public/generated/function-assets/manifest.json'))
 
@@ -113,6 +115,42 @@ test('page navigation hides the persistent patch session without unmounting or r
   assert.doesNotMatch(patchTool, /<section v-else :key="activeTab" class="tool-stage"/)
   assert.match(patchPage, /const emit = defineEmits\(\['status', 'session-change'\]\)/)
   assert.match(patchPage, /emit\('session-change',[\s\S]*?connected:/)
+  assert.match(patchPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseRuntimePatchPageOwner/)
+})
+
+test('priority cooldown and shared charge controls use the owned persistent session and verified readback', () => {
+  for (const api of [
+    'CombatTuningGetStatusOwned',
+    'CombatTuningSetCooldownOwned',
+    'CombatTuningSetChargeOwned',
+  ]) {
+    assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} component binding`)
+    assert.match(wailsBindings, new RegExp(`export function ${api}\\b`), `${api} generated binding`)
+    assert.match(combatTuningBackend, new RegExp(`func \\(a \\*App\\) ${api}\\b`), `${api} backend contract`)
+  }
+
+  assert.match(patchPage, /Promise\.all\(\[[\s\S]*?fetchVerifiedStatuses\(ownerToken\)[\s\S]*?ConfluxTimerGetStatusOwned\(ownerToken\)[\s\S]*?CombatTuningGetStatusOwned\(ownerToken\)/)
+  assert.match(patchPage, /normalizeCombatTuningStatus\(nextCombatTuningStatus\)/)
+  assert.match(patchPage, /async function setCombatTuningEnabled\([^)]*\)[\s\S]*?CombatTuningSetCooldownOwned[\s\S]*?CombatTuningSetChargeOwned[\s\S]*?fetchVerifiedSession\(ownerToken\)[\s\S]*?combatTuningStatusMatchesRequest[\s\S]*?applyVerifiedSession/)
+  assert.match(patchPage, /applyVerifiedSession\(verifiedSession, true\)/)
+  assert.doesNotMatch(patchPage.match(/async function setCombatTuningEnabled\([^]*?\n\}/)?.[0] || '', /combatTuningStatus\.value\.[^.]+\.enabled\s*=/)
+
+  const combatCardAt = patchPage.indexOf(`v-if="mode === 'combat'"`)
+  const characterCardAt = patchPage.indexOf(`v-if="mode === 'characters'"`)
+  const catalogAt = patchPage.indexOf('<section class="patch-browser')
+  assert.ok(combatCardAt >= 0 && characterCardAt > combatCardAt && catalogAt > characterCardAt, 'parameter cards stay ahead of the catalog')
+
+  assert.match(patchPage, /能力冷却调整/)
+  assert.match(patchPage, /仅自己（默认）/)
+  assert.match(patchPage, /应用全队（实验）/)
+  assert.match(patchPage, /type="number"[\s\S]*?min="0\.1"[\s\S]*?max="100"/)
+  assert.match(patchPage, /伊欧 \/ 巴萨拉卡 \/ 冈达葛萨：蓄力调整/)
+  assert.match(patchPage, /共享候选入口/)
+  assert.match(patchPage, /瞬间蓄力/)
+  assert.match(patchPage, /实验候选/)
+  assert.match(patchPage, /冈达葛萨「瞬间直冲拳」正在占用相关机制/)
+  assert.match(patchPage, /\.tuning-segment\.ui-seg\s*\{[^}]*border-radius\s*:\s*0[^}]*background\s*:\s*transparent/is)
+  assert.match(patchPage, /\.tuning-segment \.ui-seg-btn\.is-on\s*\{[^}]*border-bottom-color/is)
   assert.match(patchPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseRuntimePatchPageOwner/)
 })
 
@@ -219,6 +257,9 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
     'ConfluxTimerGetStatusOwned',
     'ConfluxTimerSetEnabledOwned',
     'ConfluxTimerVerifyStatusOwned',
+    'CombatTuningGetStatusOwned',
+    'CombatTuningSetCooldownOwned',
+    'CombatTuningSetChargeOwned',
   ]) assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} binding`)
 
   assert.match(patchPage, /CharaAcquire\(nextRuntimeAcquireRequestID\(\)\)/)
@@ -312,7 +353,7 @@ test('new navigation, safety, state and recovery copy is covered by the UI trans
   }
 })
 
-test('all 58 production runtime patch features, groups and dynamic page messages render without Chinese in English mode', async () => {
+test('all 59 production runtime patch features, groups and dynamic page messages render without Chinese in English mode', async () => {
   const {
     runtimePatchEnglishFeatureNames,
     translateRuntimePatchFeatureName,
@@ -321,7 +362,7 @@ test('all 58 production runtime patch features, groups and dynamic page messages
   } = await import(`./runtimePatchTranslations.js?complete=${Date.now()}`)
   const cjk = /[\u3400-\u9fff]/u
 
-  assert.equal(productionCatalog.features.length, 58, 'the production fixture must remain the audited live-feature catalog')
+  assert.equal(productionCatalog.features.length, 59, 'the production fixture must remain the audited live-feature catalog')
   assert.equal(Object.keys(runtimePatchEnglishFeatureNames).length, productionCatalog.features.length)
   for (const feature of productionCatalog.features) {
     const englishName = translateRuntimePatchFeatureName(feature, 'en')
@@ -335,6 +376,17 @@ test('all 58 production runtime patch features, groups and dynamic page messages
   const dynamicSamples = [
     '正在读取实时功能目录…',
     '功能目录已就绪；连接游戏后可读取实时状态。',
+    '能力冷却调整', '三角色共享蓄力调整',
+    '伊欧 / 巴萨拉卡 / 冈达葛萨：蓄力调整',
+    '先选调整方式和作用范围，再应用；不会因为切换补丁页而停止。',
+    '这是一个共享候选入口：先选瞬间蓄力或速度倍率，再统一应用。',
+    '实验候选', '冷却调整方式', '蓄力调整方式', '速度倍率', '无冷却', '瞬间蓄力',
+    '冷却速度倍率', '蓄力速度倍率', '仅自己（默认）', '应用全队（实验）',
+    '全队识别仍待实机：只在离线任务中测试，并确认没有影响敌人或召唤物。',
+    '三个 2.0.2 EXE 入口与恢复路径已核对；本机/全队识别和实际冷却倍率仍待任务实测。',
+    '2.0.2 EXE 共享蓄力入口与恢复路径已核对；仅作为伊欧、巴萨拉卡、冈达葛萨候选，实际角色范围待实测。',
+    '冈达葛萨「瞬间直冲拳」正在占用相关机制；先恢复它，再应用共享蓄力调整。',
+    '当前保持游戏默认', '已回读 3 个候选入口', '更新并回读', '应用设置',
     '已读取 58 项已验证补丁',
     '读取实时功能目录失败：未知错误',
     '后端未返回连接所有权令牌',

@@ -247,6 +247,36 @@ test('exact coverage solver beats the greedy marginal counterexample', () => {
   assert.deepEqual(result.picked.map(item => item.id).sort(), ['a', 'b'])
 })
 
+test('skill-target solver treats display order as a strict priority contract', () => {
+  const orderedTargets = [
+    { name: 'First', cap: 10, weight: 1 },
+    { name: 'Later', cap: 10, weight: 100 },
+  ]
+  const candidates = [
+    { id: 'complete-first', source: 'inventory', slotId: 1, name: 'Complete first', traits: [{ name: 'First', level: 10 }] },
+    { id: 'tempting-total', source: 'inventory', slotId: 2, name: 'Tempting total', traits: [{ name: 'First', level: 9 }, { name: 'Later', level: 10 }] },
+  ]
+  const [result] = solveLoadoutSuggestions({ candidates, targets: orderedTargets, slotCount: 1, limit: 2 })
+  assert.equal(result.picked[0].id, 'complete-first')
+  assert.equal(result.totals[0].effective, 10)
+  assert.equal(result.totals[1].effective, 0)
+})
+
+test('skill-target solver accepts more than four goals and fills them from first to last', () => {
+  const orderedTargets = Array.from({ length: 7 }, (_, index) => ({ name: `Target ${index + 1}`, cap: 10, weight: 1 }))
+  const candidates = orderedTargets.map((target, index) => ({
+    id: `target-${index + 1}`,
+    source: 'inventory',
+    slotId: index + 1,
+    name: target.name,
+    traits: [{ name: target.name, level: 10 }],
+  }))
+  const [result] = solveLoadoutSuggestions({ candidates, targets: orderedTargets, slotCount: 5, limit: 3 })
+  assert.deepEqual(result.picked.map(item => item.id), ['target-1', 'target-2', 'target-3', 'target-4', 'target-5'])
+  assert.deepEqual(result.totals.map(item => item.effective), [10, 10, 10, 10, 10, 0, 0])
+  assert.equal(result.method, 'heuristic-fallback')
+})
+
 test('exact inventory solver stays deterministic with repeated equivalent instances', () => {
   const repeated = Array.from({ length: 80 }, (_, index) => ({
     id: `slot:${index + 1}`, slotId: index + 1, source: 'inventory', name: 'Cap+',
