@@ -172,6 +172,9 @@ function submit() {
         <div v-if="usesEndgameProgression" class="import-normalization-note">
           <b>毕业归一化 Lv100 · MLv55</b><span>因子、武器、祝福与上限突破按当前目录最高有效等级准备；没有真实角色基础快照时，不会伪造或强写角色基础字段。</span>
         </div>
+        <div v-if="draft.warnings?.length" class="import-alert">
+          <b>已自动修正无效副词条</b><span v-for="warning in draft.warnings" :key="warning">{{ warning }}</span>
+        </div>
 
         <div class="import-grid">
           <button type="button" class="import-choice risk" :class="{ on: choices.characterLevel, locked: needsLevel100Selection, unavailable: !has.characterLevel }" :disabled="!has.characterLevel" @click="toggle('characterLevel')">

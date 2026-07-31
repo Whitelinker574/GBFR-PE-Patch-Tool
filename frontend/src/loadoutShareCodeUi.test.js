@@ -7,6 +7,7 @@ const editor = read('./components/LoadoutEditor.vue')
 const dialog = read('./components/LoadoutShareCodeDialog.vue')
 const publishDialog = read('./components/LoadoutPublishDialog.vue')
 const viewer = read('./components/LoadoutViewer.vue')
+const qrDecoder = read('./loadoutShareQR.js')
 const backend = read('../../internal/backend/loadout_share_code.go')
 const binding = read('../wailsjs/go/backend/App.js')
 
@@ -56,8 +57,21 @@ test('share dialog prioritises readable short codes and keeps long codes collaps
 	assert.match(dialog, /result \? emit\('publish'\) : emit\('generate'\)/u)
 	assert.doesNotMatch(dialog, /if \(!props\.result && props\.canGenerate\) emit\('generate'\)/u)
 	assert.match(dialog, /maxlength="80"/u)
+  assert.match(dialog, /导入配装图/u)
+  assert.match(dialog, /accept="image\/png,image\/jpeg,image\/webp,image\/bmp"/u)
+  assert.match(dialog, /decodeLoadoutShareQRFile\(file\)[\s\S]*?emit\('import', decoded\)/u)
+  assert.match(dialog, /图片只在本机处理，不会上传/u)
   assert.match(dialog, /await copyShareText\(value\)/u)
   assert.doesNotMatch(dialog, /legacyCopy|field\.focus\(\)/u)
+})
+
+test('loadout image QR decoding is bounded and rejects unrelated QR content', () => {
+  assert.match(qrDecoder, /LOADOUT_SHARE_QR_MAX_FILE_BYTES = 32 \* 1024 \* 1024/u)
+  assert.match(qrDecoder, /MAX_CANVAS_EDGE = 2560/u)
+  assert.match(qrDecoder, /MAX_CANVAS_PIXELS = 8_000_000/u)
+  assert.match(qrDecoder, /import\('jsqr'\)[\s\S]*?jsQR\(data, width, height, \{ inversionAttempts: 'attemptBoth' \}\)/u)
+  assert.match(qrDecoder, /isOfflineLoadoutShareCode\(raw\)/u)
+  assert.match(qrDecoder, /qr_not_loadout/u)
 })
 
 test('share code backend owns versioned framing compression limits and checksum verification', () => {

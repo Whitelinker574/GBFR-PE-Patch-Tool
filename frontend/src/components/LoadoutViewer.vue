@@ -1,6 +1,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectLogsLoadoutSharesFresh, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLoadoutShare, PublishLoadoutShareNamed, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectLogsLoadoutSharesFresh, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { characterIdentityByPLID } from '../characterRoster.js'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
@@ -45,6 +45,12 @@ const logsPublishBusy = ref(false)
 const logsPublishError = ref('')
 const logsPublishResult = ref(null)
 const logsPublishGate = createOperationGate()
+const cardPublishTarget = ref(null)
+const cardPublishTitle = ref('')
+const cardPublishBusy = ref(false)
+const cardPublishError = ref('')
+const cardPublishResult = ref(null)
+const cardPublishGate = createOperationGate()
 const pendingAtlasConstruct = ref(null)
 const pendingOptimizerTarget = ref(null)
 const editorTargetUnitId = ref(0)
@@ -193,13 +199,74 @@ function openCardTool(loadout, tool) {
 function closeCardTool() { activeCardTool.value = null }
 function cardToolOpen(loadout, tool) { return activeCardTool.value?.unitId === loadout?.unitId && activeCardTool.value?.tool === tool }
 function shareGroup(loadout) { return currentGroup.value && loadout ? { ...currentGroup.value, loadouts: [loadout] } : null }
-function publishedShareFor(loadout) {
-  if (!loadout || !currentGroup.value) return null
-  return publishedLoadoutShare(loadoutShareSessionKey({
+function cardShareSessionKey(loadout) {
+  if (!loadout || !currentGroup.value) return ''
+  return loadoutShareSessionKey({
     savePath: savePath.value,
     charaHash: currentGroup.value.charaHash,
     unitId: loadout.unitId,
-  }))
+  })
+}
+function publishedShareFor(loadout) {
+  return publishedLoadoutShare(cardShareSessionKey(loadout))
+}
+function openCardPublish(loadout) {
+  if (!loadout || loadout.isParty || cardPublishBusy.value) return
+  cardPublishGate.invalidate()
+  cardPublishTarget.value = loadout
+  cardPublishTitle.value = loadout.name || tx(
+    `${currentGroup.value?.charaName || '角色'} · 槽 ${String(loadout.slot).padStart(2, '0')}`,
+    `${currentGroup.value?.charaName || 'Character'} · Slot ${String(loadout.slot).padStart(2, '0')}`,
+  )
+  cardPublishError.value = ''
+  cardPublishResult.value = publishedShareFor(loadout)
+}
+function closeCardPublish() {
+  cardPublishGate.invalidate()
+  cardPublishTarget.value = null
+  cardPublishError.value = ''
+  cardPublishResult.value = null
+}
+async function copyCardPublishedLink(result) {
+  if (!result?.url) return
+  try {
+    await copyShareText(result.url)
+    emit('status', tx(`已复制配装链接：${result.code}`, `Copied loadout link: ${result.code}`), 'success')
+  } catch (error) {
+    const message = tx(`复制失败，请手动复制链接：${String(error)}`, `Copy failed; copy the link manually: ${String(error)}`)
+    cardPublishError.value = message
+    emit('status', message, 'error')
+  }
+}
+async function publishCardLoadout() {
+  const target = cardPublishTarget.value
+  if (!target || target.isParty || cardPublishBusy.value) return
+  const cached = publishedShareFor(target)
+  if (cached) {
+    cardPublishResult.value = cached
+    await copyCardPublishedLink(cached)
+    return
+  }
+  const operation = cardPublishGate.begin('publish')
+  if (!operation) return
+  const title = cardPublishTitle.value.trim()
+  const sessionKey = cardShareSessionKey(target)
+  cardPublishBusy.value = true
+  cardPublishError.value = ''
+  try {
+    const published = title
+      ? await PublishLoadoutShareNamed(savePath.value, target.unitId, title)
+      : await PublishLoadoutShare(savePath.value, target.unitId)
+    rememberPublishedLoadoutShare(sessionKey, published)
+    if (!cardPublishGate.isCurrent(operation) || cardPublishTarget.value !== target) return
+    cardPublishResult.value = published
+    await copyCardPublishedLink(published)
+  } catch (error) {
+    if (cardPublishGate.isCurrent(operation)) cardPublishError.value = String(error)
+  } finally {
+    cardPublishBusy.value = false
+    cardPublishGate.finish(operation)
+  }
 }
 function firstEditableLoadout() {
   return currentGroup.value?.loadouts?.find(item => !item.isParty) || null
@@ -723,6 +790,22 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
               <span><small>昏厥</small><b>≈{{ formatNumber(previewFor(lo).finalStats.stunPower, 1) }}</b></span>
             </div>
             <p v-if="previewFor(lo)?.error" class="preview-error">{{ previewFor(lo).error }}</p>
+            <div v-if="!lo.isParty" class="loadout-share-row">
+              <span class="loadout-share-state">
+                <small>{{ tx('线上分享短码', 'Online Share Code') }}</small>
+                <strong v-if="publishedShareFor(lo)?.code">{{ publishedShareFor(lo).code }}</strong>
+                <strong v-else class="is-empty">{{ tx('尚未生成', 'Not Generated') }}</strong>
+                <em>{{ publishedShareFor(lo)?.url ? tx('已上传，可直接复制链接或用于分享图二维码', 'Published and ready for link copying or share-image QR') : tx('上传后会在这里保留短码，并自动交给分享图工坊', 'Publish once to keep the code here and reuse it in the share-image workshop') }}</em>
+              </span>
+              <button
+                type="button"
+                class="ui-btn is-sm loadout-share-action"
+                :disabled="cardPublishBusy"
+                @click="publishedShareFor(lo)?.url ? copyCardPublishedLink(publishedShareFor(lo)) : openCardPublish(lo)"
+              >
+                {{ publishedShareFor(lo)?.url ? tx('复制链接', 'Copy Link') : tx('上传短码', 'Publish Code') }}
+              </button>
+            </div>
             <div v-if="expanded.has(lo.unitId)" class="detail">
               <div class="loadout-detail-actions" aria-label="当前配装操作">
                 <span><b>{{ lo.name || (lo.isParty ? '当前实时配装' : `槽 ${String(lo.slot).padStart(2, '0')}`) }}</b><small>所有操作都绑定 {{ currentGroup.charaName }} 和当前来源存档</small></span>
@@ -772,6 +855,21 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
       <section v-else-if="!loading && !savePath" class="section ui-card ui-panel is-compact">
         <p class="empty ui-empty">选择存档位或浏览文件后，这里会显示真实角色与配装预设。</p>
       </section>
+
+      <LoadoutPublishDialog
+        :open="Boolean(cardPublishTarget)"
+        :title="cardPublishTitle"
+        :character-name="currentGroup?.charaName || ''"
+        :subtitle="cardPublishTarget?.weaponName || cardPublishTarget?.weapon?.name || ''"
+        :image="currentGroup ? characterAssetIcon(currentGroup.charaHash) : ''"
+        :busy="cardPublishBusy"
+        :result="cardPublishResult"
+        :error="cardPublishError"
+        @update:title="cardPublishTitle = $event"
+        @close="closeCardPublish"
+        @submit="publishCardLoadout"
+        @copy="copyCardPublishedLink(cardPublishResult)"
+      />
     </template>
   </div>
 </template>
@@ -878,6 +976,13 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .loadout-stat-strip span { min-width:0; display:flex; flex-direction:column; padding:4px 6px; background:rgba(139,103,55,.045); }
 .loadout-stat-strip small { color:var(--text-muted); font-size:10px; }
 .loadout-stat-strip b { overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.loadout-share-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:center; padding:8px 10px; border:1px solid color-mix(in srgb,var(--accent) 18%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 92%,#e6f4f7); }
+.loadout-share-state { min-width:0; display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:4px var(--space-3); align-items:baseline; }
+.loadout-share-state small { color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
+.loadout-share-state strong { color:var(--success-ink); font-family:var(--font-data); font-size:var(--fs-sm); letter-spacing:0; white-space:nowrap; }
+.loadout-share-state strong.is-empty { color:var(--text-secondary); font-family:var(--font-body); font-weight:var(--fw-semibold); }
+.loadout-share-state em { min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; white-space:nowrap; }
+.loadout-share-action { min-width:88px; border-color:color-mix(in srgb,var(--accent) 28%,var(--border-soft)); background:var(--surface-card-pop); color:var(--accent-hover); box-shadow:none; }
 .empty { margin:0; }
 .logs-library-entry { width:100%; min-width:0; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:var(--space-3); padding:var(--space-4); border:1px solid var(--border-strong); border-left:4px solid var(--accent); background:var(--surface-card-pop); color:inherit; text-align:left; cursor:pointer; box-shadow:var(--shadow-1); }
 .logs-library-entry:hover { border-color:var(--accent); background:var(--accent-soft); }
@@ -975,6 +1080,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
   .loadout-card-toggle .expand-mark { grid-column:4; grid-row:1/4; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
   .loadout-stat-strip { grid-template-columns:repeat(2,minmax(70px,1fr)); }
+  .loadout-share-state { grid-template-columns:auto auto; }
+  .loadout-share-state em { grid-column:1/-1; }
   .logs-library-main { grid-template-columns:48px minmax(0,1fr); }
   .logs-library-seal { width:48px; height:48px; }
   .logs-source-actions { grid-column:1/-1; justify-self:stretch; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -986,6 +1093,10 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	.loadout-detail-actions > span { grid-column:auto; }
 	.detail-block-heading { align-items:stretch; flex-direction:column; }
 	.loadout-inline-tool { padding:var(--space-2); }
+	.loadout-share-row { grid-template-columns:minmax(0,1fr); }
+	.loadout-share-state { grid-template-columns:minmax(0,1fr); }
+	.loadout-share-state em { grid-column:auto; overflow:visible; white-space:normal; }
+	.loadout-share-action { width:100%; }
 	.logs-library-entry { grid-template-columns:36px minmax(0,1fr); }
 	.logs-entry-mark { width:36px; height:36px; }
 	.logs-library-entry > b { display:none; }

@@ -372,6 +372,14 @@ test('single-loadout import constructs independent factors and blocks partial wr
   assert.match(importDialog, /毕业归一化 Lv100 · MLv55/)
 })
 
+test('loadout import keeps automatic sigil repairs visible without treating them as missing resources', () => {
+  assert.match(importDialog, /draft\.warnings\?\.length/)
+  assert.match(importDialog, /已自动修正无效副词条/)
+  assert.match(source, /const importWarnings = ref\(\[\]\)/)
+  assert.match(source, /importWarnings\.value = \[\.\.\.new Set\(\(draft\.warnings \|\| \[\]\)\.filter\(Boolean\)\)\]/)
+  assert.match(source, /v-if="op === 'write' && importWarnings\.length" class="import-warning"/)
+})
+
 test('missing loadout scopes stay visible but cannot be selected or submitted', () => {
   assert.doesNotMatch(importDialog, /v-if="has\.(?:characterLevel|factors|skills|mastery|masterProgress|weapon|weaponSkills|weaponEnhancement|wrightstone|summons|overLimit|characterGrowth|characterWeaponCollection|characterWeaponWrightstones)"/)
   assert.match(importDialog, /当前配装未记录此内容，目标存档保持不变/)

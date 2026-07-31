@@ -879,6 +879,8 @@ export const uiTranslations = {
   '当前因子不是游戏 2.0.2 中可用的有效因子，写入后不会按画面中的内容生效。请从列表重新选择因子。': 'The current sigil is not a valid usable sigil in game version 2.0.2, so the on-screen values will not take effect if written. Select a sigil from the list.',
   '当前因子的主词条无法验证，请从因子列表重新选择': 'The current primary trait cannot be verified. Select the sigil again from the list.',
   '已清空不兼容的副词条；它在游戏中不会生效，不用写入': 'Cleared the incompatible secondary trait because it would not take effect in-game and does not need to be written',
+  '已自动修正无效副词条': 'Invalid Secondary Traits Corrected',
+  '已载入所选草稿并自动修正：%s': 'Loaded the selected draft with automatic corrections: %s',
   '因子等级不是已知自然等级': 'Sigil level is not a known natural level',
   '主词条等级不是已知自然等级': 'Primary-trait level is not a known natural level',
   '副词条等级不是已知自然等级': 'Secondary-trait level is not a known natural level',

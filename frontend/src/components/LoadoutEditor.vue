@@ -38,6 +38,7 @@ const loading = ref(false)
 const applying = ref(false)
 const sharing = ref(false)
 const importMissing = ref([])
+const importWarnings = ref([])
 const importApplyPayload = ref(null)
 const importDraft = ref(null)
 const importSelection = ref(null)
@@ -921,6 +922,7 @@ function setMasteryHashes(hashes) {
 
 function hydrateFromTarget({ preserveImport = false } = {}) {
   importMissing.value = []
+  importWarnings.value = []
   if (!preserveImport) {
     importApplyPayload.value = null
     importDraft.value = null
@@ -1485,6 +1487,7 @@ function applyImportChoices(choices) {
 	if (choices.characterGrowth) scopes.push('characterGrowth')
   if (choices.summons) scopes.push('summons')
   importMissing.value = [...new Set(scopes.flatMap(scope => byScope[scope] || []))]
+  importWarnings.value = [...new Set((draft.warnings || []).filter(Boolean))]
   importDraft.value = null
 
   const labels = [
@@ -1496,6 +1499,8 @@ function applyImportChoices(choices) {
   ].filter(Boolean)
   if (importMissing.value.length) {
     emit('status', `已载入所选草稿，但缺少：${importMissing.value.join('；')}；保存已锁定`, 'error')
+  } else if (importWarnings.value.length) {
+    emit('status', `已载入所选草稿并自动修正：${importWarnings.value.join('；')}`, 'warning')
   } else {
     emit('status', `已载入：${labels.join('、')}。未选择的目标存档内容保持原值`, 'success')
   }
@@ -1906,6 +1911,7 @@ async function apply() {
         <button type="button" class="ui-btn is-ghost" @click="hydrateFromTarget">取消导入草稿</button>
       </section>
       <p v-if="op === 'write' && importMissing.length" class="import-blocker" role="alert">导入草稿缺少资源，为避免只写入部分配装，保存已锁定：{{ importMissing.join('；') }}。补齐后请重新导入。</p>
+      <p v-if="op === 'write' && importWarnings.length" class="import-warning" role="status">{{ importWarnings.join('；') }}</p>
       <template v-if="op === 'write'">
 
         <div class="ed-field factor-field">
@@ -2375,6 +2381,7 @@ async function apply() {
 .staged-import-bar input { width:72px; min-height:30px; padding:0 7px; border:1px solid var(--line-gold); border-radius:5px; background:var(--panel-solid); color:var(--text-primary); }
 .staged-import-bar strong { min-width:92px; color:#9b6b20; font-size:var(--fs-xs); }
 .import-blocker { position:sticky; z-index:11; top:48px; margin:0; padding:8px 12px; border-bottom:1px solid var(--danger); background:var(--danger-bg); color:var(--danger); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.import-warning { margin:0; padding:8px 12px; border-bottom:1px solid rgba(176,125,43,.4); background:rgba(208,164,83,.12); color:#79551f; font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .editor-save-button { flex:0 0 auto; min-width:142px; }
 .op-btn { min-height:30px; padding:0 13px; border:1px solid var(--line-gold); border-radius:6px; background:var(--sky-900); color:var(--text-primary); font-size:var(--fs-sm); cursor:pointer; user-select:none; }
 .op-btn.on { border-color:#765126; background:#8b6737; color:#fff9e9; }

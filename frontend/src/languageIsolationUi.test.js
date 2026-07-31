@@ -169,6 +169,8 @@ test('selective loadout import and first-sigil capture have exact English copy',
     '导入文件后会先选择写入范围。因子、技能、专精、装备武器、祝福、召唤石与上限突破可任意多选；当前武器强化、角色强化进度和整组武器收藏默认不改，只有明确勾选才会覆盖。',
     '已载入导入草稿',
     '取消导入草稿',
+    '已自动修正无效副词条',
+    '已载入所选草稿并自动修正：%s',
   ]) {
     assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
   }

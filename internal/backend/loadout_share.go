@@ -303,6 +303,7 @@ type LoadoutImportDraft struct {
 	ApplyPayload      *LoadoutImportApplyPayload `json:"applyPayload,omitempty"`
 	Missing           []string                   `json:"missing"`
 	MissingByScope    map[string][]string        `json:"missingByScope,omitempty"`
+	Warnings          []string                   `json:"warnings,omitempty"`
 	Capabilities      LoadoutImportCapabilities  `json:"capabilities"`
 }
 
@@ -312,6 +313,19 @@ func (draft *LoadoutImportDraft) addMissing(scope, message string) {
 		draft.MissingByScope = make(map[string][]string)
 	}
 	draft.MissingByScope[scope] = append(draft.MissingByScope[scope], message)
+}
+
+func (draft *LoadoutImportDraft) addWarning(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	for _, existing := range draft.Warnings {
+		if existing == message {
+			return
+		}
+	}
+	draft.Warnings = append(draft.Warnings, message)
 }
 
 func loadoutShareEquippedWeaponConstruction(share *LoadoutShare) (*LoadoutShareProgressionWeapon, error) {
@@ -678,6 +692,42 @@ func loadoutShareConstructedSigil(cat *Catalog, want LoadoutShareSigil, index in
 	return draft, nil
 }
 
+func loadoutShareConstructedSigilForImport(cat *Catalog, want LoadoutShareSigil, index int) (LoadoutConstructedSigil, string, error) {
+	draft, err := loadoutShareConstructedSigil(cat, want, index)
+	if err == nil {
+		return draft, "", nil
+	}
+
+	secondaryText := strings.TrimSpace(want.SecondaryTraitHash)
+	if secondaryText == "" {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	secondaryHash, parseErr := ParseHashHex(secondaryText)
+	if parseErr != nil || secondaryHash == 0 || secondaryHash == EmptyHash {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	secondary := cat.LookupTraitByHash(secondaryHash)
+	if secondary == nil {
+		return LoadoutConstructedSigil{}, "", err
+	}
+
+	cleared := want
+	cleared.SecondaryTraitHash = ""
+	cleared.SecondaryTraitLevel = 0
+	repaired, repairedErr := loadoutShareConstructedSigil(cat, cleared, index)
+	if repairedErr != nil {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	warning := fmt.Sprintf(
+		runtimePatchMonitorText(
+			"因子第 %d 格「%s」的副词条「%s」不是合法组合，在游戏中不会生效，并会被游戏自动替换成其他词条；导入草稿已自动清空该副词条，不会写入。",
+			"Sigil slot %d \"%s\" has an incompatible secondary trait \"%s\". It will not take effect in-game and the game will replace it with another trait. The import draft cleared it automatically and will not write it.",
+		),
+		index+1, repaired.Item.SigilName, cnTrait(secondary.DisplayName),
+	)
+	return repaired, warning, nil
+}
+
 func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*LoadoutImportDraft, error) {
 	if share == nil || share.Format != loadoutShareFormat || share.Version < loadoutShareLegacyVersion || share.Version > loadoutShareVersion {
 		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d..v%d）", loadoutShareFormat, loadoutShareLegacyVersion, loadoutShareVersion)
@@ -899,11 +949,12 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 		if indexedSigils {
 			index = *want.Index
 		}
-		constructed, err := loadoutShareConstructedSigil(cat, want, index)
+		constructed, warning, err := loadoutShareConstructedSigilForImport(cat, want, index)
 		if err != nil {
 			return nil, err
 		}
 		draft.ConstructedSigils = append(draft.ConstructedSigils, constructed)
+		draft.addWarning(warning)
 	}
 
 	for _, skill := range share.Skills {

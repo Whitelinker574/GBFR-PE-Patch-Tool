@@ -61,6 +61,17 @@ test('share-image workshop reuses a published short link while retaining manual 
   assert.match(workshop, /v-model="shareUrl"/u)
 })
 
+test('outer loadout cards publish, display, and reuse their online short code', () => {
+  assert.match(viewer, /function cardShareSessionKey\(loadout\)[\s\S]*?savePath: savePath\.value[\s\S]*?charaHash: currentGroup\.value\.charaHash[\s\S]*?unitId: loadout\.unitId/u)
+  assert.match(viewer, /PublishLoadoutShareNamed\(savePath\.value, target\.unitId, title\)/u)
+  assert.match(viewer, /rememberPublishedLoadoutShare\(sessionKey, published\)/u)
+  assert.match(viewer, /class="loadout-share-row"[\s\S]*?publishedShareFor\(lo\)\?\.code/u)
+  assert.match(viewer, /tx\('上传短码', 'Publish Code'\)/u)
+  assert.match(viewer, /tx\('复制链接', 'Copy Link'\)/u)
+  assert.match(viewer, /<LoadoutPublishDialog[\s\S]*?:open="Boolean\(cardPublishTarget\)"[\s\S]*?@submit="publishCardLoadout"/u)
+  assert.match(viewer, /<LoadoutShareWorkshop[\s\S]*?:published="publishedShareFor\(lo\)"/u)
+})
+
 test('share-image rendering is single-flight and disables both export entry points', () => {
   assert.match(workshop, /async function download\(\) \{\s*if \(exportBusy\.value\) return/u)
   assert.match(workshop, /async function copyPNG\(\) \{\s*if \(exportBusy\.value\) return/u)

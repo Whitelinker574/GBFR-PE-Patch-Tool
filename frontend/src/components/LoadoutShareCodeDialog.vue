@@ -6,6 +6,7 @@ import {
   normalizeLoadoutShareText,
 } from '../loadoutShareCode'
 import { language } from '../i18n.js'
+import { decodeLoadoutShareQRFile } from '../loadoutShareQR.js'
 import { copyShareText } from '../loadoutShareSession.js'
 
 const props = defineProps({
@@ -26,6 +27,8 @@ const pasteCode = ref('')
 const copied = ref('')
 const localError = ref('')
 const pasteBox = ref(null)
+const imageInput = ref(null)
+const qrReading = ref(false)
 const offlineMode = ref('compact')
 const tx = (zh, en) => language.value === 'en' ? en : zh
 
@@ -42,7 +45,7 @@ const offlineCode = computed(() => offlineMode.value === 'compact'
   : (props.result?.compatibilityCode || ''))
 const offlineCount = computed(() => loadoutShareCodeCharacters(offlineCode.value))
 const importReady = computed(() => normalizeLoadoutShareText(pasteCode.value).length > 8)
-const working = computed(() => props.busy || props.publishing)
+const working = computed(() => props.busy || props.publishing || qrReading.value)
 
 watch(() => props.open, value => {
   if (!value) return
@@ -80,6 +83,42 @@ function submitImport() {
   if (!importReady.value || working.value) return
   localError.value = ''
   emit('import', pasteCode.value)
+}
+
+function qrErrorText(error) {
+  const messages = {
+    qr_image_type: tx('请选择 PNG、JPG、WebP 或 BMP 配装图。', 'Choose a PNG, JPG, WebP, or BMP loadout image.'),
+    qr_image_empty: tx('图片文件为空，请重新选择。', 'The image file is empty; choose it again.'),
+    qr_image_too_large: tx('图片超过 32 MiB，请压缩后再试。', 'The image exceeds 32 MiB; compress it and try again.'),
+    qr_image_failed: tx('图片无法读取，请重新截图或换用 PNG。', 'The image could not be read; take another screenshot or use PNG.'),
+    qr_not_found: tx('没有识别到二维码。请使用完整配装图，避免裁掉二维码或让图片过度模糊。', 'No QR code was found. Use the complete loadout image without cropping or heavy blur.'),
+    qr_not_loadout: tx('识别到了二维码，但它不是本工具的配装短码或分享链接。', 'A QR code was found, but it is not a loadout code or share link from this tool.'),
+  }
+  return messages[error?.code] || tx(`配装图识别失败：${String(error?.message || error)}`, `Loadout image recognition failed: ${String(error?.message || error)}`)
+}
+
+function chooseLoadoutImage() {
+  if (working.value) return
+  imageInput.value?.click()
+}
+
+async function importLoadoutImage(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || working.value) return
+  qrReading.value = true
+  localError.value = ''
+  try {
+    const decoded = await decodeLoadoutShareQRFile(file)
+    pasteCode.value = decoded
+    await nextTick()
+    emit('import', decoded)
+  } catch (error) {
+    localError.value = qrErrorText(error)
+  } finally {
+    qrReading.value = false
+  }
 }
 </script>
 
@@ -135,8 +174,13 @@ function submitImport() {
           <section class="receive-section">
             <div class="section-heading">
               <span><i>02</i><b>{{ tx('接收别人的配装', 'Receive a Loadout') }}</b><small>{{ tx('短码、完整链接和离线长码都能识别', 'Short codes, full links, and offline codes are supported') }}</small></span>
-              <button type="button" class="ui-btn is-ghost" :disabled="working" @click="readClipboard">{{ tx('读取剪贴板', 'Read Clipboard') }}</button>
+              <div class="receive-heading-actions">
+                <input ref="imageInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" tabindex="-1" @change="importLoadoutImage" />
+                <button type="button" class="ui-btn is-ghost" :disabled="working" @click="chooseLoadoutImage">{{ qrReading ? tx('正在识别…', 'Scanning…') : tx('导入配装图', 'Import Loadout Image') }}</button>
+                <button type="button" class="ui-btn is-ghost" :disabled="working" @click="readClipboard">{{ tx('读取剪贴板', 'Read Clipboard') }}</button>
+              </div>
             </div>
+            <p class="image-import-note">{{ tx('选择带二维码的配装图即可识别并进入导入范围确认；图片只在本机处理，不会上传。', 'Choose a loadout image with a QR code to open import-scope confirmation. The image stays on this device.') }}</p>
             <textarea ref="pasteBox" v-model="pasteCode" spellcheck="false" :placeholder="tx('输入 0123-4567-89AB-CDEF，或粘贴分享链接 / GBFRC1 离线长码', 'Enter 0123-4567-89AB-CDEF, a share link, or a GBFRC1 offline code')"></textarea>
             <div class="receive-actions">
               <span v-if="pasteCode">{{ tx(`已输入 ${loadoutShareCodeCharacters(pasteCode)} 个字符`, `${loadoutShareCodeCharacters(pasteCode)} characters entered`) }}</span>
@@ -206,6 +250,9 @@ function submitImport() {
 .published-url { grid-column:1/-1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-top:10px; border-top:1px solid rgba(74,119,89,.2); color:#607361; font: .72rem Consolas,"Cascadia Mono",monospace; }
 .online-note { margin:8px 0 0; color:#7b6b57; font-size:.72rem; line-height:1.5; }
 .receive-section { padding-top:17px; border-top:1px solid rgba(126,88,42,.22); }
+.receive-heading-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
+.image-import-note { margin:-3px 0 9px; color:#7b6b57; font-size:.72rem; line-height:1.5; }
 .receive-section > textarea { width:100%; min-height:82px; resize:vertical; padding:12px 13px; border:1px solid rgba(126,88,42,.34); border-radius:7px; outline:none; background:#fffdf7; color:#413426; font: .8rem Consolas,"Cascadia Mono",monospace; line-height:1.5; }
 .receive-section > textarea:focus,.offline-body > textarea:focus { border-color:#8b6737; box-shadow:0 0 0 3px rgba(139,103,55,.1); }
 .receive-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:9px; }
@@ -237,6 +284,9 @@ function submitImport() {
   .published-ticket { grid-template-columns:1fr; }
   .published-actions { display:grid; grid-template-columns:1fr 1fr; }
   .published-url { grid-column:1; }
+  .receive-section .section-heading { align-items:stretch; flex-direction:column; }
+  .receive-heading-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .receive-heading-actions .ui-btn { min-width:0; white-space:normal; }
   .receive-actions { align-items:stretch; flex-direction:column; }
   .receive-actions button { width:100%; }
 }
