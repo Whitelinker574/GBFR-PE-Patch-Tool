@@ -16,6 +16,7 @@ import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
 import { functionAssetManifest } from '../generated/functionAssetManifest.js'
 import { beginPerformanceMeasure } from '../performanceMonitor.js'
+import { translateRuntimeCompatibilityError } from '../runtimeCompatibilityErrors.js'
 
 const pageLoaders = Object.freeze({
   progression: () => import('./ProgressionEditor.vue'),
@@ -884,7 +885,7 @@ function openReleasePage() {
 let statusTimer = 0
 function showStatus(message, type) {
   window.clearTimeout(statusTimer)
-  saveStatus.value = translateText(String(message))
+  saveStatus.value = translateText(translateRuntimeCompatibilityError(message, language.value))
   statusType.value = type
   statusTimer = window.setTimeout(() => { saveStatus.value = '' }, 3600)
 }
@@ -984,7 +985,7 @@ function showStatus(message, type) {
           <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
         </div>
         <div class="sidebar-foot">
-          <div class="target-row"><span class="target-dot"></span><div><strong>{{ language === 'en' ? 'Current Compatibility' : '当前适配版本' }}</strong><small>{{ language === 'en' ? 'Relink 2.0.3 · live features are guarded per page' : 'Relink 2.0.3 · 实时功能按页锁定' }}</small></div></div>
+          <div class="target-row"><span class="target-dot"></span><div><strong>{{ language === 'en' ? 'Current Compatibility' : '当前适配版本' }}</strong><small>{{ language === 'en' ? 'Relink 2.0.3 · live features remain locked to verified 2.0.2' : 'Relink 2.0.3 · 实时功能仍锁定已验证的 2.0.2' }}</small></div></div>
           <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool" target="_blank" rel="noreferrer">项目仓库 ↗</a>
         </div>
       </aside>

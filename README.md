@@ -173,7 +173,8 @@ CI 状态见 [GitHub Actions](https://github.com/Whitelinker574/GBFR-PE-Patch-To
 
 ## 资料与声明
 
-- [v2.0.3 完整更新说明](docs/RELEASE_NOTES_v2.0.3.md)
+- [v2.0.4 完整更新说明](docs/RELEASE_NOTES_v2.0.4.md)
+- [v2.0.3 历史更新说明](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 实现状态](docs/IMPLEMENTATION_STATUS.md)
 - [公式与证据边界](docs/FORMULAS_2.0.2.md)
 - [第三方组件说明](THIRD_PARTY_NOTICES.md)

@@ -155,7 +155,8 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
-- [Complete v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
+- [Complete v2.0.4 release notes](docs/RELEASE_NOTES_v2.0.4.md)
+- [Historical v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Formula and evidence boundaries](docs/FORMULAS_2.0.2.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
