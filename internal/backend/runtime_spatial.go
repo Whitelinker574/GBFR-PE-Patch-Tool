@@ -15,10 +15,8 @@ const (
 	runtimeSpatialGravityFeatureID           = "runtime-spatial-gravity"
 	runtimeSpatialGravityRVA         uintptr = 0x39DD964
 	runtimeSpatialGravityContextBack         = 4
-	// A direct NOP patch cannot restore itself after the desktop application is
-	// forcibly terminated. Keep the read/recovery path available for sessions
-	// created by earlier test builds, but do not create a new gravity lease in
-	// the stable release until an in-process owner watchdog is field-proven.
+	// Keep the gravity write under its own lease so normal stop, disconnect,
+	// emergency stop, and application shutdown all use the same restore path.
 	runtimeSpatialGravityStableReleaseEnabled = true
 )
 

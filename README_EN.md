@@ -14,7 +14,7 @@
 
 ## Game 2.0.3 compatibility
 
-v2.0.5 carries forward the v2.0.4 re-extraction and comparison of game 2.0.3. Only four localization bundles changed among 2,120 tables. Every project-owned sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and Endless rule table is byte-identical to 2.0.2, as are all 332 reviewed character and combat configs.
+v2.0.6 carries forward the completed game 2.0.3 extraction and live-entry adaptation, while correcting stale copy and UI gates that still presented implemented features as unavailable. Natural drops, virtual sigils, audio, town camera, world-axis movement, and gravity suppression now consistently appear as available experimental features.
 
 Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
 
@@ -104,19 +104,13 @@ Live features bind the complete `{PID, creation time}` identity. Before writing,
 
 Keep your own copy of important saves. After a game update, do not use live writes until the repository explicitly confirms compatibility.
 
-## Honest boundaries retained in the stable release
+## Experimental features and current capabilities
 
-v2.0.3 does not claim completion for:
+Natural-drop and forging deployment, virtual sigils, audio, town camera, world-axis movement, and gravity suppression are implemented and retain usable entry points. The maintainers cannot exercise every character, quest, scene transition, and multi-hook combination, so these features remain marked Experimental. Keep the relevant save or game-file backup, follow the in-app steps, and report the exact gameplay scenario and observed result.
 
-- Long-duration testing on the low-spec target and a real QQ image round trip.
-- Complete per-character move coefficients and final action caps.
-- Stable local-player, teammate, pet, and summon damage attribution.
-- Fate Episode reward state and full dependency handling.
-- Visible natural summon/sigil/wrightstone drop and forging outcomes.
-- Virtual-sigil character/scene switching, same-character teammate isolation, and multi-hook soak tests.
-- Multi-scene audio listening, migrated town-camera retesting, noclip, or camera-relative flight.
+Current-session damage capture records raw source instances, action IDs, damage caps, and pre-cap damage, while the combat catalog exposes character cap tables. Stable identity mapping for the local player, teammates, pets, and summons, plus exact final caps for every move of every character, are not covered by the current implementation. The app therefore does not label global events as personal DPS or present table baselines as final per-action values.
 
-Cooldown tuning, shared charge tuning, candidate party-wide monster damage, candidate catalog patches, and new virtual-sigil sessions remain disabled in the stable build. Their pages may explain evidence, preview configuration, or recover a session started by an earlier test build; that does not make them supported live features.
+Noclip and camera-relative flight currently have no executable entry point. The implemented spatial features are world-axis movement, in-game arrow-key control, and separately owned gravity suppression. Cooldown tuning, shared charge tuning, candidate party-wide monster damage, and candidate catalog patches continue to follow the availability shown on their own pages. Missing maintainer-side coverage does not lock features that are already implemented.
 
 ## Performance and compatibility
 
@@ -155,7 +149,8 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
-- [Complete v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)
+- [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)
+- [v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)
 - [v2.0.4 historical release notes](docs/RELEASE_NOTES_v2.0.4.md)
 - [Historical v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 implementation status](docs/IMPLEMENTATION_STATUS.md)

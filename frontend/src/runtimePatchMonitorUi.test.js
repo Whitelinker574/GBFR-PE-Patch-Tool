@@ -97,15 +97,14 @@ test('spatial diagnostics use the verified three-snapshot reader and isolate the
   assert.doesNotMatch(source, /@click="teleportPlayer\(bookmark/)
 })
 
-test('stable gravity suppression is recovery-only while noclip remains unavailable', () => {
+test('gravity suppression can be enabled and restored while noclip remains unavailable', () => {
   assert.match(source, /RuntimeSpatialGravityStatusOwned\(acquiredOwnerToken\)/)
   assert.match(source, /RuntimeSpatialGravitySetEnabledOwned\(ownerToken, enabled\)/)
   assert.match(source, /normalizeRuntimeSpatialGravityStatus/)
   assert.match(source, /gravityStatus\?\.enabled \|\| gravityStatus\?\.recoveryPending/)
   assert.match(source, /setGravityEnabled\(false\)/)
-  assert.match(source, /disabled>\{\{ t\('spatialUnavailable'\) \}\}/)
+  assert.match(source, /gravityStatus\?\.available !== true[\s\S]*?setGravityEnabled\(true\)[\s\S]*?spatialGravityEnable/)
   assert.match(source, /t\('spatialNoclip'\)[\s\S]*?disabled/)
-  assert.doesNotMatch(source, /setGravityEnabled\(!gravityStatus\.enabled\)/)
   assert.match(source, /\.flight-capability\.is-active/)
   assert.match(source, /@container runtime-monitor \(max-width:460px\)[\s\S]*?\.flight-capability/)
 })
