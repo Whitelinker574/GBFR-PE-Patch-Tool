@@ -60,6 +60,7 @@ type UpdateInfo struct {
 
 type AppConfig struct {
 	LastSavePath                 string `json:"lastSavePath"`
+	NaturalDropGameExePath       string `json:"naturalDropGameExePath,omitempty"`
 	WindowWidth                  int    `json:"windowWidth"`
 	WindowHeight                 int    `json:"windowHeight"`
 	RuntimeLoadoutDetectorActive bool   `json:"runtimeLoadoutDetectorActive,omitempty"`
@@ -188,6 +189,10 @@ type App struct {
 	qolSessionWatcher            *runtimeQOLSessionWatcher
 	runtimeCompanionOwnerMu      sync.Mutex
 	runtimeCompanionOwnerIDValue string
+	runtimeCompanionLeaseMu      sync.Mutex
+	runtimeCompanionLeases       map[string]runtimeCompanionLease
+	naturalDropRecoveryStatusMu  sync.Mutex
+	naturalDropRecoveryStatus    NaturalDropStartupRecoveryStatus
 	configMu                     sync.Mutex
 	config                       AppConfig
 	configLoaded                 bool
@@ -206,11 +211,17 @@ func NewApp() *App { return &App{} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.startRuntimeEmergencyWatcher()
 	config, err := a.configSnapshot()
 	if err != nil {
 		return
 	}
+	if err := recoverNaturalDropTransactionsAtStartup(config.NaturalDropGameExePath); err != nil {
+		a.setNaturalDropStartupRecoveryError(err)
+		runtime.LogErrorf(ctx, "启动时恢复未完成的天然掉落部署失败：%v", err)
+	} else {
+		a.clearNaturalDropStartupRecoveryError()
+	}
+	a.startRuntimeEmergencyWatcher()
 	if config.RuntimeLoadoutDetectorActive {
 		_, _ = a.startRuntimeLoadoutDetector(false)
 	}
@@ -554,7 +565,10 @@ func (a *App) BackupFile(force bool) error {
 	if err != nil {
 		return fmt.Errorf("读取文件失败: %w", err)
 	}
-	return os.WriteFile(bakPath, data, 0644)
+	if err := writeFileAtomicVerified(bakPath, data); err != nil {
+		return fmt.Errorf("原子写入备份失败: %w", err)
+	}
+	return nil
 }
 
 // RestoreFile 从备份恢复
@@ -570,7 +584,10 @@ func (a *App) RestoreFile() error {
 	if err != nil {
 		return fmt.Errorf("读取备份失败: %w", err)
 	}
-	return os.WriteFile(a.exePath, data, 0644)
+	if err := writeFileAtomicVerified(a.exePath, data); err != nil {
+		return fmt.Errorf("原子恢复目标文件失败: %w", err)
+	}
+	return nil
 }
 
 // ── PE / 工具函数 ──

@@ -70,6 +70,16 @@ test('backup flyout and confirmation dialog expose shared controls and overlay s
   assert.match(dialog, /max-height\s*:\s*calc\(100dvh\s*-\s*32px\)/)
 })
 
+test('startup recovery remains globally visible and does not disappear when another status endpoint fails', () => {
+  assert.match(patchTool, /Promise\.allSettled\(\[\s*GetRuntimeCompanionSummary\(\),\s*GetNaturalDropStartupRecoveryStatus\(\)/s)
+  assert.match(patchTool, /summariesResult\.status === 'fulfilled'/)
+  assert.match(patchTool, /naturalDropResult\.status === 'fulfilled'/)
+  assert.match(patchTool, /role="status"/)
+  assert.match(patchTool, /掉落规则待安全恢复/)
+  assert.match(patchTool, /Drop rules need safe recovery/)
+  assert.match(patchTool, /@click="selectTool\('naturalDrop'\)"/)
+})
+
 test('owned page styles keep supporting copy readable and cover the minimum window height', () => {
   for (const source of [patchTool, home, language, backup, dialog]) {
     const css = styleBlocks(source).join('\n')

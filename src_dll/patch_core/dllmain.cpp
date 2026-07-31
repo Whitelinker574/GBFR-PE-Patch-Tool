@@ -57,13 +57,133 @@ static uint64_t CurrentProcessCreationTime()
     return value.QuadPart;
 }
 
+static char g_runtimeGeneration[33]{};
+static wchar_t g_runtimeGenerationWide[33]{};
+
+static bool ReadCommandValue(const char* content, const char* key, char* value, size_t valueSize)
+{
+    if (!content || !key || !*key || !value || valueSize < 2) return false;
+    const size_t keyLength = strlen(key);
+    const char* line = content;
+    while (line && *line)
+    {
+        const char* end = strpbrk(line, "\r\n");
+        const size_t lineLength = end ? static_cast<size_t>(end - line) : strlen(line);
+        if (lineLength > keyLength && strncmp(line, key, keyLength) == 0 && line[keyLength] == '=')
+        {
+            const char* source = line + keyLength + 1;
+            const size_t length = lineLength - keyLength - 1;
+            if (!length || length >= valueSize) return false;
+            memcpy(value, source, length);
+            value[length] = '\0';
+            return true;
+        }
+        if (!end) break;
+        line = end + 1;
+        if (*end == '\r' && *line == '\n') ++line;
+    }
+    return false;
+}
+
+static bool IsValidRuntimeGeneration(const char* generation)
+{
+    if (!generation || strlen(generation) != 32) return false;
+    for (const unsigned char* cursor = reinterpret_cast<const unsigned char*>(generation); *cursor; ++cursor)
+    {
+        if (!std::isxdigit(*cursor)) return false;
+    }
+    return true;
+}
+
+static bool SetRuntimeGeneration(const char* generation)
+{
+    if (!IsValidRuntimeGeneration(generation)) return false;
+    strcpy_s(g_runtimeGeneration, generation);
+    for (size_t index = 0; index <= 32; ++index)
+        g_runtimeGenerationWide[index] = static_cast<unsigned char>(generation[index]);
+    return true;
+}
+
+static HANDLE OpenRuntimeOwnerForGeneration(const wchar_t* feature)
+{
+    if (!feature || !*feature || !IsValidRuntimeGeneration(g_runtimeGeneration)) return INVALID_HANDLE_VALUE;
+    std::wstring path = RuntimePath((std::wstring(feature) + L".owner").c_str());
+    if (path.empty()) return INVALID_HANDLE_VALUE;
+    // Deliberately do not share DELETE. Once this exact owner generation has
+    // been validated, the desktop cannot unlink it and publish a successor
+    // until the native status update or disposition operation is complete.
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ | DELETE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return INVALID_HANDLE_VALUE;
+    char content[1024]{};
+    DWORD read = 0;
+    const BOOL ok = ReadFile(file, content, sizeof(content) - 1, &read, nullptr);
+    if (!ok || !read)
+    {
+        CloseHandle(file);
+        return INVALID_HANDLE_VALUE;
+    }
+    content[read] = '\0';
+    char generation[33]{};
+    if (!ReadCommandValue(content, "generation", generation, sizeof(generation)) ||
+        _stricmp(generation, g_runtimeGeneration) != 0)
+    {
+        CloseHandle(file);
+        return INVALID_HANDLE_VALUE;
+    }
+    return file;
+}
+
+class RuntimeOwnerFileGuard
+{
+public:
+    explicit RuntimeOwnerFileGuard(const wchar_t* feature) :
+        handle_(OpenRuntimeOwnerForGeneration(feature))
+    {
+    }
+
+    ~RuntimeOwnerFileGuard()
+    {
+        if (handle_ != INVALID_HANDLE_VALUE) CloseHandle(handle_);
+    }
+
+    RuntimeOwnerFileGuard(const RuntimeOwnerFileGuard&) = delete;
+    RuntimeOwnerFileGuard& operator=(const RuntimeOwnerFileGuard&) = delete;
+
+    bool Valid() const
+    {
+        return handle_ != INVALID_HANDLE_VALUE;
+    }
+
+    bool DeleteExactOwner()
+    {
+        if (!Valid()) return false;
+        FILE_DISPOSITION_INFO disposition{};
+        disposition.DeleteFile = TRUE;
+        return SetFileInformationByHandle(handle_, FileDispositionInfo, &disposition, sizeof(disposition)) != FALSE;
+    }
+
+private:
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
+};
+
+static bool RuntimeOwnerMatchesGeneration(const wchar_t* feature)
+{
+    RuntimeOwnerFileGuard owner(feature);
+    return owner.Valid();
+}
+
 static void WriteRuntimeStatus(const wchar_t* feature, const wchar_t* state, const wchar_t* detail)
 {
+    RuntimeOwnerFileGuard owner(feature);
+    if (!owner.Valid()) return;
     std::wstring path = RuntimePath((std::wstring(feature) + L".status").c_str());
     if (path.empty()) return;
     wchar_t content[1024]{};
-    swprintf_s(content, L"pid=%lu\r\ncreated=%llu\r\nstate=%s\r\ndetail=%s\r\n", GetCurrentProcessId(), CurrentProcessCreationTime(), state, detail ? detail : L"");
-    std::wstring temporary = path + L".tmp";
+    swprintf_s(content, L"pid=%lu\r\ncreated=%llu\r\ngeneration=%s\r\nstate=%s\r\ndetail=%s\r\n",
+        GetCurrentProcessId(), CurrentProcessCreationTime(), g_runtimeGenerationWide, state, detail ? detail : L"");
+    std::wstring temporary = path + L"." + g_runtimeGenerationWide + L".tmp";
     HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return;
     DWORD written = 0;
@@ -71,13 +191,15 @@ static void WriteRuntimeStatus(const wchar_t* feature, const wchar_t* state, con
     FlushFileBuffers(file);
     CloseHandle(file);
     const DWORD deadline = GetTickCount() + 2000;
-    while (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    bool published = false;
+    while (!(published = MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE))
     {
         const DWORD error = GetLastError();
         if (error != ERROR_SHARING_VIOLATION && error != ERROR_LOCK_VIOLATION && error != ERROR_ACCESS_DENIED) break;
         if (static_cast<LONG>(GetTickCount() - deadline) >= 0) break;
         Sleep(10);
     }
+    if (!published) DeleteFileW(temporary.c_str());
 }
 
 static void WriteStartupFailureAfterStop(const wchar_t* feature, bool restored, const wchar_t* detail)
@@ -85,6 +207,19 @@ static void WriteStartupFailureAfterStop(const wchar_t* feature, bool restored, 
     // Stop* already published restore_failed when restoration could not be
     // proven. Never overwrite that recovery obligation with a startup error.
     if (restored) WriteRuntimeStatus(feature, L"inactive", detail);
+}
+
+static void ReleaseRuntimeOwnerAfterVerifiedStop(const wchar_t* feature, bool restored)
+{
+    if (!restored) return;
+    RuntimeOwnerFileGuard owner(feature);
+    if (owner.Valid()) owner.DeleteExactOwner();
+}
+
+static void WriteRuntimeInactiveAndReleaseOwner(const wchar_t* feature, const wchar_t* detail)
+{
+    WriteRuntimeStatus(feature, L"inactive", detail);
+    ReleaseRuntimeOwnerAfterVerifiedStop(feature, true);
 }
 
 static bool ParseSignature(const char* signature, std::vector<int>& pattern)
@@ -422,22 +557,38 @@ static bool StampMonsterCave(lm_address_t cave, lm_size_t caveSize, wchar_t* mes
     return true;
 }
 
-static bool ReadPatchId(char* patchId, DWORD patchIdSize)
+static bool PatchCoreCommandPath(wchar_t* commandPath, size_t commandPathSize)
 {
+    if (!commandPath || commandPathSize < MAX_PATH) return false;
+	DWORD moduleLength = GetModuleFileNameW(g_patchCoreModule, commandPath, static_cast<DWORD>(commandPathSize));
+	if (!moduleLength || moduleLength >= commandPathSize - 9) return false;
+	wcscat_s(commandPath, commandPathSize, L".command");
+    return true;
+}
+
+static bool ReadPatchCoreCommand(char* content, DWORD contentSize, DWORD* bytesRead = nullptr)
+{
+    if (!content || contentSize < 2) return false;
 	wchar_t commandPath[MAX_PATH]{};
-	DWORD moduleLength = GetModuleFileNameW(g_patchCoreModule, commandPath, _countof(commandPath));
-	if (!moduleLength || moduleLength >= _countof(commandPath) - 9) return false;
-	wcscat_s(commandPath, L".command");
+    if (!PatchCoreCommandPath(commandPath, _countof(commandPath))) return false;
 
     HANDLE file = CreateFileW(commandPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
 
     DWORD read = 0;
-    BOOL ok = ReadFile(file, patchId, patchIdSize - 1, &read, nullptr);
+    BOOL ok = ReadFile(file, content, contentSize - 1, &read, nullptr);
     CloseHandle(file);
     if (!ok || read == 0) return false;
 
-    patchId[read] = '\0';
+    content[read] = '\0';
+    if (bytesRead) *bytesRead = read;
+    return true;
+}
+
+static bool ReadPatchId(char* patchId, DWORD patchIdSize)
+{
+    DWORD read = 0;
+    if (!ReadPatchCoreCommand(patchId, patchIdSize, &read)) return false;
     for (DWORD i = 0; i < read; ++i)
     {
         if (patchId[i] == '\r' || patchId[i] == '\n')
@@ -448,6 +599,86 @@ static bool ReadPatchId(char* patchId, DWORD patchIdSize)
     }
     return patchId[0] != '\0';
 }
+
+static bool ReadCommandUint64(const char* content, const char* key, uint64_t& value)
+{
+    if (!content || !key || !*key) return false;
+    const size_t keyLength = strlen(key);
+    const char* line = content;
+    while (line && *line)
+    {
+        const char* end = strpbrk(line, "\r\n");
+        const size_t lineLength = end ? static_cast<size_t>(end - line) : strlen(line);
+        if (lineLength > keyLength && strncmp(line, key, keyLength) == 0 && line[keyLength] == '=')
+        {
+            char* parsedEnd = nullptr;
+            unsigned long long parsed = _strtoui64(line + keyLength + 1, &parsedEnd, 10);
+            if (parsedEnd == line + keyLength + 1 || parsed == 0) return false;
+            value = static_cast<uint64_t>(parsed);
+            return true;
+        }
+        if (!end) break;
+        line = end + 1;
+        if (*end == '\r' && *line == '\n') ++line;
+    }
+    return false;
+}
+
+class RuntimeOwnerGuard
+{
+public:
+    RuntimeOwnerGuard() = default;
+    ~RuntimeOwnerGuard()
+    {
+        if (process_) CloseHandle(process_);
+    }
+
+    RuntimeOwnerGuard(const RuntimeOwnerGuard&) = delete;
+    RuntimeOwnerGuard& operator=(const RuntimeOwnerGuard&) = delete;
+
+    bool OpenFromCommand(const wchar_t* feature)
+    {
+        char content[512]{};
+        if (!ReadPatchCoreCommand(content, sizeof(content))) return false;
+        uint64_t ownerPid = 0;
+        uint64_t ownerCreated = 0;
+        char generation[33]{};
+        if (!ReadCommandUint64(content, "owner_pid", ownerPid) ||
+            !ReadCommandUint64(content, "owner_created", ownerCreated) ||
+            !ReadCommandValue(content, "generation", generation, sizeof(generation)) ||
+            !SetRuntimeGeneration(generation) ||
+            !RuntimeOwnerMatchesGeneration(feature) ||
+            ownerPid > MAXDWORD) return false;
+
+        process_ = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(ownerPid));
+        if (!process_) return false;
+        FILETIME creation{}, exit{}, kernel{}, user{};
+        if (!GetProcessTimes(process_, &creation, &exit, &kernel, &user))
+        {
+            CloseHandle(process_);
+            process_ = nullptr;
+            return false;
+        }
+        ULARGE_INTEGER actual{};
+        actual.LowPart = creation.dwLowDateTime;
+        actual.HighPart = creation.dwHighDateTime;
+        if (actual.QuadPart != ownerCreated)
+        {
+            CloseHandle(process_);
+            process_ = nullptr;
+            return false;
+        }
+        return Alive() && RuntimeOwnerMatchesGeneration(feature);
+    }
+
+    bool Alive() const
+    {
+        return process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
+    }
+
+private:
+    HANDLE process_ = nullptr;
+};
 
 static bool PatchIdEquals(const char* requestedId, const char* pointId)
 {
@@ -1276,21 +1507,28 @@ static bool StopCameraRuntime()
 	ReleaseSRWLockExclusive(&g_cameraLock);
 	WriteRuntimeStatus(L"camera", hookRestored ? L"inactive" : L"restore_failed",
 		hookRestored ? L"hooks and owned camera values restored" : L"camera entry restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"camera", hookRestored);
 	return hookRestored;
 }
 
 static DWORD RunCameraRuntime()
 {
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"camera"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"camera", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
     std::wstring configPath = RuntimePath(L"camera.ini");
     if (configPath.empty() || !LoadCameraConfig(configPath.c_str(), true))
     {
-        WriteRuntimeStatus(L"camera", L"inactive", L"camera configuration is missing or invalid");
+        WriteRuntimeInactiveAndReleaseOwner(L"camera", L"camera configuration is missing or invalid");
         return 1;
     }
     lm_module_t module{};
     if (!LM_FindModule("granblue_fantasy_relink.exe", &module))
     {
-        WriteRuntimeStatus(L"camera", L"inactive", L"game module is unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"camera", L"game module is unavailable");
         return 1;
     }
     const char* initSignature = "56 48 83 EC ?? 8B 05 ?? ?? ?? ?? 65 48 8B 0C 25 ?? ?? ?? ?? 48 8B 04 C1 48 8B 88 ?? ?? ?? ?? 48 8B 81 ?? ?? ?? ?? 48 8B 70 ?? 48 85 F6 0F 84 ?? ?? ?? ?? 89 F2 83 E2 ?? 0F 85 ?? ?? ?? ?? FF 40 ?? 48 8B 0E 48 89 48 ?? C5 F8 57 C0 C5 F8 29 46 ?? C5 F8 29 46";
@@ -1301,13 +1539,13 @@ static DWORD RunCameraRuntime()
     g_cameraIncreaseTarget = FindUniqueSignature(increaseSignature, module);
     if (g_cameraInitTarget == LM_ADDRESS_BAD || g_cameraDecreaseTarget == LM_ADDRESS_BAD || g_cameraIncreaseTarget == LM_ADDRESS_BAD)
     {
-        WriteRuntimeStatus(L"camera", L"inactive", L"camera signature preflight failed or was ambiguous");
+        WriteRuntimeInactiveAndReleaseOwner(L"camera", L"camera signature preflight failed or was ambiguous");
         return 1;
     }
     wchar_t message[256]{};
 	if (LM_ReadMemory(g_cameraInitTarget, g_cameraInitOriginal, sizeof(g_cameraInitOriginal)) != sizeof(g_cameraInitOriginal))
 	{
-		WriteRuntimeStatus(L"camera", L"inactive", L"camera entry preflight read failed");
+		WriteRuntimeInactiveAndReleaseOwner(L"camera", L"camera entry preflight read failed");
 		return 1;
 	}
 	g_cameraInitHookSize = LM_HookCode(g_cameraInitTarget, reinterpret_cast<lm_address_t>(&CameraInitDetour), reinterpret_cast<lm_address_t*>(&g_cameraOriginalInit));
@@ -1320,7 +1558,7 @@ static DWORD RunCameraRuntime()
     }
     WriteRuntimeStatus(L"camera", L"active", L"native camera runtime is active");
     FILETIME previous{};
-    while (true)
+    while (owner.Alive())
     {
         WIN32_FILE_ATTRIBUTE_DATA data{};
         if (!GetFileAttributesExW(configPath.c_str(), GetFileExInfoStandard, &data) || GetPrivateProfileIntW(L"camera", L"enabled", 0, configPath.c_str()) != 1) break;
@@ -1602,27 +1840,34 @@ static bool StopVirtualSigilRuntime()
 	if (!hookRestored) g_patchCoreCanUnload.store(false);
 	WriteRuntimeStatus(L"virtual-sigils", hookRestored ? L"inactive" : L"restore_failed",
 		hookRestored ? L"hooks and native loop limits restored" : L"virtual sigil restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"virtual-sigils", hookRestored);
 	return hookRestored;
 }
 
 static DWORD RunVirtualSigilRuntime()
 {
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"virtual-sigils"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
     constexpr bool kStableReleaseVirtualSigilsEnabled = false;
     if (!kStableReleaseVirtualSigilsEnabled)
     {
-        WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"virtual sigils are disabled in the stable build pending field acceptance");
+        WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigils are disabled in the stable build pending field acceptance");
         return 1;
     }
     std::wstring configPath = RuntimePath(L"virtual-sigils.bin");
     if (configPath.empty() || !ReadVirtualSigilConfig(configPath, true))
     {
-        WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"virtual sigil configuration is missing or invalid");
+        WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigil configuration is missing or invalid");
         return 1;
     }
     lm_module_t module{};
     if (!LM_FindModule("granblue_fantasy_relink.exe", &module))
     {
-        WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"game module is unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"game module is unavailable");
         return 1;
     }
     g_virtualModuleBase = module.base;
@@ -1635,14 +1880,14 @@ static DWORD RunVirtualSigilRuntime()
         LM_ReadMemory(module.base + kTraitApplyLoopRva - 4, applyPreflight, sizeof(applyPreflight)) != sizeof(applyPreflight) || !BytesEqual(applyPreflight, expectedApply, sizeof(expectedApply)) ||
         LM_ReadMemory(module.base + kTraitCategoryLoopRva - 6, categoryPreflight, sizeof(categoryPreflight)) != sizeof(categoryPreflight) || !BytesEqual(categoryPreflight, expectedCategory, sizeof(expectedCategory)))
     {
-        WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"virtual sigil executable preflight failed");
+        WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigil executable preflight failed");
         return 1;
     }
     wchar_t message[256]{};
     lm_address_t getterTarget = module.base + kGetGemDataRva;
 	if (LM_ReadMemory(getterTarget, g_getGemOriginal, sizeof(g_getGemOriginal)) != sizeof(g_getGemOriginal))
 	{
-		WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"virtual sigil getter preflight read failed");
+		WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigil getter preflight read failed");
 		return 1;
 	}
 	g_getGemHookSize = LM_HookCode(getterTarget, reinterpret_cast<lm_address_t>(&GetGemDataDetour), reinterpret_cast<lm_address_t*>(&g_originalGetGemData));
@@ -1664,7 +1909,7 @@ static DWORD RunVirtualSigilRuntime()
     }
     WriteRuntimeStatus(L"virtual-sigils", L"active", L"native virtual sigil runtime is active");
     FILETIME previous{};
-    while (true)
+    while (owner.Alive())
     {
         WIN32_FILE_ATTRIBUTE_DATA data{};
         if (!GetFileAttributesExW(configPath.c_str(), GetFileExInfoStandard, &data)) break;
@@ -1883,15 +2128,22 @@ static bool StopAudioRuntime()
 		reinterpret_cast<lm_address_t>(g_originalPostEvent), &g_postEventHookSize, g_postEventOriginal, sizeof(g_postEventOriginal), g_audioCallbacks);
 	WriteRuntimeStatus(L"audio", hookRestored ? L"inactive" : L"restore_failed",
 		hookRestored ? L"audio hook restored after active callbacks drained" : L"audio entry restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"audio", hookRestored);
 	return hookRestored;
 }
 
 static DWORD RunAudioRuntime()
 {
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"audio"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"audio", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
     std::wstring configPath = RuntimePath(L"audio.ini");
     if (configPath.empty() || !LoadAudioConfig(configPath.c_str(), true))
     {
-        WriteRuntimeStatus(L"audio", L"inactive", L"audio configuration is missing or invalid");
+        WriteRuntimeInactiveAndReleaseOwner(L"audio", L"audio configuration is missing or invalid");
         return 1;
     }
     HMODULE game = GetModuleHandleW(nullptr);
@@ -1905,30 +2157,30 @@ static DWORD RunAudioRuntime()
     g_setRtpcValue = reinterpret_cast<SetRtpcFunction>(GetProcAddress(game, setRtpcExport));
     if (g_postEventTarget == LM_ADDRESS_BAD || !g_postEventTarget || !getId || !g_getRtpcValue || !g_setRtpcValue || !BuildAudioEventOwners())
     {
-        WriteRuntimeStatus(L"audio", L"inactive", L"Wwise exports or character voice banks are unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"audio", L"Wwise exports or character voice banks are unavailable");
         return 1;
     }
     g_voiceRtpcId = getId("Volume_Voice");
     g_seRtpcId = getId("Volume_SE");
     if (!g_voiceRtpcId || !g_seRtpcId)
     {
-        WriteRuntimeStatus(L"audio", L"inactive", L"Volume_Voice or Volume_SE RTPC was not resolved");
+        WriteRuntimeInactiveAndReleaseOwner(L"audio", L"Volume_Voice or Volume_SE RTPC was not resolved");
         return 1;
     }
 	if (LM_ReadMemory(g_postEventTarget, g_postEventOriginal, sizeof(g_postEventOriginal)) != sizeof(g_postEventOriginal))
 	{
-		WriteRuntimeStatus(L"audio", L"inactive", L"audio entry preflight read failed");
+		WriteRuntimeInactiveAndReleaseOwner(L"audio", L"audio entry preflight read failed");
 		return 1;
 	}
 	g_postEventHookSize = LM_HookCode(g_postEventTarget, reinterpret_cast<lm_address_t>(&PostEventDetour), reinterpret_cast<lm_address_t*>(&g_originalPostEvent));
     if (!g_postEventHookSize)
     {
-        WriteRuntimeStatus(L"audio", L"inactive", L"audio hook installation failed");
+        WriteRuntimeInactiveAndReleaseOwner(L"audio", L"audio hook installation failed");
         return 1;
     }
     WriteRuntimeStatus(L"audio", L"active", L"native Wwise character-volume runtime is active");
     FILETIME previous{};
-    while (true)
+    while (owner.Alive())
     {
         WIN32_FILE_ATTRIBUTE_DATA data{};
         if (!GetFileAttributesExW(configPath.c_str(), GetFileExInfoStandard, &data) || GetPrivateProfileIntW(L"audio", L"enabled", 0, configPath.c_str()) != 1) break;
@@ -2113,21 +2365,28 @@ static bool StopDamageRuntime()
     CloseDamageMapping();
     WriteRuntimeStatus(L"damage", restored ? L"inactive" : L"restore_failed",
         restored ? L"damage hook restored after active callbacks drained" : L"damage entry restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"damage", restored);
 	return restored;
 }
 
 static DWORD RunDamageRuntime()
 {
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"damage"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
     std::wstring configPath = RuntimePath(L"damage.ini");
     if (configPath.empty() || GetPrivateProfileIntW(L"damage", L"enabled", 0, configPath.c_str()) != 1)
     {
-        WriteRuntimeStatus(L"damage", L"inactive", L"damage capture configuration is missing or disabled");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"damage capture configuration is missing or disabled");
         return 1;
     }
     lm_module_t module{};
     if (!LM_FindModule("granblue_fantasy_relink.exe", &module))
     {
-        WriteRuntimeStatus(L"damage", L"inactive", L"game module is unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"game module is unavailable");
         return 1;
     }
     const char* signature = "E8 ?? ?? ?? ?? 66 83 BC 24 ?? ?? ?? ?? ?? 74 ?? F6 84 24";
@@ -2138,18 +2397,18 @@ static DWORD RunDamageRuntime()
     if (call == LM_ADDRESS_BAD || g_processDamageTarget == LM_ADDRESS_BAD ||
         LM_ReadMemory(g_processDamageTarget, preflight, sizeof(preflight)) != sizeof(preflight) || !BytesEqual(preflight, expected, sizeof(expected)))
     {
-        WriteRuntimeStatus(L"damage", L"inactive", L"damage event signature preflight failed or was ambiguous");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"damage event signature preflight failed or was ambiguous");
         return 1;
     }
     if (!InitializeDamageMapping())
     {
-        WriteRuntimeStatus(L"damage", L"inactive", L"damage event shared memory could not be created");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"damage event shared memory could not be created");
         return 1;
     }
     if (LM_ReadMemory(g_processDamageTarget, g_processDamageOriginal, sizeof(g_processDamageOriginal)) != sizeof(g_processDamageOriginal))
     {
         CloseDamageMapping();
-        WriteRuntimeStatus(L"damage", L"inactive", L"damage event entry preflight read failed");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"damage event entry preflight read failed");
         return 1;
     }
     g_damageStopping.store(false);
@@ -2158,11 +2417,11 @@ static DWORD RunDamageRuntime()
     if (!g_processDamageHookSize)
     {
         CloseDamageMapping();
-        WriteRuntimeStatus(L"damage", L"inactive", L"damage event hook installation failed");
+        WriteRuntimeInactiveAndReleaseOwner(L"damage", L"damage event hook installation failed");
         return 1;
     }
     WriteRuntimeStatus(L"damage", L"active", L"current-session damage ring buffer is active");
-    while (GetPrivateProfileIntW(L"damage", L"enabled", 0, configPath.c_str()) == 1) Sleep(100);
+    while (owner.Alive() && GetPrivateProfileIntW(L"damage", L"enabled", 0, configPath.c_str()) == 1) Sleep(100);
     StopDamageRuntime();
     return 0;
 }
@@ -3272,6 +3531,7 @@ static bool StopQOLRuntime()
     if (!restored) g_patchCoreCanUnload.store(false);
     WriteRuntimeStatus(L"qol", restored ? L"inactive" : L"restore_failed", restored ?
         L"convenience hooks and percentage instructions restored" : L"convenience restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"qol", restored);
     CloseQOLMapping();
 	return restored;
 }
@@ -3286,16 +3546,22 @@ static bool InstallQOLHook(lm_address_t target, lm_address_t detour, lm_address_
 
 static DWORD RunQOLRuntime()
 {
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"qol"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"qol", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
     std::wstring configPath = RuntimePath(L"qol.ini");
     if (configPath.empty() || !ReadQOLConfig(configPath.c_str(), true) || !InitializeQOLMapping())
     {
-        WriteRuntimeStatus(L"qol", L"inactive", L"convenience configuration or shared state is unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"qol", L"convenience configuration or shared state is unavailable");
         return 1;
     }
     lm_module_t module{};
     if (!LM_FindModule("granblue_fantasy_relink.exe", &module))
     {
-        WriteRuntimeStatus(L"qol", L"inactive", L"game module is unavailable");
+        WriteRuntimeInactiveAndReleaseOwner(L"qol", L"game module is unavailable");
         CloseQOLMapping();
         return 1;
     }
@@ -3443,7 +3709,7 @@ static DWORD RunQOLRuntime()
     }
 
     WriteRuntimeStatus(L"qol", L"active", L"built-in convenience runtime is active");
-    while (GetPrivateProfileIntW(L"qol", L"enabled", 0, configPath.c_str()) == 1) Sleep(250);
+    while (owner.Alive() && GetPrivateProfileIntW(L"qol", L"enabled", 0, configPath.c_str()) == 1) Sleep(250);
     StopQOLRuntime();
     return 0;
 }

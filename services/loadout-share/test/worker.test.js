@@ -72,6 +72,7 @@ function makeCommunityDB({ failCatalog = false, failWrites = false } = {}) {
   return {
     loadouts,
     likes,
+    comments,
     catalogQueries: () => catalogQueries,
     prepare(sql) {
       let values = []
@@ -414,6 +415,33 @@ test('catalog cards show and update deduplicated likes without opening the detai
   for (const [, script] of page.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Function(script), 'every catalog inline script must remain valid JavaScript')
   }
+})
+
+test('community mutations reject non-JSON and bodies above the 2 KiB boundary before parsing', async () => {
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: makeR2(), COMMUNITY_DB: community }
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: makeFrame(),
+  }), env).then(response => response.json())
+  const endpoint = `https://share.example/api/v1/loadouts/${published.compactCode}/comments`
+
+  const wrongType = await worker.fetch(new Request(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ visitorKey: 'visitor-alpha', body: 'hello' }),
+  }), env)
+  assert.equal(wrongType.status, 415)
+
+  const oversized = await worker.fetch(new Request(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visitorKey: 'visitor-alpha', body: 'x'.repeat(3 * 1024) }),
+  }), env)
+  assert.equal(oversized.status, 413)
+  assert.match((await oversized.json()).error, /2 KiB/)
+  assert.equal(community.comments.length, 0)
 })
 
 test('landing page escapes untrusted titles before server-side HTML rendering', async () => {

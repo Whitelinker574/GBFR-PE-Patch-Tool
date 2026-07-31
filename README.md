@@ -33,7 +33,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 智能配装已经放回角色配装详情的因子区域，不需要再去找独立工具页。
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-smart-loadout.png" alt="按技能目标生成十二因子配装" width="960">
+  <img src="docs/screenshots/v2.0.3-smart-loadout.png" alt="按技能目标配装入口与目标设置" width="960">
 </p>
 
 你可以在“手动配装”和“按技能配装”之间切换：

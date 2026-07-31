@@ -2,7 +2,7 @@
 import { reactive, ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
-  GetAppVersion, CheckUpdate, GetRuntimeCompanionSummary, OpenReleasePage,
+  GetAppVersion, CheckUpdate, GetNaturalDropStartupRecoveryStatus, GetRuntimeCompanionSummary, OpenReleasePage,
 } from '../../wailsjs/go/backend/App'
 import {
   ClipboardSetText,
@@ -132,11 +132,25 @@ const runtimeCompanionStates = reactive({
   camera: { id: 'camera', active: false, recoveryRequired: false },
   audioMixer: { id: 'audioMixer', active: false, recoveryRequired: false },
   virtualSigils: { id: 'virtualSigils', active: false, recoveryRequired: false },
+  loadoutPresets: { id: 'loadoutPresets', active: false, recoveryRequired: false },
+  runtimeQOL: { id: 'runtimeQOL', active: false, recoveryRequired: false },
 })
+const naturalDropRecovery = reactive({ blocked: false, detail: '' })
+const naturalDropRecoveryCopy = computed(() => language.value === 'en'
+  ? {
+      label: 'Drop rules need safe recovery',
+      title: 'The previous drop-rule deployment did not finish recovering. Fully exit the game and other tool instances, then open Drop & Crafting Rules and retry before starting the game.',
+    }
+  : {
+      label: '掉落规则待安全恢复',
+      title: '上次掉落规则部署尚未安全恢复。请完全退出游戏和其他工具实例，再打开“掉落与锻造规则”重试；恢复完成前不要启动游戏。',
+    })
 const runtimeCompanionLabels = {
   camera: ['镜头', 'Camera'],
   audioMixer: ['音频', 'Audio'],
   virtualSigils: ['虚拟因子', 'Virtual sigils'],
+  loadoutPresets: ['战斗采集', 'Battle capture'],
+  runtimeQOL: ['显示与房间', 'Display and room'],
 }
 const activeRuntimeCompanions = computed(() => Object.values(runtimeCompanionStates)
   .filter(item => item.active || item.recoveryRequired)
@@ -198,16 +212,22 @@ function scheduleRuntimeCompanionSummary(delay = 2000) {
 
 async function refreshRuntimeCompanionSummary() {
   const request = ++runtimeCompanionSummaryRequest
-  try {
-    const summaries = await GetRuntimeCompanionSummary()
-    if (request !== runtimeCompanionSummaryRequest) return
-    for (const summary of summaries || []) updateRuntimeCompanionState(summary)
-  } catch {
-    // Page-level workspaces still publish immediate state; the next shell poll
-    // retries the authoritative aggregate without hiding the existing status.
-  } finally {
-    if (request === runtimeCompanionSummaryRequest) scheduleRuntimeCompanionSummary()
+  const [summariesResult, naturalDropResult] = await Promise.allSettled([
+    GetRuntimeCompanionSummary(),
+    GetNaturalDropStartupRecoveryStatus(),
+  ])
+  if (request !== runtimeCompanionSummaryRequest) return
+  if (summariesResult.status === 'fulfilled') {
+    for (const summary of summariesResult.value || []) updateRuntimeCompanionState(summary)
   }
+  if (naturalDropResult.status === 'fulfilled') {
+    const naturalDropStatus = naturalDropResult.value
+    naturalDropRecovery.blocked = naturalDropStatus?.blocked === true
+    naturalDropRecovery.detail = String(naturalDropStatus?.detail || '')
+  }
+  // A failed endpoint does not hide the other endpoint's status. The next shell
+  // poll retries both authoritative aggregates.
+  if (request === runtimeCompanionSummaryRequest) scheduleRuntimeCompanionSummary()
 }
 
 function handleRuntimeCompanionVisibility() {
@@ -342,10 +362,10 @@ const toolMeta = {
     speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
   },
   spatialTools: {
-    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '2.0.2 实验', tone: 'live',
-    description: '单独提供坐标读取、书签、传送、世界轴连续移动与重力抑制，不再和队友配装检测混在一个入口。',
-    usage: ['仅在离线或单机内容连接', '读取当前坐标并按需保存书签', '逐项使用传送、移动或重力控制'],
-    caution: '世界轴移动加重力抑制不等于穿墙；noclip 与相机相对飞行仍未开放。',
+    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '稳定版仅预览/恢复', tone: 'calibrate',
+    description: '集中查看坐标、书签、传送、世界轴移动与重力抑制的实验状态；稳定版不会新开启尚未完成跨场景实测的移动会话。',
+    usage: ['仅在离线或单机内容查看状态', '如检测到旧实验会话，先执行停用并恢复', '等待页面明确标为可启用后再进行移动测试'],
+    caution: '重力抑制、noclip 与相机相对飞行均未完成稳定版验收；当前入口不会把候选能力包装成可用功能。',
     speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
   },
   selectedItemMonitor: {
@@ -426,10 +446,10 @@ const toolMeta = {
     speaker: '索恩', note: '先看准距离和高度；顶部显示常驻后，切页也不会停。',
   },
   virtualSigils: {
-    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 实验', tone: 'calibrate',
-    description: '让运行中的角色额外读取 1 至 8 颗真实库存因子的技能；它不会把存档的 12 个物理配装槽扩容。',
-    usage: ['选择提供因子实例的存档和角色', '从未装备背包选择因子，或在退出游戏后制造新实例', '启动游戏并点击“开启虚拟因子”；切页后仍会保持运行'],
-    caution: '同一个真实因子实例只能占一个虚拟槽；换存档、实例变化或校验失败会拒绝启用，停用时恢复所有相关 Hook。',
+    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '稳定版仅预览/恢复', tone: 'calibrate',
+    description: '预览让运行中角色额外读取 1 至 8 颗真实库存因子的实验配置；它不会扩展存档的 12 个物理槽，稳定版也不会新建运行时会话。',
+    usage: ['选择存档和角色，核对实验配置与真实库存实例', '如检测到旧实验会话，点击停用并恢复所有相关 Hook', '跨角色、场景和多 Hook 长测通过前，不会提供新开启按钮'],
+    caution: '同一实例只能占一个候选槽；稳定版只允许安全恢复，不会因单元测试通过就启用未完成实机验收的能力。',
     speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
   },
 	runtimeQOL: {
@@ -872,7 +892,19 @@ function showStatus(message, type) {
         <span class="build-chip">DLC 2.0.2</span>
         <span class="build-chip release-build">v2.0.3</span>
       </div>
-      <div v-if="ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
+      <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
+        <button
+          v-if="naturalDropRecovery.blocked"
+          type="button"
+          class="titlebar-natural-drop-recovery"
+          role="status"
+          :aria-label="naturalDropRecoveryCopy.label"
+          :title="language === 'en' ? naturalDropRecoveryCopy.title : (naturalDropRecovery.detail || naturalDropRecoveryCopy.title)"
+          @click="selectTool('naturalDrop')"
+        >
+          <span aria-hidden="true"></span>
+          {{ naturalDropRecoveryCopy.label }}
+        </button>
         <button
           v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
           type="button"
@@ -1255,6 +1287,12 @@ button,input,select { font:inherit; }
   background:rgba(130,85,25,.62);
 }
 .titlebar-companion-session.needs-recovery span { background:#ffd585; }
+.titlebar-natural-drop-recovery {
+  color:#fff0c7;
+  border-color:rgba(255,213,133,.58);
+  background:rgba(130,52,25,.72);
+}
+.titlebar-natural-drop-recovery span { background:#ffad85; }
 .titlebar-status {
   position:absolute;
   z-index:1;

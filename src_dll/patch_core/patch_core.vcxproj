@@ -157,14 +157,11 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(ProjectDir)..\thirdparty\libmem\lib\release</AdditionalLibraryDirectories>
       <AdditionalDependencies>libmem.lib;ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/Brepro %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
-    <PostBuildEvent>
-      <Command>if not exist "$(ProjectDir)..\..\internal\backend\resources" mkdir "$(ProjectDir)..\..\internal\backend\resources"
-xcopy /y "$(TargetPath)" "$(ProjectDir)..\..\internal\backend\resources\"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />

@@ -16,6 +16,7 @@ const FRAME_CODEC = 1
 const FRAME_HEADER_SIZE = 18
 const MAX_FRAME_BYTES = 8 * 1024
 const MAX_RAW_BYTES = 1024 * 1024
+const MAX_COMMUNITY_ACTION_BYTES = 2 * 1024
 const MAX_TITLE_LENGTH = 80
 const MAX_PREVIEW_BYTES = 12 * 1024
 const DEFAULT_CATALOG_LIMIT = 24
@@ -1035,8 +1036,13 @@ async function communityLikesForCodes(env, codes, required = false) {
 async function communityAction(request, env, code, action) {
   if (!env.COMMUNITY_DB) return errorResponse('社区互动尚未启用', 503)
   if (!(await env.LOADOUTS.head(objectKey(code)))) return errorResponse('没有找到这套配装', 404)
+  const contentType = (request.headers.get('Content-Type') || '').toLowerCase()
+  if (!contentType.startsWith('application/json')) return errorResponse('只接受 application/json', 415)
+  const bounded = await readBoundedRequestBody(request, MAX_COMMUNITY_ACTION_BYTES, '社区互动请求超过 2 KiB')
+  if (bounded.response) return bounded.response
   let body = {}
-  try { body = await request.json() } catch { return errorResponse('请求内容必须是 JSON', 400) }
+  try { body = JSON.parse(new TextDecoder().decode(bounded.bytes)) } catch { return errorResponse('请求内容必须是 JSON', 400) }
+  if (!body || Array.isArray(body) || typeof body !== 'object') return errorResponse('请求内容必须是 JSON 对象', 400)
   const visitorKey = String(body.visitorKey || request.headers.get('X-Visitor-Key') || '').trim()
   if (visitorKey.length < 8 || visitorKey.length > 256) return errorResponse('缺少有效的匿名访问标识', 400)
   const visitor = await visitorDigest(visitorKey)

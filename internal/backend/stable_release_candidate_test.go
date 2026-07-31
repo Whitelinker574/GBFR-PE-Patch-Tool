@@ -12,6 +12,9 @@ func TestStableReleaseKeepsUnverifiedRuntimeCandidatesDisabled(t *testing.T) {
 	if stableReleaseVirtualSigilWriteEnabled {
 		t.Fatal("virtual sigils are writable in the stable release")
 	}
+	if runtimeSpatialGravityStableReleaseEnabled {
+		t.Fatal("gravity suppression is writable before forced-exit restoration is field-proven")
+	}
 
 	catalog, err := loadRuntimePatchCatalog()
 	if err != nil {

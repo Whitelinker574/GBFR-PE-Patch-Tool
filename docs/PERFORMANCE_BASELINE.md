@@ -1,6 +1,6 @@
 # Performance baseline
 
-Captured on 2026-07-30 for `experiment/community-special-features`. Production numbers come from `vite build`; browser timing is diagnostic only until the equivalent packaged Wails run is recorded.
+Captured on 2026-07-31 for `experiment/community-special-features`. Production numbers come from `vite build`; browser timing is diagnostic only until the equivalent packaged Wails run is recorded.
 
 ## Reference machine
 
@@ -20,18 +20,18 @@ The low-spec gate remains 4 cores / 8 threads, 8 GB RAM, integrated graphics, 19
 
 | Metric | Before P0 | Current | Change |
 | --- | ---: | ---: | ---: |
-| Initial JS gzip | 477,720 bytes | 156,670 bytes | -67.2% |
-| Initial CSS gzip | 43,600 bytes | 12,224 bytes | -72.0% |
+| Initial JS gzip | 477,720 bytes | 160,015 bytes | -66.5% |
+| Initial CSS gzip | 43,600 bytes | 12,328 bytes | -71.7% |
 | Initial JS chunks | 1 | 2 entry/direct-import chunks | Page code moved to async chunks |
 | Function art startup decode | 46 images, about 448 MB RGBA | No global decode queue across 60 current images | Current target only |
 
-The enforced budgets are 256,000 bytes initial JS gzip, 25,600 bytes initial CSS gzip, 160,000 bytes for the largest async JS chunk, 30,000 bytes for the largest async CSS chunk, 1,500,000 bytes per raster image, 800,000 bytes per function-art asset, and 12,000,000 bytes for all function art. The final build measured 142,004 bytes for the largest async JS chunk, 12,382 bytes for the largest async CSS chunk, 1,321,102 bytes for the largest raster, 539,726 bytes for the largest function-art asset, and 11,646,630 bytes for all function art. `npm run check:bundle` reads Vite's manifest and includes direct module-preload dependencies rather than checking only the entry filename.
+The enforced budgets are 256,000 bytes initial JS gzip, 25,600 bytes initial CSS gzip, 160,000 bytes for the largest async JS chunk, 30,000 bytes for the largest async CSS chunk, 1,500,000 bytes per raster image, 800,000 bytes per function-art asset, and 12,000,000 bytes for all function art. The final build measured 142,002 bytes for the largest async JS chunk, 12,381 bytes for the largest async CSS chunk, 1,321,102 bytes for the largest raster, 539,726 bytes for the largest function-art asset, and 11,661,942 bytes for all function art. `npm run check:bundle` reads Vite's manifest and includes direct module-preload dependencies rather than checking only the entry filename.
 
 ## Asset pipeline
 
 - 30 function identities have independent art and sticker records.
 - Each record has one content-hashed, high-quality `display` WebP. Removed `thumb` and `full` copies are not packaged because no current page consumes them.
-- The generated function-art directory is 11,664,631 bytes across 60 display images plus its manifest; the 29 share portraits remain a separate lazy-loaded set.
+- The generated function-art directory is 11,679,943 bytes across 60 display images plus its manifest; the 29 share portraits remain a separate lazy-loaded set.
 - Display art is capped at 2520 px without enlargement and encoded as high-quality WebP; this preserves the supported desktop composition while avoiding unconditional 4K decode.
 - Navigation hover, focus, or pointer-down starts page-code and display-image preparation. The active page changes only after preparation completes.
 - A cold navigation keeps the current page visible until the destination module, portrait, and sticker are ready. A 15-second guard exposes an explicit retry state; a failed image leaves the old page visible instead of switching to an empty page.

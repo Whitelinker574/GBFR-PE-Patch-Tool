@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestNaturalDropSnapshotExistingFileDistinguishesMissingFromReadFailure(t *testing.T) {
@@ -481,6 +483,501 @@ func TestNaturalDropOwnedInstallRequiresMatchingBackup(t *testing.T) {
 	}
 	if _, owned := naturalDropOwnedInstall(gameDir); !owned {
 		t.Fatal("valid tool manifest and backup were not recognized")
+	}
+}
+
+func naturalDropTestIndex(t *testing.T, external map[string][]byte) []byte {
+	t.Helper()
+	index := &gbfrDataIndex{Codename: "relink"}
+	for path, data := range external {
+		registerGBFRExternalFile(index, naturalDropGamePathHash(path), uint64(len(data)))
+	}
+	result, err := buildGBFRDataIndex(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func TestNaturalDropPreparedTransactionRecoversForcedInterruption(t *testing.T) {
+	gameDir := t.TempDir()
+	indexPath := filepath.Join(gameDir, "data.i")
+	beforeIndex := naturalDropTestIndex(t, nil)
+	afterIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropSummonTablePaths[0]: []byte("new summon"),
+		naturalDropSummonTablePaths[1]: []byte("new summon lot"),
+	})
+	if err := os.WriteFile(indexPath, beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	existingRelative := naturalDropRelativeTarget(naturalDropSummonTablePaths[0])
+	newRelative := naturalDropRelativeTarget(naturalDropSummonTablePaths[1])
+	existingPath := filepath.Join(gameDir, filepath.FromSlash(existingRelative))
+	if err := os.MkdirAll(filepath.Dir(existingPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existingPath, []byte("before summon"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	beforeFiles := map[string][]byte{
+		existingRelative: []byte("before summon"),
+		newRelative:      nil,
+	}
+	afterFiles := map[string][]byte{
+		existingRelative: []byte("new summon"),
+		newRelative:      []byte("new summon lot"),
+	}
+	if err := naturalDropBeginPreparedTransaction(gameDir, beforeIndex, afterIndex, beforeFiles, nil, afterFiles, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropCreateBackup(filepath.Join(gameDir, naturalDropBackupName), beforeIndex); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropWriteAtomic(existingPath, afterFiles[existingRelative]); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		t.Fatal(err)
+	}
+	recoveredIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(recoveredIndex, beforeIndex) {
+		t.Fatal("forced-interruption recovery changed the pre-deployment data.i")
+	}
+	recoveredExisting, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(recoveredExisting) != "before summon" {
+		t.Fatalf("existing generated target = %q; want pre-deployment content", recoveredExisting)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, filepath.FromSlash(newRelative))); !os.IsNotExist(err) {
+		t.Fatalf("unwritten target was touched during recovery: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(gameDir, naturalDropPrepareJournalName),
+		filepath.Join(gameDir, naturalDropPrepareDirectoryName),
+		filepath.Join(gameDir, naturalDropBackupName),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("transaction artifact was not removed: %s: %v", path, err)
+		}
+	}
+}
+
+func TestNaturalDropTransactionLeaseIsExclusiveAcrossAppInstances(t *testing.T) {
+	gameDir := t.TempDir()
+	releaseFirst, err := acquireNaturalDropTransactionLease(gameDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acquireNaturalDropTransactionLease(gameDir); err == nil {
+		releaseFirst()
+		t.Fatal("second app instance acquired the same natural-drop transaction")
+	}
+	releaseFirst()
+	if _, err := os.Stat(filepath.Join(gameDir, naturalDropTransactionLockName)); !os.IsNotExist(err) {
+		t.Fatalf("delete-on-close transaction lock survived release: %v", err)
+	}
+	releaseSecond, err := acquireNaturalDropTransactionLease(gameDir)
+	if err != nil {
+		t.Fatalf("transaction lock could not be reacquired after release: %v", err)
+	}
+	releaseSecond()
+}
+
+func TestNaturalDropPreparedTransactionRecoversTruncatedBackupArtifacts(t *testing.T) {
+	for _, tc := range []struct {
+		artifact string
+		wantErr  bool
+	}{
+		{artifact: naturalDropBackupName, wantErr: true},
+		{artifact: naturalDropBackupPartialName},
+	} {
+		t.Run(tc.artifact, func(t *testing.T) {
+			gameDir := t.TempDir()
+			beforeIndex := naturalDropTestIndex(t, nil)
+			afterIndex := naturalDropTestIndex(t, map[string][]byte{
+				naturalDropItemTablePaths[0]: []byte("new rewards"),
+			})
+			relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+			if err := os.WriteFile(filepath.Join(gameDir, "data.i"), beforeIndex, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := naturalDropBeginPreparedTransaction(
+				gameDir,
+				beforeIndex,
+				afterIndex,
+				map[string][]byte{relative: nil},
+				nil,
+				map[string][]byte{relative: []byte("new rewards")},
+				true,
+				nil,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(gameDir, tc.artifact), []byte("truncated"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := naturalDropRecoverPreparedTransaction(gameDir)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("unknown final backup contents were deleted instead of failing closed")
+				}
+				if _, statErr := os.Stat(filepath.Join(gameDir, naturalDropBackupName)); statErr != nil {
+					t.Fatalf("rejected final backup was not preserved: %v", statErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("truncated tool backup blocked recovery: %v", err)
+			}
+			for _, name := range []string{
+				naturalDropBackupName,
+				naturalDropBackupPartialName,
+				naturalDropPrepareJournalName,
+				naturalDropPrepareDirectoryName,
+			} {
+				if _, err := os.Stat(filepath.Join(gameDir, name)); !os.IsNotExist(err) {
+					t.Fatalf("recovery left %s behind: %v", name, err)
+				}
+			}
+			recovered, err := os.ReadFile(filepath.Join(gameDir, "data.i"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(recovered, beforeIndex) {
+				t.Fatal("truncated backup recovery changed the pre-deployment data.i")
+			}
+		})
+	}
+}
+
+func TestNaturalDropPreparedRestoreRecoversAfterManifestAndBackupDeletion(t *testing.T) {
+	gameDir := t.TempDir()
+	originalIndex := naturalDropTestIndex(t, nil)
+	generatedBody := []byte("deployed rewards")
+	deployedIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropItemTablePaths[0]: generatedBody,
+	})
+	relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+	target := filepath.Join(gameDir, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gameDir, "data.i"), deployedIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, generatedBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifestBody := []byte("{\"owner\":\"test\"}\n")
+	if err := os.WriteFile(filepath.Join(gameDir, naturalDropManifestName), manifestBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gameDir, naturalDropBackupName), originalIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		deployedIndex,
+		originalIndex,
+		map[string][]byte{relative: generatedBody},
+		manifestBody,
+		map[string][]byte{relative: nil},
+		false,
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropAddPreparedBackupTransition(gameDir, originalIndex, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropWriteAtomic(filepath.Join(gameDir, "data.i"), originalIndex); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		target,
+		filepath.Join(gameDir, naturalDropManifestName),
+		filepath.Join(gameDir, naturalDropBackupName),
+	} {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string][]byte{
+		filepath.Join(gameDir, "data.i"): deployedIndex,
+		target:                           generatedBody,
+		filepath.Join(gameDir, naturalDropManifestName): manifestBody,
+		filepath.Join(gameDir, naturalDropBackupName):   originalIndex,
+	} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read restored %s: %v", path, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("restored %s differs from its pre-restore snapshot", path)
+		}
+	}
+}
+
+func TestAppStartupInvokesNaturalDropRecoveryBeforeRuntimeServices(t *testing.T) {
+	source, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(source)
+	start := strings.Index(body, "func (a *App) startup")
+	end := strings.Index(body[start:], "\nfunc (a *App) beforeClose")
+	if start < 0 || end < 0 {
+		t.Fatal("App.startup source block was not found")
+	}
+	block := body[start : start+end]
+	recoverAt := strings.Index(block, "recoverNaturalDropTransactionsAtStartup")
+	watcherAt := strings.Index(block, "startRuntimeEmergencyWatcher")
+	if recoverAt < 0 || watcherAt < 0 || recoverAt > watcherAt {
+		t.Fatal("startup must recover prepared natural-drop transactions before starting runtime services")
+	}
+}
+
+func TestNaturalDropStartupRecoveryErrorRemainsVisibleUntilCleared(t *testing.T) {
+	app := NewApp()
+	app.setNaturalDropStartupRecoveryError(errors.New("test recovery conflict"))
+	status := app.GetNaturalDropStartupRecoveryStatus()
+	if !status.Blocked {
+		t.Fatal("startup recovery failure was not exposed as a blocking global status")
+	}
+	if !strings.Contains(status.Detail, "test recovery conflict") ||
+		!strings.Contains(status.Detail, "不要启动游戏") {
+		t.Fatalf("startup recovery status is not actionable: %q", status.Detail)
+	}
+	app.clearNaturalDropStartupRecoveryError()
+	status = app.GetNaturalDropStartupRecoveryStatus()
+	if status.Blocked || status.Detail != "" {
+		t.Fatalf("successful recovery did not clear global status: %#v", status)
+	}
+}
+
+func TestNaturalDropPreparedTransactionRejectsJournalMovedToAnotherGame(t *testing.T) {
+	sourceDir := t.TempDir()
+	otherDir := t.TempDir()
+	beforeIndex := naturalDropTestIndex(t, nil)
+	afterIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropItemTablePaths[0]: []byte("new rewards"),
+	})
+	relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+	afterFiles := map[string][]byte{relative: []byte("new rewards")}
+	if err := os.WriteFile(filepath.Join(sourceDir, "data.i"), beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropBeginPreparedTransaction(sourceDir, beforeIndex, afterIndex, map[string][]byte{relative: nil}, nil, afterFiles, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := os.ReadFile(filepath.Join(sourceDir, naturalDropPrepareJournalName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherDir, "data.i"), beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherDir, naturalDropPrepareJournalName), journal, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropRecoverPreparedTransaction(otherDir); err == nil {
+		t.Fatal("journal copied from another game directory was accepted")
+	}
+	otherIndex, err := os.ReadFile(filepath.Join(otherDir, "data.i"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(otherIndex, beforeIndex) {
+		t.Fatal("rejected orphan journal modified the unrelated data.i")
+	}
+	if _, err := os.Stat(filepath.Join(otherDir, filepath.FromSlash(relative))); !os.IsNotExist(err) {
+		t.Fatalf("rejected orphan journal touched an unrelated generated path: %v", err)
+	}
+}
+
+func TestNaturalDropPreparedTransactionRejectsOutOfScopeGeneratedFile(t *testing.T) {
+	gameDir := t.TempDir()
+	beforeIndex := naturalDropTestIndex(t, nil)
+	afterIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropItemTablePaths[0]: []byte("new rewards"),
+	})
+	relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+	if err := os.WriteFile(filepath.Join(gameDir, "data.i"), beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		beforeIndex,
+		afterIndex,
+		map[string][]byte{relative: nil},
+		nil,
+		map[string][]byte{relative: []byte("new rewards")},
+		true,
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	journalPath := filepath.Join(gameDir, naturalDropPrepareJournalName)
+	data, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var journal naturalDropPrepareJournal
+	if err := json.Unmarshal(data, &journal); err != nil {
+		t.Fatal(err)
+	}
+	journal.GeneratedFiles["../unrelated.txt"] = naturalDropPreparedFile{
+		AfterPresent: true,
+		AfterSHA:     fileSHA256([]byte("transaction content")),
+	}
+	data, err = json.Marshal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journalPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unrelatedPath := filepath.Join(filepath.Dir(gameDir), "unrelated.txt")
+	if err := os.WriteFile(unrelatedPath, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(unrelatedPath) })
+
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err == nil {
+		t.Fatal("journal containing an out-of-scope generated file was accepted")
+	}
+	unrelated, err := os.ReadFile(unrelatedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(unrelated) != "keep me" {
+		t.Fatalf("out-of-scope file = %q; recovery must not touch it", unrelated)
+	}
+	currentIndex, err := os.ReadFile(filepath.Join(gameDir, "data.i"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(currentIndex, beforeIndex) {
+		t.Fatal("rejected out-of-scope journal modified data.i")
+	}
+}
+
+func TestNaturalDropPreparedTransactionRecoversWithoutManifest(t *testing.T) {
+	gameDir := t.TempDir()
+	beforeIndex := naturalDropTestIndex(t, nil)
+	afterIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropItemTablePaths[0]: []byte("deployed rewards"),
+	})
+	relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+	afterFiles := map[string][]byte{relative: []byte("deployed rewards")}
+	if err := os.WriteFile(filepath.Join(gameDir, "data.i"), beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropBeginPreparedTransaction(gameDir, beforeIndex, afterIndex, map[string][]byte{relative: nil}, nil, afterFiles, true, []byte("{\"future\":\"manifest\"}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropCreateBackup(filepath.Join(gameDir, naturalDropBackupName), beforeIndex); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropWriteAtomic(filepath.Join(gameDir, filepath.FromSlash(relative)), afterFiles[relative]); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropWriteAtomic(filepath.Join(gameDir, "data.i"), afterIndex); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, naturalDropManifestName)); !os.IsNotExist(err) {
+		t.Fatalf("test setup unexpectedly wrote a manifest: %v", err)
+	}
+
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := os.ReadFile(filepath.Join(gameDir, "data.i"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(recovered, beforeIndex) {
+		t.Fatal("manifest-less recovery did not restore the pre-deployment data.i")
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, filepath.FromSlash(relative))); !os.IsNotExist(err) {
+		t.Fatalf("manifest-less recovery left a generated file behind: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, naturalDropBackupName)); !os.IsNotExist(err) {
+		t.Fatalf("manifest-less initial deployment left an orphan backup: %v", err)
+	}
+}
+
+func TestNaturalDropCompletedJournalNeverRequiresDeletedSnapshots(t *testing.T) {
+	gameDir := t.TempDir()
+	beforeIndex := naturalDropTestIndex(t, nil)
+	afterIndex := naturalDropTestIndex(t, map[string][]byte{
+		naturalDropItemTablePaths[0]: []byte("deployed rewards"),
+	})
+	relative := naturalDropRelativeTarget(naturalDropItemTablePaths[0])
+	if err := os.WriteFile(filepath.Join(gameDir, "data.i"), beforeIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		beforeIndex,
+		afterIndex,
+		map[string][]byte{relative: nil},
+		nil,
+		map[string][]byte{relative: []byte("deployed rewards")},
+		true,
+		[]byte("{\"committed\":true}\n"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	journalPath := filepath.Join(gameDir, naturalDropPrepareJournalName)
+	completedPath := filepath.Join(gameDir, naturalDropCompletedJournalName)
+	from, err := windows.UTF16PtrFromString(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	to, err := windows.UTF16PtrFromString(completedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(gameDir, naturalDropPrepareDirectoryName)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		t.Fatalf("completed transaction residue was treated as interrupted: %v", err)
+	}
+	if _, err := os.Stat(journalPath); !os.IsNotExist(err) {
+		t.Fatalf("completed transaction recreated an active journal: %v", err)
+	}
+
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		beforeIndex,
+		afterIndex,
+		map[string][]byte{relative: nil},
+		nil,
+		map[string][]byte{relative: []byte("deployed rewards")},
+		true,
+		nil,
+	); err != nil {
+		t.Fatalf("completed marker blocked the next transaction: %v", err)
+	}
+	if _, err := os.Stat(completedPath); !os.IsNotExist(err) {
+		t.Fatalf("next transaction retained stale completed marker: %v", err)
 	}
 }
 

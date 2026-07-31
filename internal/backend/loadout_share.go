@@ -1,8 +1,11 @@
 package backend
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +19,7 @@ const (
 	loadoutShareLegacyVersion = 1
 	loadoutShareVersion       = 11
 	loadoutShareMaxSize       = 1024 * 1024
+	loadoutSharePNGMaxSize    = 32 * 1024 * 1024
 )
 
 // LoadoutShareSigil 使用“因子本体 + 等级 + 主副词条 + 词条等级”指纹。
@@ -938,6 +942,64 @@ func safeLoadoutFilename(name string) string {
 		return "GBFR配装"
 	}
 	return name
+}
+
+func decodeLoadoutSharePNG(dataURL string) ([]byte, error) {
+	const prefix = "data:image/png;base64,"
+	if !strings.HasPrefix(dataURL, prefix) {
+		return nil, fmt.Errorf("分享图数据不是 PNG")
+	}
+	encoded := strings.TrimSpace(strings.TrimPrefix(dataURL, prefix))
+	if encoded == "" || len(encoded) > base64.StdEncoding.EncodedLen(loadoutSharePNGMaxSize) {
+		return nil, fmt.Errorf("分享图数据为空或超过 32 MiB")
+	}
+	payload, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("分享图数据损坏: %w", err)
+	}
+	if len(payload) == 0 || len(payload) > loadoutSharePNGMaxSize {
+		return nil, fmt.Errorf("分享图数据为空或超过 32 MiB")
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("分享图不是有效 PNG: %w", err)
+	}
+	validSize := (config.Width == 1920 && config.Height == 1080) ||
+		(config.Width == 1440 && config.Height == 1920) ||
+		(config.Width == 1600 && config.Height == 1600)
+	if !validSize {
+		return nil, fmt.Errorf("分享图尺寸 %dx%d 不受支持", config.Width, config.Height)
+	}
+	return payload, nil
+}
+
+// SaveLoadoutSharePNG uses the native Wails save dialog because WebView2 may
+// reject an async <a download> click after the canvas renderer has yielded.
+func (a *App) SaveLoadoutSharePNG(defaultName, dataURL string) (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("Wails 上下文未初始化")
+	}
+	payload, err := decodeLoadoutSharePNG(dataURL)
+	if err != nil {
+		return "", err
+	}
+	filename := safeLoadoutFilename(strings.TrimSuffix(strings.TrimSpace(defaultName), ".png")) + ".png"
+	outputPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "保存配装分享图",
+		DefaultFilename: filename,
+		Filters:         []runtime.FileFilter{{DisplayName: "PNG 图片 (*.png)", Pattern: "*.png"}},
+	})
+	if err != nil || outputPath == "" {
+		return outputPath, err
+	}
+	outputPath = filepath.Clean(outputPath)
+	if !strings.EqualFold(filepath.Ext(outputPath), ".png") {
+		outputPath += ".png"
+	}
+	if err := writeFileAtomicVerified(outputPath, payload); err != nil {
+		return "", err
+	}
+	return outputPath, nil
 }
 
 func marshalLoadoutShare(share *LoadoutShare) ([]byte, error) {

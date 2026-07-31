@@ -19,22 +19,35 @@ import (
 )
 
 var (
-	patchCoreInjectMu         sync.Mutex
-	runtimeCompanionDLLMu     sync.Mutex
-	runtimeCompanionDLLByName = make(map[string]string)
+	patchCoreInjectMu           sync.Mutex
+	runtimeCompanionDLLMu       sync.Mutex
+	runtimeCompanionOwnerFileMu sync.Mutex
+	runtimeCompanionDLLByName   = make(map[string]string)
 )
 
 type runtimeCompanionStatus struct {
-	PID     uint32
-	Created uint64
-	State   string
-	Detail  string
+	PID        uint32
+	Created    uint64
+	Generation string
+	State      string
+	Detail     string
 }
 
 type runtimeCompanionOwner struct {
-	ID      string
-	PID     uint32
-	Created uint64
+	ID         string
+	PID        uint32
+	Created    uint64
+	Generation string
+}
+
+// runtimeCompanionLease is a kernel-enforced, process-lifetime lease. The
+// delete-on-close handle prevents two desktop processes from passing the
+// owner-file check at the same time, and Windows releases it even when the
+// desktop process is forcibly terminated.
+type runtimeCompanionLease struct {
+	Handle     windows.Handle
+	Process    processInstanceID
+	Generation string
 }
 
 type RuntimeCompanionSummary struct {
@@ -69,8 +82,12 @@ func runtimeCompanionRecoveryRequired(status runtimeCompanionStatus, process pro
 // runtimeCompanionStartDecision is evaluated before claiming/injecting. An
 // owner without a matching status is an unresolved startup, not a fresh slot:
 // injecting again could leave two copies of the same Hook in one process.
-func runtimeCompanionStartDecision(status runtimeCompanionStatus, process processInstanceID, owned bool) (alreadyActive bool, err error) {
+func runtimeCompanionStartDecision(status runtimeCompanionStatus, process processInstanceID, ownedGeneration string) (alreadyActive bool, err error) {
 	matched := runtimeCompanionMatchesProcess(status, process)
+	owned := ownedGeneration != ""
+	if owned && (!matched || status.Generation != ownedGeneration) {
+		return false, errors.New("内置运行时启动状态与当前所有权代次不一致；请先停用并恢复，或重启游戏后再试")
+	}
 	if matched {
 		switch strings.ToLower(strings.TrimSpace(status.State)) {
 		case "active":
@@ -88,6 +105,22 @@ func runtimeCompanionStartDecision(status runtimeCompanionStatus, process proces
 		return false, errors.New("内置运行时启动状态未知；请先停用并恢复，或重启游戏后再试")
 	}
 	return false, nil
+}
+
+func newRuntimeCompanionGeneration() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", fmt.Errorf("生成运行时所有权代次失败: %w", err)
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func validRuntimeCompanionGeneration(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 func (a *App) runtimeCompanionOwnerID() string {
@@ -245,6 +278,8 @@ func readRuntimeCompanionStatus(feature string) runtimeCompanionStatus {
 			status.PID = uint32(parsed)
 		case "created":
 			status.Created, _ = strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		case "generation":
+			status.Generation = strings.TrimSpace(value)
 		case "state":
 			status.State = strings.TrimSpace(value)
 		case "detail":
@@ -256,6 +291,177 @@ func readRuntimeCompanionStatus(feature string) runtimeCompanionStatus {
 
 func runtimeCompanionOwnerPath(feature string) (string, error) {
 	return runtimeCompanionPath(feature + ".owner")
+}
+
+func runtimeCompanionLeasePath(feature string) (string, error) {
+	return runtimeCompanionPath(feature + ".lease")
+}
+
+func cleanupRuntimeCompanionStatusTemporaries(feature string) error {
+	dir, err := runtimeCompanionDirectory()
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	prefix := feature + ".status."
+	const suffix = ".tmp"
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+			continue
+		}
+		generation := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+		if !validRuntimeCompanionGeneration(generation) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("检查旧运行时状态临时文件失败: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("清理旧运行时状态临时文件失败: %w", err)
+		}
+	}
+	return nil
+}
+
+func createExclusiveDeleteOnCloseFile(path string) (windows.Handle, error) {
+	pathUTF16, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	handle, err := windows.CreateFile(
+		pathUTF16,
+		windows.GENERIC_READ|windows.GENERIC_WRITE|windows.DELETE,
+		0,
+		nil,
+		windows.OPEN_ALWAYS,
+		windows.FILE_ATTRIBUTE_HIDDEN|windows.FILE_ATTRIBUTE_TEMPORARY|windows.FILE_FLAG_DELETE_ON_CLOSE,
+		0,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return handle, nil
+}
+
+func runtimeCompanionProcessAlive(process processInstanceID) (bool, error) {
+	if process.PID == 0 || process.Created == 0 {
+		return false, errors.New("运行时租约缺少完整的游戏进程身份")
+	}
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, process.PID)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer windows.CloseHandle(handle)
+	created, err := processCreationTime(handle)
+	if err != nil {
+		return false, err
+	}
+	if created != process.Created {
+		return false, nil
+	}
+	wait, err := windows.WaitForSingleObject(handle, 0)
+	if err != nil {
+		return false, err
+	}
+	switch uint32(wait) {
+	case uint32(windows.WAIT_TIMEOUT):
+		return true, nil
+	case uint32(windows.WAIT_OBJECT_0):
+		return false, nil
+	default:
+		return false, fmt.Errorf("检查运行时租约游戏进程状态失败: wait=%d", wait)
+	}
+}
+
+func (a *App) acquireRuntimeCompanionLease(feature string, process processInstanceID) (bool, error) {
+	a.runtimeCompanionLeaseMu.Lock()
+	defer a.runtimeCompanionLeaseMu.Unlock()
+	if lease, ok := a.runtimeCompanionLeases[feature]; ok {
+		if lease.Handle != 0 && lease.Process == process {
+			return false, nil
+		}
+		if lease.Handle != 0 {
+			alive, err := runtimeCompanionProcessAlive(lease.Process)
+			if err != nil {
+				return false, fmt.Errorf("验证旧运行时租约失败: %w", err)
+			}
+			if alive {
+				return false, errors.New("当前工具实例仍持有另一存活游戏进程的运行时租约")
+			}
+			_ = windows.CloseHandle(lease.Handle)
+		}
+		delete(a.runtimeCompanionLeases, feature)
+	}
+	path, err := runtimeCompanionLeasePath(feature)
+	if err != nil {
+		return false, err
+	}
+	handle, err := createExclusiveDeleteOnCloseFile(path)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_SHARING_VIOLATION) || errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			return false, errors.New("该游戏进程的运行时组件正由另一个工具实例管理")
+		}
+		return false, fmt.Errorf("创建运行时独占租约失败: %w", err)
+	}
+	generation, err := newRuntimeCompanionGeneration()
+	if err != nil {
+		_ = windows.CloseHandle(handle)
+		return false, err
+	}
+	if a.runtimeCompanionLeases == nil {
+		a.runtimeCompanionLeases = make(map[string]runtimeCompanionLease)
+	}
+	a.runtimeCompanionLeases[feature] = runtimeCompanionLease{
+		Handle:     handle,
+		Process:    process,
+		Generation: generation,
+	}
+	return true, nil
+}
+
+func (a *App) runtimeCompanionLease(feature string, process processInstanceID) (runtimeCompanionLease, bool) {
+	a.runtimeCompanionLeaseMu.Lock()
+	defer a.runtimeCompanionLeaseMu.Unlock()
+	lease, ok := a.runtimeCompanionLeases[feature]
+	if !ok || lease.Handle == 0 || lease.Process != process || !validRuntimeCompanionGeneration(lease.Generation) {
+		return runtimeCompanionLease{}, false
+	}
+	return lease, true
+}
+
+func (a *App) runtimeCompanionLeaseByFeature(feature string) (runtimeCompanionLease, bool) {
+	a.runtimeCompanionLeaseMu.Lock()
+	defer a.runtimeCompanionLeaseMu.Unlock()
+	lease, ok := a.runtimeCompanionLeases[feature]
+	if !ok || lease.Handle == 0 || !validRuntimeCompanionGeneration(lease.Generation) {
+		return runtimeCompanionLease{}, false
+	}
+	return lease, true
+}
+
+func (a *App) dropRuntimeCompanionLease(feature, generation string) {
+	a.runtimeCompanionLeaseMu.Lock()
+	lease, ok := a.runtimeCompanionLeases[feature]
+	if ok && lease.Generation == generation {
+		delete(a.runtimeCompanionLeases, feature)
+	} else {
+		ok = false
+	}
+	a.runtimeCompanionLeaseMu.Unlock()
+	if ok && lease.Handle != 0 {
+		_ = windows.CloseHandle(lease.Handle)
+	}
 }
 
 func readRuntimeCompanionOwner(feature string) runtimeCompanionOwner {
@@ -281,47 +487,101 @@ func readRuntimeCompanionOwner(feature string) runtimeCompanionOwner {
 			owner.PID = uint32(parsed)
 		case "created":
 			owner.Created, _ = strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		case "generation":
+			owner.Generation = strings.TrimSpace(value)
 		}
 	}
 	return owner
 }
 
 func (a *App) ownsRuntimeCompanion(feature string, process processInstanceID) bool {
+	lease, ok := a.runtimeCompanionLease(feature, process)
+	if !ok {
+		return false
+	}
 	owner := readRuntimeCompanionOwner(feature)
-	return owner.ID != "" && owner.ID == a.runtimeCompanionOwnerID() && owner.PID == process.PID && owner.Created == process.Created
+	return owner.ID != "" &&
+		owner.ID == a.runtimeCompanionOwnerID() &&
+		owner.PID == process.PID &&
+		owner.Created == process.Created &&
+		owner.Generation == lease.Generation
 }
 
 func (a *App) releaseRuntimeCompanionOwnership(feature string) {
+	runtimeCompanionOwnerFileMu.Lock()
+	defer runtimeCompanionOwnerFileMu.Unlock()
+	lease, ok := a.runtimeCompanionLeaseByFeature(feature)
+	if !ok {
+		return
+	}
+	defer a.dropRuntimeCompanionLease(feature, lease.Generation)
 	path, err := runtimeCompanionOwnerPath(feature)
 	if err != nil {
 		return
 	}
 	owner := readRuntimeCompanionOwner(feature)
-	if owner.ID == "" || owner.ID != a.runtimeCompanionOwnerID() {
+	if owner.ID == "" ||
+		owner.ID != a.runtimeCompanionOwnerID() ||
+		owner.Generation != lease.Generation {
 		return
 	}
 	_ = os.Remove(path)
 }
 
 func (a *App) claimRuntimeCompanionOwnership(feature string, process processInstanceID) error {
+	runtimeCompanionOwnerFileMu.Lock()
+	defer runtimeCompanionOwnerFileMu.Unlock()
 	path, err := runtimeCompanionOwnerPath(feature)
 	if err != nil {
 		return err
 	}
+	leaseCreated, err := a.acquireRuntimeCompanionLease(feature, process)
+	if err != nil {
+		return err
+	}
+	claimed := false
+	lease, ok := a.runtimeCompanionLease(feature, process)
+	if !ok {
+		return errors.New("运行时独占租约缺少有效代次")
+	}
+	defer func() {
+		if leaseCreated && !claimed {
+			a.dropRuntimeCompanionLease(feature, lease.Generation)
+		}
+	}()
 	ownerID := a.runtimeCompanionOwnerID()
 	for attempt := 0; attempt < 2; attempt++ {
 		owner := readRuntimeCompanionOwner(feature)
 		if owner.ID != "" {
-			if owner.ID == ownerID && owner.PID == process.PID && owner.Created == process.Created {
+			if owner.ID == ownerID &&
+				owner.PID == process.PID &&
+				owner.Created == process.Created &&
+				owner.Generation == lease.Generation {
+				claimed = true
 				return nil
 			}
 			if owner.PID == process.PID && owner.Created == process.Created {
-				return errors.New("该游戏进程的运行时组件已由另一个工具实例管理")
+				return errors.New("该游戏进程仍保留另一个运行时所有者；请等待其完成恢复")
 			}
-			_ = os.Remove(path)
+			if owner.PID == 0 || owner.Created == 0 {
+				return errors.New("运行时所有者记录不完整；为避免覆盖未知 Hook，拒绝接管")
+			}
+			alive, aliveErr := runtimeCompanionProcessAlive(processInstanceID{PID: owner.PID, Created: owner.Created})
+			if aliveErr != nil {
+				return fmt.Errorf("验证旧运行时所有者对应的游戏进程失败: %w", aliveErr)
+			}
+			if alive {
+				return errors.New("另一个仍存活的游戏进程保留运行时所有权；拒绝跨进程接管")
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("清理已死亡游戏进程的运行时所有者记录失败: %w", err)
+			}
 		}
 		if status := readRuntimeCompanionStatus(feature); runtimeCompanionNeedsStop(status, process) {
 			return errors.New("该游戏进程存在没有可验证所有者的运行时组件；请重启游戏后再试")
+		}
+		if err := cleanupRuntimeCompanionStatusTemporaries(feature); err != nil {
+			return err
 		}
 		file, createErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if createErr != nil {
@@ -330,16 +590,30 @@ func (a *App) claimRuntimeCompanionOwnership(feature string, process processInst
 			}
 			return createErr
 		}
-		_, writeErr := fmt.Fprintf(file, "owner=%s\npid=%d\ncreated=%d\n", ownerID, process.PID, process.Created)
+		_, writeErr := fmt.Fprintf(
+			file,
+			"owner=%s\ngeneration=%s\npid=%d\ncreated=%d\n",
+			ownerID,
+			lease.Generation,
+			process.PID,
+			process.Created,
+		)
 		closeErr := file.Close()
 		if writeErr != nil {
-			_ = os.Remove(path)
+			owner := readRuntimeCompanionOwner(feature)
+			if owner.ID == ownerID && owner.Generation == lease.Generation {
+				_ = os.Remove(path)
+			}
 			return writeErr
 		}
 		if closeErr != nil {
-			_ = os.Remove(path)
+			owner := readRuntimeCompanionOwner(feature)
+			if owner.ID == ownerID && owner.Generation == lease.Generation {
+				_ = os.Remove(path)
+			}
 			return closeErr
 		}
+		claimed = true
 		return nil
 	}
 	return errors.New("运行时组件所有权正在被另一个工具实例获取")
@@ -368,7 +642,11 @@ func (a *App) stopOwnedRuntimeCompanion(feature string, disable func() error) er
 		cleanupRuntimeCompanionDLL(feature)
 		return nil
 	}
-	if err := stopRuntimeCompanion(feature, process); err != nil {
+	lease, ok := a.runtimeCompanionLease(feature, process)
+	if !ok {
+		return errors.New("运行时组件缺少当前进程的所有权代次，拒绝等待未知 Hook")
+	}
+	if err := stopRuntimeCompanion(feature, process, lease.Generation); err != nil {
 		return err
 	}
 	a.releaseRuntimeCompanionOwnership(feature)
@@ -378,7 +656,14 @@ func (a *App) stopOwnedRuntimeCompanion(feature string, disable func() error) er
 func (a *App) runtimeCompanionActive(feature string) bool {
 	status := readRuntimeCompanionStatus(feature)
 	process, err := findRuntimeProcessInstance()
-	return err == nil && runtimeCompanionMatchesProcess(status, process) && status.State == "active" && a.ownsRuntimeCompanion(feature, process)
+	if err != nil || !a.ownsRuntimeCompanion(feature, process) {
+		return false
+	}
+	lease, ok := a.runtimeCompanionLease(feature, process)
+	return ok &&
+		runtimeCompanionMatchesProcess(status, process) &&
+		status.Generation == lease.Generation &&
+		status.State == "active"
 }
 
 func (a *App) runtimeCompanionOwned(feature string, process processInstanceID) bool {
@@ -392,7 +677,7 @@ func runtimeCompanionPresent(feature string) bool {
 }
 
 // GetRuntimeCompanionSummary is the shell-level authority for persistent
-// camera, audio, and virtual-sigil status. It intentionally avoids loading the
+// camera, audio, virtual-sigil, damage-capture, and QOL status. It intentionally avoids loading the
 // large per-page catalogs or save inventories.
 func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 	features := []struct {
@@ -402,6 +687,8 @@ func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 		{ID: "camera", Runtime: "camera"},
 		{ID: "audioMixer", Runtime: "audio"},
 		{ID: "virtualSigils", Runtime: "virtual-sigils"},
+		{ID: "loadoutPresets", Runtime: "damage"},
+		{ID: "runtimeQOL", Runtime: "qol"},
 	}
 	process, processErr := findRuntimeProcessInstance()
 	result := make([]RuntimeCompanionSummary, 0, len(features))
@@ -410,7 +697,11 @@ func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 		summary := RuntimeCompanionSummary{ID: feature.ID, State: status.State}
 		if processErr == nil && runtimeCompanionMatchesProcess(status, process) {
 			summary.Owned = a.runtimeCompanionOwned(feature.Runtime, process)
-			summary.Active = summary.Owned && strings.EqualFold(strings.TrimSpace(status.State), "active")
+			lease, leased := a.runtimeCompanionLease(feature.Runtime, process)
+			summary.Active = summary.Owned &&
+				leased &&
+				status.Generation == lease.Generation &&
+				strings.EqualFold(strings.TrimSpace(status.State), "active")
 			summary.RecoveryRequired = runtimeCompanionRecoveryRequired(status, process)
 		}
 		result = append(result, summary)
@@ -429,6 +720,23 @@ func extractAndInjectPatchCore(hProcess windows.Handle, command string) (string,
 		return "", err
 	}
 	return dllPath, nil
+}
+
+func runtimeCompanionCommand(command, generation string) (string, error) {
+	if !validRuntimeCompanionGeneration(generation) {
+		return "", errors.New("运行时所有权代次无效")
+	}
+	created, err := processCreationTime(windows.CurrentProcess())
+	if err != nil {
+		return "", fmt.Errorf("读取工具进程创建时间失败: %w", err)
+	}
+	return fmt.Sprintf(
+		"%s\nowner_pid=%d\nowner_created=%d\ngeneration=%s\n",
+		strings.TrimSpace(command),
+		os.Getpid(),
+		created,
+		generation,
+	), nil
 }
 
 func rememberRuntimeCompanionDLL(feature, path string) {
@@ -477,23 +785,41 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 	}
 	handle := a.hProcess
 	status := readRuntimeCompanionStatus(feature)
-	owned := a.ownsRuntimeCompanion(feature, process)
-	if alreadyActive, decisionErr := runtimeCompanionStartDecision(status, process, owned); decisionErr != nil {
+	ownedGeneration := ""
+	if a.ownsRuntimeCompanion(feature, process) {
+		if lease, ok := a.runtimeCompanionLease(feature, process); ok {
+			ownedGeneration = lease.Generation
+		}
+	}
+	if alreadyActive, decisionErr := runtimeCompanionStartDecision(status, process, ownedGeneration); decisionErr != nil {
 		a.procMu.Unlock()
 		return decisionErr
 	} else if alreadyActive {
 		a.procMu.Unlock()
 		return nil
 	}
-	if err := clearStaleInactiveRuntimeCompanionStatus(feature, status, process); err != nil {
-		a.procMu.Unlock()
-		return err
-	}
 	if err := a.claimRuntimeCompanionOwnership(feature, process); err != nil {
 		a.procMu.Unlock()
 		return err
 	}
-	dllPath, err := extractAndInjectPatchCore(handle, command)
+	if err := clearStaleInactiveRuntimeCompanionStatus(feature, status, process); err != nil {
+		a.procMu.Unlock()
+		a.releaseRuntimeCompanionOwnership(feature)
+		return err
+	}
+	lease, ok := a.runtimeCompanionLease(feature, process)
+	if !ok {
+		a.procMu.Unlock()
+		a.releaseRuntimeCompanionOwnership(feature)
+		return errors.New("运行时所有权代次在注入前丢失")
+	}
+	ownedCommand, err := runtimeCompanionCommand(command, lease.Generation)
+	if err != nil {
+		a.procMu.Unlock()
+		a.releaseRuntimeCompanionOwnership(feature)
+		return err
+	}
+	dllPath, err := extractAndInjectPatchCore(handle, ownedCommand)
 	a.procMu.Unlock()
 	if err != nil {
 		a.releaseRuntimeCompanionOwnership(feature)
@@ -506,7 +832,7 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		status := readRuntimeCompanionStatus(feature)
-		if runtimeCompanionMatchesProcess(status, process) {
+		if runtimeCompanionMatchesProcess(status, process) && status.Generation == lease.Generation {
 			switch status.State {
 			case "active":
 				return nil
@@ -523,11 +849,29 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 	return errors.New("等待内置运行时启动超时")
 }
 
-func waitRuntimeCompanionStopped(feature string, process processInstanceID) error {
+func waitRuntimeCompanionStopped(feature string, process processInstanceID, generations ...string) error {
+	generation := ""
+	if len(generations) > 0 {
+		generation = generations[0]
+	} else {
+		// Compatibility for the virtual-sigil hot-restart path: capture the
+		// generation before waiting so a later status from another owner cannot
+		// be mistaken for this runtime having stopped.
+		generation = readRuntimeCompanionStatus(feature).Generation
+	}
+	if !validRuntimeCompanionGeneration(generation) {
+		return errors.New("等待运行时恢复时缺少有效所有权代次")
+	}
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		status := readRuntimeCompanionStatus(feature)
-		if !runtimeCompanionMatchesProcess(status, process) || status.State == "inactive" {
+		if !runtimeCompanionMatchesProcess(status, process) {
+			return nil
+		}
+		if status.Generation != generation {
+			return errors.New("运行时状态已切换到其他所有权代次，拒绝把它视为当前 Hook 已恢复")
+		}
+		if status.State == "inactive" {
 			return nil
 		}
 		if status.State == "error" || status.State == "restore_failed" {
@@ -538,8 +882,8 @@ func waitRuntimeCompanionStopped(feature string, process processInstanceID) erro
 	return errors.New("等待内置运行时恢复 Hook 超时")
 }
 
-func stopRuntimeCompanion(feature string, process processInstanceID) error {
-	if err := waitRuntimeCompanionStopped(feature, process); err != nil {
+func stopRuntimeCompanion(feature string, process processInstanceID, generation string) error {
+	if err := waitRuntimeCompanionStopped(feature, process, generation); err != nil {
 		return err
 	}
 	cleanupRuntimeCompanionDLL(feature)

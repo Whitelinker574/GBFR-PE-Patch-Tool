@@ -143,61 +143,23 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		}
 	})
 
-	t.Run("virtual sigil lifecycle", func(t *testing.T) {
-		slots := app.FindSaveFiles()
-		if len(slots) == 0 {
-			t.Fatal("live release acceptance requires a save for virtual-sigil inventory validation")
-		}
-		config := readVirtualSigilConfig()
-		savePath := ""
-		for _, slot := range slots {
-			inventory, err := loadVirtualSigilInventory(slot.Path)
-			if err != nil {
-				continue
-			}
-			if _, _, err := normalizeVirtualSigilConfig(config, inventory); err == nil {
-				savePath = slot.Path
-				break
-			}
-		}
-		if savePath == "" {
-			t.Fatal("live release acceptance requires a saved virtual-sigil configuration that matches a current save")
-		}
-		before, err := app.GetVirtualSigilWorkspace("", savePath)
+	t.Run("virtual sigil stable gate", func(t *testing.T) {
+		before, err := app.GetVirtualSigilWorkspace("", "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if before.RecoveryRequired || (before.Installed && !before.Owned) {
 			t.Fatalf("virtual sigils start in an unsafe state: %+v", before)
 		}
-		result, err := app.DeployVirtualSigilMod(VirtualSigilDeployRequest{SavePath: savePath, Config: before.Config})
-		if err != nil {
-			t.Fatal(err)
+		if before.Available || before.UnavailableReason == "" {
+			t.Fatalf("stable build exposed a new virtual-sigil session: %+v", before)
 		}
-		t.Cleanup(func() { _ = app.RemoveVirtualSigilMod("") })
-		if !result.Active {
-			t.Fatalf("virtual sigils did not become active: %+v", result)
-		}
-		active, err := app.GetVirtualSigilWorkspace("", savePath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !active.Installed || !active.Owned || active.RecoveryRequired || !strings.EqualFold(active.State, "active") {
-			t.Fatalf("virtual sigils did not reach an owned active state: %+v", active)
-		}
-		if err := app.RemoveVirtualSigilMod(""); err != nil {
-			t.Fatal(err)
-		}
-		stopped, err := app.GetVirtualSigilWorkspace("", savePath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if stopped.Installed || stopped.Owned || stopped.RecoveryRequired || !strings.EqualFold(stopped.State, "inactive") {
-			t.Fatalf("virtual sigils did not restore cleanly: %+v", stopped)
+		if _, err := app.DeployVirtualSigilMod(VirtualSigilDeployRequest{Config: before.Config}); err == nil {
+			t.Fatal("stable build accepted a new virtual-sigil session")
 		}
 	})
 
-	t.Run("spatial and gravity lifecycle", func(t *testing.T) {
+	t.Run("spatial lifecycle and gravity stable gate", func(t *testing.T) {
 		info, err := app.CharaAcquire(1)
 		if err != nil {
 			t.Fatal(err)
@@ -225,22 +187,11 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !available.Available || available.Enabled || available.Error != "" {
-			t.Fatalf("gravity entry is not available in its original state: %+v", available)
+		if available.Available || available.Enabled || available.Error == "" {
+			t.Fatalf("stable build exposed a new gravity-suppression write: %+v", available)
 		}
-		enabled, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !enabled.Enabled || !enabled.Owned || enabled.RecoveryPending {
-			t.Fatalf("gravity did not become enabled and owned: %+v", enabled)
-		}
-		restored, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if restored.Enabled || restored.Owned || restored.RecoveryPending || restored.Error != "" {
-			t.Fatalf("gravity did not restore cleanly: %+v", restored)
+		if _, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, true); err == nil {
+			t.Fatal("stable build accepted a new gravity-suppression write")
 		}
 		if err := app.CharaRelease(info.OwnerToken); err != nil {
 			t.Fatal(err)

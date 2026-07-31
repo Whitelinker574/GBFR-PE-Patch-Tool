@@ -15,6 +15,11 @@ const (
 	runtimeSpatialGravityFeatureID           = "runtime-spatial-gravity"
 	runtimeSpatialGravityRVA         uintptr = 0x39DD964
 	runtimeSpatialGravityContextBack         = 4
+	// A direct NOP patch cannot restore itself after the desktop application is
+	// forcibly terminated. Keep the read/recovery path available for sessions
+	// created by earlier test builds, but do not create a new gravity lease in
+	// the stable release until an in-process owner watchdog is field-proven.
+	runtimeSpatialGravityStableReleaseEnabled = false
 )
 
 var (
@@ -413,7 +418,17 @@ func (a *App) RuntimeSpatialGravityStatusOwned(owner string) (RuntimeSpatialGrav
 	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
-	return readRuntimeSpatialGravityStatus(runtimePatchProcessMemory{handle: a.hProcess}, a.moduleBase, process, owner, a.runtimeSpatialGravityLease), nil
+	status := readRuntimeSpatialGravityStatus(runtimePatchProcessMemory{handle: a.hProcess}, a.moduleBase, process, owner, a.runtimeSpatialGravityLease)
+	if !runtimeSpatialGravityStableReleaseEnabled && a.runtimeSpatialGravityLease == nil {
+		status.Available = false
+		if status.Error == "" {
+			status.Error = runtimePatchMonitorText(
+				"正式版暂不开放重力抑制：工具异常退出时无法证明游戏原指令会自动恢复",
+				"Gravity suppression is unavailable in the stable build because restoration after a forced app exit is not yet proven",
+			)
+		}
+	}
+	return status, nil
 }
 
 func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (RuntimeSpatialGravityStatus, error) {
@@ -423,6 +438,12 @@ func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (
 		return RuntimeSpatialGravityStatus{}, err
 	}
 	defer a.procMu.Unlock()
+	if enabled && !runtimeSpatialGravityStableReleaseEnabled {
+		return RuntimeSpatialGravityStatus{}, fmt.Errorf("%s", runtimePatchMonitorText(
+			"正式版暂不开放重力抑制：工具异常退出时无法证明游戏原指令会自动恢复",
+			"Gravity suppression is unavailable in the stable build because restoration after a forced app exit is not yet proven",
+		))
+	}
 	if enabled {
 		if err := a.ensureLiveMemoryWritesSafe(); err != nil {
 			return RuntimeSpatialGravityStatus{}, err

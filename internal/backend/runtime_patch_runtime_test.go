@@ -7,7 +7,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -602,5 +604,28 @@ func TestCharaDetachLockedRestoresRuntimePatchWithoutTakingGlobalLockAgain(t *te
 	}
 	if blockCallsSelector(body, "liveMemoryWriteMu", "Lock") {
 		t.Fatal("charaDetachLocked recursively takes global live-memory lock")
+	}
+}
+
+func TestRuntimePatchEnableVerifiesExecutableBeforeCatalogPreparationOrWrite(t *testing.T) {
+	source, err := os.ReadFile("runtime_patch_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(source)
+	start := strings.Index(body, "func (a *App) RuntimePatchSetEnabledOwned")
+	end := strings.Index(body[start:], "\nfunc validateRuntimePatchCombatChargeConflict")
+	if start < 0 || end < 0 {
+		t.Fatal("RuntimePatchSetEnabledOwned source block was not found")
+	}
+	block := body[start : start+end]
+	verifyAt := strings.Index(block, "verifyRuntimePatchExecutableLocked")
+	prepareAt := strings.Index(block, "prepareRuntimePatchSitesLocked")
+	installAt := strings.Index(block, "installRuntimePatchSites")
+	if verifyAt < 0 || prepareAt < 0 || installAt < 0 || verifyAt > prepareAt || verifyAt > installAt {
+		t.Fatal("RuntimePatch enable must verify the exact 2.0.2 executable before preparing or installing writes")
+	}
+	if !strings.Contains(block, "if enabled {") {
+		t.Fatal("RuntimePatch executable verification must remain enable-only so recovery survives game updates")
 	}
 }

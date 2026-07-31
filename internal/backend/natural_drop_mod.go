@@ -16,6 +16,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -162,6 +163,11 @@ type NaturalDropDeployResult struct {
 	SourceDigest         string   `json:"sourceDigest"`
 }
 
+type NaturalDropStartupRecoveryStatus struct {
+	Blocked bool   `json:"blocked"`
+	Detail  string `json:"detail"`
+}
+
 type naturalDropManifest struct {
 	SchemaVersion       int                               `json:"schemaVersion"`
 	Owner               string                            `json:"owner"`
@@ -179,6 +185,37 @@ type naturalDropManifest struct {
 	SigilOnly           bool                              `json:"sigilOnly,omitempty"`
 	WrightstoneOnly     bool                              `json:"wrightstoneOnly,omitempty"`
 	AffectedRewardPools int                               `json:"affectedRewardPools"`
+}
+
+type naturalDropPreparedFile struct {
+	BeforePresent bool   `json:"beforePresent"`
+	BeforeSHA     string `json:"beforeSha256,omitempty"`
+	AfterPresent  bool   `json:"afterPresent"`
+	AfterSHA      string `json:"afterSha256,omitempty"`
+	Snapshot      string `json:"snapshot,omitempty"`
+}
+
+type naturalDropPrepareJournal struct {
+	SchemaVersion          int                                `json:"schemaVersion"`
+	Owner                  string                             `json:"owner"`
+	GameVersion            string                             `json:"gameVersion"`
+	GameExecutableSHA      string                             `json:"gameExecutableSha256"`
+	GameDirectory          string                             `json:"gameDirectory"`
+	TargetIndexPath        string                             `json:"targetIndexPath"`
+	BeforeIndexSHA         string                             `json:"beforeIndexSha256"`
+	AfterIndexSHA          string                             `json:"afterIndexSha256"`
+	BeforeIndexSnapshot    string                             `json:"beforeIndexSnapshot"`
+	BeforeManifestPresent  bool                               `json:"beforeManifestPresent"`
+	BeforeManifestSHA      string                             `json:"beforeManifestSha256,omitempty"`
+	BeforeManifestSnapshot string                             `json:"beforeManifestSnapshot,omitempty"`
+	AfterManifestSHA       string                             `json:"afterManifestSha256,omitempty"`
+	RemoveBackupOnRecovery bool                               `json:"removeBackupOnRecovery"`
+	BeforeBackupPresent    bool                               `json:"beforeBackupPresent,omitempty"`
+	BeforeBackupSHA        string                             `json:"beforeBackupSha256,omitempty"`
+	BeforeBackupSnapshot   string                             `json:"beforeBackupSnapshot,omitempty"`
+	AfterBackupPresent     bool                               `json:"afterBackupPresent,omitempty"`
+	AfterBackupSHA         string                             `json:"afterBackupSha256,omitempty"`
+	GeneratedFiles         map[string]naturalDropPreparedFile `json:"generatedFiles"`
 }
 
 type naturalDropTables struct {
@@ -523,8 +560,13 @@ func buildNaturalDropCatalog(tables *naturalDropTables) ([]NaturalDropSummonOpti
 }
 
 const (
-	naturalDropManifestName = "data.i.gbfr-codex-natural-drop.json"
-	naturalDropBackupName   = "data.i.gbfr-codex-natural-drop.bak"
+	naturalDropManifestName         = "data.i.gbfr-codex-natural-drop.json"
+	naturalDropBackupName           = "data.i.gbfr-codex-natural-drop.bak"
+	naturalDropBackupPartialName    = "data.i.gbfr-codex-natural-drop.bak.partial"
+	naturalDropPrepareJournalName   = "data.i.gbfr-codex-natural-drop.prepare.json"
+	naturalDropCompletedJournalName = "data.i.gbfr-codex-natural-drop.completed.json"
+	naturalDropPrepareDirectoryName = ".gbfr-codex-natural-drop.prepare"
+	naturalDropTransactionLockName  = ".gbfr-codex-natural-drop.lock"
 )
 
 var naturalDropSummonTablePaths = []string{
@@ -767,6 +809,36 @@ func (a *App) SelectNaturalDropGameExecutable() (string, error) {
 	})
 }
 
+func (a *App) rememberNaturalDropGameExecutable(path string) {
+	_ = a.updateConfig(func(config *AppConfig) {
+		config.NaturalDropGameExePath = path
+	})
+}
+
+func (a *App) setNaturalDropStartupRecoveryError(err error) {
+	a.naturalDropRecoveryStatusMu.Lock()
+	defer a.naturalDropRecoveryStatusMu.Unlock()
+	a.naturalDropRecoveryStatus = NaturalDropStartupRecoveryStatus{
+		Blocked: true,
+		Detail: fmt.Sprintf(
+			"上次掉落与锻造规则部署尚未安全恢复。请完全退出游戏和其他工具实例，再打开“掉落与锻造规则”重试；在恢复完成前不要启动游戏。详情：%v",
+			err,
+		),
+	}
+}
+
+func (a *App) clearNaturalDropStartupRecoveryError() {
+	a.naturalDropRecoveryStatusMu.Lock()
+	a.naturalDropRecoveryStatus = NaturalDropStartupRecoveryStatus{}
+	a.naturalDropRecoveryStatusMu.Unlock()
+}
+
+func (a *App) GetNaturalDropStartupRecoveryStatus() NaturalDropStartupRecoveryStatus {
+	a.naturalDropRecoveryStatusMu.Lock()
+	defer a.naturalDropRecoveryStatusMu.Unlock()
+	return a.naturalDropRecoveryStatus
+}
+
 func (a *App) GetNaturalDropWorkspace(sourceDir, gameExePath string) (*NaturalDropWorkspace, error) {
 	a.naturalDropMu.Lock()
 	defer a.naturalDropMu.Unlock()
@@ -837,7 +909,18 @@ func (a *App) GetNaturalDropWorkspace(sourceDir, gameExePath string) (*NaturalDr
 		return nil, err
 	}
 	workspace.GameExePath = validated
+	a.rememberNaturalDropGameExecutable(validated)
 	gameDir, indexPath, backupPath, _ := naturalDropInstallPaths(validated)
+	releaseLease, err := acquireNaturalDropTransactionLease(gameDir)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLease()
+	if err := naturalDropRecoverPreparedTransactionIfSafe(gameDir); err != nil {
+		a.setNaturalDropStartupRecoveryError(err)
+		return nil, fmt.Errorf("恢复上次未完成的天然掉落部署失败: %w", err)
+	}
+	a.clearNaturalDropStartupRecoveryError()
 	workspace.GameDir, workspace.IndexPath = gameDir, indexPath
 	indexData, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -1200,41 +1283,557 @@ func naturalDropBuildIndex(base []byte, files map[string][]byte) ([]byte, error)
 }
 
 func naturalDropWriteAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+	return writeFileAtomicVerified(path, data)
+}
+
+func naturalDropCanonicalPath(path string) (string, error) {
+	absolute, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	return absolute, nil
+}
+
+func acquireNaturalDropTransactionLease(gameDir string) (func(), error) {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(canonicalGameDir, naturalDropTransactionLockName)
+	handle, err := createExclusiveDeleteOnCloseFile(path)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_SHARING_VIOLATION) || errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			return nil, errors.New("另一个工具实例正在检查、部署或恢复天然掉落，请等待其完成")
+		}
+		return nil, fmt.Errorf("创建天然掉落跨进程事务锁失败: %w", err)
+	}
+	return func() {
+		_ = windows.CloseHandle(handle)
+	}, nil
+}
+
+func naturalDropSamePath(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if filepath.Separator == '\\' {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func naturalDropAllowedGeneratedFiles() map[string]bool {
+	result := make(map[string]bool)
+	groups := [][]string{
+		naturalDropSummonTablePaths,
+		naturalDropWrightstoneTablePaths,
+		naturalDropSigilTablePaths,
+		naturalDropItemTablePaths,
+	}
+	for _, group := range groups {
+		for _, gamePath := range group {
+			result[naturalDropRelativeTarget(gamePath)] = true
+		}
+	}
+	return result
+}
+
+func naturalDropValidatePreparedRelative(relative string) error {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relative)))
+	if clean != relative || !naturalDropAllowedGeneratedFiles()[relative] {
+		return fmt.Errorf("天然掉落事务包含非本工具目标文件: %q", relative)
+	}
+	return nil
+}
+
+func naturalDropPrepareSnapshotPath(gameDir, name string) (string, error) {
+	if name == "" || filepath.Base(name) != name || name == "." || name == ".." {
+		return "", fmt.Errorf("天然掉落事务快照名称无效: %q", name)
+	}
+	return filepath.Join(gameDir, naturalDropPrepareDirectoryName, name), nil
+}
+
+func naturalDropBeginPreparedTransaction(
+	gameDir string,
+	beforeIndex []byte,
+	afterIndex []byte,
+	beforeFiles map[string][]byte,
+	beforeManifest []byte,
+	afterFiles map[string][]byte,
+	removeBackupOnRecovery bool,
+	afterManifest []byte,
+) (resultErr error) {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
 	if err != nil {
 		return err
 	}
-	tmpPath := tmp.Name()
-	replaced := false
+	indexPath := filepath.Join(canonicalGameDir, "data.i")
+	journalPath := filepath.Join(canonicalGameDir, naturalDropPrepareJournalName)
+	prepareDir := filepath.Join(canonicalGameDir, naturalDropPrepareDirectoryName)
+	if _, err := os.Stat(journalPath); err == nil {
+		return errors.New("发现尚未恢复的天然掉落部署事务")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	completedJournalPath := filepath.Join(canonicalGameDir, naturalDropCompletedJournalName)
+	if err := os.Remove(completedJournalPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理已完成的天然掉落事务标记失败: %w", err)
+	}
+	if _, err := parseGBFRDataIndex(beforeIndex); err != nil {
+		return fmt.Errorf("部署前 data.i 快照无效: %w", err)
+	}
+	if _, err := parseGBFRDataIndex(afterIndex); err != nil {
+		return fmt.Errorf("待部署 data.i 快照无效: %w", err)
+	}
+	if err := os.RemoveAll(prepareDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理旧事务暂存目录失败: %w", err)
+	}
+	if err := os.MkdirAll(prepareDir, 0o700); err != nil {
+		return err
+	}
+	journalWritten := false
 	defer func() {
-		_ = tmp.Close()
-		if !replaced {
-			_ = os.Remove(tmpPath)
+		if resultErr != nil && !journalWritten {
+			resultErr = errors.Join(resultErr, os.RemoveAll(prepareDir))
 		}
 	}()
-	if _, err := tmp.Write(data); err != nil {
+
+	indexSnapshot := "data.i.before"
+	indexSnapshotPath, _ := naturalDropPrepareSnapshotPath(canonicalGameDir, indexSnapshot)
+	if err := naturalDropWriteAtomic(indexSnapshotPath, beforeIndex); err != nil {
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		return err
+	journal := naturalDropPrepareJournal{
+		SchemaVersion:          1,
+		Owner:                  naturalDropModID,
+		GameVersion:            naturalDropGameVersion,
+		GameExecutableSHA:      runtimePatchCatalogGameSHA256,
+		GameDirectory:          canonicalGameDir,
+		TargetIndexPath:        indexPath,
+		BeforeIndexSHA:         fileSHA256(beforeIndex),
+		AfterIndexSHA:          fileSHA256(afterIndex),
+		BeforeIndexSnapshot:    indexSnapshot,
+		RemoveBackupOnRecovery: removeBackupOnRecovery,
+		GeneratedFiles:         make(map[string]naturalDropPreparedFile, len(beforeFiles)+len(afterFiles)),
 	}
-	if err := tmp.Close(); err != nil {
-		return err
+	if beforeManifest != nil {
+		journal.BeforeManifestPresent = true
+		journal.BeforeManifestSHA = fileSHA256(beforeManifest)
+		journal.BeforeManifestSnapshot = "manifest.before"
+		snapshotPath, _ := naturalDropPrepareSnapshotPath(canonicalGameDir, journal.BeforeManifestSnapshot)
+		if err := naturalDropWriteAtomic(snapshotPath, beforeManifest); err != nil {
+			return err
+		}
 	}
-	if err := replaceFileAtomic(tmpPath, path); err != nil {
-		return err
+	if afterManifest != nil {
+		journal.AfterManifestSHA = fileSHA256(afterManifest)
 	}
-	replaced = true
-	readback, err := os.ReadFile(path)
+	relativeSet := make(map[string]bool, len(beforeFiles)+len(afterFiles))
+	for relative := range beforeFiles {
+		relativeSet[relative] = true
+	}
+	for relative := range afterFiles {
+		relativeSet[relative] = true
+	}
+	relatives := make([]string, 0, len(relativeSet))
+	for relative := range relativeSet {
+		if err := naturalDropValidatePreparedRelative(relative); err != nil {
+			return err
+		}
+		if _, ok := beforeFiles[relative]; !ok {
+			return fmt.Errorf("天然掉落事务缺少目标文件的部署前快照: %s", relative)
+		}
+		relatives = append(relatives, relative)
+	}
+	sort.Strings(relatives)
+	for index, relative := range relatives {
+		before := beforeFiles[relative]
+		after, afterPresent := afterFiles[relative]
+		entry := naturalDropPreparedFile{AfterPresent: afterPresent && after != nil}
+		if entry.AfterPresent {
+			entry.AfterSHA = fileSHA256(after)
+		}
+		if before != nil {
+			entry.BeforePresent = true
+			entry.BeforeSHA = fileSHA256(before)
+			entry.Snapshot = fmt.Sprintf("file-%03d.before", index)
+			snapshotPath, _ := naturalDropPrepareSnapshotPath(canonicalGameDir, entry.Snapshot)
+			if err := naturalDropWriteAtomic(snapshotPath, before); err != nil {
+				return err
+			}
+		}
+		journal.GeneratedFiles[relative] = entry
+	}
+	journalData, err := json.MarshalIndent(journal, "", "  ")
 	if err != nil {
 		return err
 	}
-	if fileSHA256(readback) != fileSHA256(data) {
-		return fmt.Errorf("写后校验失败: %s", path)
+	journalData = append(journalData, '\n')
+	if err := naturalDropWriteAtomic(journalPath, journalData); err != nil {
+		return err
 	}
+	journalWritten = true
+	return nil
+}
+
+func naturalDropReadPreparedTransaction(gameDir string) (*naturalDropPrepareJournal, error) {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
+	if err != nil {
+		return nil, err
+	}
+	journalPath := filepath.Join(canonicalGameDir, naturalDropPrepareJournalName)
+	data, err := os.ReadFile(journalPath)
+	if err != nil {
+		return nil, err
+	}
+	var journal naturalDropPrepareJournal
+	if err := json.Unmarshal(data, &journal); err != nil {
+		return nil, fmt.Errorf("天然掉落事务日志损坏: %w", err)
+	}
+	if journal.SchemaVersion != 1 || journal.Owner != naturalDropModID ||
+		journal.GameVersion != naturalDropGameVersion ||
+		!strings.EqualFold(journal.GameExecutableSHA, runtimePatchCatalogGameSHA256) {
+		return nil, errors.New("天然掉落事务日志不属于当前版本的本工具")
+	}
+	if !naturalDropSamePath(journal.GameDirectory, canonicalGameDir) ||
+		!naturalDropSamePath(journal.TargetIndexPath, filepath.Join(canonicalGameDir, "data.i")) {
+		return nil, errors.New("天然掉落事务日志绑定了其他游戏目录，拒绝恢复")
+	}
+	if journal.BeforeIndexSHA == "" || journal.AfterIndexSHA == "" {
+		return nil, errors.New("天然掉落事务日志缺少 data.i 前后校验值")
+	}
+	if _, err := naturalDropPrepareSnapshotPath(canonicalGameDir, journal.BeforeIndexSnapshot); err != nil {
+		return nil, err
+	}
+	if journal.BeforeManifestPresent {
+		if journal.BeforeManifestSHA == "" {
+			return nil, errors.New("天然掉落事务日志缺少原部署清单校验值")
+		}
+		if _, err := naturalDropPrepareSnapshotPath(canonicalGameDir, journal.BeforeManifestSnapshot); err != nil {
+			return nil, err
+		}
+	}
+	if journal.BeforeBackupPresent {
+		if journal.BeforeBackupSHA == "" {
+			return nil, errors.New("天然掉落事务缺少部署前备份校验值")
+		}
+		if _, err := naturalDropPrepareSnapshotPath(canonicalGameDir, journal.BeforeBackupSnapshot); err != nil {
+			return nil, err
+		}
+	}
+	if journal.AfterBackupPresent && journal.AfterBackupSHA == "" {
+		return nil, errors.New("天然掉落事务缺少部署后备份校验值")
+	}
+	for relative, entry := range journal.GeneratedFiles {
+		if err := naturalDropValidatePreparedRelative(relative); err != nil {
+			return nil, err
+		}
+		if entry.BeforePresent {
+			if entry.BeforeSHA == "" {
+				return nil, fmt.Errorf("天然掉落事务缺少 %s 的原文件校验值", relative)
+			}
+			if _, err := naturalDropPrepareSnapshotPath(canonicalGameDir, entry.Snapshot); err != nil {
+				return nil, err
+			}
+		} else if entry.BeforeSHA != "" || entry.Snapshot != "" {
+			return nil, fmt.Errorf("天然掉落事务的缺失文件 %s 带有无效快照", relative)
+		}
+		if entry.AfterPresent && entry.AfterSHA == "" {
+			return nil, fmt.Errorf("天然掉落事务缺少 %s 的待部署校验值", relative)
+		}
+	}
+	return &journal, nil
+}
+
+func naturalDropAddPreparedBackupTransition(gameDir string, beforeBackup []byte, afterBackup []byte) error {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
+	if err != nil {
+		return err
+	}
+	journal, err := naturalDropReadPreparedTransaction(canonicalGameDir)
+	if err != nil {
+		return err
+	}
+	if beforeBackup != nil {
+		journal.BeforeBackupPresent = true
+		journal.BeforeBackupSHA = fileSHA256(beforeBackup)
+		journal.BeforeBackupSnapshot = "backup.before"
+		snapshotPath, _ := naturalDropPrepareSnapshotPath(canonicalGameDir, journal.BeforeBackupSnapshot)
+		if err := naturalDropWriteAtomic(snapshotPath, beforeBackup); err != nil {
+			return err
+		}
+	}
+	if afterBackup != nil {
+		journal.AfterBackupPresent = true
+		journal.AfterBackupSHA = fileSHA256(afterBackup)
+	}
+	journalData, err := json.MarshalIndent(journal, "", "  ")
+	if err != nil {
+		return err
+	}
+	journalData = append(journalData, '\n')
+	return naturalDropWriteAtomic(filepath.Join(canonicalGameDir, naturalDropPrepareJournalName), journalData)
+}
+
+func naturalDropPreparedCurrentAllowed(path string, beforePresent bool, beforeSHA string, afterPresent bool, afterSHA string) error {
+	digest, err := naturalDropFileSHA256(path)
+	if os.IsNotExist(err) {
+		if !beforePresent || !afterPresent {
+			return nil
+		}
+		return fmt.Errorf("事务目标意外缺失: %s", path)
+	}
+	if err != nil {
+		return err
+	}
+	if (beforePresent && strings.EqualFold(digest, beforeSHA)) || (afterPresent && strings.EqualFold(digest, afterSHA)) {
+		return nil
+	}
+	return fmt.Errorf("事务目标已被其他程序改动，拒绝覆盖: %s", path)
+}
+
+func naturalDropReadVerifiedSnapshot(gameDir, name, expectedSHA string) ([]byte, error) {
+	path, err := naturalDropPrepareSnapshotPath(gameDir, name)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(fileSHA256(data), expectedSHA) {
+		return nil, fmt.Errorf("天然掉落事务快照校验失败: %s", name)
+	}
+	return data, nil
+}
+
+func naturalDropRecoverPreparedTransaction(gameDir string) error {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
+	if err != nil {
+		return err
+	}
+	journal, err := naturalDropReadPreparedTransaction(canonicalGameDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	indexSnapshot, err := naturalDropReadVerifiedSnapshot(canonicalGameDir, journal.BeforeIndexSnapshot, journal.BeforeIndexSHA)
+	if err != nil {
+		return fmt.Errorf("读取部署前 data.i 快照失败: %w", err)
+	}
+	if _, err := parseGBFRDataIndex(indexSnapshot); err != nil {
+		return fmt.Errorf("部署前 data.i 快照无效: %w", err)
+	}
+	indexPath := filepath.Join(canonicalGameDir, "data.i")
+	if err := naturalDropPreparedCurrentAllowed(indexPath, true, journal.BeforeIndexSHA, true, journal.AfterIndexSHA); err != nil {
+		return err
+	}
+	type restoreFile struct {
+		relative string
+		entry    naturalDropPreparedFile
+		before   []byte
+	}
+	restores := make([]restoreFile, 0, len(journal.GeneratedFiles))
+	for relative, entry := range journal.GeneratedFiles {
+		target := filepath.Join(canonicalGameDir, filepath.FromSlash(relative))
+		if err := naturalDropPreparedCurrentAllowed(target, entry.BeforePresent, entry.BeforeSHA, entry.AfterPresent, entry.AfterSHA); err != nil {
+			return err
+		}
+		var before []byte
+		if entry.BeforePresent {
+			before, err = naturalDropReadVerifiedSnapshot(canonicalGameDir, entry.Snapshot, entry.BeforeSHA)
+			if err != nil {
+				return fmt.Errorf("读取 %s 的部署前快照失败: %w", relative, err)
+			}
+		}
+		restores = append(restores, restoreFile{relative: relative, entry: entry, before: before})
+	}
+	sort.Slice(restores, func(i, j int) bool { return restores[i].relative < restores[j].relative })
+	manifestPath := filepath.Join(canonicalGameDir, naturalDropManifestName)
+	if err := naturalDropPreparedCurrentAllowed(
+		manifestPath,
+		journal.BeforeManifestPresent,
+		journal.BeforeManifestSHA,
+		journal.AfterManifestSHA != "",
+		journal.AfterManifestSHA,
+	); err != nil {
+		return err
+	}
+	var beforeManifest []byte
+	if journal.BeforeManifestPresent {
+		beforeManifest, err = naturalDropReadVerifiedSnapshot(canonicalGameDir, journal.BeforeManifestSnapshot, journal.BeforeManifestSHA)
+		if err != nil {
+			return fmt.Errorf("读取部署前清单快照失败: %w", err)
+		}
+	}
+	backupPath := filepath.Join(canonicalGameDir, naturalDropBackupName)
+	if journal.BeforeBackupPresent || journal.AfterBackupPresent {
+		if err := naturalDropPreparedCurrentAllowed(
+			backupPath,
+			journal.BeforeBackupPresent,
+			journal.BeforeBackupSHA,
+			journal.AfterBackupPresent,
+			journal.AfterBackupSHA,
+		); err != nil {
+			return err
+		}
+	}
+	var beforeBackup []byte
+	if journal.BeforeBackupPresent {
+		beforeBackup, err = naturalDropReadVerifiedSnapshot(canonicalGameDir, journal.BeforeBackupSnapshot, journal.BeforeBackupSHA)
+		if err != nil {
+			return fmt.Errorf("读取部署前备份快照失败: %w", err)
+		}
+	}
+	if journal.RemoveBackupOnRecovery {
+		digest, digestErr := naturalDropFileSHA256(backupPath)
+		if digestErr == nil && !strings.EqualFold(digest, journal.BeforeIndexSHA) {
+			return errors.New("天然掉落 data.i 备份已被其他程序改动，拒绝删除")
+		}
+		if digestErr != nil && !os.IsNotExist(digestErr) {
+			return digestErr
+		}
+	}
+
+	if err := naturalDropWriteAtomic(indexPath, indexSnapshot); err != nil {
+		return fmt.Errorf("恢复部署前 data.i 失败: %w", err)
+	}
+	for _, restore := range restores {
+		target := filepath.Join(canonicalGameDir, filepath.FromSlash(restore.relative))
+		if restore.entry.BeforePresent {
+			if err := naturalDropWriteAtomic(target, restore.before); err != nil {
+				return fmt.Errorf("恢复部署前文件 %s 失败: %w", restore.relative, err)
+			}
+		} else if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("清理事务生成文件 %s 失败: %w", restore.relative, err)
+		}
+	}
+	if journal.BeforeManifestPresent {
+		if err := naturalDropWriteAtomic(manifestPath, beforeManifest); err != nil {
+			return fmt.Errorf("恢复部署前清单失败: %w", err)
+		}
+	} else if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理未完成部署清单失败: %w", err)
+	}
+	if journal.RemoveBackupOnRecovery {
+		if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("清理未完成部署备份失败: %w", err)
+		}
+		partialBackupPath := filepath.Join(canonicalGameDir, naturalDropBackupPartialName)
+		if err := os.Remove(partialBackupPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("清理未完成部署的半写备份失败: %w", err)
+		}
+	} else if journal.BeforeBackupPresent {
+		if err := naturalDropWriteAtomic(backupPath, beforeBackup); err != nil {
+			return fmt.Errorf("恢复部署前备份失败: %w", err)
+		}
+	} else if journal.AfterBackupPresent {
+		if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("恢复部署前无备份状态失败: %w", err)
+		}
+	}
+	if err := naturalDropCompletePreparedTransaction(canonicalGameDir); err != nil {
+		return fmt.Errorf("完成天然掉落恢复事务失败: %w", err)
+	}
+	return nil
+}
+
+func naturalDropRecoverPreparedTransactionIfSafe(gameDir string) error {
+	journalPath := filepath.Join(gameDir, naturalDropPrepareJournalName)
+	if _, err := os.Stat(journalPath); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := naturalDropRequireStoppedProcesses(); err != nil {
+		return fmt.Errorf("检测到上次未完成的天然掉落部署；请先完全退出游戏再恢复: %w", err)
+	}
+	return naturalDropRecoverPreparedTransaction(gameDir)
+}
+
+func recoverNaturalDropTransactionsAtStartup(configuredGameExePath string) error {
+	candidates := make([]string, 0, len(findSteamLibraryFolders())+1)
+	if configured := strings.TrimSpace(configuredGameExePath); configured != "" {
+		candidates = append(candidates, configured)
+	}
+	for _, library := range findSteamLibraryFolders() {
+		candidates = append(candidates, filepath.Join(library, "steamapps", "common", gameFolder, gameExeName))
+	}
+	seen := make(map[string]bool, len(candidates))
+	var recoveryErr error
+	for _, candidate := range candidates {
+		canonicalCandidate, err := naturalDropCanonicalPath(candidate)
+		if err != nil {
+			recoveryErr = errors.Join(recoveryErr, err)
+			continue
+		}
+		key := strings.ToLower(canonicalCandidate)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		gameDir := filepath.Dir(canonicalCandidate)
+		journalPath := filepath.Join(gameDir, naturalDropPrepareJournalName)
+		if _, err := os.Stat(journalPath); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			recoveryErr = errors.Join(recoveryErr, fmt.Errorf("检查 %s 失败: %w", journalPath, err))
+			continue
+		}
+		validated, err := validateNaturalDropGameExecutable(canonicalCandidate)
+		if err != nil {
+			recoveryErr = errors.Join(recoveryErr, fmt.Errorf("验证待恢复游戏目录失败: %w", err))
+			continue
+		}
+		gameDir = filepath.Dir(validated)
+		releaseLease, err := acquireNaturalDropTransactionLease(gameDir)
+		if err != nil {
+			recoveryErr = errors.Join(recoveryErr, err)
+			continue
+		}
+		err = naturalDropRecoverPreparedTransactionIfSafe(gameDir)
+		releaseLease()
+		if err != nil {
+			recoveryErr = errors.Join(recoveryErr, fmt.Errorf("恢复 %s 失败: %w", gameDir, err))
+		}
+	}
+	return recoveryErr
+}
+
+func naturalDropCompletePreparedTransaction(gameDir string) error {
+	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
+	if err != nil {
+		return err
+	}
+	journalPath := filepath.Join(canonicalGameDir, naturalDropPrepareJournalName)
+	completedPath := filepath.Join(canonicalGameDir, naturalDropCompletedJournalName)
+	if _, err := os.Stat(journalPath); err == nil {
+		from, err := windows.UTF16PtrFromString(journalPath)
+		if err != nil {
+			return err
+		}
+		to, err := windows.UTF16PtrFromString(completedPath)
+		if err != nil {
+			return err
+		}
+		if err := windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
+			return fmt.Errorf("持久化天然掉落事务完成标记失败: %w", err)
+		}
+		if _, err := os.Stat(journalPath); !os.IsNotExist(err) {
+			return errors.New("天然掉落事务完成后仍存在活动日志")
+		}
+		if _, err := os.Stat(completedPath); err != nil {
+			return fmt.Errorf("回读天然掉落事务完成标记失败: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	// The write-through rename is the durable terminal state. Once the active
+	// journal is gone, a crash may leave snapshots or the completed marker, but
+	// startup will never mistake that cleanup residue for an interrupted deploy.
+	_ = os.RemoveAll(filepath.Join(canonicalGameDir, naturalDropPrepareDirectoryName))
+	_ = os.Remove(completedPath)
 	return nil
 }
 
@@ -1251,7 +1850,8 @@ func naturalDropCleanupBackup(path string, cause error, removeFile func(string) 
 }
 
 func naturalDropCreateBackup(path string, data []byte) (resultErr error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	partialPath := filepath.Join(filepath.Dir(path), naturalDropBackupPartialName)
+	file, err := os.OpenFile(partialPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
@@ -1264,7 +1864,7 @@ func naturalDropCreateBackup(path string, data []byte) (resultErr error) {
 			}
 		}
 		if !complete {
-			resultErr = naturalDropCleanupBackup(path, resultErr, os.Remove)
+			resultErr = naturalDropCleanupBackup(partialPath, resultErr, os.Remove)
 		}
 	}()
 	if _, err := file.Write(data); err != nil {
@@ -1278,12 +1878,30 @@ func naturalDropCreateBackup(path string, data []byte) (resultErr error) {
 	if closeErr != nil {
 		return closeErr
 	}
-	readback, err := os.ReadFile(path)
+	readback, err := os.ReadFile(partialPath)
 	if err != nil {
 		return err
 	}
 	if fileSHA256(readback) != fileSHA256(data) {
 		return errors.New("data.i 备份写后校验失败")
+	}
+	from, err := windows.UTF16PtrFromString(partialPath)
+	if err != nil {
+		return err
+	}
+	to, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	if err := windows.MoveFileEx(from, to, windows.MOVEFILE_WRITE_THROUGH); err != nil {
+		return fmt.Errorf("原子发布 data.i 备份失败: %w", err)
+	}
+	readback, err = os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if fileSHA256(readback) != fileSHA256(data) {
+		return errors.New("data.i 备份发布后校验失败")
 	}
 	complete = true
 	return nil
@@ -1297,39 +1915,6 @@ func naturalDropVerifyOwnedCurrent(gameDir string, manifest *naturalDropManifest
 		return errors.New("本工具部署的掉落表已被其他程序改动；拒绝覆盖未知内容")
 	}
 	return nil
-}
-
-func naturalDropRollback(gameDir string, oldIndex []byte, oldFiles map[string][]byte, oldManifest []byte, removeBackup bool) error {
-	var rollbackErrors []error
-	_, indexPath, backupPath, manifestPath := naturalDropInstallPaths(filepath.Join(gameDir, gameExeName))
-	if err := naturalDropWriteAtomic(indexPath, oldIndex); err != nil {
-		rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复旧 data.i: %w", err))
-	}
-	for relative, oldData := range oldFiles {
-		path := filepath.Join(gameDir, filepath.FromSlash(relative))
-		if oldData == nil {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("清理 %s: %w", relative, err))
-			}
-			continue
-		}
-		if err := naturalDropWriteAtomic(path, oldData); err != nil {
-			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 %s: %w", relative, err))
-		}
-	}
-	if oldManifest == nil {
-		if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
-			rollbackErrors = append(rollbackErrors, err)
-		}
-	} else if err := naturalDropWriteAtomic(manifestPath, oldManifest); err != nil {
-		rollbackErrors = append(rollbackErrors, err)
-	}
-	if removeBackup {
-		if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
-			rollbackErrors = append(rollbackErrors, err)
-		}
-	}
-	return errors.Join(rollbackErrors...)
 }
 
 func naturalDropSnapshotExistingFile(path string, readFile func(string) ([]byte, error)) ([]byte, error) {
@@ -1359,6 +1944,18 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	if err != nil {
 		return nil, err
 	}
+	a.rememberNaturalDropGameExecutable(gameExePath)
+	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
+	releaseLease, err := acquireNaturalDropTransactionLease(gameDir)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLease()
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		a.setNaturalDropStartupRecoveryError(err)
+		return nil, fmt.Errorf("恢复上次未完成的天然掉落部署失败: %w", err)
+	}
+	a.clearNaturalDropStartupRecoveryError()
 	files := make(map[string][]byte, len(naturalDropSummonTablePaths)+len(naturalDropWrightstoneTablePaths)+len(naturalDropSigilTablePaths)+len(naturalDropItemTablePaths))
 	affectedPools := 0
 	if len(request.Selections) > 0 {
@@ -1417,7 +2014,6 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		files[naturalDropItemTablePaths[0]] = patchedLots
 		affectedPools++
 	}
-	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
 	currentIndex, err := os.ReadFile(indexPath)
 	if err != nil {
 		return nil, err
@@ -1432,7 +2028,7 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		return nil, fmt.Errorf("发现无法验证的天然掉落清单: %w", manifestErr)
 	}
 	var baseIndex []byte
-	backupCreated := false
+	backupCreated := !owned
 	if owned {
 		if err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex); err != nil {
 			return nil, err
@@ -1459,31 +2055,23 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 			return nil, fmt.Errorf("所选目标表已被其他外部文件方案占用（%d 项），拒绝覆盖", conflictCount)
 		}
 		baseIndex = currentIndex
-		if err := naturalDropCreateBackup(backupPath, baseIndex); err != nil {
-			return nil, fmt.Errorf("创建原始 data.i 备份失败: %w", err)
-		}
-		backupCreated = true
-	}
-	cleanupNewBackup := func(cause error) error {
-		if !backupCreated {
-			return cause
-		}
-		return naturalDropCleanupBackup(backupPath, cause, os.Remove)
 	}
 	deployedIndex, err := naturalDropBuildIndex(baseIndex, files)
 	if err != nil {
-		return nil, cleanupNewBackup(err)
+		return nil, err
 	}
 
 	oldFiles := make(map[string][]byte, len(files))
+	afterFiles := make(map[string][]byte, len(files))
 	generated := make(map[string]string, len(files))
 	for gamePath, data := range files {
 		relative := naturalDropRelativeTarget(gamePath)
 		target := filepath.Join(gameDir, filepath.FromSlash(relative))
 		oldFiles[relative], err = naturalDropSnapshotExistingFile(target, os.ReadFile)
 		if err != nil {
-			return nil, cleanupNewBackup(fmt.Errorf("读取目标表 %s 的原始内容失败，部署已取消: %w", relative, err))
+			return nil, fmt.Errorf("读取目标表 %s 的原始内容失败，部署已取消: %w", relative, err)
 		}
+		afterFiles[relative] = data
 		generated[relative] = fileSHA256(data)
 	}
 	var staleGenerated []string
@@ -1495,30 +2083,13 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 			target := filepath.Join(gameDir, filepath.FromSlash(relative))
 			oldFiles[relative], err = naturalDropSnapshotExistingFile(target, os.ReadFile)
 			if err != nil {
-				return nil, cleanupNewBackup(fmt.Errorf("读取旧生成表 %s 的原始内容失败，部署已取消: %w", relative, err))
+				return nil, fmt.Errorf("读取旧生成表 %s 的原始内容失败，部署已取消: %w", relative, err)
 			}
+			afterFiles[relative] = nil
 			staleGenerated = append(staleGenerated, relative)
 		}
 	}
-	rollback := func(cause error) error {
-		if rollbackErr := naturalDropRollback(gameDir, currentIndex, oldFiles, oldManifest, backupCreated); rollbackErr != nil {
-			return errors.Join(cause, fmt.Errorf("自动回滚未完全成功: %w", rollbackErr))
-		}
-		return cause
-	}
-	for gamePath, data := range files {
-		if err := naturalDropWriteAtomic(naturalDropTargetPath(gameDir, gamePath), data); err != nil {
-			return nil, rollback(fmt.Errorf("部署 %s 失败: %w", gamePath, err))
-		}
-	}
-	if err := naturalDropWriteAtomic(indexPath, deployedIndex); err != nil {
-		return nil, rollback(fmt.Errorf("部署 data.i 失败: %w", err))
-	}
-	for _, relative := range staleGenerated {
-		if err := os.Remove(filepath.Join(gameDir, filepath.FromSlash(relative))); err != nil && !os.IsNotExist(err) {
-			return nil, rollback(fmt.Errorf("清理旧生成表 %s 失败: %w", relative, err))
-		}
-	}
+	sort.Strings(staleGenerated)
 	selectionCopy := append([]NaturalDropSelection(nil), request.Selections...)
 	sort.Slice(selectionCopy, func(i, j int) bool { return selectionCopy[i].TypeHash < selectionCopy[j].TypeHash })
 	itemCopy := append([]NaturalDropItemSelection(nil), request.Items...)
@@ -1543,11 +2114,50 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	}
 	manifestData, err := json.MarshalIndent(newManifest, "", "  ")
 	if err != nil {
-		return nil, rollback(err)
+		return nil, err
 	}
 	manifestData = append(manifestData, '\n')
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		currentIndex,
+		deployedIndex,
+		oldFiles,
+		oldManifest,
+		afterFiles,
+		backupCreated,
+		manifestData,
+	); err != nil {
+		return nil, fmt.Errorf("创建天然掉落部署事务失败: %w", err)
+	}
+	rollback := func(cause error) error {
+		if rollbackErr := naturalDropRecoverPreparedTransaction(gameDir); rollbackErr != nil {
+			return errors.Join(cause, fmt.Errorf("自动回滚未完全成功: %w", rollbackErr))
+		}
+		return cause
+	}
+	if backupCreated {
+		if err := naturalDropCreateBackup(backupPath, baseIndex); err != nil {
+			return nil, rollback(fmt.Errorf("创建原始 data.i 备份失败: %w", err))
+		}
+	}
+	for gamePath, data := range files {
+		if err := naturalDropWriteAtomic(naturalDropTargetPath(gameDir, gamePath), data); err != nil {
+			return nil, rollback(fmt.Errorf("部署 %s 失败: %w", gamePath, err))
+		}
+	}
+	if err := naturalDropWriteAtomic(indexPath, deployedIndex); err != nil {
+		return nil, rollback(fmt.Errorf("部署 data.i 失败: %w", err))
+	}
+	for _, relative := range staleGenerated {
+		if err := os.Remove(filepath.Join(gameDir, filepath.FromSlash(relative))); err != nil && !os.IsNotExist(err) {
+			return nil, rollback(fmt.Errorf("清理旧生成表 %s 失败: %w", relative, err))
+		}
+	}
 	if err := naturalDropWriteAtomic(manifestPath, manifestData); err != nil {
 		return nil, rollback(fmt.Errorf("写入部署清单失败: %w", err))
+	}
+	if err := naturalDropCompletePreparedTransaction(gameDir); err != nil {
+		return nil, rollback(fmt.Errorf("清理天然掉落部署事务失败: %w", err))
 	}
 	fileList := make([]string, 0, len(generated)+1)
 	for path := range generated {
@@ -1577,10 +2187,28 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 	if err != nil {
 		return err
 	}
+	a.rememberNaturalDropGameExecutable(gameExePath)
 	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
-	manifest, _, err := naturalDropReadManifest(gameDir)
+	releaseLease, err := acquireNaturalDropTransactionLease(gameDir)
+	if err != nil {
+		return err
+	}
+	defer releaseLease()
+	if err := naturalDropRecoverPreparedTransaction(gameDir); err != nil {
+		a.setNaturalDropStartupRecoveryError(err)
+		return fmt.Errorf("恢复上次未完成的天然掉落部署失败: %w", err)
+	}
+	a.clearNaturalDropStartupRecoveryError()
+	manifest, manifestData, err := naturalDropReadManifest(gameDir)
 	if err != nil {
 		return errors.New("未找到本工具拥有的天然掉落部署")
+	}
+	currentIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		return err
+	}
+	if err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex); err != nil {
+		return err
 	}
 	backup, err := os.ReadFile(backupPath)
 	if err != nil || !strings.EqualFold(fileSHA256(backup), manifest.OriginalIndexSHA) {
@@ -1589,39 +2217,68 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 	if _, err := parseGBFRDataIndex(backup); err != nil {
 		return fmt.Errorf("原始 data.i 备份无效: %w", err)
 	}
-	if err := naturalDropWriteAtomic(indexPath, backup); err != nil {
-		return fmt.Errorf("恢复原始 data.i 失败: %w", err)
-	}
-	var leftovers []string
-	for relative, expected := range manifest.GeneratedFiles {
+	beforeFiles := make(map[string][]byte, len(manifest.GeneratedFiles))
+	afterFiles := make(map[string][]byte, len(manifest.GeneratedFiles))
+	relatives := make([]string, 0, len(manifest.GeneratedFiles))
+	for relative := range manifest.GeneratedFiles {
+		if err := naturalDropValidatePreparedRelative(relative); err != nil {
+			return err
+		}
 		target := filepath.Join(gameDir, filepath.FromSlash(relative))
-		digest, err := naturalDropFileSHA256(target)
-		if os.IsNotExist(err) {
-			continue
+		data, err := os.ReadFile(target)
+		if err != nil {
+			return fmt.Errorf("读取待恢复表 %s 失败: %w", relative, err)
 		}
-		if err != nil || !strings.EqualFold(digest, expected) {
-			leftovers = append(leftovers, relative)
-			continue
+		beforeFiles[relative] = data
+		afterFiles[relative] = nil
+		relatives = append(relatives, relative)
+	}
+	sort.Strings(relatives)
+	if err := naturalDropBeginPreparedTransaction(
+		gameDir,
+		currentIndex,
+		backup,
+		beforeFiles,
+		manifestData,
+		afterFiles,
+		false,
+		nil,
+	); err != nil {
+		return fmt.Errorf("创建天然掉落恢复事务失败: %w", err)
+	}
+	if err := naturalDropAddPreparedBackupTransition(gameDir, backup, nil); err != nil {
+		_ = naturalDropRecoverPreparedTransaction(gameDir)
+		return fmt.Errorf("记录天然掉落恢复备份失败: %w", err)
+	}
+	rollback := func(cause error) error {
+		if rollbackErr := naturalDropRecoverPreparedTransaction(gameDir); rollbackErr != nil {
+			return errors.Join(cause, fmt.Errorf("自动回滚未完全成功: %w", rollbackErr))
 		}
+		return cause
+	}
+	if err := naturalDropWriteAtomic(indexPath, backup); err != nil {
+		return rollback(fmt.Errorf("恢复原始 data.i 失败: %w", err))
+	}
+	for _, relative := range relatives {
+		target := filepath.Join(gameDir, filepath.FromSlash(relative))
 		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
-			leftovers = append(leftovers, relative)
+			return rollback(fmt.Errorf("清理部署表 %s 失败: %w", relative, err))
 		}
 	}
 	if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("原索引已恢复，但清理部署清单失败: %w", err)
+		return rollback(fmt.Errorf("清理部署清单失败: %w", err))
 	}
 	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("原索引已恢复，但清理备份副本失败: %w", err)
+		return rollback(fmt.Errorf("清理备份副本失败: %w", err))
+	}
+	if err := naturalDropCompletePreparedTransaction(gameDir); err != nil {
+		return rollback(fmt.Errorf("提交天然掉落恢复事务失败: %w", err))
 	}
 	for _, path := range []string{
 		filepath.Join(gameDir, "data", "system", "table"),
 		filepath.Join(gameDir, "data", "system"),
 	} {
 		_ = os.Remove(path)
-	}
-	if len(leftovers) > 0 {
-		sort.Strings(leftovers)
-		return fmt.Errorf("原始 data.i 已恢复；%d 个后来被改动的外部文件未删除: %s", len(leftovers), strings.Join(leftovers, ", "))
 	}
 	return nil
 }

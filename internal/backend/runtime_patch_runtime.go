@@ -578,6 +578,15 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 			return empty, err
 		}
 	}
+	process := a.currentProcessInstance()
+	if enabled {
+		// Pattern uniqueness and original-byte checks are not a substitute for
+		// proving the complete game executable. Recovery deliberately skips this
+		// gate so an older owned session can still restore after an update.
+		if err := a.verifyRuntimePatchExecutableLocked(process, "RuntimePatch"); err != nil {
+			return empty, err
+		}
+	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
 
@@ -593,7 +602,6 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 		return empty, fmt.Errorf("%s在稳定版中保持禁用：仍缺少可见游戏效果验收", feature.DisplayName)
 	}
 	memory := runtimePatchProcessMemory{handle: a.hProcess}
-	process := a.currentProcessInstance()
 	lease, active := a.runtimePatchPatchLeases[feature.ID]
 
 	if !enabled {
