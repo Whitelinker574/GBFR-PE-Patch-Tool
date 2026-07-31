@@ -177,7 +177,7 @@ func TestLegacyRuntimeExecutableErrorExplainsGame203Boundary(t *testing.T) {
 		t.Fatal("game 2.0.3 must remain fail closed for legacy runtime access")
 	}
 	message := err.Error()
-	for _, part := range []string{"2.0.3", "离线存档", "不会连接或写入"} {
+	for _, part := range []string{"2.0.3", "静态目录", "离线存档", "重启回读仍待验收", "不会连接或写入"} {
 		if !strings.Contains(message, part) {
 			t.Fatalf("2.0.3 boundary message %q does not contain %q", message, part)
 		}

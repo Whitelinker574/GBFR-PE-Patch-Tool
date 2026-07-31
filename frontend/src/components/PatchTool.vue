@@ -502,7 +502,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   baseline: '适配基线',
   baselineVersion: '游戏 2.0.3（静态与离线）',
     baselineSummary: '2,116 张核心表和 332 份角色/战斗配置逐字节一致。',
-  baselineBoundary: '离线目录、配装、分享与 Logs 已适配；实时功能和 data.i 部署仍锁定已验证的 2.0.2',
+  baselineBoundary: '静态目录、配装、分享与 Logs 数据已核对；2.0.3 游戏重启存档回读待验收，实时功能和 data.i 部署仍锁定 2.0.2',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
   featureHint: '只展示能由代码、测试与锁定游戏数据证明的状态。',
@@ -522,7 +522,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   baseline: 'Compatibility Baseline',
   baselineVersion: 'Game 2.0.3 (static and offline)',
     baselineSummary: '2,116 core tables and 332 character/combat configs are byte-identical.',
-  baselineBoundary: 'Offline catalogs, loadouts, sharing, and Logs are supported; live features and data.i deployment remain locked to verified 2.0.2',
+  baselineBoundary: 'Static catalogs, loadouts, sharing, and Logs data are verified; game 2.0.3 save/restart readback is pending, while live features and data.i deployment remain locked to 2.0.2',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
   featureHint: 'Only states supported by code, tests, and locked game data are shown.',
@@ -541,7 +541,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '游戏 2.0.3 静态数据', status: '已核对', tone: 'ok', detail: '2,120 张表中仅 4 个本地化文本包变化；因子、祝福、召唤石、掉落、武器、伤害上限、成长与规则表逐字节不变' },
-  { scope: '离线与分享流程', status: '已适配 2.0.3', tone: 'ok', detail: '内置目录、配装编辑与优化、配装 JSON、短码、二维码、分享图、Logs 和离线存档事务继续使用已核对的数据结构' },
+  { scope: '静态与离线流程', status: '数据已核对', tone: 'ok', detail: '内置目录、配装编辑与优化、配装 JSON、短码、二维码、分享图和 Logs 使用未变化的数据；现有真实存档副本事务通过，2.0.3 游戏重启回读仍待验收' },
   { scope: '游戏 2.0.3 实时功能', status: '安全锁定', tone: 'flow', detail: 'EXE 地址已迁移；共享连接入口会在持有连接前识别 2.0.3 并拒绝旧实时写入，不会沿用 2.0.2 固定地址' },
   { scope: '天然掉落 data.i 部署', status: '2.0.3 暂停', tone: 'flow', detail: '目标表虽未变化，但新版归档生成、游戏加载与恢复尚未闭环；当前继续只接受精确匹配的 2.0.2 安装' },
   { scope: '存档修改页面', status: '8 / 8', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录、双存档对比复制' },
@@ -557,7 +557,7 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
   { scope: 'Game 2.0.3 static data', status: 'Verified', tone: 'ok', detail: 'Only 4 localization bundles changed among 2,120 tables; sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and rule tables are byte-identical' },
-  { scope: 'Offline and sharing flows', status: 'Supported on 2.0.3', tone: 'ok', detail: 'Embedded catalogs, loadout editing and optimization, loadout JSON, short codes, QR import, share images, Logs, and offline save transactions use the verified structures' },
+  { scope: 'Static and offline flows', status: 'Data verified', tone: 'ok', detail: 'Embedded catalogs, loadout editing and optimization, loadout JSON, short codes, QR import, share images, and Logs use unchanged data. Existing real-save-copy transactions pass; game 2.0.3 save/restart readback remains pending' },
   { scope: 'Game 2.0.3 live features', status: 'Safely locked', tone: 'flow', detail: 'Executable addresses moved. The shared attach boundary identifies 2.0.3 before publishing a handle and refuses legacy live writes instead of reusing 2.0.2 RVAs' },
   { scope: 'Natural-drop data.i deployment', status: 'Paused on 2.0.3', tone: 'flow', detail: 'Target tables are unchanged, but archive generation, game loading, and restoration are not field-closed; deployment still requires the exact verified 2.0.2 install' },
   { scope: 'Save editing pages', status: '8 / 8', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records, and two-save copying' },

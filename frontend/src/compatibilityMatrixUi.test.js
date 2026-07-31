@@ -6,7 +6,7 @@ const source = readFileSync(new URL('./components/PatchTool.vue', import.meta.ur
 
 test('version compatibility reports current pages and runtime evidence', () => {
   assert.match(source, /游戏 2\.0\.3 静态数据[\s\S]*?已核对[\s\S]*?因子、祝福、召唤石、掉落、武器、伤害上限、成长与规则表逐字节不变/)
-  assert.match(source, /离线与分享流程[\s\S]*?已适配 2\.0\.3[\s\S]*?二维码/)
+  assert.match(source, /静态与离线流程[\s\S]*?数据已核对[\s\S]*?2\.0\.3 游戏重启回读仍待验收/)
   assert.match(source, /游戏 2\.0\.3 实时功能[\s\S]*?安全锁定[\s\S]*?拒绝旧实时写入/)
   assert.match(source, /天然掉落 data\.i 部署[\s\S]*?2\.0\.3 暂停/)
   assert.match(source, /存档修改页面[\s\S]*?8\s*\/\s*8[\s\S]*?双存档对比复制/)
@@ -20,7 +20,7 @@ test('version compatibility reports current pages and runtime evidence', () => {
   assert.match(source, /DLC\s*2\.0\.2\s*增量审计[\s\S]*?现场修复/)
   assert.match(source, /真实游戏进程\s*E2E[\s\S]*?关键路径已验证[\s\S]*?自动完美格挡连招/)
   assert.match(source, /baselineVersion:\s*'游戏 2\.0\.3（静态与离线）'/)
-  assert.match(source, /实时功能和 data\.i 部署仍锁定已验证的 2\.0\.2/)
+  assert.match(source, /2\.0\.3 游戏重启存档回读待验收[\s\S]*?实时功能和 data\.i 部署仍锁定 2\.0\.2/)
 })
 
 test('version compatibility exposes exact icon coverage', () => {
