@@ -1,10 +1,12 @@
 <script setup>
-import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { reactive, ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   AutoDetect, SetExePath, GetStatus, BackupFile, RestoreFile,
-  GetAppVersion, CheckUpdate, OpenReleasePage,
+  GetAppVersion, CheckUpdate, GetNaturalDropStartupRecoveryStatus, GetRuntimeCompanionSummary, OpenReleasePage,
 } from '../../wailsjs/go/backend/App'
 import {
+  ClipboardSetText,
+  EventsOn,
   WindowMinimise,
   WindowToggleMaximise,
   Quit,
@@ -12,71 +14,94 @@ import {
 import HomeJournal from './HomeJournal.vue'
 import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
-import progressionArt from '../assets/gbfr/cutouts/progression-official-edge-safe.webp'
-import sigilArt from '../assets/gbfr/cutouts/sigil-official-edge-safe.webp'
-import sigilMemoryArt from '../assets/gbfr/cutouts/sigil-memory-official-edge-safe.webp'
-import loadoutLiveArt from '../assets/gbfr/cutouts/loadout-live-official-edge-safe.webp'
-import loadoutPresetsArt from '../assets/gbfr/cutouts/loadout-presets-official-edge-safe.webp'
-import wrightstoneArt from '../assets/gbfr/cutouts/wrightstone-official-edge-safe.webp'
-import wrightstoneMemoryArt from '../assets/gbfr/cutouts/wrightstone-memory-official-edge-safe.webp'
-import summonArt from '../assets/gbfr/cutouts/summon-official-edge-safe.webp'
-import summonSaveArt from '../assets/gbfr/cutouts/summon-save-official-edge-safe.webp'
-import overlimitArt from '../assets/gbfr/cutouts/overlimit-official-edge-safe.webp'
-import runtimeArt from '../assets/gbfr/cutouts/runtime-official-edge-safe.webp'
-import charaArt from '../assets/gbfr/cutouts/chara-official-edge-safe.webp'
-import saveArt from '../assets/gbfr/cutouts/save-official-edge-safe.webp'
-import compatibilityArt from '../assets/gbfr/cutouts/compatibility-official-edge-safe.webp'
-import monsterArt from '../assets/gbfr/cutouts/monster-official-edge-safe.webp'
-import patchArt from '../assets/gbfr/cutouts/patch-official-edge-safe.webp'
-import languageArt from '../assets/gbfr/cutouts/language-official-edge-safe.webp'
-import progressionSticker from '../assets/gbfr/stickers/progression.webp'
-import sigilSticker from '../assets/gbfr/stickers/sigil.webp'
-import sigilMemorySticker from '../assets/gbfr/stickers/sigil-memory.webp'
-import loadoutSticker from '../assets/gbfr/stickers/loadout.webp'
-import loadoutPresetsSticker from '../assets/gbfr/stickers/loadout-presets.webp'
-import wrightstoneSticker from '../assets/gbfr/stickers/wrightstone.webp'
-import wrightstoneMemorySticker from '../assets/gbfr/stickers/wrightstone-memory.webp'
-import summonSticker from '../assets/gbfr/stickers/summon.webp'
-import summonSaveSticker from '../assets/gbfr/stickers/summon-save.webp'
-import overlimitSticker from '../assets/gbfr/stickers/overlimit.webp'
-import runtimeSticker from '../assets/gbfr/stickers/runtime.webp'
-import charaSticker from '../assets/gbfr/stickers/chara.webp'
-import saveSticker from '../assets/gbfr/stickers/save.webp'
-import compatibilitySticker from '../assets/gbfr/stickers/compatibility.webp'
-import monsterSticker from '../assets/gbfr/stickers/monster.webp'
-import patchSticker from '../assets/gbfr/stickers/patch.webp'
-import languageSticker from '../assets/gbfr/stickers/language.webp'
+import { functionAssetManifest } from '../generated/functionAssetManifest.js'
+import { beginPerformanceMeasure } from '../performanceMonitor.js'
 
-const patchCombatArt = new URL('../assets/gbfr/cutouts/patch-combat-official-edge-safe.webp', import.meta.url).href
-const patchCharactersArt = new URL('../assets/gbfr/cutouts/patch-characters-official-edge-safe.webp', import.meta.url).href
-const patchQuestArt = new URL('../assets/gbfr/cutouts/patch-quest-official-edge-safe.webp', import.meta.url).href
-const runtimeMonitorArt = new URL('../assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp', import.meta.url).href
-const formulaSamplerArt = new URL('../assets/gbfr/cutouts/formula-sampler-official-edge-safe.webp', import.meta.url).href
-const patchCombatSticker = new URL('../assets/gbfr/stickers/patch-combat.webp', import.meta.url).href
-const patchCharactersSticker = new URL('../assets/gbfr/stickers/patch-characters.webp', import.meta.url).href
-const patchQuestSticker = new URL('../assets/gbfr/stickers/patch-quest.webp', import.meta.url).href
-const runtimeMonitorSticker = new URL('../assets/gbfr/stickers/runtime-monitor.webp', import.meta.url).href
-const formulaSamplerSticker = new URL('../assets/gbfr/stickers/formula-sampler.webp', import.meta.url).href
+const pageLoaders = Object.freeze({
+  progression: () => import('./ProgressionEditor.vue'),
+  sigil: () => import('./SigilGenerator.vue'),
+  sigilMemory: () => import('./SigilMemoryGenerator.vue'),
+  loadout: () => import('./SigilLoadoutRestore.vue'),
+  loadoutPresets: () => import('./LoadoutViewer.vue'),
+  wrightstone: () => import('./WrightstoneGenerator.vue'),
+  summonSave: () => import('./SummonSaveEditor.vue'),
+  wrightstoneMemory: () => import('./WrightstoneMemoryGenerator.vue'),
+  summon: () => import('./SummonEditor.vue'),
+  overlimit: () => import('./OverLimit.vue'),
+  runtime: () => import('./MiscTools.vue'),
+  chara: () => import('./CharaStats.vue'),
+  save: () => import('./SaveEditor.vue'),
+  monster: () => import('./MonsterEnhance.vue'),
+  patchCombat: () => import('./RuntimePatchFeatures.vue'),
+  patchCharacters: () => import('./RuntimePatchFeatures.vue'),
+  patchQuest: () => import('./RuntimePatchFeatures.vue'),
+  runtimeMonitor: () => import('./RuntimePatchMonitor.vue'),
+  formulaSampler: () => import('./FormulaSampler.vue'),
+  saveDiff: () => import('./SaveDiffLab.vue'),
+  naturalDrop: () => import('./NaturalDropLab.vue'),
+  audioMixer: () => import('./AudioMixerLab.vue'),
+  camera: () => import('./CameraLab.vue'),
+  virtualSigils: () => import('./VirtualSigilLab.vue'),
+	runtimeQOL: () => import('./RuntimeQOLLab.vue'),
+  language: () => import('./LanguageSettings.vue'),
+})
 
-// 桌面应用将页面组件静态打入主包，切页时同步渲染。
-import ProgressionEditor from './ProgressionEditor.vue'
-import SigilGenerator from './SigilGenerator.vue'
-import SigilMemoryGenerator from './SigilMemoryGenerator.vue'
-import SigilLoadoutRestore from './SigilLoadoutRestore.vue'
-import LoadoutViewer from './LoadoutViewer.vue'
-import WrightstoneGenerator from './WrightstoneGenerator.vue'
-import SummonSaveEditor from './SummonSaveEditor.vue'
-import WrightstoneMemoryGenerator from './WrightstoneMemoryGenerator.vue'
-import SummonEditor from './SummonEditor.vue'
-import OverLimit from './OverLimit.vue'
-import MiscTools from './MiscTools.vue'
-import CharaStats from './CharaStats.vue'
-import SaveEditor from './SaveEditor.vue'
-import MonsterEnhance from './MonsterEnhance.vue'
-import RuntimePatchFeatures from './RuntimePatchFeatures.vue'
-import RuntimePatchMonitor from './RuntimePatchMonitor.vue'
-import FormulaSampler from './FormulaSampler.vue'
-import LanguageSettings from './LanguageSettings.vue'
+const loadedPageModules = new Map()
+
+function loadPageModule(id) {
+  const loader = pageLoaders[id]
+  if (!loader) return Promise.resolve(null)
+  if (!loadedPageModules.has(id)) loadedPageModules.set(id, loader())
+  return loadedPageModules.get(id)
+}
+
+function asyncPage(id) {
+  return defineAsyncComponent({
+    loader: () => loadPageModule(id).then(module => module?.default || module),
+    delay: 0,
+    timeout: 15000,
+    suspensible: false,
+    onError(_error, retry, fail, attempts) {
+      loadedPageModules.delete(id)
+      if (attempts < 2) retry()
+      else fail()
+    },
+  })
+}
+
+const ProgressionEditor = asyncPage('progression')
+const SigilGenerator = asyncPage('sigil')
+const SigilMemoryGenerator = asyncPage('sigilMemory')
+const SigilLoadoutRestore = asyncPage('loadout')
+const LoadoutViewer = asyncPage('loadoutPresets')
+const WrightstoneGenerator = asyncPage('wrightstone')
+const SummonSaveEditor = asyncPage('summonSave')
+const WrightstoneMemoryGenerator = asyncPage('wrightstoneMemory')
+const SummonEditor = asyncPage('summon')
+const OverLimit = asyncPage('overlimit')
+const MiscTools = asyncPage('runtime')
+const CharaStats = asyncPage('chara')
+const SaveEditor = asyncPage('save')
+const MonsterEnhance = asyncPage('monster')
+const RuntimePatchFeatures = asyncPage('patchCombat')
+const RuntimePatchMonitor = asyncPage('runtimeMonitor')
+const FormulaSampler = asyncPage('formulaSampler')
+const SaveDiffLab = asyncPage('saveDiff')
+const NaturalDropLab = asyncPage('naturalDrop')
+const AudioMixerLab = asyncPage('audioMixer')
+const CameraLab = asyncPage('camera')
+const VirtualSigilLab = asyncPage('virtualSigils')
+const RuntimeQOLLab = asyncPage('runtimeQOL')
+const LanguageSettings = asyncPage('language')
+const cachedRuntimePages = Object.freeze({
+  sigilMemory: SigilMemoryGenerator,
+  loadout: SigilLoadoutRestore,
+  wrightstoneMemory: WrightstoneMemoryGenerator,
+  summon: SummonEditor,
+  overlimit: OverLimit,
+  runtime: MiscTools,
+  formulaSampler: FormulaSampler,
+})
 
 const state = reactive({
   exePath: '',
@@ -87,17 +112,57 @@ const state = reactive({
 })
 
 const activeTab = ref('home')
+const workspaceScroll = ref(null)
+const toolSwitcher = ref(null)
+const pageScrollPositions = new Map()
 const RUNTIME_PATCH_MODES = Object.freeze({
   patchCombat: 'combat',
   patchCharacters: 'characters',
   patchQuest: 'quest',
 })
+const RUNTIME_MONITOR_MODES = Object.freeze({
+  runtimeMonitor: 'party',
+  spatialTools: 'spatial',
+  selectedItemMonitor: 'items',
+})
 const runtimePatchesMounted = ref(false)
 const runtimeMonitorMounted = ref(false)
-const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, pid: 0 })
+const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, recoveryCount: 0, pid: 0 })
+const runtimeCompanionStates = reactive({
+  camera: { id: 'camera', active: false, recoveryRequired: false },
+  audioMixer: { id: 'audioMixer', active: false, recoveryRequired: false },
+  virtualSigils: { id: 'virtualSigils', active: false, recoveryRequired: false },
+  loadoutPresets: { id: 'loadoutPresets', active: false, recoveryRequired: false },
+  runtimeQOL: { id: 'runtimeQOL', active: false, recoveryRequired: false },
+})
+const naturalDropRecovery = reactive({ blocked: false, detail: '' })
+const naturalDropRecoveryCopy = computed(() => language.value === 'en'
+  ? {
+      label: 'Drop rules need safe recovery',
+      title: 'The previous drop-rule deployment did not finish recovering. Fully exit the game and other tool instances, then open Drop & Crafting Rules and retry before starting the game.',
+    }
+  : {
+      label: '掉落规则待安全恢复',
+      title: '上次掉落规则部署尚未安全恢复。请完全退出游戏和其他工具实例，再打开“掉落与锻造规则”重试；恢复完成前不要启动游戏。',
+    })
+const runtimeCompanionLabels = {
+  camera: ['镜头', 'Camera'],
+  audioMixer: ['音频', 'Audio'],
+  virtualSigils: ['虚拟因子', 'Virtual sigils'],
+  loadoutPresets: ['战斗采集', 'Battle capture'],
+  runtimeQOL: ['显示与房间', 'Display and room'],
+}
+const activeRuntimeCompanions = computed(() => Object.values(runtimeCompanionStates)
+  .filter(item => item.active || item.recoveryRequired)
+  .map(item => ({
+    ...item,
+    label: runtimeCompanionLabels[item.id]?.[language.value === 'en' ? 1 : 0] || item.id,
+  })))
 const lastRuntimePatchTab = ref('patchCombat')
 const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
 const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || RUNTIME_PATCH_MODES[lastRuntimePatchTab.value])
+const isRuntimeMonitorTab = computed(() => Boolean(RUNTIME_MONITOR_MODES[activeTab.value]))
+const runtimeMonitorMode = computed(() => RUNTIME_MONITOR_MODES[activeTab.value] || 'party')
 const sidebarCollapsed = ref(window.localStorage.getItem('gbfr.sidebarCollapsed') === '1')
 const artCollapsed = ref(window.localStorage.getItem('gbfr.artCollapsed') === '1')
 const loadoutEditing = ref(false)
@@ -110,10 +175,15 @@ const saveStatus = ref('')
 const statusType = ref('')
 const updateLoading = ref(false)
 const updateInfo = reactive({ currentVersion: '—', latestVersion: '', hasUpdate: false, body: '' })
+const navigationBusy = ref(false)
+const navigationError = ref(null)
 let hasAttemptedGameDetection = false
+let stopRuntimeQOLSessionEvents = () => {}
+let runtimeCompanionSummaryTimer = 0
+let runtimeCompanionSummaryRequest = 0
 
 watch(activeTab, (value) => {
-  if (value === 'runtimeMonitor') runtimeMonitorMounted.value = true
+  if (RUNTIME_MONITOR_MODES[value]) runtimeMonitorMounted.value = true
   if (!RUNTIME_PATCH_MODES[value]) return
   runtimePatchesMounted.value = true
   lastRuntimePatchTab.value = value
@@ -123,8 +193,83 @@ function updateCTFeatureSession(value) {
   ctFeatureSession.connected = value?.connected === true
   ctFeatureSession.releasePending = value?.releasePending === true
   ctFeatureSession.activeCount = Number.isSafeInteger(value?.activeCount) && value.activeCount >= 0 ? value.activeCount : 0
+  ctFeatureSession.recoveryCount = Number.isSafeInteger(value?.recoveryCount) && value.recoveryCount >= 0 ? value.recoveryCount : 0
   ctFeatureSession.pid = Number.isSafeInteger(value?.pid) && value.pid > 0 ? value.pid : 0
 }
+
+function updateRuntimeCompanionState(value) {
+  const target = runtimeCompanionStates[value?.id]
+  if (!target) return
+  target.active = value?.active === true
+  target.recoveryRequired = value?.recoveryRequired === true
+}
+
+function scheduleRuntimeCompanionSummary(delay = 2000) {
+  window.clearTimeout(runtimeCompanionSummaryTimer)
+  if (document.hidden) return
+  runtimeCompanionSummaryTimer = window.setTimeout(refreshRuntimeCompanionSummary, delay)
+}
+
+async function refreshRuntimeCompanionSummary() {
+  const request = ++runtimeCompanionSummaryRequest
+  const [summariesResult, naturalDropResult] = await Promise.allSettled([
+    GetRuntimeCompanionSummary(),
+    GetNaturalDropStartupRecoveryStatus(),
+  ])
+  if (request !== runtimeCompanionSummaryRequest) return
+  if (summariesResult.status === 'fulfilled') {
+    for (const summary of summariesResult.value || []) updateRuntimeCompanionState(summary)
+  }
+  if (naturalDropResult.status === 'fulfilled') {
+    const naturalDropStatus = naturalDropResult.value
+    naturalDropRecovery.blocked = naturalDropStatus?.blocked === true
+    naturalDropRecovery.detail = String(naturalDropStatus?.detail || '')
+  }
+  // A failed endpoint does not hide the other endpoint's status. The next shell
+  // poll retries both authoritative aggregates.
+  if (request === runtimeCompanionSummaryRequest) scheduleRuntimeCompanionSummary()
+}
+
+function handleRuntimeCompanionVisibility() {
+  if (document.hidden) {
+    window.clearTimeout(runtimeCompanionSummaryTimer)
+    return
+  }
+  void refreshRuntimeCompanionSummary()
+}
+
+const toolNavigationModes = Object.freeze({
+  progression: 'offline',
+  sigil: 'offline',
+  loadoutPresets: 'offline',
+  wrightstone: 'offline',
+  summonSave: 'offline',
+  chara: 'offline',
+  save: 'offline',
+  sigilMemory: 'live',
+  wrightstoneMemory: 'live',
+  summon: 'live',
+  overlimit: 'live',
+  runtime: 'live',
+  runtimeMonitor: 'background',
+  loadout: 'live',
+  runtimeQOL: 'live',
+  virtualSigils: 'live',
+  audioMixer: 'live',
+  camera: 'live',
+  spatialTools: 'live',
+  patchCombat: 'live',
+  patchCharacters: 'live',
+  patchQuest: 'live',
+  monster: 'live',
+  naturalDrop: 'file',
+  saveDiff: 'offline',
+  selectedItemMonitor: 'live',
+  formulaSampler: 'live',
+  compatibility: 'local',
+  patch: 'file',
+  language: 'local',
+})
 
 const toolMeta = {
   home: {
@@ -134,44 +279,44 @@ const toolMeta = {
   },
   progression: {
     group: 'save', title: '物品与武器（存档修改）', eyebrow: '离线养成', status: '已适配 2.0.2', tone: 'stable',
-    description: '统一处理物品、素材、武器等级与养成资源，适合大批量、可回滚的存档修改。',
-    usage: ['完全退出游戏', '选择存档并确认空位', '写入后使用自动备份验证'],
-    caution: '不要在游戏运行时编辑同一份存档。',
+    description: '给所选存档补充素材和养成资源，或调整武器等级与强化进度；只改你在页面中确认的项目。',
+    usage: ['完全退出游戏并选择目标存档', '搜索物品或武器，填入数量与等级', '预览改动后保存；应用会自动备份并回读'],
+    caution: '改动写回所选存档；需要恢复时，从页面右上角的存档保护中选择写入前备份。',
     speaker: '卡莉奥斯特罗', note: '先留好备份，再把素材和武器整理得漂漂亮亮——这才像完美的炼金术嘛。',
   },
   sigil: {
     group: 'save', title: '因子修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '生成、批量管理和删除存档内因子，适合一次性整理较多因子。',
-    usage: ['退出游戏并加载存档', '配置因子与词条', '先检查合法性再写入'],
-    caution: '不合法组合会提醒，但不会替你改变选择。',
+    description: '在所选存档中新增独立因子实例，也能查看或删除已有因子；适合一次准备多颗合法因子。',
+    usage: ['完全退出游戏并选择目标存档', '选择因子、主副词条、等级与数量，加入待写入队列', '核对队列后保存；应用会自动备份并回读'],
+    caution: '不合法或未验证的组合不会写入；需要撤销时，从存档保护恢复本次写入前的备份。',
     speaker: '娜露梅亚', note: '先检验组合，再写入存档。稳稳完成每一步，理想的因子就不会跑掉。',
   },
   sigilMemory: {
     group: 'memory', title: '因子即时编辑', eyebrow: '游戏内养成', status: '实时', tone: 'live',
-    description: '直接修改游戏中当前选中的因子，适合少量精确调整和反复试配。',
-    usage: ['启动游戏并启用读取', '在游戏中选中目标因子', '刷新、核对后写入'],
-    caution: '重新进档或因子列表刷新后，请重新选择目标。',
+    description: '修改游戏里当前高亮的那一颗因子，适合少量调整；页面会并列显示当前值与准备写入的值。',
+    usage: ['启动游戏，打开因子列表并点击“启用读取”', '在游戏中选中目标因子，回到工具核对名称和词条', '修改后点击“写入修改”；继续编辑前重新选择目标'],
+    caution: '写入的是当前游戏进程，不是离线存档文件；停止读取会恢复捕获指令，重新进档后需重新连接。',
     speaker: '萝赛塔', note: '游戏重新载入后，记得再选一次目标。旧的指针可不会一直等你哦。',
   },
   loadout: {
-    group: 'memory', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
-    description: '记录角色当前的 12 个因子并导出分享，也可把配装文件逐项复刻到备用因子。（改的是游戏内因子；写存档配装预设请用「配装预设」。）',
-    usage: ['启动游戏并按角色筛选因子', '从第一项开始记录或复刻', '逐项向下移动，不要快速滚动'],
+    group: 'loadoutFlow', title: '因子配装·实时录制/复刻', eyebrow: '游戏内因子', status: '实时', tone: 'live',
+    description: '从游戏内依次读取角色当前的 12 个因子，用于导出和分享；也能把导入配装逐颗写到你准备好的备用因子上。',
+    usage: ['启动游戏，打开角色因子列表并选中第一颗', '选择“录制”或载入配装进行“复刻”', '按页面提示逐颗向下移动，完成后预览、导出或分享'],
     caution: '复刻会改写当前选中的备用因子；不要使用已经装备或需要保留的因子。',
     speaker: '芙劳', note: '把十二个因子的顺序先理清，再一步一步复刻。速度不必太快，准确才最重要。',
   },
   loadoutPresets: {
     group: 'save', title: '配装预设（查看与写入）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '查看游戏配装界面保存的预设（武器/12 因子/4 技能/专精），也可把自定义配装写入指定槽位。',
-    usage: ['完全退出游戏', '选择存档位或浏览存档文件', '查看，或切到「编辑写入」自定义配装'],
-    caution: '',
+    description: '查看和编辑角色配装：武器、12 个因子、4 个技能、专精与其他已记录内容都在同一页核对。',
+    usage: ['完全退出游戏并选择目标存档', '打开角色和配装槽，手动编辑或按技能目标生成因子方案', '先预览整套配装，再确认写入所选槽位'],
+    caution: '保存草稿不会修改存档；只有确认写入才会覆盖目标配装槽，并自动创建备份和回读。',
     speaker: '古兰', note: '先备份，再确认角色和目标槽；已有配装会被覆盖。',
   },
   wrightstone: {
     group: 'save', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
-    description: '集中生成祝福与三条词条，使用与因子批量修改一致的存档工作流。',
-    usage: ['退出游戏并加载存档', '选择祝福和三条词条', '校验队列并应用'],
-    caution: '等级上限与组合合法性会在写入前提示。',
+    description: '在所选存档中新增祝福石实例；选择祝福类型和三条技能后，可以一次生成一颗或批量加入队列。',
+    usage: ['完全退出游戏并选择目标存档', '选择祝福、三条技能、等级与数量', '核对队列后保存；应用会自动备份并回读'],
+    caution: '重复技能、非法组合和超过技能曲线的等级不会写入；可从存档保护恢复写入前备份。',
     speaker: '菲莉', note: '三条词条都确认好再应用，幽灵朋友们也会替你看着。',
   },
   summonSave: {
@@ -183,100 +328,156 @@ const toolMeta = {
   },
   wrightstoneMemory: {
     group: 'memory', title: '祝福石即时编辑', eyebrow: '游戏内祝福石', status: '实时', tone: 'live',
-    description: '捕获游戏内当前选中的祝福石记录，并以一次事务核对、写入三条词条。',
+    description: '修改游戏中当前高亮的祝福石：先读取真实三槽，再一次写入你确认的技能和等级。',
     usage: ['启动游戏并启用读取', '在游戏内祝福石列表选中目标记录', '核对三槽变更后一次性写入'],
-    caution: '每次写入后旧记录都会失效；继续操作前必须在游戏内重新选择记录。',
+    caution: '写入成功会自动停止读取并恢复游戏指令；继续修改前，必须重新启用并在游戏中选择目标。',
     speaker: '玛琪拉菲菈', note: '写入后旧记录会失效。回到游戏里重新选中目标，再继续。',
   },
   summon: {
-    group: 'memory', title: '召唤石修改', eyebrow: '游戏内修改', status: '实时保存', tone: 'live',
-    description: '读取召唤石背包并修改因子、副参数和等级，写入时调用游戏保存流程。',
-    usage: ['打开游戏内召唤石背包', '连接并选择一颗召唤石', '核对稀有度与合法性后写入'],
-    caution: '当前不支持安全更换召唤石种类。',
+    group: 'memory', title: '召唤石即时修改', eyebrow: '游戏内召唤石', status: '实时保存', tone: 'live',
+    description: '读取游戏背包中当前选中的召唤石，修改它的技能、副参数和等级，再调用游戏自身保存流程。',
+    usage: ['启动游戏并打开召唤石背包', '连接后在游戏中选中目标召唤石', '回到工具核对类型和等级，再写入并按提示保存'],
+    caution: '实时页不更换召唤石种类；需要更换类型或新增实例，请使用“召唤石添加 / 修改（存档）”。',
     speaker: '露莉亚', note: '先在背包里选中目标召唤石，再核对稀有度和等级，我们一起慢慢来。',
   },
   overlimit: {
     group: 'memory', title: '角色上限突破', eyebrow: '游戏内修改', status: '流程型', tone: 'live',
-    description: '读取角色突破界面的四个能力槽，按游戏原流程保存结果。',
-    usage: ['先完成一次 3 级突破', '停在结果界面后刷新', '修改四项并按说明保存'],
-    caution: '必须按页面步骤完成，不能跳过游戏内确认流程。',
+    description: '读取角色上限突破结果页的四项能力，修改后仍由游戏原本的确认步骤保存。',
+    usage: ['在游戏中完成一次 3 级上限突破', '停留在四项结果页，回到工具读取', '调整四项后写回，再返回游戏确认保存'],
+    caution: '工具只改当前结果页；跳过游戏内最终确认不会保存。',
     speaker: '希耶提', note: '四个能力槽一个都别漏。真正的剑王，可不会跳过确认步骤。',
   },
   runtime: {
-    group: 'memory', title: '游戏内实时修改', eyebrow: '金币、素材与掉落', status: '需连接游戏', tone: 'live',
-    description: '集中管理货币、药水、素材消耗和任务掉落等运行时功能。',
-    usage: ['先启动并进入游戏存档', '连接游戏进程', '按资源或任务分类切换功能'],
-    caution: '重启游戏后运行时设置会失效，需要重新连接。',
+    group: 'memory', title: '货币、素材与任务掉落', eyebrow: '游戏内即时资源', status: '需连接游戏', tone: 'live',
+    description: '在当前游戏进程中调整金币、MSP、药水和素材，或开启已验证的任务掉落功能。',
+    usage: ['启动游戏并进入要使用的存档', '连接当前游戏进程', '选择资源或任务功能，按页面提示应用'],
+    caution: '这些设置作用于当前游戏会话；重启游戏后需要重新连接，页面提供的停用操作会恢复相应补丁。',
     speaker: '碧', note: '进游戏、连进程、再修改！重启以后可得重新连接，别忘啦！',
   },
   runtimeMonitor: {
-    group: 'monitor', title: '角色配装检测', eyebrow: '只读后台检测', status: '只读 · 自动记录任务配装', tone: 'live',
-    description: '一次开启后常驻后台，自动识别每场任务的稳定队伍，并把角色配装按场次保存在本机。',
-    usage: ['开启角色配装检测', '正常进入任务并游玩', '在本地记录中预览、导出或部署配装'],
-    caution: '检测器只读游戏数据，可与其他连接功能同时使用；选中物品读取是同页的独立工具。',
-    speaker: '尤斯塔斯', note: '开启一次就够了。你继续执行任务，我会把每一场稳定出现的队伍配装归档。',
+    group: 'loadoutFlow', title: '队友配装持续检测', eyebrow: '队伍配装 · 后台服务', status: '点击开启后持续检测', tone: 'live',
+    description: '点击开启后持续在后台读取连续稳定的任务队伍快照；切换页面不会停止，直到你主动关闭。',
+    usage: ['点击开启角色配装检测', '正常进入任务并与队友游玩', '在本地批次中预览、导出、部署或上传配装'],
+    caution: '检测器不会默认开启；只读游戏数据，只有你点击关闭时才停止。',
+    speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
+  },
+  spatialTools: {
+    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '稳定版仅预览/恢复', tone: 'calibrate',
+    description: '集中查看坐标、书签、传送、世界轴移动与重力抑制的实验状态；稳定版不会新开启尚未完成跨场景实测的移动会话。',
+    usage: ['仅在离线或单机内容查看状态', '如检测到旧实验会话，先执行停用并恢复', '等待页面明确标为可启用后再进行移动测试'],
+    caution: '重力抑制、noclip 与相机相对飞行均未完成稳定版验收；当前入口不会把候选能力包装成可用功能。',
+    speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
+  },
+  selectedItemMonitor: {
+    group: 'tools', title: '选中物品查看（只读）', eyebrow: '诊断 · 内存查看', status: '低频工具', tone: 'live',
+    description: '查看游戏中当前高亮素材或关键物品的名称、数量、Hash 与 Flags；页面没有任何修改入口。',
+    usage: ['启动游戏并连接，点击“启用只读捕获”', '在游戏的素材或关键物品列表中高亮目标', '回到工具刷新并读取一次；查看下一件前重新选择'],
+    caution: '这是低频诊断工具；点击“安全断开”会移除临时捕获并恢复游戏原始指令。',
+    speaker: '齐格飞', note: '换了物品要重新选中再读取；这里只看，不会写入。',
   },
   formulaSampler: {
-    group: 'monitor', title: '角色公式采样', eyebrow: '严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
-    description: '只读采集角色最终 HP、攻击、暴击率与昏厥值，通过单变量 A1/B1/A2/B2 复现实验生成脱敏证据包。',
-    usage: ['选择当前出战角色并连接', '每轮只改变一个可逆项目', '严格按 A1/B1/A2/B2 采集后导出'],
-    caution: '面板未稳定或同时改变多个项目会让样本失效；采样器不安装 Hook，也不写进程。',
+    group: 'tools', title: '角色公式采样', eyebrow: '诊断 · 严格只读', status: 'A/B/A/B · 需连接游戏', tone: 'live',
+    description: '用四次只读记录比较某一项装备或技能到底改变了多少 HP、攻击、暴击率与昏厥值。',
+    usage: ['选择当前出战角色并连接，先记录原状态 A1', '只改变一个可逆项目，记录 B1，再重复记录 A2、B2', '四次结果可复现后，导出不含个人路径的证据包'],
+    caution: '角色面板没稳定或一次改变多项都会让结果失效；本页不安装 Hook、不写游戏，也不改存档。',
     speaker: '卡塔莉娜', note: '一次只动一项，等数字站稳再记。前后能复现，公式才算有证据。',
   },
   patchCombat: {
-    group: 'memory', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
-    description: '集中管理闪避、格挡、Link、召唤限制与部位破坏等已验证的实时补丁。',
-    usage: ['启动游戏并进入单机内容', '连接后选择需要的战斗规则', '三个补丁页共用常驻连接；明确断开时恢复全部补丁'],
+    group: 'runtimeTools', title: '战斗规则补丁', eyebrow: '战斗补丁', status: '仅离线/单机', tone: 'live',
+    description: '在离线或单机游玩中调整闪避、格挡、Link、召唤限制和部位破坏等战斗规则。',
+    usage: ['启动游戏并进入离线或单机内容', '连接后逐项开启需要的规则', '切页不会停止；用完点击断开，恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；不要带入联机房间。',
     speaker: '巴恩', note: '先确认只在单机里测试，再一项一项校准。切换页面不会打断，明确断开时才会全部恢复。',
   },
   patchCharacters: {
-    group: 'memory', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
-    description: '按角色整理已验证的专属机制补丁，可搜索角色与功能名称并查看明确冲突。',
-    usage: ['启动游戏并进入单机内容', '选择角色分组后启用机制', '冲突项先恢复当前功能再切换'],
+    group: 'runtimeTools', title: '角色机制补丁', eyebrow: '角色机制', status: '仅离线/单机', tone: 'live',
+    description: '按角色查找专属机制调整；每个开关都会说明作用，互相冲突的功能不会同时开启。',
+    usage: ['启动游戏并进入离线或单机内容', '搜索角色或机制名称，查看说明后开启', '切换互斥功能前，先停用并确认原机制已恢复'],
     caution: '这些功能只用于离线或单机游玩；互斥机制不会相互覆盖。',
     speaker: '巴萨拉卡', note: '冲突项不能同时开。先关掉亮着的那个，等状态回读后再切换。',
   },
   patchQuest: {
-    group: 'memory', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
-    description: '管理任务倒计时、宝箱、结算、支线奖励与养成便利等已验证实时补丁。',
-    usage: ['启动游戏并进入单机任务', '按任务或体验优化分组选择', '任务结束前按需恢复默认'],
+    group: 'runtimeTools', title: '任务与便利补丁', eyebrow: '任务与便利', status: '仅离线/单机', tone: 'live',
+    description: '在离线或单机任务中调整倒计时、宝箱、结算、支线奖励与养成便利功能。',
+    usage: ['启动游戏并进入离线或单机任务', '按“任务规则”或“体验便利”选择功能', '用完在本页停用，或断开并恢复本工具开启的全部补丁'],
     caution: '这些功能只用于离线或单机游玩；任务状态切换后请刷新回读。',
     speaker: '尤达拉哈', note: '任务路线先看清，宝箱和结算各归各位。用完恢复，下一趟才不会乱。',
   },
   chara: {
     group: 'save', title: '角色使用次数', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
-    description: '查看所有角色的使用次数，可任意选择多个角色批量修改。',
-    usage: ['完全退出游戏', '选择存档和目标角色', '填入次数后保存已选'],
-    caution: '只修改勾选角色，保存前请检查选择数量。',
+    description: '查看每名角色记录的使用次数，并把同一个次数批量写给你勾选的角色。',
+    usage: ['完全退出游戏并选择目标存档', '勾选角色并填入新的使用次数', '核对已选数量后保存'],
+    caution: '只修改勾选角色；写入前会自动备份，需要时可从存档保护恢复。',
     speaker: '姬塔', note: '只会保存你勾选的角色。动手前再数一遍，团长的记录要清清楚楚。',
   },
   save: {
     group: 'save', title: '任务与称号记录', eyebrow: '记录与统计', status: '离线存档', tone: 'stable',
-    description: '修改任务完成次数，或搜索并维护称号解锁与已查看记录。',
-    usage: ['完全退出游戏', '选择任务或称号标签', '核对筛选结果后写入'],
-    caution: '称号奖励领取记录保持不变。',
+    description: '修改任务完成次数，或管理称号是否解锁、是否已查看；两个功能使用同一份所选存档。',
+    usage: ['完全退出游戏并选择目标存档', '切到任务或称号，搜索并勾选要修改的记录', '核对数量后保存；应用会自动备份并回读'],
+    caution: '称号奖励是否领取不会在这里改变；需要撤销时，从存档保护恢复写入前备份。',
     speaker: '拉卡姆', note: '任务记录就像航线图，先选准目标，再一次写入，别改错方向。',
   },
+  saveDiff: {
+    group: 'save', title: '存档对比与复制', eyebrow: '双存档 · 页内替换', status: '离线存档', tone: 'stable',
+    description: '并排比较两份存档，把同结构差异直接从一侧拖到另一侧；不需要跳转到其他编辑页。',
+    usage: ['完全退出游戏，选择左右两份不同的存档', '选择写入左侧或右侧，把需要的差异拖入目标侧或加入变更单', '核对变更单后确认；应用会自动备份、原子写入并逐条回读'],
+    caution: '只会复制你确认的同结构记录；单侧新增、删除或长度不同的记录会保持禁用，避免破坏存档结构。',
+    speaker: '兰斯洛特', note: '先确认写入哪一侧，再逐条挑选。变更单核对无误后，一次写入就够了。',
+  },
+  naturalDrop: {
+    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
+    description: '修改游戏实际读取的掉落与锻造表：可添加 Transmarvel 因子、召唤石、祝福石和普通物品，不会直接向存档背包添加物品。',
+    usage: ['完全退出游戏并选择游戏程序', '从应用内置的 2.0.2 目录搜索内容，填写数量或权重并加入待部署清单', '核对清单后部署；停用时恢复应用创建的游戏文件备份'],
+    caution: '十一张 2.0.2 精确表已随应用内嵌并校验，不需要自行解包；普通物品会加入“无尽模式·锻造师奖励池”。发现同表冲突时会停止，避免覆盖其他模组。',
+    speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
+  },
+  audioMixer: {
+    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    description: '分别调低或静音各角色后续播放的语音，也能调整界面音效；不会替换游戏音频文件。',
+    usage: ['启动游戏并在本页确认已连接', '调整角色或界面音量，可先保存为本机预设', '点击“开启音频运行时”；之后保存会立即更新当前游戏'],
+    caution: '只处理能够明确归属的语音事件，未知和共享事件保持原音；点击“停用并恢复”会移除本工具的音频 Hook。',
+    speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
+  },
+  camera: {
+    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    description: '调整城镇镜头能拉多远、看向角色的高度，以及每格滚轮缩放多少；战斗镜头不会改变。',
+    usage: ['启动游戏并在本页确认已连接', '选择默认或舒适预设，也可手动调三个参数', '点击“开启镜头运行时”；之后保存会立即更新当前游戏'],
+    caution: '只影响城镇镜头；点击“停用并恢复”会还原开启前的镜头值和本工具安装的 Hook。',
+    speaker: '索恩', note: '先看准距离和高度；顶部显示常驻后，切页也不会停。',
+  },
+  virtualSigils: {
+    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '稳定版仅预览/恢复', tone: 'calibrate',
+    description: '预览让运行中角色额外读取 1 至 8 颗真实库存因子的实验配置；它不会扩展存档的 12 个物理槽，稳定版也不会新建运行时会话。',
+    usage: ['选择存档和角色，核对实验配置与真实库存实例', '如检测到旧实验会话，点击停用并恢复所有相关 Hook', '跨角色、场景和多 Hook 长测通过前，不会提供新开启按钮'],
+    caution: '同一实例只能占一个候选槽；稳定版只允许安全恢复，不会因单元测试通过就启用未完成实机验收的能力。',
+    speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
+  },
+	runtimeQOL: {
+		group: 'runtimeTools', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2 内置运行时', tone: 'live',
+		description: '集中开启显示精度、房间 ID 和主线队长替换；等级同步与重镶返还保留为待实测候选，不会在当前构建安装。',
+		usage: ['启动游戏', '选择需要的便利功能和显示精度', '开启后正常游玩；F12 可紧急恢复'],
+		caution: '所有入口必须唯一匹配 2.0.2；发现其他工具已修改同一入口时会拒绝接管。',
+		speaker: '夏洛特', note: '只开验证过的选项；没实测的继续锁住，F12 可以恢复。',
+	},
   compatibility: {
     group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
-    description: '在一个位置查看工具版本、游戏文件和功能适配状态。',
-    usage: ['检查工具更新', '确认游戏文件已识别', '查看适配状态'],
-    caution: '',
+    description: '确认当前工具版本、游戏 EXE 和各功能是否匹配 DLC 2.0.2；这里不修改游戏或存档。',
+    usage: ['检查是否有新的工具版本', '确认已识别正确的游戏 EXE', '查看各功能的已适配、实验或未开放状态'],
+    caution: '“已识别”只代表版本和文件匹配，不代表尚未完成的实机功能已经验证。',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
   },
   monster: {
-    group: 'memory', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
-    description: '控制怪物血量、伤害、昏厥条和 Overdrive 状态。',
-    usage: ['仅在主机端测试', '先刷新并检查状态', '告知队友后再启用'],
-    caution: '',
+    group: 'runtimeTools', title: '怪物倍率与状态控制', eyebrow: '实验', status: '实验', tone: 'live',
+    description: '实验性调整当前怪物的血量、伤害、昏厥条与 Overdrive 状态，便于离线测试战斗。',
+    usage: ['只在离线、单机或你明确控制的主机端测试', '连接后刷新并确认当前怪物状态', '一次调整一项，记录结果后恢复默认'],
+    caution: '怪物切换、阶段变化和任务结束都可能让目标失效；不能把候选行为当作稳定联机功能。',
     speaker: '伊德', note: '先确认主机端和倍率，再动手。力量失控的话，记录也会失去意义。',
   },
   patch: {
     group: 'tools', title: '游戏文件维护', eyebrow: 'EXE 备份与恢复', status: '可用', tone: 'calibrate',
-    description: '识别游戏 EXE、创建原始文件备份并一键恢复。',
-    usage: ['定位游戏 EXE', '先创建原始备份', '需要时一键恢复'],
-    caution: '',
+    description: '定位游戏 EXE、保存一份原始文件副本，并在文件补丁异常时恢复。',
+    usage: ['自动检测或手动选择游戏 EXE', '修改游戏文件前先创建原始备份', '需要撤销文件补丁时点击“恢复备份”'],
+    caution: '“重新创建原始备份”会替换旧备份；只有确认当前 EXE 是干净原版时才使用。',
     speaker: '欧根', note: '原始文件先备份，字节状态看清楚再修。老手从不省这一步。',
   },
   language: {
@@ -288,20 +489,19 @@ const toolMeta = {
   },
 }
 
-// 顶层把只读内存监测从内存注入中单独分出，避免把观察数据与修改功能混为一谈。
-// 存档修改=离线改存档文件；内存注入=运行时修改进程；内存监测=只读取运行时数据。
 const navigation = computed(() => [
-  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档修改（离线）' : 'Save Editing', caption: language.value === 'zh' ? '退出游戏后改存档文件' : 'Edit the save file offline', items: ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'] },
-  { id: 'memory', mark: '注', label: language.value === 'zh' ? '内存注入（实时）' : 'Live Injection', caption: language.value === 'zh' ? '连接游戏改进程内存' : 'Edit process memory in-game', items: ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
-  { id: 'monitor', mark: '测', label: language.value === 'zh' ? '内存监测（只读）' : 'Memory Monitoring (Read Only)', caption: language.value === 'zh' ? '连接游戏只读取运行时数据' : 'Read live runtime data', items: ['runtimeMonitor', 'formulaSampler'] },
-  { id: 'tools', mark: '具', label: language.value === 'zh' ? '工具与设置' : 'Tools & Settings', caption: language.value === 'zh' ? '版本诊断 · EXE维护 · 语言' : 'Diagnostics, EXE, language', items: ['compatibility', 'language', 'patch'] },
+  { id: 'save', mark: '档', label: language.value === 'zh' ? '存档与配装（离线）' : 'Saves & Loadouts', caption: language.value === 'zh' ? '退出游戏后编辑；备份、写入并回读' : 'Edit offline with backup and readback', items: ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'] },
+  { id: 'memory', mark: '改', label: language.value === 'zh' ? '游戏内即时编辑' : 'In-Game Live Editing', caption: language.value === 'zh' ? '选中目标后读取、修改并保存' : 'Select, read, edit, and save in game', items: ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'] },
+  { id: 'loadoutFlow', mark: '配', label: language.value === 'zh' ? '配装采集与复刻' : 'Loadout Capture & Restore', caption: language.value === 'zh' ? '队友后台检测与十二因子录制' : 'Party detection and 12-sigil recording', items: ['runtimeMonitor', 'loadout'] },
+  { id: 'runtimeTools', mark: '运', label: language.value === 'zh' ? '单机运行时工具' : 'Solo Runtime Tools', caption: language.value === 'zh' ? '显示、因子、音频、镜头与规则补丁' : 'Display, sigils, audio, camera, and rules', items: ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
+  { id: 'tools', mark: '具', label: language.value === 'zh' ? '游戏文件、诊断与设置' : 'Files, Diagnostics & Settings', caption: language.value === 'zh' ? '掉落表、实时诊断、适配与维护' : 'Drop tables, live diagnostics, compatibility, maintenance', items: ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'] },
 ])
 
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '22 个实际工具页 + 1 个主页已接入。',
+    baselineSummary: '30 个实际工具页 + 1 个主页已接入。',
   baselineBoundary: '关键运行时路径已完成 DLC 2.0.2 现场验证；其余功能按页面证据标注',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
@@ -321,7 +521,7 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
   baselineVersion: 'DLC 2.0.2',
-  baselineSummary: '22 tool pages plus the home page are integrated.',
+    baselineSummary: '30 tool pages plus the home page are integrated.',
   baselineBoundary: 'Critical runtime paths have DLC 2.0.2 field evidence; remaining features keep page-level evidence labels',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
@@ -340,23 +540,27 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
-  { scope: '存档修改页面', status: '7 / 7', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录' },
-  { scope: '内存注入页面', status: '10 页接入', tone: 'flow', detail: '综合实时、即时因子、即时祝福、实时配装、召唤石、上限突破、战斗规则、角色机制、任务便利、怪物实验' },
-  { scope: '只读监测页面', status: '2 / 2', tone: 'ok', detail: '角色配装检测与角色公式采样；均不安装 Hook、不写进程或存档' },
-  { scope: '工具设置页面', status: '3 / 3', tone: 'ok', detail: '版本适配、语言与显示、游戏文件维护' },
-  { scope: '运行时补丁覆盖', status: '60 / 64', tone: 'ok', detail: '58 个目录功能 + 2 个已有安全实现；4 个证据不足项未作为可用开关暴露' },
-  { scope: '运行时补丁目录', status: '58 / 81 / 79', tone: 'ok', detail: '58 功能 / 81 站点 / 79 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
-  { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 现场修复', tone: 'ok', detail: '当前目录逐站点验证；祝福石捕获与自动完美格挡连招修复使用独立版本守卫和写后回读' },
+  { scope: '存档修改页面', status: '8 / 8', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录、双存档对比复制' },
+  { scope: '游戏内即时编辑', status: '5 / 5', tone: 'flow', detail: '因子、祝福石、召唤石、上限突破与当前会话资源；均需启动并连接游戏' },
+  { scope: '配装采集与复刻', status: '2 / 2', tone: 'flow', detail: '队友配装检测按点击开启后持续后台运行；十二因子录制与复刻使用实时捕获' },
+  { scope: '单机运行时工具', status: '9 页接入', tone: 'flow', detail: '显示与房间、虚拟因子、角色语音、城镇镜头、坐标移动、三类规则补丁与怪物控制' },
+  { scope: '实时只读诊断', status: '2 / 2', tone: 'ok', detail: '选中物品查看与角色公式采样需要连接游戏，但不会修改进程数据或存档' },
+  { scope: '游戏文件与设置', status: '4 页已接入', tone: 'ok', detail: '掉落与锻造规则、版本适配、游戏文件维护、语言与显示' },
+  { scope: '运行时补丁覆盖', status: '59 已接入 / 4 待证据', tone: 'ok', detail: '58 个稳定目录功能和 1 个 EXE 锁定候选项已接入；另有 4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
+  { scope: '运行时补丁目录', status: '59 / 82 / 80', tone: 'ok', detail: '59 功能 / 82 站点 / 80 AOB；锁定 DLC 2.0.2 EXE、原字节与唯一命中证据' },
+  { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 EXE 候选 + 1 现场修复', tone: 'ok', detail: '新增刀上舞自身眩晕移除候选；祝福石捕获与自动完美格挡连招修复继续使用独立版本守卫和写后回读' },
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
-  { scope: 'Save editing pages', status: '7 / 7', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records' },
-  { scope: 'Live injection pages', status: '10 integrated', tone: 'flow', detail: 'General live tools, live sigils, live wrightstones, live loadouts, summons, Over Mastery, combat rules, character mechanics, quest utilities, monster experiments' },
-  { scope: 'Read-only monitor pages', status: '2 / 2', tone: 'ok', detail: 'Runtime monitoring and formula sampling; formula sampling installs no hooks and writes neither process nor save data' },
-  { scope: 'Utility pages', status: '3 / 3', tone: 'ok', detail: 'Version compatibility, language and display, game file maintenance' },
-  { scope: 'Runtime patch coverage', status: '60 / 64', tone: 'ok', detail: '58 catalog features plus 2 existing safe implementations; 4 candidates without enough evidence are not exposed' },
-  { scope: 'Runtime patch catalog', status: '58 / 81 / 79', tone: 'ok', detail: '58 features / 81 sites / 79 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
-  { scope: 'DLC 2.0.2 delta audit', status: '58 stable entries + 1 field fix', tone: 'ok', detail: 'Every catalog site is validated; wrightstone capture and the auto-perfect-guard combo fix use independent version guards and writeback' },
+  { scope: 'Save editing pages', status: '8 / 8', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records, and two-save copying' },
+  { scope: 'In-game live editing', status: '5 / 5', tone: 'flow', detail: 'Sigils, wrightstones, summons, overmastery, and current-session resources all require the running game' },
+  { scope: 'Loadout capture and restore', status: '2 / 2', tone: 'flow', detail: 'Party detection starts only on click and then runs in the background; 12-sigil recording and restore use live capture' },
+  { scope: 'Solo runtime tools', status: '9 pages integrated', tone: 'flow', detail: 'Display and room tools, virtual sigils, voice audio, town camera, spatial controls, three patch groups, and monster control' },
+  { scope: 'Live read-only diagnostics', status: '2 / 2', tone: 'ok', detail: 'Selected-item viewing and formula sampling require the running game but do not alter process data or saves' },
+  { scope: 'Game files and settings', status: '4 pages integrated', tone: 'ok', detail: 'Drop and crafting rules, version compatibility, game-file maintenance, and language/display' },
+  { scope: 'Runtime patch coverage', status: '59 integrated / 4 pending', tone: 'ok', detail: '58 stable catalog features and 1 executable-locked candidate are integrated; 4 other candidates remain hidden until field or layout evidence is sufficient' },
+  { scope: 'Runtime patch catalog', status: '59 / 82 / 80', tone: 'ok', detail: '59 features / 82 sites / 80 AOBs, locked to the DLC 2.0.2 executable, original bytes, and unique-hit evidence' },
+  { scope: 'DLC 2.0.2 delta audit', status: '58 stable + 1 EXE candidate + 1 field fix', tone: 'ok', detail: 'The Glass Cannon self-stun removal candidate was added; wrightstone capture and the auto-perfect-guard combo fix keep their independent version guards and writeback' },
   { scope: 'Current maintenance delta', status: '2 / 2 verified', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use a unique signature, three-byte patch, and writeback verification' },
   { scope: 'Real game-process E2E', status: 'Critical paths verified', tone: 'ok', detail: 'DLC 2.0.2 field evidence covers final HP reads, solo party monitoring, repeated defense +5% hit samples, and auto-perfect-guard combos; untested features retain their original evidence level' },
 ])
@@ -377,118 +581,189 @@ const iconCoverageRows = computed(() => language.value === 'zh' ? [
   { scope: 'Item icons', status: '301 / 312', tone: 'flow', detail: '11 catalog entries still lack provably exact PNGs' },
 ])
 
-const currentMeta = computed(() => toolMeta[activeTab.value] || toolMeta.home)
+function localizedMeta(meta) {
+  return {
+    ...meta,
+    title: translateText(meta.title),
+    eyebrow: translateText(meta.eyebrow),
+    status: translateText(meta.status),
+    description: translateText(meta.description),
+    usage: (meta.usage || []).map(translateText),
+    caution: translateText(meta.caution),
+    speaker: translateText(meta.speaker),
+    note: translateText(meta.note),
+  }
+}
+function toolTabTitle(id) {
+  const meta = localizedToolMeta.value[id]
+  if (!meta) return ''
+  const mode = toolNavigationModes[id]
+  const hints = language.value === 'en'
+    ? {
+        offline: 'Fully exit the game first',
+        live: 'Start the game and connect first',
+        background: 'Starts only when you click; then keeps running in the background',
+        file: 'Edits or checks local game files',
+        readonly: 'Read-only local analysis',
+        local: 'Local tool; no game connection required',
+      }
+    : {
+        offline: '需先完全退出游戏',
+        live: '需先启动游戏并连接进程',
+        background: '点击后才开启，并持续在后台运行',
+        file: '修改或检查本地游戏文件',
+        readonly: '本地只读分析',
+        local: '本机工具，无需连接游戏',
+      }
+  const hint = hints[mode] || ''
+  return [meta.title, meta.eyebrow, hint].filter(Boolean).join(' · ')
+}
+function toolNavigationMode(id) {
+  return toolNavigationModes[id] || ''
+}
+function toolTagLabel(id) {
+  const labels = language.value === 'en'
+    ? { offline: 'Offline', live: 'Live', background: 'Background', file: 'Game File', readonly: 'Read Only', local: 'Local' }
+    : { offline: '离线', live: '实时', background: '后台', file: '游戏文件', readonly: '只读', local: '本机' }
+  return labels[toolNavigationMode(id)] || ''
+}
+const localizedToolMeta = computed(() => Object.fromEntries(Object.entries(toolMeta).map(([id, meta]) => [id, localizedMeta(meta)])))
+const currentMeta = computed(() => localizedToolMeta.value[activeTab.value] || localizedToolMeta.value.home)
+const activeCachedRuntimePage = computed(() => cachedRuntimePages[activeTab.value] || null)
 const isLoadoutWorkspace = computed(() => activeTab.value === 'loadoutPresets' && loadoutEditing.value)
-const functionArt = {
-  progression: progressionArt,
-  sigil: sigilArt,
-  sigilMemory: sigilMemoryArt,
-  loadout: loadoutLiveArt,
-  loadoutPresets: loadoutPresetsArt,
-  wrightstone: wrightstoneArt,
-  summonSave: summonSaveArt,
-  wrightstoneMemory: wrightstoneMemoryArt,
-  summon: summonArt,
-  overlimit: overlimitArt,
-  runtime: runtimeArt,
-  patchCombat: patchCombatArt,
-  patchCharacters: patchCharactersArt,
-  patchQuest: patchQuestArt,
-  runtimeMonitor: runtimeMonitorArt,
-  formulaSampler: formulaSamplerArt,
-  chara: charaArt,
-  save: saveArt,
-  compatibility: compatibilityArt,
-  monster: monsterArt,
-  patch: patchArt,
-  language: languageArt,
-}
+const functionArt = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.art.variants.display.url])))
 const currentArt = computed(() => functionArt[activeTab.value] || '')
-const functionStickers = {
-  progression: progressionSticker,
-  sigil: sigilSticker,
-  sigilMemory: sigilMemorySticker,
-  loadout: loadoutSticker,
-  loadoutPresets: loadoutPresetsSticker,
-  wrightstone: wrightstoneSticker,
-  summonSave: summonSaveSticker,
-  wrightstoneMemory: wrightstoneMemorySticker,
-  summon: summonSticker,
-  overlimit: overlimitSticker,
-  runtime: runtimeSticker,
-  patchCombat: patchCombatSticker,
-  patchCharacters: patchCharactersSticker,
-  patchQuest: patchQuestSticker,
-  runtimeMonitor: runtimeMonitorSticker,
-  formulaSampler: formulaSamplerSticker,
-  chara: charaSticker,
-  save: saveSticker,
-  compatibility: compatibilitySticker,
-  monster: monsterSticker,
-  patch: patchSticker,
-  language: languageSticker,
-}
+const functionStickers = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
+  .map(([id, asset]) => [id, asset.sticker.variants.display.url])))
 const currentSticker = computed(() => functionStickers[activeTab.value] || '')
-const warmedTools = new Set()
 const warmedImages = new Map()
-const warmQueue = []
-let warmTimer = 0
+const warmedTools = new Map()
 
-function warmImage(src) {
-  if (!src || warmedImages.has(src)) return warmedImages.get(src)
-  const image = new Image()
-  image.decoding = 'async'
-  image.src = src
-  const pending = typeof image.decode === 'function'
-    ? image.decode().catch(() => undefined)
-    : new Promise(resolve => { image.onload = image.onerror = resolve })
-  warmedImages.set(src, pending)
+function decodeImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => resolve(src)
+    image.onerror = () => reject(new Error(`图片加载失败：${src}`))
+    image.src = src
+    if (typeof image.decode === 'function') image.decode().then(() => resolve(src), () => {})
+  })
+}
+
+function warmImage(src, fallback = '') {
+  const cacheKey = `${src}|${fallback}`
+  if (!src || warmedImages.has(cacheKey)) return warmedImages.get(cacheKey)
+  const pending = decodeImage(src).catch(error => fallback && fallback !== src ? decodeImage(fallback) : Promise.reject(error))
+  warmedImages.set(cacheKey, pending)
+  pending.catch(() => warmedImages.delete(cacheKey))
   return pending
 }
 
 function warmTool(id) {
-  if (!id || warmedTools.has(id)) return
-  warmedTools.add(id)
-  warmImage(functionArt[id])
-  warmImage(functionStickers[id])
+  if (!id) return Promise.resolve()
+  if (warmedTools.has(id)) return warmedTools.get(id)
+  const asset = functionAssetManifest.assets[id]
+  const pending = Promise.all([
+    loadPageModule(id),
+    warmImage(functionArt[id]),
+    warmImage(functionStickers[id]),
+  ]).then(([, art, sticker]) => {
+    if (art) functionArt[id] = art
+    if (sticker) functionStickers[id] = sticker
+  })
+  warmedTools.set(id, pending)
+  pending.catch(() => warmedTools.delete(id))
+  return pending
 }
 
-function drainWarmQueue() {
-  window.clearTimeout(warmTimer)
-  warmTimer = 0
-  const id = warmQueue.shift()
-  if (!id) return
-  warmTool(id)
-  warmTimer = window.setTimeout(drainWarmQueue, 90)
+function queueWarmTool(id) {
+  void warmTool(id).catch(() => {})
 }
 
-function queueWarmTools(ids = []) {
-  for (const id of ids) {
-    if (!warmedTools.has(id) && !warmQueue.includes(id)) warmQueue.push(id)
-  }
-  if (!warmTimer) drainWarmQueue()
+let warmIntentTimer = 0
+let warmIntentID = ''
+function queueWarmToolIntent(id) {
+  window.clearTimeout(warmIntentTimer)
+  warmIntentID = id
+  warmIntentTimer = window.setTimeout(() => {
+    warmIntentTimer = 0
+    warmIntentID = ''
+    queueWarmTool(id)
+  }, 160)
+}
+
+function cancelWarmToolIntent(id) {
+  if (warmIntentID !== id) return
+  window.clearTimeout(warmIntentTimer)
+  warmIntentTimer = 0
+  warmIntentID = ''
+}
+
+function waitForTool(id, timeoutMs = 15000) {
+  let timeout = 0
+  return Promise.race([
+    warmTool(id),
+    new Promise((_, reject) => {
+      timeout = window.setTimeout(() => reject(new Error('页面资源加载超时，请重试。')), timeoutMs)
+    }),
+  ]).finally(() => window.clearTimeout(timeout))
+}
+
+function afterNextPaint() {
+  return new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
 }
 
 function warmGroup(group) {
-  if (!group?.items?.length) return
-  warmTool(group.items[0])
-  queueWarmTools(group.items.slice(1))
+  if (!group?.items?.length) return Promise.resolve()
+  return warmTool(group.items[0]).catch(() => undefined)
+}
+
+function warmGroupIntent(group) {
+  if (group?.items?.length) queueWarmToolIntent(group.items[0])
 }
 
 const activeGroup = computed(() => navigation.value.find(group => group.id === currentMeta.value.group) || navigation.value[0])
-function selectGroup(group) {
-  warmGroup(group)
+function scrollToolSwitcher(event) {
+  const target = event.currentTarget
+  if (!target || target.scrollWidth <= target.clientWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  event.currentTarget.scrollLeft += event.deltaY
+  event.preventDefault()
+}
+let navigationRequest = 0
+async function selectGroup(group) {
   if (!group.items.includes(activeTab.value)) {
-    loadoutEditing.value = false
-    activeTab.value = group.items[0]
+    await selectTool(group.items[0])
   }
   if (group.id === 'tools') ensureGameDetection()
 }
 
-function selectTool(id) {
-  warmTool(id)
-  if (id !== 'loadoutPresets') loadoutEditing.value = false
+async function selectTool(id) {
+  if (id === activeTab.value) return
+  const request = ++navigationRequest
+  const finishMeasure = beginPerformanceMeasure('page-switch', { from: activeTab.value, to: id })
+  navigationBusy.value = true
+  navigationError.value = null
+  try {
+    await waitForTool(id)
+  } catch (error) {
+    if (request === navigationRequest) navigationError.value = { id, message: String(error?.message || error) }
+    finishMeasure({ cancelled: false, failed: true })
+    return
+  } finally {
+    if (request === navigationRequest) navigationBusy.value = false
+  }
+  if (request !== navigationRequest) {
+    finishMeasure({ cancelled: true })
+    return
+  }
+  const previousPage = activeTab.value
+  if (workspaceScroll.value) pageScrollPositions.set(previousPage, workspaceScroll.value.scrollTop)
   activeTab.value = id
+  await nextTick()
+  if (workspaceScroll.value) workspaceScroll.value.scrollTop = pageScrollPositions.get(id) || 0
+  await afterNextPaint()
+  finishMeasure({ cancelled: false })
   if (toolMeta[id]?.group === 'tools') ensureGameDetection()
 }
 
@@ -507,13 +782,23 @@ function toggleSidebar() {
 }
 
 onMounted(() => {
+  stopRuntimeQOLSessionEvents = EventsOn('runtime-qol-session', event => {
+    const sessionId = String(event?.sessionId || '').trim()
+    if (!sessionId) return
+    void ClipboardSetText(sessionId).then(copied => {
+      if (!copied) showStatus('自动复制房间 ID 失败，请在游戏便利运行时页面手动复制。', 'error')
+    }).catch(() => showStatus('自动复制房间 ID 失败，请在游戏便利运行时页面手动复制。', 'error'))
+  })
   GetAppVersion().then(v => { updateInfo.currentVersion = v }).catch(() => {})
-  window.setTimeout(() => warmTool(navigation.value[0]?.items[0]), 60)
-  const warmWorkshop = () => queueWarmTools((navigation.value[0]?.items || []).slice(1))
-  if ('requestIdleCallback' in window) window.requestIdleCallback(warmWorkshop, { timeout: 800 })
-  else window.setTimeout(warmWorkshop, 180)
-  // 第一屏完成后顺序预载其余插画，避免首次切页闪烁。
-  window.setTimeout(() => queueWarmTools(Object.keys(functionArt)), 1100)
+  document.addEventListener('visibilitychange', handleRuntimeCompanionVisibility)
+  void refreshRuntimeCompanionSummary()
+})
+onBeforeUnmount(() => {
+  window.clearTimeout(warmIntentTimer)
+  window.clearTimeout(runtimeCompanionSummaryTimer)
+  runtimeCompanionSummaryRequest++
+  document.removeEventListener('visibilitychange', handleRuntimeCompanionVisibility)
+  stopRuntimeQOLSessionEvents()
 })
 
 function ensureGameDetection() {
@@ -605,19 +890,45 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">DLC 2.0.2</span>
+        <span class="build-chip release-build">v2.0.3</span>
       </div>
-      <button
-        v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
-        type="button"
-        class="titlebar-patch-session"
-        style="--wails-draggable:no-drag"
-        :class="{ 'is-releasing': ctFeatureSession.releasePending }"
-        :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
-        @click="selectTool(lastRuntimePatchTab)"
-      >
-        <span aria-hidden="true"></span>
-        {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项` }}
-      </button>
+      <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
+        <button
+          v-if="naturalDropRecovery.blocked"
+          type="button"
+          class="titlebar-natural-drop-recovery"
+          role="status"
+          :aria-label="naturalDropRecoveryCopy.label"
+          :title="language === 'en' ? naturalDropRecoveryCopy.title : (naturalDropRecovery.detail || naturalDropRecoveryCopy.title)"
+          @click="selectTool('naturalDrop')"
+        >
+          <span aria-hidden="true"></span>
+          {{ naturalDropRecoveryCopy.label }}
+        </button>
+        <button
+          v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
+          type="button"
+          class="titlebar-patch-session"
+          :class="{ 'is-releasing': ctFeatureSession.releasePending }"
+          :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
+          @click="selectTool(lastRuntimePatchTab)"
+        >
+          <span aria-hidden="true"></span>
+          {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : ctFeatureSession.recoveryCount ? `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启 · ${ctFeatureSession.recoveryCount} 项待恢复` : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启` }}
+        </button>
+        <button
+          v-for="companion in activeRuntimeCompanions"
+          :key="companion.id"
+          type="button"
+          class="titlebar-companion-session"
+          :class="{ 'needs-recovery': companion.recoveryRequired }"
+          :title="companion.recoveryRequired ? `${companion.label}运行时需要恢复 · 点击返回处理` : `${companion.label}运行时仍在后台工作 · 点击返回`"
+          @click="selectTool(companion.id)"
+        >
+          <span aria-hidden="true"></span>
+          {{ companion.label }}{{ companion.recoveryRequired ? '待恢复' : '常驻' }}
+        </button>
+      </div>
       <transition name="toast">
         <div v-if="saveStatus" class="titlebar-status" :class="statusType">
           <span class="status-light"></span>{{ saveStatus }}
@@ -632,7 +943,6 @@ function showStatus(message, type) {
 
     <div class="app-body" :class="{ 'home-mode': activeTab === 'home', 'sidebar-collapsed': sidebarCollapsed, 'loadout-workspace': isLoadoutWorkspace, 'art-visible': activeTab !== 'home' && !isLoadoutWorkspace && !artCollapsed }" style="--wails-draggable:no-drag">
       <aside class="sidebar">
-        <button class="sidebar-collapse" :title="sidebarCollapsed ? '展开目录' : '收起目录'" :aria-label="sidebarCollapsed ? '展开目录' : '收起目录'" @click="toggleSidebar">{{ sidebarCollapsed ? '›' : '‹' }}</button>
         <button class="sidebar-home-compact" type="button" title="返回功能首页" aria-label="返回功能首页" @click="selectTool('home')">
           <span aria-hidden="true">⌂</span>
         </button>
@@ -649,7 +959,9 @@ function showStatus(message, type) {
             :class="{ active: activeGroup.id === group.id }"
             :aria-current="activeGroup.id === group.id ? 'page' : undefined"
             :title="`${group.label} · ${group.caption}`"
-            @pointerenter="warmGroup(group)"
+            @pointerenter="warmGroupIntent(group)"
+            @pointerleave="cancelWarmToolIntent(group.items[0])"
+            @pointerdown="warmGroup(group)"
             @focus="warmGroup(group)"
             @click="selectGroup(group)"
           >
@@ -659,8 +971,8 @@ function showStatus(message, type) {
           </button>
         </nav>
         <!-- Q版角色是左栏常驻元素；紧凑尺寸只收起气泡，不删除图片。 -->
-        <div class="sidebar-mascot" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
-          <img class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="eager" decoding="async">
+        <div class="sidebar-mascot" :class="{ 'has-sticker': currentSticker }" v-if="activeTab !== 'home' && currentMeta.speaker" :title="`${currentMeta.speaker}：${currentMeta.note}`">
+          <img v-if="currentSticker" class="sidebar-mascot-img" :src="currentSticker" :alt="currentMeta.speaker" loading="eager" decoding="async">
           <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
         </div>
         <div class="sidebar-foot">
@@ -674,35 +986,52 @@ function showStatus(message, type) {
             <div class="breadcrumb"><span>{{ activeGroup.label }}</span><b>/</b><strong>{{ currentMeta.title }}</strong></div>
             <div class="workspace-actions">
               <div class="workspace-state"><span :class="['state-dot', currentMeta.tone]"></span>{{ currentMeta.status }}</div>
-              <SaveBackupDrawer v-if="currentMeta.group !== 'monitor'" @status="showStatus" />
+              <SaveBackupDrawer v-if="!['formulaSampler', 'selectedItemMonitor'].includes(activeTab)" @status="showStatus" />
             </div>
         </div>
 
-        <nav v-if="activeTab !== 'home' && !isLoadoutWorkspace && activeGroup.items.length > 1" class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换">
+        <div v-if="activeTab !== 'home' && !isLoadoutWorkspace" class="tool-switcher-shell" :data-group="activeGroup.id">
+          <button
+            type="button"
+            class="tool-switcher-collapse"
+            :title="sidebarCollapsed ? '展开左侧目录' : '收起左侧目录'"
+            aria-label="收起或展开左侧目录"
+            @click="toggleSidebar"
+          >
+            <span aria-hidden="true">{{ sidebarCollapsed ? '›' : '‹' }}</span>
+          </button>
+          <nav ref="toolSwitcher" class="tool-switcher ui-tabs" :data-group="activeGroup.id" aria-label="同类功能切换" @wheel="scrollToolSwitcher">
             <button
               v-for="id in activeGroup.items"
               :key="id"
+              :data-tool="id"
               class="ui-tab"
-              :class="{ active: activeTab === id, waiting: toolMeta[id].tone === 'waiting' }"
+              :class="{ active: activeTab === id, waiting: localizedToolMeta[id].tone === 'waiting' }"
               :aria-current="activeTab === id ? 'page' : undefined"
-              :title="`${toolMeta[id].title} · ${toolMeta[id].eyebrow}${id === 'runtimeMonitor' ? ' · 开启后自动后台检测' : toolMeta[id].tone === 'live' ? ' · 需先启动游戏并连接进程' : toolMeta[id].tone === 'stable' ? ' · 需先完全退出游戏' : ''}`"
-              @pointerenter="warmTool(id)"
-              @focus="warmTool(id)"
+              :title="toolTabTitle(id)"
+              @pointerenter="queueWarmToolIntent(id)"
+              @pointerleave="cancelWarmToolIntent(id)"
+              @pointerdown="queueWarmTool(id)"
+              @focus="queueWarmTool(id)"
               @click="selectTool(id)"
             >
-              {{ toolMeta[id].title.replace(/（[^）]*）/g, '') }}
-              <span v-if="id === 'runtimeMonitor'" class="switcher-tag live">后台</span>
-              <span v-else-if="toolMeta[id].tone === 'live'" class="switcher-tag live">实时</span>
-              <span v-else-if="toolMeta[id].tone === 'stable'" class="switcher-tag offline">离线</span>
-              <span v-if="toolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
+              {{ localizedToolMeta[id].title.replace(/（[^）]*）/g, '') }}
+              <span v-if="toolNavigationMode(id)" :class="['switcher-tag', toolNavigationMode(id)]">{{ toolTagLabel(id) }}</span>
+              <span v-if="localizedToolMeta[id].tone === 'waiting'" class="switcher-dot"></span>
             </button>
-        </nav>
+          </nav>
+        </div>
 
-        <div class="workspace-scroll" :class="{ 'tool-workspace': activeTab !== 'home', 'loadout-workspace-scroll': isLoadoutWorkspace }">
+        <div v-if="navigationBusy || navigationError" class="navigation-load-state" :class="{ error: navigationError }" role="status">
+          <span>{{ navigationError ? navigationError.message : (language === 'en' ? 'Preparing page and images…' : '正在准备页面与图片…') }}</span>
+          <button v-if="navigationError" class="ui-btn is-ghost is-sm" @click="selectTool(navigationError.id)">{{ language === 'en' ? 'Retry' : '重试' }}</button>
+        </div>
+
+        <div ref="workspaceScroll" class="workspace-scroll" :class="{ 'tool-workspace': activeTab !== 'home', 'loadout-workspace-scroll': isLoadoutWorkspace }">
           <div class="workspace-scene">
-          <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="warmTool" @open="selectTool" />
+          <HomeJournal v-if="activeTab === 'home'" key="home" :version="updateInfo.currentVersion" @warm="queueWarmTool" @open="selectTool" />
 
-          <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
+          <section v-show="activeTab !== 'home'" class="tool-stage" :class="{ 'art-collapsed': artCollapsed || !currentArt, 'loadout-dedicated': isLoadoutWorkspace }" :data-tool="activeTab" :style="{ '--function-art': `url('${currentArt}')` }">
             <section class="tool-center-scroll">
               <header v-if="!isLoadoutWorkspace" class="tool-page-heading">
                 <div class="eyebrow">{{ currentMeta.eyebrow }}</div>
@@ -720,24 +1049,40 @@ function showStatus(message, type) {
             />
             <RuntimePatchMonitor
               v-if="runtimeMonitorMounted"
-              v-show="activeTab === 'runtimeMonitor'"
+              v-show="isRuntimeMonitorTab"
+              :mode="runtimeMonitorMode"
+              :page-active="isRuntimeMonitorTab"
               @status="showStatus"
               @deploy-loadout="deployRuntimeLoadout"
             />
-            <ProgressionEditor v-if="!isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
+            <KeepAlive>
+              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" :key="activeTab" @status="showStatus" />
+            </KeepAlive>
+            <KeepAlive>
+              <LoadoutViewer v-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
+            </KeepAlive>
+            <KeepAlive>
+              <NaturalDropLab v-if="activeTab === 'naturalDrop'" @status="showStatus" />
+            </KeepAlive>
+            <KeepAlive>
+              <AudioMixerLab v-if="activeTab === 'audioMixer'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
+            </KeepAlive>
+            <KeepAlive>
+              <CameraLab v-if="activeTab === 'camera'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
+            </KeepAlive>
+            <KeepAlive>
+              <VirtualSigilLab v-if="activeTab === 'virtualSigils'" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
+            </KeepAlive>
+			<KeepAlive>
+			  <RuntimeQOLLab v-if="activeTab === 'runtimeQOL'" @status="showStatus" />
+			</KeepAlive>
+            <ProgressionEditor v-if="!activeCachedRuntimePage && !isRuntimePatchTab && activeTab === 'progression'" @status="showStatus" />
             <SigilGenerator v-else-if="activeTab === 'sigil'" @status="showStatus" />
-            <SigilMemoryGenerator v-else-if="activeTab === 'sigilMemory'" @status="showStatus" />
-            <SigilLoadoutRestore v-else-if="activeTab === 'loadout'" @status="showStatus" />
-            <LoadoutViewer v-else-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
             <WrightstoneGenerator v-else-if="activeTab === 'wrightstone'" @status="showStatus" />
             <SummonSaveEditor v-else-if="activeTab === 'summonSave'" @status="showStatus" />
-            <WrightstoneMemoryGenerator v-else-if="activeTab === 'wrightstoneMemory'" @status="showStatus" />
-            <SummonEditor v-else-if="activeTab === 'summon'" @status="showStatus" />
-            <OverLimit v-else-if="activeTab === 'overlimit'" @status="showStatus" />
-            <MiscTools v-else-if="activeTab === 'runtime'" @status="showStatus" />
-            <FormulaSampler v-else-if="activeTab === 'formulaSampler'" @status="showStatus" />
             <CharaStats v-else-if="activeTab === 'chara'" @status="showStatus" />
             <SaveEditor v-else-if="activeTab === 'save'" @status="showStatus" />
+            <SaveDiffLab v-else-if="activeTab === 'saveDiff'" @status="showStatus" />
             <MonsterEnhance v-else-if="activeTab === 'monster'" @status="showStatus" />
             <LanguageSettings v-else-if="activeTab === 'language'" />
 
@@ -799,8 +1144,8 @@ function showStatus(message, type) {
               </main>
             </section>
 
-            <button v-if="!isLoadoutWorkspace" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
-            <div v-if="!isLoadoutWorkspace && !artCollapsed" class="art-caption" aria-hidden="true"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
+            <button v-if="!isLoadoutWorkspace && currentArt" class="art-toggle" :class="{ 'is-collapsed': artCollapsed }" :title="artCollapsed ? '展开立绘' : '收起立绘 · 拓宽操作区'" :aria-label="artCollapsed ? '展开立绘' : '收起立绘'" @click="toggleArt">{{ artCollapsed ? '‹' : '›' }}</button>
+            <div v-if="!isLoadoutWorkspace && currentArt && !artCollapsed" class="art-caption" aria-hidden="true"><span>{{ currentMeta.speaker }}</span><small>{{ currentMeta.eyebrow }}</small></div>
           </section>
           </div>
         </div>
@@ -886,12 +1231,27 @@ button,input,select { font:inherit; }
   background:rgba(255,255,255,.08);
   font-size:var(--fs-xs);
 }
-.titlebar-patch-session {
+.build-chip.test-build {
+  border-color:rgba(255,208,118,.58);
+  color:#fff1c7;
+  background:rgba(151,92,23,.46);
+  font-weight:var(--fw-bold);
+  letter-spacing:.05em;
+}
+.titlebar-runtime-sessions {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:var(--space-2);
+  margin-left:var(--space-4);
+  overflow:hidden;
+}
+.titlebar-patch-session,
+.titlebar-companion-session {
   flex:0 0 auto;
   display:inline-flex;
   align-items:center;
   gap:var(--space-2);
-  margin-left:var(--space-4);
   padding:3px var(--space-3);
   border:1px solid rgba(150,224,204,.52);
   border-radius:var(--radius-pill);
@@ -902,7 +1262,8 @@ button,input,select { font:inherit; }
   white-space:nowrap;
   cursor:pointer;
 }
-.titlebar-patch-session span {
+.titlebar-patch-session span,
+.titlebar-companion-session span {
   width:7px;
   height:7px;
   border-radius:50%;
@@ -915,6 +1276,23 @@ button,input,select { font:inherit; }
   background:rgba(130,85,25,.62);
 }
 .titlebar-patch-session.is-releasing span { background:#ffd585; }
+.titlebar-companion-session {
+  color:#f8ead0;
+  border-color:rgba(255,229,169,.35);
+  background:rgba(63,49,33,.34);
+}
+.titlebar-companion-session.needs-recovery {
+  color:#fff0c7;
+  border-color:rgba(255,213,133,.52);
+  background:rgba(130,85,25,.62);
+}
+.titlebar-companion-session.needs-recovery span { background:#ffd585; }
+.titlebar-natural-drop-recovery {
+  color:#fff0c7;
+  border-color:rgba(255,213,133,.58);
+  background:rgba(130,52,25,.72);
+}
+.titlebar-natural-drop-recovery span { background:#ffad85; }
 .titlebar-status {
   position:absolute;
   z-index:1;
@@ -1026,23 +1404,6 @@ button,input,select { font:inherit; }
 .primary-nav,
 .sidebar-mascot,
 .sidebar-foot { position:relative; z-index:1; }
-.sidebar-collapse {
-  position:absolute;
-  z-index:2;
-  top:var(--space-2);
-  right:var(--space-2);
-  width:30px;
-  height:30px;
-  display:grid;
-  place-items:center;
-  border:0;
-  border-radius:var(--radius-sm);
-  color:var(--text-muted);
-  background:transparent;
-  font-size:var(--fs-lg);
-  cursor:pointer;
-}
-.sidebar-collapse:hover { color:var(--text-primary); background:var(--state-hover); }
 .sidebar-home-compact {
   width:48px;
   height:48px;
@@ -1157,12 +1518,13 @@ button,input,select { font:inherit; }
 .sidebar-mascot {
   min-width:0;
   display:grid;
-  grid-template-columns:46px minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr);
   align-items:end;
   gap:var(--space-2);
   margin-top:auto;
   padding:var(--space-3) var(--space-2) var(--space-4);
 }
+.sidebar-mascot.has-sticker { grid-template-columns:46px minmax(0,1fr); }
 .sidebar-mascot-img {
   width:46px;
   height:50px;
@@ -1227,15 +1589,27 @@ button,input,select { font:inherit; }
 .sidebar-collapsed .nav-arrow,
 .sidebar-collapsed .sidebar-foot { display:none; }
 .sidebar-collapsed .sidebar-home-compact { display:grid; }
-.sidebar-collapsed .primary-nav { align-items:center; padding-top:var(--space-3); }
+.sidebar-collapsed .primary-nav {
+  width:48px;
+  align-self:center;
+  align-items:center;
+  padding-top:var(--space-3);
+}
 .sidebar-collapsed .nav-item {
   width:48px;
+  height:48px;
   min-height:48px;
   grid-template-columns:1fr;
   place-items:center;
-  padding:var(--space-2);
+  padding:0;
+  box-sizing:border-box;
 }
-.sidebar-collapsed .nav-mark { width:32px; height:32px; }
+.sidebar-collapsed .nav-item.active { box-shadow:inset 3px 0 0 var(--selected-bar); }
+.sidebar-collapsed .nav-mark {
+  width:100%;
+  height:100%;
+  border:0;
+}
 .sidebar-collapsed .sidebar-mascot {
   width:48px;
   grid-template-columns:48px;
@@ -1244,6 +1618,7 @@ button,input,select { font:inherit; }
 }
 .sidebar-collapsed .sidebar-mascot-img { width:48px; height:54px; }
 .sidebar-collapsed .sidebar-mascot-say { display:none; }
+.sidebar-collapsed .sidebar-mascot:not(.has-sticker) { display:none; }
 
 .workspace {
   position:relative;
@@ -1305,32 +1680,75 @@ button,input,select { font:inherit; }
 .state-dot.calibrate { background:var(--warning); }
 .state-dot.waiting { background:var(--danger); }
 
-.tool-switcher {
+.tool-switcher-shell {
   min-height:46px;
-  flex:0 0 46px;
-  align-items:stretch;
-  gap:var(--space-1);
-  padding:0 var(--content-gutter);
+  flex:0 0 auto;
+  min-width:0;
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr);
   border-bottom:1px solid rgba(140,104,49,.23);
   background:#eddfc0;
+}
+.tool-switcher-collapse {
+  width:46px;
+  min-height:46px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:0;
+  border-right:1px solid rgba(140,104,49,.23);
+  border-radius:0;
+  color:#78684f;
+  background:transparent;
+  box-shadow:none;
+  font-size:var(--fs-lg);
+  cursor:pointer;
+}
+.tool-switcher-collapse:hover {
+  color:#4e402e;
+  background:rgba(126,89,40,.08);
+}
+.tool-switcher {
+  min-width:0;
+  min-height:46px;
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:stretch;
+  gap:0;
+  padding:0 var(--content-gutter);
+  border-bottom:0;
+  background:#eddfc0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
   scrollbar-width:thin;
 }
 .tool-switcher .ui-tab {
+  min-width:max-content;
   min-height:46px;
+  flex:0 0 auto;
   display:inline-flex;
+  justify-content:center;
   align-items:center;
   gap:var(--space-2);
-  padding-inline:var(--space-4);
+  padding:0 var(--space-4);
+  border:0;
+  border-bottom:2px solid transparent;
+  border-radius:0;
   font-size:var(--fs-sm);
   font-weight:var(--fw-bold);
   color:#78684f;
   background:transparent;
+  box-shadow:none;
+  white-space:nowrap;
+  text-align:center;
+  line-height:1;
 }
 .tool-switcher .ui-tab.active {
-  border-bottom-color:#9a7440;
   color:#4e402e;
-  background:#dfc79b;
-  box-shadow:inset 0 -2px #9a7440;
+  background:transparent;
+  border-bottom-color:#9a7440;
+  box-shadow:none;
 }
 .switcher-tag {
   display:inline-flex;
@@ -1343,7 +1761,26 @@ button,input,select { font:inherit; }
 }
 .switcher-tag.live { color:var(--info-ink); background:var(--info-bg); }
 .switcher-tag.offline { color:var(--success-ink); background:var(--success-bg); }
+.switcher-tag.background { color:var(--info-ink); background:color-mix(in srgb,var(--info-bg) 70%,var(--accent-soft)); }
+.switcher-tag.file { color:var(--accent-hover); background:var(--accent-soft); }
+.switcher-tag.readonly { color:var(--text-secondary); background:var(--surface-field); }
+.switcher-tag.local { color:var(--text-muted); background:rgba(121,104,78,.11); }
 .switcher-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); }
+
+.navigation-load-state {
+  min-height:36px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:var(--space-3);
+  padding:var(--space-2) var(--content-gutter);
+  border-bottom:1px solid rgba(140,104,49,.23);
+  color:var(--text-secondary);
+  background:rgba(245,234,208,.94);
+  font-size:var(--fs-sm);
+}
+.navigation-load-state.error { color:var(--danger-ink); background:var(--danger-bg); }
 
 .workspace-scroll {
   min-width:0;
@@ -1464,6 +1901,14 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtimeMonitor"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="spatialTools"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="selectedItemMonitor"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="saveDiff"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="naturalDrop"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="audioMixer"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="camera"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="virtualSigils"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="runtimeQOL"] { --art-scale:160%; --art-x:calc(-8.20dvh + 11px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="formulaSampler"] { --art-scale:160%; --art-x:calc(-9.11dvh + 12px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="patchCombat"] { --art-scale:160%; --art-x:calc(-7.03dvh + 9px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="patchCharacters"] { --art-scale:160%; --art-x:calc(-7.29dvh + 10px); --art-y:calc(3dvh - 4px); }
@@ -1663,82 +2108,18 @@ button,input,select { font:inherit; }
   .patch-edit > * { flex:1 1 140px; }
   .backup-policy { display:grid; grid-template-columns:minmax(0,1fr); }
 }
-@media (max-width:1439px) {
-  .tool-switcher[data-group="memory"] {
-    display:flex;
-    min-height:46px;
-    flex:0 0 46px;
-    align-items:stretch;
-    gap:var(--space-1);
-    padding-block:0;
-    overflow-x:auto;
-    overflow-y:hidden;
-  }
-  .tool-switcher[data-group="memory"] .ui-tab {
-    min-width:max-content;
-    flex:0 0 auto;
-    min-height:46px;
-    justify-content:center;
-    padding:0 var(--space-3);
-    line-height:1.25;
-    white-space:nowrap;
-  }
-}
-@media (min-width:1280px) and (max-width:1399px) {
-  .app-body { grid-template-columns:70px minmax(0,1fr); }
-  .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
-  .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .sidebar-home-compact { display:grid; }
-  .primary-nav { align-items:center; padding-top:var(--space-3); }
-  .nav-item {
-    width:48px;
-    min-height:48px;
-    grid-template-columns:1fr;
-    place-items:center;
-    padding:var(--space-2);
-  }
-  .nav-mark { width:32px; height:32px; }
-  .sidebar-mascot {
-    width:48px;
-    grid-template-columns:48px;
-    place-items:center;
-    padding:var(--space-2) 0;
-  }
-  .sidebar-mascot-img { width:48px; height:54px; }
-  .sidebar-mascot-say { display:none; }
-}
 @media (max-width:900px) {
   .tool-center-scroll { width:100%; }
   .tool-stage::before,.art-toggle,.art-caption { display:none; }
 }
 @media (max-width:1024px) {
-  .app-body { grid-template-columns:70px minmax(0,1fr); }
-  .sidebar { padding:var(--space-7) var(--space-3) var(--space-4); }
-  .sidebar-heading,.nav-copy,.nav-arrow,.sidebar-foot,.sidebar-collapse { display:none; }
-  .sidebar-home-compact { display:grid; }
-  .primary-nav { align-items:center; padding-top:var(--space-3); }
-  .nav-item {
-    width:48px;
-    min-height:48px;
-    grid-template-columns:1fr;
-    place-items:center;
-    padding:var(--space-2);
-  }
-  .nav-mark { width:32px; height:32px; }
-  .sidebar-mascot {
-    width:48px;
-    grid-template-columns:48px;
-    place-items:center;
-    padding:var(--space-2) 0;
-  }
-  .sidebar-mascot-img { width:48px; height:54px; }
-  .sidebar-mascot-say { display:none; }
   .workspace-bar { padding-inline:var(--space-4); }
   .tool-switcher { padding-inline:var(--space-3); }
 }
 @media (max-width:960px) {
   .build-chip { display:none; }
-  .titlebar-patch-session { max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+  .titlebar-runtime-sessions { margin-left:var(--space-2); }
+  .titlebar-patch-session,.titlebar-companion-session { max-width:140px; overflow:hidden; text-overflow:ellipsis; }
   .titlebar-status { max-width:36vw; }
   .workspace-state { display:none; }
   .tool-page-heading { padding:var(--space-5) var(--space-6); }
@@ -1747,8 +2128,8 @@ button,input,select { font:inherit; }
 @media (max-height:620px) {
   .app-window { --titlebar-size:38px; }
   .workspace-bar { min-height:40px; flex-basis:40px; }
-  .tool-switcher { min-height:42px; flex-basis:42px; }
-  .tool-switcher .ui-tab { min-height:42px; }
+  .tool-switcher { min-height:38px; }
+  .tool-switcher .ui-tab { min-height:36px; padding-block:var(--space-1); }
   .sidebar { padding-top:var(--space-5); padding-bottom:var(--space-3); }
   .sidebar-heading { padding-block:var(--space-2) var(--space-3); }
   .primary-nav { gap:var(--space-1); padding-top:var(--space-3); }

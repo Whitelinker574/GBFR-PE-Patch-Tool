@@ -29,7 +29,8 @@ test('portrait is a fixed parchment background layer and loadout editing stays a
   const shellCss = styleBlocks(patchTool).join('\n')
   assert.match(shellCss, /\.tool-stage::before\s*\{[^}]*position\s*:\s*fixed[^}]*background-image\s*:\s*var\(--function-art\)/is)
   assert.match(shellCss, /@media\s*\(max-width\s*:\s*900px\)[\s\S]*?\.tool-stage::before\s*,\s*\.art-toggle\s*,\s*\.art-caption\s*\{[^}]*display\s*:\s*none/is)
-  assert.match(shellCss, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px\s+minmax\(0,\s*1fr\)/is)
+  assert.match(shellCss, /\.app-body\.sidebar-collapsed\s*\{[^}]*grid-template-columns\s*:\s*70px\s+minmax\(0,\s*1fr\)/is)
+  assert.doesNotMatch(shellCss, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px/is)
   assert.doesNotMatch(patchTool, /<aside\s+v-if="!isLoadoutWorkspace"\s+class="art-rail"|class="character-blend"/)
   assert.match(shellCss, /\.tool-stage\.loadout-dedicated::before\s*\{[^}]*display\s*:\s*none/is)
 })
@@ -67,6 +68,16 @@ test('backup flyout and confirmation dialog expose shared controls and overlay s
   assert.match(dialog, /class="cancel ui-btn"/)
   assert.match(dialog, /class="confirm ui-btn is-primary"/)
   assert.match(dialog, /max-height\s*:\s*calc\(100dvh\s*-\s*32px\)/)
+})
+
+test('startup recovery remains globally visible and does not disappear when another status endpoint fails', () => {
+  assert.match(patchTool, /Promise\.allSettled\(\[\s*GetRuntimeCompanionSummary\(\),\s*GetNaturalDropStartupRecoveryStatus\(\)/s)
+  assert.match(patchTool, /summariesResult\.status === 'fulfilled'/)
+  assert.match(patchTool, /naturalDropResult\.status === 'fulfilled'/)
+  assert.match(patchTool, /role="status"/)
+  assert.match(patchTool, /掉落规则待安全恢复/)
+  assert.match(patchTool, /Drop rules need safe recovery/)
+  assert.match(patchTool, /@click="selectTool\('naturalDrop'\)"/)
 })
 
 test('owned page styles keep supporting copy readable and cover the minimum window height', () => {

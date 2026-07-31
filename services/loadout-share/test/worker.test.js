@@ -1,9 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { decode } from '@msgpack/msgpack'
 import worker, {
   displayCode,
+  buildD1CatalogQuery,
   frameIdentity,
   normalizeCode,
   validateFrame,
@@ -26,6 +28,7 @@ function makeFrame(compressed = new Uint8Array([1, 2, 3, 4]), version = 1) {
 function makeR2() {
   const objects = new Map()
   let getCalls = 0
+  let listCalls = 0
   const wrap = entry => entry && {
     customMetadata: entry.customMetadata,
     httpEtag: `"${entry.customMetadata.sha256}"`,
@@ -47,6 +50,7 @@ function makeR2() {
       })
     },
     async list(options = {}) {
+      listCalls += 1
       const prefix = options.prefix || ''
       const keys = [...objects.keys()].filter(key => key.startsWith(prefix)).sort()
       const start = Math.max(0, Number(options.cursor) || 0)
@@ -56,10 +60,11 @@ function makeR2() {
       return { objects: selected.map(key => ({ key })), truncated: next < keys.length, cursor: next < keys.length ? String(next) : undefined }
     },
     getCalls: () => getCalls,
+    listCalls: () => listCalls,
   }
 }
 
-function makeCommunityDB() {
+function makeCommunityDB({ failCatalog = false, failWrites = false } = {}) {
   const loadouts = new Map()
   const likes = new Set()
   const comments = []
@@ -67,15 +72,23 @@ function makeCommunityDB() {
   return {
     loadouts,
     likes,
+    comments,
     catalogQueries: () => catalogQueries,
     prepare(sql) {
       let values = []
       const statement = {
         bind(...args) { values = args; return statement },
         async run() {
-          if (sql.startsWith('INSERT OR IGNORE INTO loadouts')) {
-            const [code, title, characterName, characterHash, createdAt] = values
-            if (!loadouts.has(code)) loadouts.set(code, { code, title, character_name: characterName, character_hash: characterHash, created_at: createdAt, likes_count: 0 })
+          if (failWrites && (sql.startsWith('INSERT INTO loadouts') || sql.startsWith('INSERT OR IGNORE INTO loadouts'))) throw new Error('simulated D1 write outage')
+          if (sql.startsWith('INSERT INTO loadouts') || sql.startsWith('INSERT OR IGNORE INTO loadouts')) {
+            const [code, title, characterName, characterHash, createdAt, characterSlug = '', weaponName = '', weaponNameEn = '', searchText = '', searchTextEn = '', previewJSON = '{}', previewEnJSON = '{}', catalogReady = 0, updatedAt = createdAt, titleSort = title] = values
+            const previous = loadouts.get(code)
+            loadouts.set(code, {
+              code, title, character_name: characterName, character_hash: characterHash, created_at: previous?.created_at || createdAt,
+              likes_count: previous?.likes_count || 0, character_slug: characterSlug, weapon_name: weaponName, weapon_name_en: weaponNameEn,
+              search_text: searchText, search_text_en: searchTextEn, preview_json: previewJSON, preview_en_json: previewEnJSON,
+              catalog_ready: catalogReady, updated_at: updatedAt, title_sort: titleSort,
+            })
           } else if (sql.startsWith('INSERT OR IGNORE INTO likes')) {
             likes.add(`${values[0]}\u0000${values[1]}`)
           } else if (sql.startsWith('DELETE FROM likes')) {
@@ -94,6 +107,37 @@ function makeCommunityDB() {
           return null
         },
         async all() {
+          if (sql.startsWith('SELECT /* catalog-v2 */')) {
+            catalogQueries += 1
+            if (failCatalog) throw new Error('simulated D1 catalog outage')
+            const sort = sql.includes('ORDER BY title_sort ASC') ? 'name' : sql.includes('ORDER BY likes_count DESC') ? 'likes' : 'time'
+            let offset = 0
+            const character = sql.includes('character_slug = ?') ? values[offset++] : ''
+            const englishSearch = sql.includes('search_text_en LIKE ?')
+            const hasSearch = englishSearch || sql.includes('search_text LIKE ?')
+            const query = hasSearch ? String(values[offset++]).replace(/^%|%$/g, '').replace(/\\([\\%_])/g, '$1') : ''
+            const hasCursor = /AND \((?:created_at|title_sort|likes_count) [<>] \?/.test(sql)
+            const cursor = hasCursor ? { value: values[offset], code: values[offset + 2] } : null
+            const settings = {
+              character, query, englishSearch, sort, cursor,
+              limit: Number(values.at(-1)) - 1,
+            }
+            let rows = [...loadouts.values()].filter(row => row.catalog_ready === 1)
+            if (settings.character) rows = rows.filter(row => row.character_slug === settings.character)
+            if (settings.query) rows = rows.filter(row => row[settings.englishSearch ? 'search_text_en' : 'search_text'].includes(settings.query))
+            if (settings.sort === 'name') rows.sort((a, b) => a.title_sort.localeCompare(b.title_sort) || a.code.localeCompare(b.code))
+            else if (settings.sort === 'likes') rows.sort((a, b) => b.likes_count - a.likes_count || a.code.localeCompare(b.code))
+            else rows.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.code.localeCompare(a.code))
+            if (settings.cursor) {
+              const cursor = settings.cursor
+              rows = rows.filter(row => {
+                if (settings.sort === 'name') return row.title_sort > cursor.value || (row.title_sort === cursor.value && row.code > cursor.code)
+                if (settings.sort === 'likes') return row.likes_count < cursor.value || (row.likes_count === cursor.value && row.code > cursor.code)
+                return row.created_at < cursor.value || (row.created_at === cursor.value && row.code < cursor.code)
+              })
+            }
+            return { results: rows.slice(0, settings.limit + 1) }
+          }
           if (sql.startsWith('SELECT code, likes_count FROM loadouts WHERE code IN')) {
             catalogQueries += 1
             return { results: values.map(code => loadouts.get(code)).filter(Boolean).map(({ code, likes_count }) => ({ code, likes_count })) }
@@ -107,6 +151,16 @@ function makeCommunityDB() {
       return statement
     },
   }
+}
+
+async function publishCatalogPreview(env, { title = '目录测试', characterName = '伊欧', characterHash = '4D0A60C3', weaponName = '星晶武器', sigilName = '快速冷却 V+' } = {}) {
+  const preview = Buffer.from(JSON.stringify({
+    characterName, characterHash, weaponHash: '02352554', weaponName,
+    sigils: [{ name: sigilName, level: 15, primaryHash: '318D12E9', primary: '快速冷却', primaryLevel: 15 }],
+  })).toString('base64url')
+  return worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Title-B64': Buffer.from(title).toString('base64'), 'X-Loadout-Preview': preview }, body: makeFrame(crypto.getRandomValues(new Uint8Array(8))),
+  }), env).then(response => response.json())
 }
 
 function makeV10JSON() {
@@ -286,6 +340,28 @@ test('publish, load, download and landing routes round-trip one immutable frame'
   assert.deepEqual(catalog.items, [], 'a frame without a valid preview must not enter the public catalog')
 })
 
+test('12-character legacy prefixes resolve only when exactly one stored frame matches', async () => {
+  const r2 = makeR2()
+  const env = { LOADOUTS: r2 }
+  const frame = makeFrame()
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: frame,
+  }), env).then(response => response.json())
+  const prefix = published.compactCode.slice(0, 12)
+
+  const loaded = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${displayCode(prefix)}`), env)
+  assert.equal(loaded.status, 200)
+  assert.deepEqual(new Uint8Array(await loaded.arrayBuffer()), frame)
+  assert.equal((await worker.fetch(new Request(`https://share.example/s/${prefix}`), env)).status, 200)
+  assert.equal((await worker.fetch(new Request(`https://share.example/download/${prefix}.gbfr-loadout`), env)).status, 200)
+
+  const collisionCode = prefix + (published.compactCode.endsWith('0000') ? '1111' : '0000')
+  await r2.put(`v1/${collisionCode}`, frame, { customMetadata: { sha256: 'collision', protocol: 'GBLC1' } })
+  const ambiguous = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${prefix}`), env)
+  assert.equal(ambiguous.status, 409)
+  assert.match((await ambiguous.json()).error, /完整 16 位短码/)
+})
+
 test('catalog cards show and update deduplicated likes without opening the detail link', async () => {
   const community = makeCommunityDB()
   const env = { LOADOUTS: makeR2(), COMMUNITY_DB: community }
@@ -328,12 +404,44 @@ test('catalog cards show and update deduplicated likes without opening the detai
   assert.match(page, /<option value="time">最新<\/option>/)
   assert.match(page, /<option value="name">名称<\/option>/)
   assert.match(page, /<option value="likes">点赞<\/option>/)
-  assert.match(page, /document\.querySelector\('#sort'\)\?\.addEventListener\('change',renderCatalog\)/)
+  assert.match(page, /params\.set\('sort',document\.querySelector\('#sort'\)\?\.value\|\|'time'\)/)
+  assert.match(page, /document\.querySelector\('#sort'\)\?\.addEventListener\('change',load\)/)
+  assert.match(page, /let nextCursor=''/)
+  assert.match(page, /if\(more&&nextCursor\)params\.set\('cursor',nextCursor\)/)
+  assert.match(page, /document\.querySelector\('#load-more'\)\?\.addEventListener\('click',\(\)=>load\(true\)\)/)
+  assert.match(page, /id="load-more"/)
   assert.match(page, /Date\.parse\(b\.createdAt\|\|0\)-Date\.parse\(a\.createdAt\|\|0\)/)
   assert.match(page, /hint\.rel='prefetch';hint\.href=link\.href/)
   for (const [, script] of page.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Function(script), 'every catalog inline script must remain valid JavaScript')
   }
+})
+
+test('community mutations reject non-JSON and bodies above the 2 KiB boundary before parsing', async () => {
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: makeR2(), COMMUNITY_DB: community }
+  const published = await worker.fetch(new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: makeFrame(),
+  }), env).then(response => response.json())
+  const endpoint = `https://share.example/api/v1/loadouts/${published.compactCode}/comments`
+
+  const wrongType = await worker.fetch(new Request(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ visitorKey: 'visitor-alpha', body: 'hello' }),
+  }), env)
+  assert.equal(wrongType.status, 415)
+
+  const oversized = await worker.fetch(new Request(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visitorKey: 'visitor-alpha', body: 'x'.repeat(3 * 1024) }),
+  }), env)
+  assert.equal(oversized.status, 413)
+  assert.match((await oversized.json()).error, /2 KiB/)
+  assert.equal(community.comments.length, 0)
 })
 
 test('landing page escapes untrusted titles before server-side HTML rendering', async () => {
@@ -349,7 +457,7 @@ test('landing page escapes untrusted titles before server-side HTML rendering', 
   assert.match(html, /&lt;\/title&gt;&lt;img src=x onerror=alert\(document\.domain\)&gt;/)
 })
 
-test('catalog search respects the requested bounded page and reports an R2 cursor', async () => {
+test('catalog search returns a bounded globally ordered R2 page and stable cursor', async () => {
   const r2 = makeR2()
   const env = { LOADOUTS: r2 }
   for (let index = 0; index < 60; index += 1) {
@@ -367,8 +475,11 @@ test('catalog search respects the requested bounded page and reports an R2 curso
   const result = await worker.fetch(new Request('https://share.example/api/v1/loadouts?q=快速冷却&limit=12'), env).then(response => response.json())
   assert.equal(result.items.length, 12)
   assert.equal(result.truncated, true)
-  assert.equal(result.cursor, '12')
-  assert.equal(r2.getCalls(), 12)
+  assert.ok(result.cursor)
+  const second = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?q=快速冷却&limit=12&cursor=${encodeURIComponent(result.cursor)}`), env).then(response => response.json())
+  assert.equal(second.items.length, 12)
+  assert.equal(new Set([...result.items, ...second.items].map(item => item.code)).size, 24)
+  assert.equal(result.items[0].code > result.items.at(-1).code, true)
 })
 
 test('filtered catalogs scan beyond the first R2 page for Io and DLC characters', async () => {
@@ -400,6 +511,219 @@ test('filtered catalogs scan beyond the first R2 page for Io and DLC characters'
   const dlc = await worker.fetch(new Request('https://share.example/api/v1/loadouts?character=%E8%8F%B2%E8%BF%AA%E5%9F%83%E5%B0%94&limit=24'), env).then(response => response.json())
   assert.equal(dlc.items.length, 1)
   assert.equal(dlc.items[0].title, '菲迪埃尔常规毕业配装')
+})
+
+test('D1 is the primary catalog index and publishing dual-writes searchable card data', async () => {
+  const r2 = makeR2()
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: r2, COMMUNITY_DB: community }
+  const published = await publishCatalogPreview(env, { title: '伊欧快速冷却毕业配装' })
+
+  const indexed = community.loadouts.get(published.compactCode)
+  assert.equal(indexed.catalog_ready, 1)
+  assert.equal(indexed.character_slug, 'io')
+  assert.equal(indexed.weapon_name, '[绝霸]布里欧纳克')
+  assert.match(indexed.search_text, /快速冷却/)
+  assert.equal(JSON.parse(indexed.preview_json).sigils[0].name, '快速冷却 V+')
+
+  const catalog = await worker.fetch(new Request('https://share.example/api/v1/loadouts?character=io&q=快速冷却'), env).then(response => response.json())
+  assert.equal(catalog.items.length, 1)
+  assert.equal(catalog.items[0].code, published.compactCode)
+  assert.equal(r2.listCalls(), 0, 'healthy D1 catalog reads must not scan R2 metadata')
+})
+
+test('publishing reports a retryable failure until the configured D1 catalog accepts the dual write', async () => {
+  const r2 = makeR2()
+  const preview = Buffer.from(JSON.stringify({
+    characterName: '伊欧', characterHash: '4D0A60C3', weaponHash: '02352554', weaponName: '星晶武器',
+    sigils: [{ name: '快速冷却 V+', primaryHash: '318D12E9', primary: '快速冷却', primaryLevel: 15 }],
+  })).toString('base64url')
+  const frame = makeFrame(new Uint8Array([9, 8, 7, 6]))
+  const request = () => new Request('https://share.example/api/v1/loadouts', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Loadout-Title-B64': Buffer.from('双写重试').toString('base64'), 'X-Loadout-Preview': preview }, body: frame,
+  })
+  const failed = await worker.fetch(request(), { LOADOUTS: r2, COMMUNITY_DB: makeCommunityDB({ failWrites: true }) })
+  assert.equal(failed.status, 503)
+  assert.equal((await failed.json()).retryable, true)
+
+  const healthy = makeCommunityDB()
+  const retried = await worker.fetch(request(), { LOADOUTS: r2, COMMUNITY_DB: healthy })
+  assert.equal(retried.status, 200)
+  const published = await retried.json()
+  assert.equal(healthy.loadouts.get(published.compactCode).catalog_ready, 1)
+})
+
+test('catalog automatically falls back to R2 when the D1 index is unavailable', async () => {
+  const r2 = makeR2()
+  const healthy = makeCommunityDB()
+  const published = await publishCatalogPreview({ LOADOUTS: r2, COMMUNITY_DB: healthy }, { title: '回退测试配装' })
+  const failing = makeCommunityDB({ failCatalog: true })
+  const result = await worker.fetch(new Request('https://share.example/api/v1/loadouts?q=回退测试'), { LOADOUTS: r2, COMMUNITY_DB: failing }).then(response => response.json())
+
+  assert.equal(result.items[0].code, published.compactCode)
+  assert.equal(result.indexSource, 'r2-fallback')
+  assert.ok(r2.listCalls() > 0)
+})
+
+test('R2 fallback preserves global time, name, and likes ordering with D1-compatible cursors', async () => {
+  const r2 = makeR2()
+  const healthy = makeCommunityDB()
+  const env = { LOADOUTS: r2, COMMUNITY_DB: healthy }
+  const published = []
+  for (const [index, title] of ['乙方案', '甲方案', '丙方案'].entries()) {
+    const item = await publishCatalogPreview(env, { title })
+    const metadataKey = `meta/v1/${item.compactCode}.json`
+    const stored = r2.objects.get(metadataKey)
+    const metadata = JSON.parse(new TextDecoder().decode(stored.bytes))
+    metadata.createdAt = `2026-07-2${index + 1}T00:00:00.000Z`
+    stored.bytes = new TextEncoder().encode(JSON.stringify(metadata))
+    const row = healthy.loadouts.get(item.compactCode)
+    row.created_at = metadata.createdAt
+    row.likes_count = [3, 9, 5][index]
+    published.push(item.compactCode)
+  }
+  const failing = makeCommunityDB({ failCatalog: true })
+  for (const code of published) failing.loadouts.set(code, healthy.loadouts.get(code))
+  const expected = {
+    time: [...published].sort((left, right) => healthy.loadouts.get(right).created_at.localeCompare(healthy.loadouts.get(left).created_at) || right.localeCompare(left)),
+    name: [...published].sort((left, right) => {
+      const leftTitle = healthy.loadouts.get(left).title_sort
+      const rightTitle = healthy.loadouts.get(right).title_sort
+      return leftTitle === rightTitle ? left.localeCompare(right) : leftTitle < rightTitle ? -1 : 1
+    }),
+    likes: [...published].sort((left, right) => healthy.loadouts.get(right).likes_count - healthy.loadouts.get(left).likes_count || left.localeCompare(right)),
+  }
+  for (const sort of ['time', 'name', 'likes']) {
+    const first = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?sort=${sort}&limit=1`), { LOADOUTS: r2, COMMUNITY_DB: failing }).then(response => response.json())
+    const second = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?sort=${sort}&limit=1&cursor=${encodeURIComponent(first.cursor)}`), { LOADOUTS: r2, COMMUNITY_DB: failing }).then(response => response.json())
+    assert.deepEqual([first.items[0].code, second.items[0].code], expected[sort].slice(0, 2), sort)
+    assert.equal(first.indexSource, 'r2-fallback')
+  }
+})
+
+test('R2 catalog fails closed for likes ordering when community counts are unavailable', async () => {
+  const r2 = makeR2()
+  await publishCatalogPreview({ LOADOUTS: r2 }, { title: '无互动索引配装' })
+  const response = await worker.fetch(new Request('https://share.example/api/v1/loadouts?sort=likes'), { LOADOUTS: r2 })
+  assert.equal(response.status, 503)
+  assert.match((await response.json()).error, /点赞排序暂时不可用/)
+})
+
+test('R2 fallback returns an explicit failure instead of a partial globally sorted page past the proof bound', async () => {
+  const r2 = makeR2()
+  for (let index = 0; index <= 1000; index += 1) {
+    const code = index.toString(32).toUpperCase().padStart(16, '0')
+    await r2.put(`meta/v1/${code}.json`, JSON.stringify({
+      code,
+      title: `全局排序边界 ${index}`,
+      characterHash: '4D0A60C3',
+      characterName: '伊欧',
+      preview: {
+        characterHash: '4D0A60C3',
+        characterName: '伊欧',
+        weaponName: '星晶武器',
+        sigils: [{ name: '快速冷却 V+' }],
+      },
+    }), { customMetadata: { sha256: code } })
+  }
+  const response = await worker.fetch(
+    new Request('https://share.example/api/v1/loadouts?sort=time&limit=24'),
+    { LOADOUTS: r2, COMMUNITY_DB: makeCommunityDB({ failCatalog: true }) },
+  )
+  assert.equal(response.status, 503)
+  const result = await response.json()
+  assert.match(result.error, /超过 1000 条安全扫描上限/)
+  assert.match(result.error, /无法证明全局排序/)
+  assert.equal(result.items, undefined)
+})
+
+test('D1 catalog cursors remain stable for time, name, and likes ordering', async () => {
+  const r2 = makeR2()
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: r2, COMMUNITY_DB: community }
+  const titles = ['乙方案', '甲方案', '丙方案']
+  for (let index = 0; index < titles.length; index += 1) {
+    const result = await publishCatalogPreview(env, { title: titles[index] })
+    const row = community.loadouts.get(result.compactCode)
+    row.created_at = `2026-07-2${index + 1}T00:00:00.000Z`
+    row.likes_count = index === 0 ? 8 : index
+  }
+  for (const sort of ['time', 'name', 'likes']) {
+    const first = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?sort=${sort}&limit=1`), env).then(response => response.json())
+    const second = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?sort=${sort}&limit=1&cursor=${encodeURIComponent(first.cursor)}`), env).then(response => response.json())
+    assert.equal(first.items.length, 1)
+    assert.equal(second.items.length, 1)
+    assert.notEqual(first.items[0].code, second.items[0].code)
+  }
+  assert.equal(r2.listCalls(), 0)
+})
+
+test('catalog backfill is token-protected and migrates one bounded R2 page into D1', async () => {
+  const r2 = makeR2()
+  const community = makeCommunityDB()
+  const published = await publishCatalogPreview({ LOADOUTS: r2 }, { title: '待回填配装' })
+  const env = { LOADOUTS: r2, COMMUNITY_DB: community, CATALOG_ADMIN_TOKEN: 'test-maintainer-token' }
+  const denied = await worker.fetch(new Request('https://share.example/api/internal/catalog/backfill', { method: 'POST' }), env)
+  assert.equal(denied.status, 403)
+  const migrated = await worker.fetch(new Request('https://share.example/api/internal/catalog/backfill?limit=10', {
+    method: 'POST', headers: { Authorization: 'Bearer test-maintainer-token' },
+  }), env).then(response => response.json())
+  assert.equal(migrated.indexed, 1)
+  assert.equal(community.loadouts.get(published.compactCode).catalog_ready, 1)
+})
+
+test('catalog backfill reports D1 write failures instead of claiming rows were indexed', async () => {
+  const r2 = makeR2()
+  await publishCatalogPreview({ LOADOUTS: r2 }, { title: '回填失败样本' })
+  const response = await worker.fetch(new Request('https://share.example/api/internal/catalog/backfill', {
+    method: 'POST', headers: { Authorization: 'Bearer test-maintainer-token' },
+  }), { LOADOUTS: r2, COMMUNITY_DB: makeCommunityDB({ failWrites: true }), CATALOG_ADMIN_TOKEN: 'test-maintainer-token' })
+  assert.equal(response.status, 503)
+  const result = await response.json()
+  assert.equal(result.indexed, 0)
+  assert.equal(result.failed, 1)
+})
+
+test('D1 catalog stores separate Chinese and English summaries and search text', async () => {
+  const r2 = makeR2()
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: r2, COMMUNITY_DB: community }
+  await publishCatalogPreview(env, { title: '双语目录', sigilName: '快速冷却 V+' })
+  const english = await worker.fetch(new Request('https://share.example/api/v1/loadouts?lang=en&q=Quick%20Cooldown'), env).then(response => response.json())
+  assert.equal(english.items.length, 1)
+  assert.equal(english.items[0].preview.sigils[0].name, 'Quick Cooldown V+')
+  assert.equal(english.items[0].weaponName, 'Brionac')
+})
+
+test('D1 catalog rejects malformed and cross-sort cursors', async () => {
+  const r2 = makeR2()
+  const community = makeCommunityDB()
+  const env = { LOADOUTS: r2, COMMUNITY_DB: community }
+  await publishCatalogPreview(env)
+  await publishCatalogPreview(env, { title: '第二套游标样本' })
+  const first = await worker.fetch(new Request('https://share.example/api/v1/loadouts?sort=time&limit=1'), env).then(response => response.json())
+  const malformed = await worker.fetch(new Request('https://share.example/api/v1/loadouts?cursor=not-a-cursor'), env)
+  assert.equal(malformed.status, 400)
+  if (first.cursor) {
+    const crossSort = await worker.fetch(new Request(`https://share.example/api/v1/loadouts?sort=name&cursor=${encodeURIComponent(first.cursor)}`), env)
+    assert.equal(crossSort.status, 400)
+  }
+})
+
+test('D1 catalog query plans use the matching global and character sort indexes', () => {
+  const db = new DatabaseSync(':memory:')
+  db.exec(readFileSync(new URL('../migrations/0001_community.sql', import.meta.url), 'utf8'))
+  db.exec(readFileSync(new URL('../migrations/0002_catalog_index.sql', import.meta.url), 'utf8'))
+  for (const sort of ['time', 'name', 'likes']) {
+    for (const characterSlug of ['', 'io']) {
+      const built = buildD1CatalogQuery({ characterSlug, sort, limit: 24 })
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${built.sql}`).all(...built.bindings).map(row => row.detail).join('\n')
+      const expected = characterSlug ? `loadouts_catalog_character_${sort}` : `loadouts_catalog_${sort}`
+      assert.match(plan, new RegExp(expected), `${sort}/${characterSlug || 'all'} plan:\n${plan}`)
+      assert.doesNotMatch(plan, /SCAN loadouts(?:\s|$)/, `${sort}/${characterSlug || 'all'} unexpectedly scans loadouts`)
+    }
+  }
+  db.close()
 })
 
 test('the service rejects arbitrary paste content and unknown codes', async () => {
@@ -580,6 +904,10 @@ test('detail page includes summon effects, mastery nodes, and merged skill secti
   assert.match(html, /隔绝之祝福/)
   assert.match(html, /t\.direction\+': '/)
   assert.match(html, /class="detail-icon"/)
+  assert.match(html, /id="share-image">生成分享图<\/button>/)
+  assert.match(html, /canvas\.width=1600;canvas\.height=900/)
+  assert.match(html, /new ClipboardItem\(\{'image\/png':blob\}\)/)
+  assert.match(html, /anchor\.download=title\.replace/)
   assert.match(html, /class="detail-back" href="\/c\/gran\?lang=zh">← 返回古兰配装<\/a>/)
   assert.doesNotMatch(html, /class="detail-actions"[^]*返回古兰配装/)
   assert.equal((html.match(/<div class="detail-column">/g) || []).length, 3)
@@ -605,6 +933,7 @@ test('English pages keep navigation and official game names in English', async (
   assert.match(html, /Io · CHARACTER LOADOUT/)
   assert.match(html, /href="\/c\/io\?lang=en"/)
   assert.match(html, /Loadout Details/)
+  assert.match(html, /id="share-image">Share Image<\/button>/)
   assert.doesNotMatch(html, /返回|配装详情|角色配装|搜索/)
   const metadata = await worker.fetch(new Request(`https://share.example/api/v1/loadouts/${result.compactCode}/meta?lang=en`), env).then(response => response.json())
   assert.equal(metadata.preview.weaponName, 'Brionac')

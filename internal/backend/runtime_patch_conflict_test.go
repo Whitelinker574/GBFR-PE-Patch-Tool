@@ -7,10 +7,8 @@ import (
 
 func TestSharedRuntimePatchClassifiesEveryOwnedState(t *testing.T) {
 	original := append([]byte(nil), sharedInventoryMaterialOriginal...)
-	material := append([]byte(nil), original...)
-	copy(material, materialConsumePatch)
-	inventory := append([]byte(nil), original...)
-	copy(inventory, []byte{0xE9, 0x11, 0x22, 0x33, 0x44})
+	material := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x66, 0x90}
+	inventory := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x90, 0x90}
 
 	tests := []struct {
 		name string
@@ -18,9 +16,10 @@ func TestSharedRuntimePatchClassifiesEveryOwnedState(t *testing.T) {
 		want sharedRuntimePatchOwner
 	}{
 		{name: "original", data: original, want: sharedRuntimePatchOwnerNone},
-		{name: "material consume nop", data: material, want: sharedRuntimePatchOwnerMaterialConsume},
+		{name: "material conditional hook", data: material, want: sharedRuntimePatchOwnerMaterialConsume},
+		{name: "legacy material consume nop", data: materialConsumeLegacyPatch, want: sharedRuntimePatchOwnerMaterialConsume},
 		{name: "inventory quantity hook", data: inventory, want: sharedRuntimePatchOwnerInventoryQuantity},
-		{name: "foreign jump bytes", data: []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x90, 0x90}, want: sharedRuntimePatchOwnerUnknown},
+		{name: "foreign jump bytes", data: []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x89, 0xE1}, want: sharedRuntimePatchOwnerUnknown},
 		{name: "short read", data: original[:4], want: sharedRuntimePatchOwnerUnknown},
 		{name: "foreign bytes", data: []byte{0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90}, want: sharedRuntimePatchOwnerUnknown},
 	}
@@ -35,11 +34,8 @@ func TestSharedRuntimePatchClassifiesEveryOwnedState(t *testing.T) {
 }
 
 func TestSharedRuntimePatchRejectsBothCrossFeatureOrders(t *testing.T) {
-	original := append([]byte(nil), sharedInventoryMaterialOriginal...)
-	material := append([]byte(nil), original...)
-	copy(material, materialConsumePatch)
-	inventory := append([]byte(nil), original...)
-	copy(inventory, []byte{0xE9, 0x11, 0x22, 0x33, 0x44})
+	material := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x66, 0x90}
+	inventory := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x90, 0x90}
 
 	tests := []struct {
 		name    string
@@ -85,10 +81,8 @@ func TestSharedRuntimePatchRejectsBothCrossFeatureOrders(t *testing.T) {
 
 func TestSharedRuntimePatchAllowsOnlyItsOwnLifecycle(t *testing.T) {
 	original := append([]byte(nil), sharedInventoryMaterialOriginal...)
-	material := append([]byte(nil), original...)
-	copy(material, materialConsumePatch)
-	inventory := append([]byte(nil), original...)
-	copy(inventory, []byte{0xE9, 0x11, 0x22, 0x33, 0x44})
+	material := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x66, 0x90}
+	inventory := []byte{0xE9, 0x11, 0x22, 0x33, 0x44, 0x90, 0x90}
 
 	allowed := []struct {
 		name    string

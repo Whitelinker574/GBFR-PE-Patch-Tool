@@ -390,7 +390,8 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.FirstTraitName, item.FirstLevel, firstWritableMax)), nil
 	}
 	if firstTrait.InternalID != wrightstone.DefaultTraitID {
-		reasons = append(reasons, "第一特性与该祝福的固有特性不一致")
+		report := newLegalityReport(LegalityImpossible, false, "第一特性与该祝福在目录中的固有特性不一致")
+		return item, report, nil
 	}
 
 	secondTrait, err := wg.catalog.RequireTrait(item.SecondTraitID)
@@ -430,13 +431,16 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	}
 
 	if item.FirstTraitID == item.SecondTraitID {
-		reasons = append(reasons, fmt.Sprintf("第一特性「%s」与第二特性「%s」重复冲突", item.FirstTraitName, item.SecondTraitName))
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性「%s」与第二特性「%s」重复冲突", item.FirstTraitName, item.SecondTraitName))
+		return item, report, nil
 	}
 	if item.FirstTraitID == item.ThirdTraitID {
-		reasons = append(reasons, fmt.Sprintf("第一特性「%s」与第三特性「%s」重复冲突", item.FirstTraitName, item.ThirdTraitName))
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性「%s」与第三特性「%s」重复冲突", item.FirstTraitName, item.ThirdTraitName))
+		return item, report, nil
 	}
 	if item.SecondTraitID == item.ThirdTraitID {
-		reasons = append(reasons, fmt.Sprintf("第二特性「%s」与第三特性「%s」重复冲突", item.SecondTraitName, item.ThirdTraitName))
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第二特性「%s」与第三特性「%s」重复冲突", item.SecondTraitName, item.ThirdTraitName))
+		return item, report, nil
 	}
 	status := LegalityUnknown
 	if len(reasons) > 0 {

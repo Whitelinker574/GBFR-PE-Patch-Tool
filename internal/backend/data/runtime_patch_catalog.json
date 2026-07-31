@@ -3338,12 +3338,12 @@
       "displayName": "无限子弹",
       "mode": "characters",
       "category": "characters",
-      "group": "尤斯蒂斯",
+      "group": "尤斯提斯",
       "groupPath": [
         "角色修改",
-        "尤斯蒂斯"
+        "尤斯提斯"
       ],
-      "character": "尤斯蒂斯",
+      "character": "尤斯提斯",
       "conflicts": [],
       "conflictGroup": "",
       "sites": [
@@ -6915,6 +6915,75 @@
           ],
           "disableBytes": [],
           "requiresRuntimeCapture": true
+        }
+      ]
+    },
+    {
+      "id": "runtime-patch-059",
+      "catalogId": 59,
+      "name": "刀上舞：免除自身眩晕",
+      "displayName": "刀上舞：免除自身眩晕",
+      "mode": "combat",
+      "category": "combat",
+      "group": "战斗功能",
+      "groupPath": [
+        "战斗功能"
+      ],
+      "character": "",
+      "conflicts": [],
+      "conflictGroup": "",
+      "evidenceLevel": "candidate_executable_game_2.0.2",
+      "evidenceNote": "已核对 2.0.2 EXE 的唯一写入点；仅移除刀上舞自身的眩晕惩罚，不会免疫其他负面状态。首次启用仍会校验原字节并回读，实际战斗效果待实机验收。",
+      "sites": [
+        {
+          "symbol": "GBFR_PATCH_059_1",
+          "module": "$process",
+          "aob": "75 ?? 48 89 ?? 48 89 ?? E8 ?? ?? ?? ?? 44 0F",
+          "offset": 0,
+          "patternValues": [
+            117,
+            0,
+            72,
+            137,
+            0,
+            72,
+            137,
+            0,
+            232,
+            0,
+            0,
+            0,
+            0,
+            68,
+            15
+          ],
+          "patternMasks": [
+            255,
+            0,
+            255,
+            255,
+            0,
+            255,
+            255,
+            0,
+            255,
+            0,
+            0,
+            0,
+            0,
+            255,
+            255
+          ],
+          "enableBytes": [
+            235
+          ],
+          "expectedOriginalBytes": [
+            117
+          ],
+          "disableBytes": [
+            117
+          ],
+          "requiresRuntimeCapture": false
         }
       ]
     }

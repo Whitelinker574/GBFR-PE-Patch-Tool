@@ -942,6 +942,7 @@ const translations = {
   "0xFFBA8AF0: \"弱化状态特效III\",": "0xFFBA8AF0: \"Injury to Insult III\",",
   "1 满红条": "1 Full red gauge",
   "2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }": "2147483647) { emit('status', 'Enter an integer between 0 and 2147483647', 'error'); return }",
+  "999) { emit('status', '药水请输入 0 到 999 之间的整数', 'error'); return }": "999) { emit('status', 'Enter a potion count between 0 and 999', 'error'); return }",
   "4 满黄条": "4 Full yellow gauge",
   "9999) { emit('status', '倍率请输入 0 到 9999 之间的数值', 'error'); return }": "9999) { emit('status', 'Enter a multiplier between 0 and 9999', 'error'); return }",
   "9999) { emit('status', '请输入 0 到 9999 之间的数值', 'error'); return }": "9999) { emit('status', 'Enter a value between 0 and 9999', 'error'); return }",
@@ -2415,6 +2416,7 @@ const translations = {
   "请填写输出路径": "Please enter an output path",
   "请输入 0 到 %d 之间的整数": "Enter an integer between 0 and %d",
   "请输入 0 到 2147483647 之间的整数": "Enter an integer from 0 to 2147483647",
+  "药水请输入 0 到 999 之间的整数": "Enter a potion count from 0 to 999",
   "请输入 0 到 9999 之间的数值": "Enter a value between 0 and 9999",
   "请输入 0 到 9999 之间的有效倒计时数值": "Enter a valid countdown value between 0 and 9999",
   "请输入存档路径": "Please enter a save-file path",
@@ -2717,6 +2719,12 @@ const patternRules = [
   [/已删除\s*(\d+)\s*个因子/g, 'Deleted $1 sigils'],
   [/已写入\s*(\d+)\s*个因子\s*\(验证\s*(\d+)\)/g, 'Wrote $1 sigils (verified $2)'],
   [/已清除\s*(\d+)\s*个因子\s*\(剩余\s*(\d+)\)/g, 'Removed $1 sigils ($2 remaining)'],
+  [/已从所选存档删除\s*(\d+)\s*个因子；备份已保留，回读验证通过。/g, 'Deleted $1 sigils from the selected save. The backup was kept and read-back passed.'],
+  [/已向所选存档新增\s*(\d+)\s*个独立因子实例；回读确认\s*(\d+)\s*个，写入前备份已保留。/g, 'Added $1 independent sigil instances to the selected save; $2 passed read-back. The pre-write backup was kept.'],
+  [/已清除所选存档中的\s*(\d+)\s*个因子，回读剩余\s*(\d+)\s*个；写入前备份已保留。/g, 'Removed $1 sigils from the selected save; $2 remain after read-back. The pre-write backup was kept.'],
+  [/已把修改写入游戏中当前选中的因子：(.+?)。继续修改前请重新选择目标。/g, 'Changes were written to the currently selected in-game sigil: $1. Select the target again before another edit.'],
+  [/已读取游戏中当前选中的因子：(.+?)。/g, 'Read the currently selected in-game sigil: $1.'],
+  [/备份并写入\s*(\d+)\s*项/g, 'Back Up and Write $1 Item(s)'],
   [/发现新版本\s*([^\s]+)/g, 'New version found: $1'],
   [/槽位\s*(\d+)/g, 'Slot $1'],
   [/读取(.+?)失败:/g, 'Failed to read $1:'],
@@ -2773,7 +2781,7 @@ let observer
 let applying = false
 const originalText = new WeakMap()
 const originalAttributes = new WeakMap()
-const translatedAttributes = ['placeholder', 'title', 'aria-label']
+const translatedAttributes = ['placeholder', 'title', 'aria-label', 'alt']
 
 function translateTextNode(node) {
   if (!node || node.nodeType !== Node.TEXT_NODE) return

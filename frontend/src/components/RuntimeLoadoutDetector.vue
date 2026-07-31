@@ -10,30 +10,38 @@ import {
   RuntimeLoadoutDetectorStatus,
   RuntimeLoadoutDetectorStop,
 } from '../../wailsjs/go/backend/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import { language } from '../i18n.js'
 import { characterAssetIcon } from '../gameAssetIcons.js'
+import { copyShareText, loadoutShareSessionKey, publishedLoadoutShare, rememberPublishedLoadoutShare } from '../loadoutShareSession.js'
 import CapturedLoadoutPreview from './CapturedLoadoutPreview.vue'
+import LoadoutPublishDialog from './LoadoutPublishDialog.vue'
 
 const emit = defineEmits(['status', 'deploy-loadout'])
 const detectorRoot = ref(null)
 const detectorStatus = ref({ enabled: false, state: 'stopped', historyCount: 0 })
 const records = ref([])
 const preview = ref(null)
+const publishTarget = ref(null)
+const publishResult = ref(null)
+const publishError = ref('')
 const busy = ref('')
 const historyLoading = ref(false)
 const titles = reactive({})
 let disposed = false
-let pollTimer = null
+let stopStatusEvents = () => {}
 let knownHistoryCount = -1
+let publishEpoch = 0
+const DETECTOR_STATUS_EVENT = 'runtime-loadout-detector:status'
 
 const tx = (zh, en) => language.value === 'en' ? en : zh
 const isRunning = computed(() => detectorStatus.value?.enabled === true)
 const statusCopy = computed(() => ({
   waiting_game: [tx('等待游戏启动', 'Waiting for Game'), tx('检测保持开启，游戏进程出现后会自动连接。', 'Detection stays active and reconnects when the game starts.')],
-  waiting_task: [tx('等待进入任务', 'Waiting for a Quest'), tx('进入任务并形成稳定队伍后会自动归档。', 'A stable party is archived automatically after entering a quest.')],
-  stabilizing: [tx('正在确认队伍', 'Confirming Party'), tx('正在核对连续稳定快照，避免把场景切换误记为任务。', 'Checking consecutive stable snapshots to avoid recording scene transitions.')],
-  recording: [tx('后台检测中', 'Detecting in Background'), tx(`当前识别 ${detectorStatus.value.currentTeamSize || 0} 名角色，本场已保存。`, `${detectorStatus.value.currentTeamSize || 0} characters detected; this quest is saved.`)],
-  stopped: [tx('检测已关闭', 'Detection Off'), tx('本地记录仍会保留，下次开启后继续追加。', 'Local records are retained and new quests append after restart.')],
+  waiting_task: [tx('等待稳定队伍', 'Waiting for a Stable Party'), tx('检测到连续一致的队伍配装后会自动归档一个批次。', 'A batch is archived after consecutive party loadouts match.')],
+  stabilizing: [tx('正在确认队伍', 'Confirming Party'), tx('正在核对连续稳定快照，避免把场景切换误记为新批次。', 'Checking consecutive stable snapshots to avoid recording scene transitions as a new batch.')],
+  recording: [tx('后台检测中', 'Detecting in Background'), tx(`当前识别 ${detectorStatus.value.currentTeamSize || 0} 名角色，本批次已保存。`, `${detectorStatus.value.currentTeamSize || 0} characters detected; this batch is saved.`)],
+  stopped: [tx('检测已关闭', 'Detection Off'), tx('本地记录仍会保留，下次开启后继续追加队伍批次。', 'Local records are retained and new party batches append after restart.')],
 })[detectorStatus.value?.state] || [tx('准备检测', 'Preparing Detection'), tx('正在读取检测器状态。', 'Reading detector status.')])
 
 function errorMessage(error) {
@@ -53,7 +61,7 @@ function timeText(value) {
 }
 
 function recordTitle(record) {
-  return tx(`第 ${record.sequence} 场`, `Quest ${record.sequence}`)
+  return tx(`第 ${record.sequence} 批`, `Batch ${record.sequence}`)
 }
 
 function titleKey(record, member) {
@@ -82,12 +90,16 @@ async function readHistory(force = false) {
 async function readStatus({ forceHistory = false } = {}) {
   try {
     const next = await RuntimeLoadoutDetectorStatus()
-    if (disposed) return
-    detectorStatus.value = next || { enabled: false, state: 'stopped', historyCount: 0 }
-    if (forceHistory || Number(detectorStatus.value.historyCount || 0) !== knownHistoryCount) await readHistory(false)
+    await acceptStatus(next, { forceHistory })
   } catch (error) {
     if (!disposed) announce(tx(`读取检测器状态失败：${errorMessage(error)}`, `Failed to read detector status: ${errorMessage(error)}`), 'danger')
   }
+}
+
+async function acceptStatus(next, { forceHistory = false } = {}) {
+  if (disposed) return
+  detectorStatus.value = next || { enabled: false, state: 'stopped', historyCount: 0 }
+  if (forceHistory || Number(detectorStatus.value.historyCount || 0) !== knownHistoryCount) await readHistory(false)
 }
 
 async function startDetector() {
@@ -95,7 +107,7 @@ async function startDetector() {
   busy.value = 'toggle'
   try {
     detectorStatus.value = await RuntimeLoadoutDetectorStart()
-    announce(tx('角色配装检测已开启，会在后台自动记录每场任务。', 'Loadout detection is active and will archive every quest in the background.'), 'ok')
+    announce(tx('角色配装检测已开启，会在后台归档稳定队伍批次。', 'Loadout detection is active and will archive stable party batches in the background.'), 'ok')
     await readHistory(true)
   } catch (error) {
     announce(tx(`开启角色配装检测失败：${errorMessage(error)}`, `Failed to start loadout detection: ${errorMessage(error)}`), 'danger')
@@ -126,6 +138,58 @@ function closePreview() {
   preview.value = null
 }
 
+function openRuntimePublish(record, member) {
+  const key = titleKey(record, member)
+  if (!String(titles[key] || '').trim()) titles[key] = tx(`${member.characterName} · 队伍捕获配装`, `${member.characterName} · Party Capture`)
+  const sessionKey = loadoutShareSessionKey({ source: 'runtime', recordId: record.id, role: member.role })
+  publishTarget.value = { record, member, sessionKey }
+  publishResult.value = publishedLoadoutShare(sessionKey)
+  publishError.value = ''
+}
+
+function closeRuntimePublish() {
+  publishEpoch++
+  publishTarget.value = null
+  publishResult.value = null
+  publishError.value = ''
+}
+
+async function copyRuntimePublishedLink() {
+  if (!publishResult.value?.url) return
+  try {
+    await copyShareText(publishResult.value.url)
+    announce(tx(`已复制配装链接：${publishResult.value.code}`, `Copied loadout link: ${publishResult.value.code}`), 'ok')
+  } catch (error) {
+    publishError.value = tx(`复制失败，请手动复制链接：${errorMessage(error)}`, `Copy failed; copy the link manually: ${errorMessage(error)}`)
+  }
+}
+
+async function publishRuntimeTarget() {
+  if (!publishTarget.value || busy.value) return
+  const target = publishTarget.value
+  const epoch = ++publishEpoch
+  const cached = publishedLoadoutShare(target.sessionKey)
+  if (cached) {
+    publishResult.value = cached
+    await copyRuntimePublishedLink()
+    return
+  }
+  const busyKey = `publish:${target.record.id}:${target.member.role}`
+  busy.value = busyKey
+  publishError.value = ''
+  try {
+    const published = await RuntimeLoadoutDetectorPublish(target.record.id, target.member.role, shareTitle(target.record, target.member))
+    rememberPublishedLoadoutShare(target.sessionKey, published)
+    if (epoch !== publishEpoch || publishTarget.value !== target) return
+    publishResult.value = published
+    await copyRuntimePublishedLink()
+  } catch (error) {
+    if (epoch === publishEpoch && publishTarget.value === target) publishError.value = errorMessage(error)
+  } finally {
+    if (busy.value === busyKey) busy.value = ''
+  }
+}
+
 async function runAction(record, member, action) {
   if (busy.value) return
   const operationKey = `${record.id}:${member.role}`
@@ -135,12 +199,6 @@ async function runAction(record, member, action) {
     if (action === 'export') {
       const output = await RuntimeLoadoutDetectorExport(record.id, member.role, title)
       if (output) announce(tx(`配装已导出：${output}`, `Loadout exported: ${output}`), 'ok')
-      return
-    }
-    if (action === 'publish') {
-      const published = await RuntimeLoadoutDetectorPublish(record.id, member.role, title)
-      await navigator.clipboard.writeText(published.url)
-      announce(tx(`已上传并复制链接：${published.code}`, `Uploaded and copied link: ${published.code}`), 'ok')
       return
     }
     const result = await RuntimeLoadoutDetectorShare(record.id, member.role, title)
@@ -153,7 +211,7 @@ async function runAction(record, member, action) {
       announce(tx('已转到配装预设，可选择目标存档和槽位。', 'Opened loadout presets; choose a target save and slot.'), 'ok')
       return
     }
-    await navigator.clipboard.writeText(result.compatibilityCode)
+    await copyShareText(result.compatibilityCode)
     announce(tx('完整配装码已复制。', 'Full loadout code copied.'), 'ok')
   } catch (error) {
     announce(tx(`配装操作失败：${errorMessage(error)}`, `Loadout action failed: ${errorMessage(error)}`), 'danger')
@@ -169,7 +227,7 @@ async function deleteRecord(record) {
     await RuntimeLoadoutDetectorDelete(record.id)
     if (preview.value?.record?.id === record.id) preview.value = null
     await readStatus({ forceHistory: true })
-    announce(tx('本地场次记录已删除。', 'Local quest record deleted.'), 'ok')
+    announce(tx('本地队伍批次已删除。', 'Local party batch deleted.'), 'ok')
   } catch (error) {
     announce(tx(`删除失败：${errorMessage(error)}`, `Delete failed: ${errorMessage(error)}`), 'danger')
   } finally {
@@ -178,13 +236,14 @@ async function deleteRecord(record) {
 }
 
 onMounted(async () => {
+  stopStatusEvents = EventsOn(DETECTOR_STATUS_EVENT, next => { void acceptStatus(next) })
   await readStatus({ forceHistory: true })
-  pollTimer = window.setInterval(() => void readStatus(), 3000)
 })
 
 onBeforeUnmount(() => {
   disposed = true
-  if (pollTimer !== null) window.clearInterval(pollTimer)
+  stopStatusEvents()
+  stopStatusEvents = () => {}
 })
 </script>
 
@@ -204,8 +263,8 @@ onBeforeUnmount(() => {
       </header>
 
       <dl class="detector-metrics">
-        <div><dt>{{ tx('本次运行', 'This Session') }}</dt><dd>{{ detectorStatus.sessionCaptured || 0 }}<small>{{ tx('场', 'quests') }}</small></dd></div>
-        <div><dt>{{ tx('本地总计', 'Local Total') }}</dt><dd>{{ detectorStatus.historyCount || 0 }}<small>{{ tx('场', 'quests') }}</small></dd></div>
+        <div><dt>{{ tx('本次运行', 'This Session') }}</dt><dd>{{ detectorStatus.sessionCaptured || 0 }}<small>{{ tx('批', 'batches') }}</small></dd></div>
+        <div><dt>{{ tx('本地总计', 'Local Total') }}</dt><dd>{{ detectorStatus.historyCount || 0 }}<small>{{ tx('批', 'batches') }}</small></dd></div>
         <div><dt>{{ tx('当前队伍', 'Current Party') }}</dt><dd>{{ detectorStatus.currentTeamSize || 0 }}<small>{{ tx('人', 'members') }}</small></dd></div>
         <div><dt>{{ tx('最近记录', 'Latest Capture') }}</dt><dd class="is-time">{{ timeText(detectorStatus.lastCaptureAt) }}</dd></div>
       </dl>
@@ -215,16 +274,16 @@ onBeforeUnmount(() => {
       </div>
 
       <section class="history-section">
-        <header class="history-heading"><div><small>{{ tx('本机自动归档', 'Local Automatic Archive') }}</small><h3>{{ tx('任务配装记录', 'Quest Loadout History') }}</h3></div><span>{{ records.length }} {{ tx('场', 'quests') }}</span></header>
+        <header class="history-heading"><div><small>{{ tx('本机自动归档', 'Local Automatic Archive') }}</small><h3>{{ tx('稳定队伍配装记录', 'Stable Party Loadout History') }}</h3></div><span>{{ records.length }} {{ tx('批', 'batches') }}</span></header>
         <div v-if="historyLoading && !records.length" class="history-empty ui-empty">{{ tx('正在读取本地记录…', 'Reading local records…') }}</div>
-        <div v-else-if="!records.length" class="history-empty ui-empty"><strong>{{ tx('还没有捕获到任务队伍', 'No Quest Party Captured Yet') }}</strong><span>{{ tx('开启检测后正常进入任务即可，页面可以切走。', 'Start detection and play normally; this page may remain in the background.') }}</span></div>
+        <div v-else-if="!records.length" class="history-empty ui-empty"><strong>{{ tx('还没有捕获到稳定队伍', 'No Stable Party Captured Yet') }}</strong><span>{{ tx('开启检测后正常游玩即可，页面可以切走；当前依据队伍快照变化分批，不承诺等同游戏任务边界。', 'Start detection and play normally; this page may remain in the background. Batches follow party snapshot changes and are not guaranteed to equal quest boundaries.') }}</span></div>
         <ol v-else class="quest-timeline">
           <li v-for="record in records" :key="record.id" class="quest-record">
             <div class="quest-index"><b>{{ record.sequence }}</b><i></i></div>
             <article class="quest-card ui-card">
               <header>
                 <div><small>{{ timeText(record.capturedAt) }}</small><h4>{{ recordTitle(record) }}</h4><span>{{ record.members.length }} {{ tx('名角色配装', 'character loadouts') }}</span></div>
-                <button type="button" class="record-delete" :aria-label="tx('删除本场记录', 'Delete quest record')" :title="tx('删除本场记录', 'Delete quest record')" :disabled="!!busy" @click="deleteRecord(record)">×</button>
+                <button type="button" class="record-delete" :aria-label="tx('删除本批记录', 'Delete party batch')" :title="tx('删除本批记录', 'Delete party batch')" :disabled="!!busy" @click="deleteRecord(record)">×</button>
               </header>
               <div class="member-strip">
                 <button v-for="member in record.members" :key="member.role" type="button" class="member-entry" @click="openPreview(record, member)">
@@ -242,19 +301,33 @@ onBeforeUnmount(() => {
 
     <section v-else class="detector-preview">
       <header class="preview-bar ui-card">
-        <button type="button" class="ui-btn is-ghost" @click="closePreview"><span aria-hidden="true">←</span> {{ tx('返回任务记录', 'Back to Quest History') }}</button>
+        <button type="button" class="ui-btn is-ghost" @click="closePreview"><span aria-hidden="true">←</span> {{ tx('返回队伍记录', 'Back to Party History') }}</button>
         <div><small>{{ recordTitle(preview.record) }} · {{ timeText(preview.record.capturedAt) }}</small><strong>{{ preview.member.characterName }} · {{ preview.member.loadout.weapon.name }}</strong></div>
-        <label><span>{{ tx('分享名称', 'Share Title') }}</span><input v-model="titles[titleKey(preview.record, preview.member)]" type="text" maxlength="80" :placeholder="`${preview.member.characterName} · ${tx('任务捕获配装', 'Quest Capture')}`" /></label>
+        <label><span>{{ tx('分享名称', 'Share Title') }}</span><input v-model="titles[titleKey(preview.record, preview.member)]" type="text" maxlength="80" :placeholder="`${preview.member.characterName} · ${tx('队伍捕获配装', 'Party Capture')}`" /></label>
       </header>
-      <CapturedLoadoutPreview :loadout="preview.member.loadout" :source-label="tx('任务后台稳定捕获', 'Stable Background Quest Capture')">
+      <CapturedLoadoutPreview :loadout="preview.member.loadout" :source-label="tx('后台稳定队伍捕获', 'Stable Background Party Capture')">
         <template #actions>
           <button type="button" class="ui-btn is-sm" :disabled="!!busy" @click="runAction(preview.record, preview.member, 'copy')">{{ tx('复制配装码', 'Copy Code') }}</button>
           <button type="button" class="ui-btn is-sm" :disabled="!!busy" @click="runAction(preview.record, preview.member, 'export')">{{ tx('导出 JSON', 'Export JSON') }}</button>
-          <button type="button" class="ui-btn is-primary is-sm" :disabled="!!busy" @click="runAction(preview.record, preview.member, 'publish')">{{ tx('上传并复制链接', 'Upload & Copy Link') }}</button>
+          <button type="button" class="ui-btn is-primary is-sm" :disabled="!!busy" @click="openRuntimePublish(preview.record, preview.member)">{{ tx('上传分享', 'Publish') }}</button>
           <button type="button" class="ui-btn is-sm" :disabled="!!busy" @click="runAction(preview.record, preview.member, 'deploy')">{{ tx('部署到存档', 'Deploy to Save') }}</button>
         </template>
       </CapturedLoadoutPreview>
     </section>
+    <LoadoutPublishDialog
+      :open="Boolean(publishTarget)"
+      :title="publishTarget ? titles[titleKey(publishTarget.record, publishTarget.member)] : ''"
+      :character-name="publishTarget?.member?.characterName || ''"
+      :subtitle="publishTarget?.member?.loadout?.weapon?.name || ''"
+      :image="publishTarget ? characterAssetIcon(publishTarget.member.characterHash) : ''"
+      :busy="String(busy).startsWith('publish:')"
+      :result="publishResult"
+      :error="publishError"
+      @update:title="value => { if (publishTarget) titles[titleKey(publishTarget.record, publishTarget.member)] = value }"
+      @close="closeRuntimePublish"
+      @submit="publishRuntimeTarget"
+      @copy="copyRuntimePublishedLink"
+    />
   </section>
 </template>
 

@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v1.92.0 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v1\.92\.0"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '1.92.0')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '1.92.0')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '1.92.0')
+test('release metadata uses v2.0.3 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.3"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.3')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.3')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.3')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -76,6 +76,17 @@ test('packaged metadata no longer identifies another maintainer', () => {
   assert.match(windowsInfo, /"product_version": "\{\{\.Info\.ProductVersion\}\}\.0"/)
   assert.match(windowsInfo, /"FileVersion": "\{\{\.Info\.ProductVersion\}\}\.0"/)
   assert.doesNotMatch(windowsInfo, /"0000"/)
+})
+
+test('formal release identifies the packaged application without test-build branding', () => {
+  const metadata = JSON.parse(readRoot('wails.json'))
+  const shell = readRoot('frontend/src/components/PatchTool.vue')
+  const run = readRoot('internal/backend/run.go')
+  assert.equal(metadata.name, 'GBFR PE Patch Tool')
+  assert.equal(metadata.info.productName, 'GBFR PE Patch Tool')
+  assert.doesNotMatch(shell, /TEST BUILD|测试版/)
+  assert.match(shell, /v2\.0\.3/)
+  assert.match(run, /Title:\s+"GBFR PE Patch Tool"/)
 })
 
 test('release navigation cannot open a caller-supplied website', () => {

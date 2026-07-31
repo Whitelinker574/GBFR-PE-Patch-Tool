@@ -6,6 +6,7 @@ require (
 	github.com/andybalholm/brotli v1.2.2
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/fxamacker/cbor/v2 v2.9.0
+	github.com/google/flatbuffers v25.12.19+incompatible
 	github.com/klauspost/compress v1.18.4
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/wailsapp/wails/v2 v2.13.0

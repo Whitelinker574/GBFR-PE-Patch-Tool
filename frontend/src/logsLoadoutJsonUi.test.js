@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const viewer = readFileSync(new URL('./components/LoadoutViewer.vue', import.meta.url), 'utf8')
+const publishDialog = readFileSync(new URL('./components/LoadoutPublishDialog.vue', import.meta.url), 'utf8')
 
 test('Relink Logs copied JSON has explicit paste, clipboard, file, and preview actions', () => {
   assert.match(viewer, /导入角色 JSON/)
@@ -28,13 +29,16 @@ test('Logs candidates can be published directly with a reusable title and copied
   assert.match(viewer, /PublishLogsLoadoutShare/)
   assert.match(viewer, /openLogsPublish\(candidate\)/)
   assert.match(viewer, /上传分享/)
-  assert.match(viewer, /分享标题/)
-  assert.match(viewer, /maxlength="80"/)
-  assert.match(viewer, /标题可以与其他配装重复/)
-  assert.match(viewer, /完全相同的配装会沿用原短码和首次标题/)
-  assert.match(viewer, /await PublishLogsLoadoutShare\(logsPublishCandidate\.value, logsPublishTitle\.value\.trim\(\)\)/)
-  assert.match(viewer, /await navigator\.clipboard\.writeText\(value\)/)
-  assert.match(viewer, /上传并复制链接/)
+  assert.match(publishDialog, /分享标题/)
+  assert.match(publishDialog, /maxlength="80"/)
+  assert.match(publishDialog, /标题可以重复/)
+  assert.match(publishDialog, /完全相同的配装会沿用原短码和首次标题/)
+  assert.match(viewer, /await PublishLogsLoadoutShare\(candidate, logsPublishTitle\.value\.trim\(\)\)/)
+  assert.match(viewer, /const sessionKey = loadoutShareSessionKey\(\{ compatibilityCode: cacheKey \}\)/)
+  assert.match(viewer, /publishedLoadoutShare\(sessionKey\)/)
+  assert.match(viewer, /logsPublishGate\.isCurrent\(operation\)/)
+  assert.match(viewer, /await copyShareText\(value\)/)
+  assert.match(publishDialog, /上传并复制链接/)
 })
 
 test('JSON dialog has a bounded responsive layout and exact English copy', () => {
@@ -49,11 +53,11 @@ test('JSON dialog has a bounded responsive layout and exact English copy', () =>
     'Read Clipboard',
     'Choose JSON File',
     'Parse & Preview',
-    'Publish & Copy Link',
-    'Share Title',
-    'Titles may be reused.',
     'Waiting for an import source',
     'No External Loadouts Loaded',
     'Paste character JSON copied from Relink Logs or choose a logs.db',
   ]) assert.match(viewer, new RegExp(english.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  for (const english of ['Publish & Copy Link', 'Share Title', 'Titles may be reused.']) {
+    assert.match(publishDialog, new RegExp(english.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
 })

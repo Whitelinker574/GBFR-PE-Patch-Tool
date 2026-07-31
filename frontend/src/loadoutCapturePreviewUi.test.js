@@ -67,7 +67,7 @@ test('background detector shows exact character icons and opens a full preview w
   assert.match(detector, /openPreview\(record, member\)/)
   assert.match(detector, /closest\('\.tool-center-scroll,\.workspace-scroll'\)\?\.scrollTo\(\{ top: 0 \}\)/)
   assert.match(detector, /<CapturedLoadoutPreview/)
-  assert.match(detector, /返回任务记录/)
+  assert.match(detector, /返回队伍记录/)
   assert.match(detector, /titles\[titleKey\(preview\.record, preview\.member\)\]/)
 })
 
@@ -86,4 +86,25 @@ test('captured preview uses bounded responsive grids and protects long text from
   assert.match(preview, /preview-main-columns/)
   assert.match(preview, /combinedIcon\(skill\)[\s\S]*?v-else aria-hidden="true"/)
   assert.match(preview, /\.combined-row > img,\.combined-row > i/)
+})
+
+test('captured preview labels absent scopes as not recorded instead of inventing zero values', () => {
+  assert.match(preview, /const sigilCaptureLabel = computed/)
+  assert.match(preview, /const summonCaptureLabel = computed/)
+  assert.match(preview, /const masteryCaptureLabel = computed/)
+  assert.match(preview, /const overLimitRecorded = computed/)
+  assert.match(preview, /sigilCaptureLabel/)
+  assert.match(preview, /summonCaptureLabel/)
+  assert.match(preview, /masteryCaptureLabel/)
+  assert.match(preview, /v-if="!\(loadout\.sigils \|\| \[\]\)\.length"[^>]*>\{\{ tx\('未记录', 'Not Recorded'\) \}\}/)
+  assert.match(preview, /v-if="!overLimitRecorded"[^>]*>\{\{ tx\('未记录', 'Not Recorded'\) \}\}/)
+})
+
+test('background detection is user-controlled and page teardown never stops the service', () => {
+  const mounted = detector.match(/onMounted\(async \(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+  const unmounted = detector.match(/onBeforeUnmount\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+  assert.doesNotMatch(mounted, /RuntimeLoadoutDetectorStart/)
+  assert.match(detector, /@click="startDetector"/)
+  assert.match(detector, /@click="stopDetector"/)
+  assert.doesNotMatch(unmounted, /RuntimeLoadoutDetectorStop/)
 })

@@ -1,8 +1,11 @@
 package backend
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +19,7 @@ const (
 	loadoutShareLegacyVersion = 1
 	loadoutShareVersion       = 11
 	loadoutShareMaxSize       = 1024 * 1024
+	loadoutSharePNGMaxSize    = 32 * 1024 * 1024
 )
 
 // LoadoutShareSigil 使用“因子本体 + 等级 + 主副词条 + 词条等级”指纹。
@@ -299,6 +303,7 @@ type LoadoutImportDraft struct {
 	ApplyPayload      *LoadoutImportApplyPayload `json:"applyPayload,omitempty"`
 	Missing           []string                   `json:"missing"`
 	MissingByScope    map[string][]string        `json:"missingByScope,omitempty"`
+	Warnings          []string                   `json:"warnings,omitempty"`
 	Capabilities      LoadoutImportCapabilities  `json:"capabilities"`
 }
 
@@ -308,6 +313,19 @@ func (draft *LoadoutImportDraft) addMissing(scope, message string) {
 		draft.MissingByScope = make(map[string][]string)
 	}
 	draft.MissingByScope[scope] = append(draft.MissingByScope[scope], message)
+}
+
+func (draft *LoadoutImportDraft) addWarning(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	for _, existing := range draft.Warnings {
+		if existing == message {
+			return
+		}
+	}
+	draft.Warnings = append(draft.Warnings, message)
 }
 
 func loadoutShareEquippedWeaponConstruction(share *LoadoutShare) (*LoadoutShareProgressionWeapon, error) {
@@ -674,6 +692,42 @@ func loadoutShareConstructedSigil(cat *Catalog, want LoadoutShareSigil, index in
 	return draft, nil
 }
 
+func loadoutShareConstructedSigilForImport(cat *Catalog, want LoadoutShareSigil, index int) (LoadoutConstructedSigil, string, error) {
+	draft, err := loadoutShareConstructedSigil(cat, want, index)
+	if err == nil {
+		return draft, "", nil
+	}
+
+	secondaryText := strings.TrimSpace(want.SecondaryTraitHash)
+	if secondaryText == "" {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	secondaryHash, parseErr := ParseHashHex(secondaryText)
+	if parseErr != nil || secondaryHash == 0 || secondaryHash == EmptyHash {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	secondary := cat.LookupTraitByHash(secondaryHash)
+	if secondary == nil {
+		return LoadoutConstructedSigil{}, "", err
+	}
+
+	cleared := want
+	cleared.SecondaryTraitHash = ""
+	cleared.SecondaryTraitLevel = 0
+	repaired, repairedErr := loadoutShareConstructedSigil(cat, cleared, index)
+	if repairedErr != nil {
+		return LoadoutConstructedSigil{}, "", err
+	}
+	warning := fmt.Sprintf(
+		runtimePatchMonitorText(
+			"因子第 %d 格「%s」的副词条「%s」不是合法组合，在游戏中不会生效，并会被游戏自动替换成其他词条；导入草稿已自动清空该副词条，不会写入。",
+			"Sigil slot %d \"%s\" has an incompatible secondary trait \"%s\". It will not take effect in-game and the game will replace it with another trait. The import draft cleared it automatically and will not write it.",
+		),
+		index+1, repaired.Item.SigilName, cnTrait(secondary.DisplayName),
+	)
+	return repaired, warning, nil
+}
+
 func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*LoadoutImportDraft, error) {
 	if share == nil || share.Format != loadoutShareFormat || share.Version < loadoutShareLegacyVersion || share.Version > loadoutShareVersion {
 		return nil, fmt.Errorf("不是受支持的单套配装文件（需要 %s v%d..v%d）", loadoutShareFormat, loadoutShareLegacyVersion, loadoutShareVersion)
@@ -895,11 +949,12 @@ func resolveLoadoutShare(path, expectCharaHash string, share *LoadoutShare) (*Lo
 		if indexedSigils {
 			index = *want.Index
 		}
-		constructed, err := loadoutShareConstructedSigil(cat, want, index)
+		constructed, warning, err := loadoutShareConstructedSigilForImport(cat, want, index)
 		if err != nil {
 			return nil, err
 		}
 		draft.ConstructedSigils = append(draft.ConstructedSigils, constructed)
+		draft.addWarning(warning)
 	}
 
 	for _, skill := range share.Skills {
@@ -938,6 +993,64 @@ func safeLoadoutFilename(name string) string {
 		return "GBFR配装"
 	}
 	return name
+}
+
+func decodeLoadoutSharePNG(dataURL string) ([]byte, error) {
+	const prefix = "data:image/png;base64,"
+	if !strings.HasPrefix(dataURL, prefix) {
+		return nil, fmt.Errorf("分享图数据不是 PNG")
+	}
+	encoded := strings.TrimSpace(strings.TrimPrefix(dataURL, prefix))
+	if encoded == "" || len(encoded) > base64.StdEncoding.EncodedLen(loadoutSharePNGMaxSize) {
+		return nil, fmt.Errorf("分享图数据为空或超过 32 MiB")
+	}
+	payload, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("分享图数据损坏: %w", err)
+	}
+	if len(payload) == 0 || len(payload) > loadoutSharePNGMaxSize {
+		return nil, fmt.Errorf("分享图数据为空或超过 32 MiB")
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("分享图不是有效 PNG: %w", err)
+	}
+	validSize := (config.Width == 1920 && config.Height == 1080) ||
+		(config.Width == 1440 && config.Height == 1920) ||
+		(config.Width == 1600 && config.Height == 1600)
+	if !validSize {
+		return nil, fmt.Errorf("分享图尺寸 %dx%d 不受支持", config.Width, config.Height)
+	}
+	return payload, nil
+}
+
+// SaveLoadoutSharePNG uses the native Wails save dialog because WebView2 may
+// reject an async <a download> click after the canvas renderer has yielded.
+func (a *App) SaveLoadoutSharePNG(defaultName, dataURL string) (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("Wails 上下文未初始化")
+	}
+	payload, err := decodeLoadoutSharePNG(dataURL)
+	if err != nil {
+		return "", err
+	}
+	filename := safeLoadoutFilename(strings.TrimSuffix(strings.TrimSpace(defaultName), ".png")) + ".png"
+	outputPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "保存配装分享图",
+		DefaultFilename: filename,
+		Filters:         []runtime.FileFilter{{DisplayName: "PNG 图片 (*.png)", Pattern: "*.png"}},
+	})
+	if err != nil || outputPath == "" {
+		return outputPath, err
+	}
+	outputPath = filepath.Clean(outputPath)
+	if !strings.EqualFold(filepath.Ext(outputPath), ".png") {
+		outputPath += ".png"
+	}
+	if err := writeFileAtomicVerified(outputPath, payload); err != nil {
+		return "", err
+	}
+	return outputPath, nil
 }
 
 func marshalLoadoutShare(share *LoadoutShare) ([]byte, error) {
@@ -1005,7 +1118,11 @@ func (a *App) LoadoutImport(savePath, expectCharaHash string) (*LoadoutImportDra
 		return nil, fmt.Errorf("Wails 上下文未初始化")
 	}
 	inputPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "导入单套配装", Filters: []runtime.FileFilter{{DisplayName: "GBFR 单套配装 (*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout.json"}},
+		Title: "导入单套配装", Filters: []runtime.FileFilter{
+			{DisplayName: "GBFR 配装文件 (*.gbfr-loadout;*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout;*.gbfr-loadout.json"},
+			{DisplayName: "GBLC 下载配装 (*.gbfr-loadout)", Pattern: "*.gbfr-loadout"},
+			{DisplayName: "GBFR JSON 配装 (*.gbfr-loadout.json)", Pattern: "*.gbfr-loadout.json"},
+		},
 	})
 	if err != nil || inputPath == "" {
 		return nil, err
@@ -1021,9 +1138,16 @@ func (a *App) LoadoutImport(savePath, expectCharaHash string) (*LoadoutImportDra
 	if err != nil {
 		return nil, err
 	}
-	share, err := unmarshalLoadoutShare(payload)
+	share, err := decodeLoadoutShareFile(payload)
 	if err != nil {
-		return nil, fmt.Errorf("配装 JSON 无效: %w", err)
+		return nil, fmt.Errorf("配装文件无效: %w", err)
 	}
 	return resolveLoadoutShare(savePath, expectCharaHash, share)
+}
+
+func decodeLoadoutShareFile(payload []byte) (*LoadoutShare, error) {
+	if len(payload) >= len(loadoutShareCodeFrameMagic) && string(payload[:len(loadoutShareCodeFrameMagic)]) == loadoutShareCodeFrameMagic {
+		return decodeLoadoutShareFrame(payload)
+	}
+	return unmarshalLoadoutShare(payload)
 }

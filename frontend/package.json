@@ -1,21 +1,32 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.92.0",
+  "version": "2.0.3",
   "type": "module",
   "scripts": {
+    "assets:generate": "node scripts/generate_function_assets.mjs",
+    "predev": "npm run assets:generate",
     "dev": "vite",
+    "dev:wails": "vite",
+    "prebuild": "npm run assets:generate",
     "build": "vite build",
-    "preview": "vite preview"
+    "check:bundle": "node ../tools/measure_frontend_bundle.mjs --dist dist --budget ../tools/performance-budget.json --enforce",
+    "check:runtime-stress": "node ../tools/qa_runtime_stress.mjs --budget ../tools/performance-budget.json --enforce",
+    "preview": "vite preview",
+    "test": "npm run assets:generate && node --test src/*.test.js ../tools/*.test.js"
   },
   "dependencies": {
     "base32768": "^5.0.1",
+    "html-to-image": "^1.11.13",
+    "jsqr": "^1.4.0",
     "opencc-js": "^1.4.1",
     "pinyin-pro": "^3.27.0",
+    "qrcode": "^1.5.4",
     "vue": "^3.2.37"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",
+    "sharp": "^0.35.3",
     "vite": "^8.1.5"
   }
 }

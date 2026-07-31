@@ -429,6 +429,44 @@ func TestRuntimePatchPartyLoadoutRejectsCharacterAndWeaponOwnerMismatch(t *testi
 	}
 }
 
+func TestRuntimePatchPartyLoadoutRejectsRecordFromAnotherPartySlot(t *testing.T) {
+	memory, moduleBase := newRuntimePatchPartyFixture(t)
+	// Slot 1 deliberately points at a record tagged as the local player.
+	secondEntity := uintptr(0x22000000)
+	secondSpecified := secondEntity + 0x10000
+	memory.putU32(secondSpecified+0x30000+0x22C, 0)
+	snapshot, err := readRuntimePatchPartySnapshot(memory, moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := snapshot.Result.Entities[1]
+	if member.Loadout == nil || member.Loadout.Available || member.Capabilities.Loadout {
+		t.Fatalf("cross-slot loadout was accepted: %+v", member.Loadout)
+	}
+	if !strings.Contains(strings.ToLower(member.Loadout.UnavailableReason), "party index") {
+		t.Fatalf("unexpected cross-slot rejection: %q", member.Loadout.UnavailableReason)
+	}
+}
+
+func TestRuntimePatchPartyLoadoutRejectsUnassignedOnlineRecord(t *testing.T) {
+	memory, moduleBase := newRuntimePatchPartyFixture(t)
+	entity := uintptr(0x22000000)
+	specified := entity + 0x10000
+	memory.putU32(specified+0x30000+0x1C8, 1)
+	memory.putU32(specified+0x30000+0x22C, 0xFF)
+	snapshot, err := readRuntimePatchPartySnapshot(memory, moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := snapshot.Result.Entities[1]
+	if member.Loadout == nil || member.Loadout.Available || member.Capabilities.Loadout {
+		t.Fatalf("unassigned online loadout was accepted: %+v", member.Loadout)
+	}
+	if !strings.Contains(strings.ToLower(member.Loadout.UnavailableReason), "online") {
+		t.Fatalf("unexpected online identity rejection: %q", member.Loadout.UnavailableReason)
+	}
+}
+
 func TestRuntimePatchPartyLoadoutSupportsVerifiedIndirectSpecifiedInstanceCandidate(t *testing.T) {
 	memory := newFakeRuntimePanelMemory()
 	entity := uintptr(0x31000000)
@@ -697,6 +735,23 @@ func TestReadStableRuntimePatchPartySnapshotsRejectsTopologyChanges(t *testing.T
 	})
 	if err == nil || (!strings.Contains(err.Error(), "拓扑") && !strings.Contains(strings.ToLower(err.Error()), "topology")) {
 		t.Fatalf("topology change error=%v", err)
+	}
+}
+
+func TestReadStableRuntimePatchPartySnapshotsRejectsOnlineIdentityChanges(t *testing.T) {
+	topology := runtimePatchPartyTopology{Root: 0x100, Entities: [5]uintptr{1, 2, 3, 4, 5}}
+	makeFrame := func(hash uint32) runtimePatchPartySnapshot {
+		return runtimePatchPartySnapshot{Topology: topology, Result: RuntimePatchPartyMonitor{Entities: []RuntimePatchPartyEntity{{Role: "party1", Loadout: &RuntimePatchPartyLoadout{Available: true, Online: true, PartyIndex: 1, CharacterCode: "PL1600", Weapon: RuntimePatchPartyWeapon{Hash: hash}, Sigils: []RuntimePatchPartySigil{{Index: 0, Hash: 0x1000 + hash, Level: 15}}}}}}}
+	}
+	frames := []runtimePatchPartySnapshot{makeFrame(1), makeFrame(2), makeFrame(2)}
+	index := 0
+	_, err := readStableRuntimePatchPartySnapshots(func() (runtimePatchPartySnapshot, error) {
+		frame := frames[index]
+		index++
+		return frame, nil
+	})
+	if err == nil || (!strings.Contains(err.Error(), "身份") && !strings.Contains(strings.ToLower(err.Error()), "identity")) {
+		t.Fatalf("identity change error=%v", err)
 	}
 }
 

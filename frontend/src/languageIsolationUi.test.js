@@ -38,6 +38,86 @@ test('the title-record shell has exact English copy instead of mixed substring t
   assert.match(uiTranslations, /'称号记录': 'Title Records'/)
 })
 
+test('the full home shell uses exact English copy instead of substring hybrids', () => {
+  for (const text of [
+    'GBFR 存档修改工具',
+    '最大化或还原',
+    '改存档：先',
+    '完全退出游戏',
+    '；游戏内实时改：先',
+    '启动并进入游戏',
+    '。同一份存档，两种方式别同时用。',
+    '斗',
+    '角',
+    '任',
+    '证',
+    '存档修改',
+    '退出游戏后离线改存档文件，可批量、可回滚',
+    '配装预设',
+    '查看与写入配装、因子加成模拟',
+    '因子修改',
+    '批量生成因子与合法性校验',
+    '召唤石存档修改',
+    '改',
+    '配',
+    '运',
+    '存档与配装（离线）',
+    '完全退出游戏后编辑；保存前自动备份，写入后回读',
+    '游戏内即时编辑',
+    '先启动并连接游戏，再修改当前选中的装备或会话资源',
+    '配装采集与复刻',
+    '检测不会默认开启；点击后可持续后台采集',
+    '单机运行时工具',
+    '按需主动开启；切页后保持运行，停用时安全恢复',
+    '祝福石即时编辑',
+    '配装录制与复刻',
+    '引用真实库存实例的额外运行时槽位',
+    '战斗规则补丁',
+    '角色机制补丁',
+    '内存监测',
+    '角色配装检测',
+    '公式采样',
+    '游戏文件、诊断与设置',
+  ]) {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = uiTranslations.match(new RegExp(`'${escaped}': '([^']+)'`))
+    assert.ok(match, `missing shell translation: ${text}`)
+    assert.doesNotMatch(match[1], /[\u3400-\u9fff]/u)
+  }
+})
+
+test('tool metadata and image descriptions use complete English translations', () => {
+  for (const text of [
+    '物品与武器（存档修改）',
+    '因子修改（存档修改）',
+    '因子配装·实时录制/复刻',
+    '记录角色当前的 12 个因子并导出分享，也可把配装文件逐项复刻到备用因子。（改的是游戏内因子；写存档配装预设请用「配装预设」。）',
+    '祝福修改（存档修改）',
+    '召唤石添加 / 修改（存档）',
+    '在存档中新增召唤石，或原子修改已有记录的种类、主加护、副词条、等级和状态字段，写后重新打开存档验证。',
+    '不会替未进入 DLC 的存档强开召唤系统；更换种类时会重建物品 SlotID 并迁移已装备引用。',
+    '捕获游戏内当前选中的祝福石记录，并以一次事务核对、写入三条词条。',
+    '常驻记录任务队伍配装，并提供选中物品读取、稳定坐标诊断和受限的一次性传送实验。',
+    '队伍记录与物品读取保持只读；空间坐标写入和重力抑制仅限离线/单机，并且需要逐项确认。穿墙/无碰撞仍未开放。',
+    '存档实验室',
+    '双存档只读研究',
+    '逐条比较两份存档的逻辑记录，按类型、ID、位置和内容哈希定位差异，并导出不含路径与原始值的脱敏证据。',
+    '未知字段只显示结构与哈希，不提供猜测写入。',
+    '在一个位置查看工具版本、游戏文件和功能适配状态。',
+    '识别游戏 EXE、创建原始文件备份并一键恢复。',
+    '镜头 · 内置运行时',
+    '运行时配装 · 内置 Hook',
+  ]) {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = uiTranslations.match(new RegExp(`'${escaped}': '([^']+)'`))
+    assert.ok(match, `missing complete tool translation: ${text}`)
+    assert.doesNotMatch(match[1], /[\u3400-\u9fff]/u)
+  }
+
+  const i18n = readFileSync(new URL('./i18n.js', import.meta.url), 'utf8')
+  assert.match(i18n, /const translatedAttributes = \['placeholder', 'title', 'aria-label', 'alt'\]/)
+})
+
 test('new freeform factor and inferred mastery copy has exact English translations', () => {
   for (const text of [
     '主方向由已点节点自动推导',
@@ -89,6 +169,8 @@ test('selective loadout import and first-sigil capture have exact English copy',
     '导入文件后会先选择写入范围。因子、技能、专精、装备武器、祝福、召唤石与上限突破可任意多选；当前武器强化、角色强化进度和整组武器收藏默认不改，只有明确勾选才会覆盖。',
     '已载入导入草稿',
     '取消导入草稿',
+    '已自动修正无效副词条',
+    '已载入所选草稿并自动修正：%s',
   ]) {
     assert.match(uiTranslations, new RegExp(`'${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}': '[^']+'`))
   }

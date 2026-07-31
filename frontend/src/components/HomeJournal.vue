@@ -4,37 +4,47 @@ import journalScene from '../assets/gbfr/journal-scene-4k.webp'
 defineProps({ version: { type: String, default: '—' } })
 const emit = defineEmits(['open', 'warm'])
 
-// 首页把只读内存监测单列，避免与存档修改或运行时注入混淆。
 const groups = [
   {
-    id: 'save', mark: '档', label: '存档修改', hint: '退出游戏后离线改存档文件，可批量、可回滚',
+    id: 'save', mark: '档', label: '存档与配装（离线）', hint: '完全退出游戏后编辑；保存前自动备份，写入后回读',
     items: [
-      { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看与写入配装、因子加成模拟' },
-      { id: 'sigil', icon: '◇', title: '因子修改', copy: '批量生成因子与合法性校验' },
-      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '素材、武器等级与养成资源' },
-      { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '生成祝福石与三条词条' },
-      { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增召唤石，或原子修改已有实例' },
+      { id: 'loadoutPresets', icon: '❖', title: '配装预设', copy: '查看整套配装，手动编辑或按技能目标配因子' },
+      { id: 'sigil', icon: '◇', title: '因子修改', copy: '给存档新增、批量生成或删除因子' },
+      { id: 'wrightstone', icon: '✦', title: '祝福修改', copy: '给存档新增祝福石并设置三条技能' },
+      { id: 'summonSave', icon: '☾', title: '召唤石存档修改', copy: '新增召唤石，或修改已有实例和装备引用' },
+      { id: 'progression', icon: '⚔', title: '物品与武器', copy: '补素材，调整数量、武器等级与强化进度' },
+      { id: 'saveDiff', icon: '⇄', title: '存档对比与复制', copy: '并排找差异，直接把右侧记录复制到左侧或反向复制' },
     ],
   },
   {
-    id: 'memory', mark: '注', label: '内存注入', hint: '连接运行中的游戏改进程内存，实时生效',
+    id: 'memory', mark: '改', label: '游戏内即时编辑', hint: '先启动并连接游戏，再修改当前选中的装备或会话资源',
     items: [
-      { id: 'runtime', icon: '✧', title: '游戏内实时修改', copy: '金币、MSP、药水、素材与任务掉落' },
-      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '改游戏中当前选中的因子' },
-      { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '改游戏中当前选中的祝福石' },
-      { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '记录、分享并逐项复刻十二个因子' },
-      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '因子、副参数与等级' },
-      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '四个能力槽的突破值' },
+      { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '读取并修改游戏里当前高亮的因子' },
+      { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '读取并修改游戏里当前高亮的祝福石' },
+      { id: 'summon', icon: '☾', title: '召唤石修改', copy: '修改当前召唤石的技能、副参数与等级' },
+      { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '读取突破结果页并保存四项能力值' },
+      { id: 'runtime', icon: '✧', title: '货币、素材与任务掉落', copy: '调整当前会话的金币、MSP、素材与掉落功能' },
+    ],
+  },
+  {
+    id: 'loadoutFlow', mark: '配', label: '配装采集与复刻', hint: '检测不会默认开启；点击后可持续后台采集',
+    items: [
+      { id: 'runtimeMonitor', icon: '队', title: '队友配装持续检测', copy: '点击开启后持续后台归档稳定队伍配装' },
+      { id: 'loadout', icon: '❖', title: '配装录制与复刻', copy: '逐颗记录十二个因子，导出分享或写到备用因子' },
+    ],
+  },
+  {
+    id: 'runtimeTools', mark: '运', label: '单机运行时工具', hint: '按需主动开启；切页后保持运行，停用时安全恢复',
+    items: [
+      { id: 'runtimeQOL', icon: '显', title: '显示与房间工具', copy: '精确显示、房间 ID 与主线队长替换' },
+      { id: 'virtualSigils', icon: '◇', title: '虚拟因子槽', copy: '运行时读取额外库存因子，不扩存档十二槽' },
+      { id: 'audioMixer', icon: '声', title: '角色语音混音台', copy: '按角色调整后续语音与界面音效音量' },
+      { id: 'camera', icon: '镜', title: '城镇镜头工坊', copy: '调整城镇镜头距离、高度与滚轮缩放' },
+      { id: 'spatialTools', icon: '标', title: '坐标与移动工具', copy: '离线使用书签、传送、世界轴移动和重力控制' },
       { id: 'patchCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'patchCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'patchQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
-    ],
-  },
-  {
-    id: 'monitor', mark: '测', label: '内存监测', hint: '只读读取运行中游戏数据，不修改物品或存档',
-    items: [
-      { id: 'runtimeMonitor', icon: '测', title: '角色配装检测', copy: '后台自动归档每场任务的队伍配装' },
-      { id: 'formulaSampler', icon: '证', title: '公式采样', copy: '单变量 A/B/A/B 角色面板证据' },
+      { id: 'monster', icon: '怪', title: '怪物倍率与状态控制', copy: '离线实验怪物倍率、昏厥与 Overdrive 状态' },
     ],
   },
 ]
@@ -56,7 +66,7 @@ const groups = [
           <section v-for="group in groups" :key="group.id" class="home-group">
             <div class="home-group-head"><span class="home-group-mark">{{ group.mark }}</span><div><strong>{{ group.label }}</strong><small>{{ group.hint }}</small></div></div>
             <div class="home-group-items">
-              <button v-for="item in group.items" :key="item.id" class="chapter-ribbon ui-card" @pointerenter="emit('warm', item.id)" @focus="emit('warm', item.id)" @click="emit('open', item.id)">
+              <button v-for="item in group.items" :key="item.id" class="chapter-ribbon ui-card" @pointerenter="emit('warm', item.id)" @pointerdown="emit('warm', item.id)" @focus="emit('warm', item.id)" @click="emit('open', item.id)">
                 <span class="chapter-icon">{{ item.icon }}</span>
                 <span><strong>{{ item.title }}</strong><small>{{ item.copy }}</small></span>
                 <b>›</b>
@@ -66,7 +76,7 @@ const groups = [
         </nav>
 
         <div class="small-tabs">
-          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'compatibility')" @focus="emit('warm', 'compatibility')" @click="emit('open', 'compatibility')"><i>⚙</i>工具与设置</button>
+          <button class="ui-btn is-ghost is-sm" @pointerenter="emit('warm', 'naturalDrop')" @pointerdown="emit('warm', 'naturalDrop')" @focus="emit('warm', 'naturalDrop')" @click="emit('open', 'naturalDrop')"><i>⚙</i>游戏文件、诊断与设置</button>
           <span>工具版本 {{ version }}</span>
         </div>
       </div>

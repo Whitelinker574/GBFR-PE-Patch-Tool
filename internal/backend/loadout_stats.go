@@ -1099,9 +1099,13 @@ func (a *App) loadoutSimulateBuildFromLoaded(path, charaHex string, weaponSlotID
 		panelInput.Warnings = append(panelInput.Warnings, weapon.Warnings...)
 	}
 	finalStats := calculateLoadoutFinalStats(panelInput)
+	combatReference, referenceErr := selectedRuntimeCombatReference(ownerCode)
+	if referenceErr != nil {
+		finalStats.Warnings = append(finalStats.Warnings, referenceErr.Error())
+	}
 	result := &LoadoutSimulation{
 		Totals: totals, DynamicTotals: dynamicTotals, Bonuses: bonuses, FinalStats: &finalStats,
-		Weapon: weapon,
+		CombatReference: combatReference, Weapon: weapon,
 	}
 	if weapon != nil {
 		result.WeaponSkills = append([]LoadoutWeaponSkill(nil), weapon.Skills...)

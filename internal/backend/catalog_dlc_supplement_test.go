@@ -72,6 +72,134 @@ func TestDLCSupplementCelestialSigilsReachSaveAndLoadoutConstructors(t *testing.
 	}
 }
 
+func TestCommunityRouteExactRuntimeShellsReachUnifiedCatalog(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fatebreaker, err := catalog.RequireSigil("MEMORY_SIGIL_5BF84FD1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fatebreakerPrimary, err := catalog.RequireTrait(fatebreaker.PrimaryTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fatebreakerPrimary.Hash != "0xD029FE08" {
+		t.Fatalf("Fatebreaker primary hash = %s; want 0xD029FE08", fatebreakerPrimary.Hash)
+	}
+
+	ventus, err := catalog.RequireSigil("MEMORY_SIGIL_9300FADB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ventusPrimary, err := catalog.RequireTrait(ventus.PrimaryTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ventusPrimary.Hash != "0x73220725" {
+		t.Fatalf("Celestial Ventus primary hash = %s; want 0x73220725", ventusPrimary.Hash)
+	}
+	hasLumenSecondary := false
+	for _, traitID := range ventus.AllowedSecondaryTraitIDs {
+		if traitID == "MEMORY_TRAIT_A7726190" {
+			hasLumenSecondary = true
+			break
+		}
+	}
+	if !hasLumenSecondary {
+		t.Fatal("Celestial Ventus V+ does not expose the recorded Celestial Lumen secondary")
+	}
+}
+
+func TestPreciseWrathVPlusRuntimeHashUsesTheUnifiedCatalog(t *testing.T) {
+	previousLanguage := getCurrentLanguage()
+	setCurrentLanguage("zh")
+	defer setCurrentLanguage(previousLanguage)
+
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sigilHash = uint32(0xCE6C62CF)
+	sigil := catalog.LookupSigilByHash(sigilHash)
+	if sigil == nil {
+		t.Fatal("2.0.2 runtime factor 0xCE6C62CF is missing from the unified catalog")
+	}
+	if got := displaySigilName(sigil); got != "怒发冲冠 V+" {
+		t.Fatalf("0xCE6C62CF display name=%q; want official 2.0.2 name 怒发冲冠 V+", got)
+	}
+	primary, err := catalog.RequireTrait(sigil.PrimaryTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	primaryHash, err := ParseHashHex(primary.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primaryHash != 0x7EDD69D0 {
+		t.Fatalf("0xCE6C62CF primary hash=0x%08X; want Precise Wrath 0x7EDD69D0", primaryHash)
+	}
+	if !supportsGeneratedPlusSigil(sigil) {
+		t.Fatal("the official V+ shell must expose its secondary-trait slot")
+	}
+	secondary := catalog.LookupTraitByHash(0xDC584F60) // Damage Cap
+	if secondary == nil {
+		t.Fatal("test catalog is missing Damage Cap")
+	}
+	if err := validateSigilMemoryUpdate(catalog, SigilMemoryUpdate{
+		SigilHash:           sigilHash,
+		SigilLevel:          15,
+		PrimaryTraitHash:    primaryHash,
+		PrimaryTraitLevel:   15,
+		SecondaryTraitHash:  0xDC584F60,
+		SecondaryTraitLevel: 15,
+	}); err != nil {
+		t.Fatalf("official Precise Wrath V+ combination was rejected: %v", err)
+	}
+	if err := validateSigilMemoryUpdate(catalog, SigilMemoryUpdate{
+		SigilHash:           sigilHash,
+		SigilLevel:          15,
+		PrimaryTraitHash:    primaryHash,
+		PrimaryTraitLevel:   15,
+		SecondaryTraitHash:  0xF26BAEA5, // Divergence is a summon trait, not a type-lot-15 sigil secondary.
+		SecondaryTraitLevel: 15,
+	}); err == nil {
+		t.Fatal("the invalid live Precise Wrath V+ + Divergence combination was accepted")
+	}
+
+	divergence := catalog.LookupTraitByHash(0xF26BAEA5)
+	if divergence == nil {
+		t.Fatal("test catalog is missing the captured Divergence trait")
+	}
+	invalidItem := QueueItem{
+		SigilID: sigil.InternalID, SigilName: displaySigilName(sigil), Level: 15,
+		PrimaryTraitID: primary.InternalID, PrimaryLevel: 15,
+		SecondaryTraitID: divergence.InternalID, SecondaryLevel: 15,
+		Quantity: 1,
+	}
+	report, err := (&SigilGen{catalog: catalog}).CheckLegality(invalidItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Writable {
+		t.Fatalf("offline save factor editor accepted Precise Wrath V+ + Divergence: %+v", report)
+	}
+	if _, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{Index: 0, Item: invalidItem}); err == nil {
+		t.Fatal("loadout factor constructor accepted Precise Wrath V+ + Divergence")
+	}
+	if _, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{
+		Index:                   0,
+		ExactSigilHash:          "CE6C62CF",
+		ExactPrimaryTraitHash:   "7EDD69D0",
+		ExactSecondaryTraitHash: "F26BAEA5",
+		Item:                    invalidItem,
+	}); err == nil {
+		t.Fatal("exact loadout transport bypassed the known Precise Wrath V+ compatibility rules")
+	}
+}
+
 func TestDLCSupplementSupplementalBlessingTraitsReachSaveAndMemoryEditors(t *testing.T) {
 	catalog, err := LoadWrightstoneCatalog()
 	if err != nil {

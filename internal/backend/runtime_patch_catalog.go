@@ -11,12 +11,17 @@ import (
 )
 
 const (
-	runtimePatchCatalogSchemaVersion  = 3
-	runtimePatchCatalogGameVersion    = "2.0.2"
-	runtimePatchCatalogGameSHA256     = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
-	runtimePatchCatalogFeatureCount   = 58
-	runtimePatchDamageCapConflictName = "damage-cap-display"
+	runtimePatchCatalogSchemaVersion   = 3
+	runtimePatchCatalogGameVersion     = "2.0.2"
+	runtimePatchCatalogGameSHA256      = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
+	runtimePatchCatalogFeatureCount    = 59
+	runtimePatchDamageCapConflictName  = "damage-cap-display"
+	stableReleaseCandidateWriteEnabled = false
 )
+
+func runtimePatchFeatureAvailableInStableRelease(feature RuntimePatchFeature) bool {
+	return stableReleaseCandidateWriteEnabled || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(feature.EvidenceLevel)), "candidate_")
+}
 
 //go:embed data/runtime_patch_catalog.json
 var runtimePatchCatalogJSON []byte

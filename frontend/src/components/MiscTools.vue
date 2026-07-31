@@ -40,7 +40,7 @@ const runtimeCatalog = computed(() => {
     resources: [
       ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
-      ['素材不消耗', '强化、练成期间临时阻止素材变化', '已适配'],
+      ['素材不消耗', '只阻止素材扣减；正向获得路径待实机核对', '实验候选'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
     mission: [
@@ -279,7 +279,7 @@ function setCurrency(item) {
   if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
   if (String(currencyInputs[item.id] ?? '').trim() === '') { emit('status', '数值不能为空', 'error'); return }
   const value = Number(currencyInputs[item.id])
-  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
+  if (!Number.isInteger(value) || value < 0 || value > 999) { emit('status', '药水请输入 0 到 999 之间的整数', 'error'); return }
   currencyLoading.value = true
   CurrencySetOneOwned(connectionOwnerToken, item.id, value)
     .then((updated) => {
@@ -408,11 +408,12 @@ onBeforeUnmount(() => {
             <div v-for="item in potions" :key="item.id" class="currency-row">
               <div class="currency-name">{{ item.name }}</div>
               <div class="currency-meta">{{ formatInt(item.value) }} · {{ formatHex(item.rva) }} + {{ formatOffsets(item.offsets) }}</div>
-              <input v-model="potionInputs[item.id]" type="number" min="0" max="2147483647" step="1" class="batch-input currency-input ui-input" />
-              <button class="btn-max ui-btn is-sm" @click="potionInputs[item.id]='2147483647'">最大</button>
+              <input v-model="potionInputs[item.id]" type="number" min="0" max="999" step="1" class="batch-input currency-input ui-input" />
+              <button class="btn-max ui-btn is-sm" @click="potionInputs[item.id]='999'">最大</button>
               <button class="btn-batch ui-btn is-primary is-sm" @click="setPotion(item)" :disabled="potionLoading">写入</button>
             </div>
           </div>
+          <p v-if="!potions.length" class="ui-empty">药水数据尚未就绪。进入副本并等待角色可操作后，再刷新读取。</p>
           <div class="memory-row">
             <button class="btn-refresh ui-btn" @click="loadPotionValues" :disabled="potionLoading">刷新药水</button>
           </div>
@@ -421,10 +422,10 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: materialConsumeStatus.enabled }">
           <div class="memory-header">
             <span class="memory-title">素材不消耗</span>
-            <span class="info-dot" title="开启后材料数量不会减少；同一指令也会阻止材料增加。">!</span>
+            <span class="info-dot" title="条件 Hook 已通过安装、回读和恢复测试；实际扣减与正向获得仍需游戏内分别核对。">!</span>
             <span class="memory-hint">校验 RVA，失效时 AOB 重定位</span>
           </div>
-          <p class="feature-help">用途：强化或练成时让素材数量不减少；同一指令也会阻止素材增加，因此用完立刻恢复，开启时不要进入副本。</p>
+          <p class="feature-help">用途：强化或练成时尝试只跳过素材扣减。代码已验证安装、回读与恢复；任务奖励、拾取和药水等正向获得是否不受影响仍待实机验收。离开本页或退出工具时会尝试恢复原始指令。</p>
           <p v-if="inventorySet45Enabled" class="feature-help waiting">小钳蟹数量钩子正在占用同一指令地址；先恢复小钳蟹功能，才能切换素材不消耗。</p>
           <div class="memory-info">
             <span>RVA: {{ formatHex(materialConsumeStatus.rva) }}</span>
@@ -495,8 +496,8 @@ onBeforeUnmount(() => {
       </template>
       <div v-else class="preflight-grid ui-card-grid">
         <article v-for="item in runtimeCatalog" :key="item[0]" class="ui-card ui-panel is-compact">
-          <div><strong>{{ item[0] }}</strong><p>{{ item[1] }}</p></div>
-          <span :class="{ waiting: item[2] === '等待适配' }">{{ item[2] }}</span>
+          <div class="preflight-copy"><strong>{{ item[0] }}</strong><p>{{ item[1] }}</p></div>
+          <span class="preflight-status" :class="{ waiting: item[2] === '等待适配' }">{{ item[2] }}</span>
         </article>
         <div class="empty ui-empty">连接游戏进程后显示读取值和操作按钮</div>
       </div>
@@ -578,17 +579,25 @@ onBeforeUnmount(() => {
 
 .preflight-grid {
   --ui-grid-min:260px;
+  width:min(100%,960px);
+  margin-inline:auto;
+  grid-template-columns:repeat(2,minmax(0,1fr));
 }
 
 .preflight-grid article {
   display:flex;
-  min-height:76px;
-  align-items:center;
-  justify-content:space-between;
-  gap:var(--space-4);
+  min-height:112px;
+  align-items:flex-start;
+  justify-content:flex-start;
+  gap:var(--space-3);
   border-color:var(--border-default);
   border-radius:var(--radius-md);
   background:var(--surface-card-pop);
+  text-align:left;
+}
+
+.preflight-copy {
+  width:100%;
 }
 
 .preflight-grid strong {
@@ -604,7 +613,12 @@ onBeforeUnmount(() => {
   line-height:var(--lh-normal);
 }
 
-.preflight-grid article > span {
+.preflight-status {
+  display:inline-flex;
+  min-height:26px;
+  margin-top:auto;
+  align-items:center;
+  justify-content:flex-start;
   flex:0 0 auto;
   padding:var(--space-1) var(--space-2);
   border:1px solid var(--border-default);
@@ -614,7 +628,7 @@ onBeforeUnmount(() => {
   font-size:var(--fs-xs);
 }
 
-.preflight-grid article > span.waiting {
+.preflight-status.waiting {
   border-color:var(--warning);
   background:var(--warning-bg);
   color:var(--warning-ink);
@@ -805,6 +819,10 @@ onBeforeUnmount(() => {
 }
 
 @container runtime-page (max-width:480px) {
+  .preflight-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+
   .header {
     align-items:flex-start;
   }

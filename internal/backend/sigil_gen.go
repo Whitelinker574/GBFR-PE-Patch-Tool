@@ -3,9 +3,11 @@ package backend
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -15,19 +17,20 @@ import (
 // ── 前端交互数据结构 ──
 
 type SigilInfo struct {
-	InternalID              string `json:"internalId"`
-	Hash                    string `json:"hash"`
-	DisplayName             string `json:"displayName"`
-	Category                string `json:"category"`
-	Verified                bool   `json:"verified"`
-	Constructible           bool   `json:"constructible"`
-	SupportsSecondaryTrait  bool   `json:"supportsSecondaryTrait"`
-	AllowedSigilLevels      []int  `json:"allowedSigilLevels"`
-	DefaultSigilLevel       int    `json:"defaultSigilLevel"`
-	PrimaryTraitID          string `json:"primaryTraitId"`
-	PrimaryTraitName        string `json:"primaryTraitName"`
-	AllowedFirstTraitLevels []int  `json:"allowedFirstTraitLevels"`
-	FirstTraitMaxLevel      int    `json:"firstTraitMaxLevel"`
+	InternalID              string   `json:"internalId"`
+	Hash                    string   `json:"hash"`
+	DisplayName             string   `json:"displayName"`
+	Category                string   `json:"category"`
+	AllowedOwnerCodes       []string `json:"allowedOwnerCodes,omitempty"`
+	Verified                bool     `json:"verified"`
+	Constructible           bool     `json:"constructible"`
+	SupportsSecondaryTrait  bool     `json:"supportsSecondaryTrait"`
+	AllowedSigilLevels      []int    `json:"allowedSigilLevels"`
+	DefaultSigilLevel       int      `json:"defaultSigilLevel"`
+	PrimaryTraitID          string   `json:"primaryTraitId"`
+	PrimaryTraitName        string   `json:"primaryTraitName"`
+	AllowedFirstTraitLevels []int    `json:"allowedFirstTraitLevels"`
+	FirstTraitMaxLevel      int      `json:"firstTraitMaxLevel"`
 }
 
 type TraitInfo struct {
@@ -36,6 +39,35 @@ type TraitInfo struct {
 	DisplayName   string `json:"displayName"`
 	MaxLevel      int    `json:"maxLevel"`
 	AllowedLevels []int  `json:"allowedLevels"`
+}
+
+type SigilAtlasEntry struct {
+	SigilInfo
+	Source          string      `json:"source"`
+	Confidence      string      `json:"confidence"`
+	TableExact      bool        `json:"tableExact"`
+	SecondaryTraits []TraitInfo `json:"secondaryTraits"`
+}
+
+type SigilAtlas struct {
+	DataVersion string            `json:"dataVersion"`
+	Sigils      []SigilAtlasEntry `json:"sigils"`
+	Traits      []TraitInfo       `json:"traits"`
+}
+
+type SigilAtlasIndexEntry struct {
+	SigilInfo
+	Source                  string   `json:"source"`
+	Confidence              string   `json:"confidence"`
+	TableExact              bool     `json:"tableExact"`
+	SecondaryTraitIndexes   []uint16 `json:"secondaryTraitIndexes,omitempty"`
+	SecondaryTraitMaxLevels []uint16 `json:"secondaryTraitMaxLevels,omitempty"`
+}
+
+type SigilAtlasIndex struct {
+	DataVersion string                 `json:"dataVersion"`
+	Sigils      []SigilAtlasIndexEntry `json:"sigils"`
+	Traits      []TraitInfo            `json:"traits"`
 }
 
 type SaveInfo struct {
@@ -188,6 +220,7 @@ func (sg *SigilGen) GetSigilList() ([]SigilInfo, error) {
 			Hash:                    s.Hash,
 			DisplayName:             displaySigilName(s),
 			Category:                derefStr(s.Category),
+			AllowedOwnerCodes:       append([]string(nil), s.AllowedOwnerCodes...),
 			Verified:                isVerifiedSigilDefinition(s),
 			Constructible:           sg.catalog.IsSigilConstructible(s),
 			SupportsSecondaryTrait:  supportsGeneratedPlusSigil(s),
@@ -223,6 +256,110 @@ func (sg *SigilGen) GetTraitList() ([]TraitInfo, error) {
 			MaxLevel:      derefInt(t.MaxLevel),
 			AllowedLevels: t.AllowedLevels,
 		})
+	}
+	return result, nil
+}
+
+// GetSigilAtlas returns the complete audited catalog in one IPC response. The
+// secondary pool is produced by the same rules used by construction and save
+// writes, so the atlas cannot drift into a separate compatibility language.
+func (sg *SigilGen) GetSigilAtlas() (*SigilAtlas, error) {
+	items, err := sg.GetSigilList()
+	if err != nil {
+		return nil, err
+	}
+	traits, err := sg.GetTraitList()
+	if err != nil {
+		return nil, err
+	}
+
+	sg.mu.Lock()
+	defer sg.mu.Unlock()
+	result := &SigilAtlas{DataVersion: "GBFR 2.0.2", Traits: traits, Sigils: make([]SigilAtlasEntry, 0, len(items))}
+	for _, item := range items {
+		definition, err := sg.catalog.RequireSigil(item.InternalID)
+		if err != nil {
+			return nil, err
+		}
+		entry := SigilAtlasEntry{
+			SigilInfo:  item,
+			Source:     strings.TrimSpace(definition.Source),
+			Confidence: strings.TrimSpace(definition.Confidence),
+			TableExact: strings.Contains(strings.ToLower(definition.Source), "fresh local 2.0.2 gem.tbl from data.i"),
+		}
+		if item.Constructible && item.SupportsSecondaryTrait {
+			allowed, err := sg.catalog.GetAllowedSecondaryTraits(definition)
+			if err != nil {
+				return nil, err
+			}
+			explicit := make(map[string]bool, len(definition.AllowedSecondaryTraitIDs))
+			for _, id := range definition.AllowedSecondaryTraitIDs {
+				explicit[id] = true
+			}
+			for _, trait := range allowed {
+				if trait.InternalID == definition.PrimaryTraitID || !explicit[trait.InternalID] || !isSelectableTrait(trait) {
+					continue
+				}
+				levels, err := sg.catalog.RequireSecondaryTraitLevels(definition, trait)
+				if err != nil {
+					continue
+				}
+				natural := naturalSigilLevels(levels)
+				if len(natural) == 0 {
+					continue
+				}
+				entry.SecondaryTraits = append(entry.SecondaryTraits, TraitInfo{
+					InternalID: trait.InternalID, Hash: trait.Hash, DisplayName: cnTrait(trait.DisplayName),
+					MaxLevel: maxNaturalSigilLevel(natural), AllowedLevels: natural,
+				})
+			}
+			sort.Slice(entry.SecondaryTraits, func(i, j int) bool {
+				return entry.SecondaryTraits[i].DisplayName < entry.SecondaryTraits[j].DisplayName
+			})
+		}
+		result.Sigils = append(result.Sigils, entry)
+	}
+	return result, nil
+}
+
+// GetSigilAtlasIndex normalizes the repeated secondary-trait pool into indexes
+// over the top-level trait table. UI consumers can reconstruct the former
+// shape without transferring thousands of duplicate names and level arrays.
+func (sg *SigilGen) GetSigilAtlasIndex() (*SigilAtlasIndex, error) {
+	atlas, err := sg.GetSigilAtlas()
+	if err != nil {
+		return nil, err
+	}
+	traitIndexes := make(map[string]uint16, len(atlas.Traits))
+	for index, trait := range atlas.Traits {
+		if index > math.MaxUint16 {
+			return nil, fmt.Errorf("因子词条目录超出紧凑索引范围")
+		}
+		traitIndexes[trait.InternalID] = uint16(index)
+	}
+	result := &SigilAtlasIndex{
+		DataVersion: atlas.DataVersion,
+		Traits:      atlas.Traits,
+		Sigils:      make([]SigilAtlasIndexEntry, 0, len(atlas.Sigils)),
+	}
+	for _, entry := range atlas.Sigils {
+		compact := SigilAtlasIndexEntry{SigilInfo: entry.SigilInfo, Source: entry.Source, Confidence: entry.Confidence, TableExact: entry.TableExact}
+		if len(entry.SecondaryTraits) > 0 {
+			compact.SecondaryTraitIndexes = make([]uint16, 0, len(entry.SecondaryTraits))
+			compact.SecondaryTraitMaxLevels = make([]uint16, 0, len(entry.SecondaryTraits))
+		}
+		for _, trait := range entry.SecondaryTraits {
+			index, ok := traitIndexes[trait.InternalID]
+			if !ok {
+				return nil, fmt.Errorf("因子 %s 的副词条 %s 不在顶层词条目录中", entry.InternalID, trait.InternalID)
+			}
+			if trait.MaxLevel < 0 || trait.MaxLevel > math.MaxUint8 {
+				return nil, fmt.Errorf("因子 %s 的副词条 %s 等级超出紧凑索引范围", entry.InternalID, trait.InternalID)
+			}
+			compact.SecondaryTraitIndexes = append(compact.SecondaryTraitIndexes, index)
+			compact.SecondaryTraitMaxLevels = append(compact.SecondaryTraitMaxLevels, uint16(trait.MaxLevel))
+		}
+		result.Sigils = append(result.Sigils, compact)
 	}
 	return result, nil
 }
@@ -553,7 +690,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax)), nil
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
-		reasons = append(reasons, fmt.Sprintf("主特性「%s」不是因子「%s」的自然主特性", item.PrimaryTraitName, item.SigilName))
+		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」不是因子「%s」在 2.0.2 表中的固定主特性", item.PrimaryTraitName, item.SigilName))
+		return item, report, nil
 	}
 	primaryNaturalMax := 15
 	if primaryTrait.InternalID == sigil.PrimaryTraitID {
@@ -569,7 +707,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		item.SecondaryTraitName = ""
 		item.SecondaryLevel = 0
 		if requiresCharacterSigilSecondary(sigil) {
-			reasons = append(reasons, "角色因子自然配置通常包含副特性")
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("角色因子「%s」必须使用 2.0.2 表中的固定副特性", item.SigilName))
+			return item, report, nil
 		}
 	} else {
 		secondaryTrait, err := sg.catalog.RequireTrait(item.SecondaryTraitID)
@@ -593,10 +732,12 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax)), nil
 		}
 		if !supportsGeneratedPlusSigil(sigil) {
-			reasons = append(reasons, fmt.Sprintf("因子「%s」自然记录不含副特性", item.SigilName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子「%s」没有副特性槽", item.SigilName))
+			return item, report, nil
 		}
 		if secondaryTrait.InternalID == primaryTrait.InternalID {
-			reasons = append(reasons, fmt.Sprintf("主特性「%s」与副特性「%s」重复，游戏不会自然生成同名双词条", item.PrimaryTraitName, item.SecondaryTraitName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」与副特性「%s」重复", item.PrimaryTraitName, item.SecondaryTraitName))
+			return item, report, nil
 		}
 		allowed, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
 		found := false
@@ -607,7 +748,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 			}
 		}
 		if !found {
-			reasons = append(reasons, fmt.Sprintf("副特性「%s」不属于因子「%s」的自然组合", item.SecondaryTraitName, item.SigilName))
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」不属于因子「%s」在 2.0.2 表中的合法词池", item.SecondaryTraitName, item.SigilName))
+			return item, report, nil
 		}
 		if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
 			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 偏离目录自然范围 1 到 15", item.SecondaryLevel))
@@ -876,6 +1018,26 @@ func (sg *SigilGen) ApplyQueue(outputPath string) (*ApplyResult, error) {
 		BackupPath:    sg.save.LastBackupPath(),
 		SlotIDs:       createdSlotIDs,
 	}, nil
+}
+
+// CreateVirtualSigilSource creates one verified, unequipped inventory instance
+// for the virtual-sigil page without touching the shared generator queue.
+// The ordinary generator safety gate still rejects writes to a managed save
+// while the game is running, and ApplyQueue performs backup plus strict readback.
+func (sg *SigilGen) CreateVirtualSigilSource(savePath string, item QueueItem) (*ApplyResult, error) {
+	savePath = strings.TrimSpace(savePath)
+	if savePath == "" {
+		return nil, errors.New("请先选择来源存档")
+	}
+	item.Quantity = 1
+	isolated := NewSigilGen()
+	if _, err := isolated.LoadSaveFile(savePath); err != nil {
+		return nil, err
+	}
+	if err := isolated.AddToQueue(item); err != nil {
+		return nil, err
+	}
+	return isolated.ApplyQueue(savePath)
 }
 
 // RemoveAllSigils 清除输出的存档中所有因子

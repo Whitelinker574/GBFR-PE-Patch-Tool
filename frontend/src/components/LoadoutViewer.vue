@@ -1,11 +1,21 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
+import { FindSaveFiles, LoadoutList, LoadoutPreviewList, ParseLogsLoadoutJSON, PublishLoadoutShare, PublishLoadoutShareNamed, PublishLogsLoadoutShare, SelectLogsLoadoutJSON, SelectLogsLoadoutShares, SelectLogsLoadoutSharesFresh, SelectProgressionSave } from '../../wailsjs/go/backend/App'
+import { characterIdentityByPLID } from '../characterRoster.js'
 import { characterAssetIcon, traitAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
+import { planAtlasOptimizerRoute } from '../loadoutAtlasOptimizerRoute.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
+import { createOperationGate } from '../runtimeOperationGate.js'
+import { copyShareText, loadoutShareSessionKey, publishedLoadoutShare, rememberPublishedLoadoutShare } from '../loadoutShareSession.js'
 import CapturedLoadoutPreview from './CapturedLoadoutPreview.vue'
-import LoadoutEditor from './LoadoutEditor.vue'
+import LoadoutPublishDialog from './LoadoutPublishDialog.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
+
+const LoadoutEditor = defineAsyncComponent(() => import('./LoadoutEditor.vue'))
+const SigilAtlas = defineAsyncComponent(() => import('./SigilAtlas.vue'))
+const LoadoutShareWorkshop = defineAsyncComponent(() => import('./LoadoutShareWorkshop.vue'))
+const LogsBattleArchive = defineAsyncComponent(() => import('./LogsBattleArchive.vue'))
 
 const props = defineProps({ pendingImport: { type: Object, default: null } })
 const emit = defineEmits(['status', 'editing-change', 'import-consumed'])
@@ -34,6 +44,17 @@ const logsPublishTitle = ref('')
 const logsPublishBusy = ref(false)
 const logsPublishError = ref('')
 const logsPublishResult = ref(null)
+const logsPublishGate = createOperationGate()
+const cardPublishTarget = ref(null)
+const cardPublishTitle = ref('')
+const cardPublishBusy = ref(false)
+const cardPublishError = ref('')
+const cardPublishResult = ref(null)
+const cardPublishGate = createOperationGate()
+const pendingAtlasConstruct = ref(null)
+const pendingOptimizerTarget = ref(null)
+const editorTargetUnitId = ref(0)
+const activeCardTool = ref(null)
 let previewRequestId = 0
 
 const CAT_LABELS = { SB_ATK: '真谛（攻击盘）', SB_DEF: '觉醒（防御盘）', SB_LIMIT: '秘义（界限盘）' }
@@ -53,6 +74,15 @@ function skillIcon(skill) {
   return assetPath('skills', verifiedFile || 'Plain_Skill_Frame.png')
 }
 function traitIcon(name, hash = '') { return traitAssetIcon({ name, hash }) }
+function loadoutWeaponIcon(loadout) {
+  const weapon = loadout?.weapon || {}
+  return weaponAssetIcon({
+    internalId: weapon.internalId,
+    baseHash: weapon.baseHash,
+    storedHash: weapon.storedHash,
+    hash: loadout?.weaponHash || weapon.storedHash,
+  })
+}
 function logsFieldLabel(field) {
   const labels = LOGS_FIELD_LABELS[field]
   return labels ? tx(labels[0], labels[1]) : field
@@ -72,6 +102,17 @@ const pendingCodeForEditor = computed(() => {
     ? effectivePendingImport.value.code
     : ''
 })
+const workspaceModes = computed(() => [
+  { id: 'view', label: tx('角色配装', 'Character Loadouts'), description: tx('查看、编辑与智能配装', 'View, edit, and smart-build'), mark: '01' },
+  { id: 'atlas', label: tx('因子图鉴', 'Sigil Atlas'), description: tx('查技能、壳与合法组合', 'Browse traits and legal shells'), mark: '02' },
+  { id: 'battles', label: tx('战斗档案', 'Battle Archive'), description: tx('当前会话与 Logs 历史', 'Current session and Logs history'), mark: '03' },
+])
+function scrollWorkspaceModes(event) {
+  const target = event.currentTarget
+  if (!target || target.scrollWidth <= target.clientWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  target.scrollLeft += event.deltaY
+  event.preventDefault()
+}
 const presetCount = computed(() => {
   let n = 0
   for (const g of groups.value) for (const lo of g.loadouts) if (!lo.isParty) n++
@@ -131,13 +172,167 @@ function toggle(lo) {
   expanded.value = next
 }
 
-function enterEdit() {
+function enterEdit(unitId = 0) {
   if (!savePath.value || !currentGroup.value) return
+  const requested = Number(unitId)
+  editorTargetUnitId.value = Number.isFinite(requested) && requested > 0 ? requested : 0
+  pendingOptimizerTarget.value = null
   mode.value = 'edit'
 }
 
 function leaveEdit() {
   mode.value = 'view'
+}
+
+function selectWorkspaceMode(value) {
+  mode.value = value
+}
+
+function openCardTool(loadout, tool) {
+  if (!loadout) return
+  const next = new Set(expanded.value)
+  next.add(loadout.unitId)
+  expanded.value = next
+  activeCardTool.value = { unitId: loadout.unitId, tool }
+}
+
+function closeCardTool() { activeCardTool.value = null }
+function cardToolOpen(loadout, tool) { return activeCardTool.value?.unitId === loadout?.unitId && activeCardTool.value?.tool === tool }
+function shareGroup(loadout) { return currentGroup.value && loadout ? { ...currentGroup.value, loadouts: [loadout] } : null }
+function cardShareSessionKey(loadout) {
+  if (!loadout || !currentGroup.value) return ''
+  return loadoutShareSessionKey({
+    savePath: savePath.value,
+    charaHash: currentGroup.value.charaHash,
+    unitId: loadout.unitId,
+  })
+}
+function publishedShareFor(loadout) {
+  return publishedLoadoutShare(cardShareSessionKey(loadout))
+}
+function openCardPublish(loadout) {
+  if (!loadout || loadout.isParty || cardPublishBusy.value) return
+  cardPublishGate.invalidate()
+  cardPublishTarget.value = loadout
+  cardPublishTitle.value = loadout.name || tx(
+    `${currentGroup.value?.charaName || '角色'} · 槽 ${String(loadout.slot).padStart(2, '0')}`,
+    `${currentGroup.value?.charaName || 'Character'} · Slot ${String(loadout.slot).padStart(2, '0')}`,
+  )
+  cardPublishError.value = ''
+  cardPublishResult.value = publishedShareFor(loadout)
+}
+function closeCardPublish() {
+  cardPublishGate.invalidate()
+  cardPublishTarget.value = null
+  cardPublishError.value = ''
+  cardPublishResult.value = null
+}
+async function copyCardPublishedLink(result) {
+  if (!result?.url) return
+  try {
+    await copyShareText(result.url)
+    emit('status', tx(`已复制配装链接：${result.code}`, `Copied loadout link: ${result.code}`), 'success')
+  } catch (error) {
+    const message = tx(`复制失败，请手动复制链接：${String(error)}`, `Copy failed; copy the link manually: ${String(error)}`)
+    cardPublishError.value = message
+    emit('status', message, 'error')
+  }
+}
+async function publishCardLoadout() {
+  const target = cardPublishTarget.value
+  if (!target || target.isParty || cardPublishBusy.value) return
+  const cached = publishedShareFor(target)
+  if (cached) {
+    cardPublishResult.value = cached
+    await copyCardPublishedLink(cached)
+    return
+  }
+  const operation = cardPublishGate.begin('publish')
+  if (!operation) return
+  const title = cardPublishTitle.value.trim()
+  const sessionKey = cardShareSessionKey(target)
+  cardPublishBusy.value = true
+  cardPublishError.value = ''
+  try {
+    const published = title
+      ? await PublishLoadoutShareNamed(savePath.value, target.unitId, title)
+      : await PublishLoadoutShare(savePath.value, target.unitId)
+    rememberPublishedLoadoutShare(sessionKey, published)
+    if (!cardPublishGate.isCurrent(operation) || cardPublishTarget.value !== target) return
+    cardPublishResult.value = published
+    await copyCardPublishedLink(published)
+  } catch (error) {
+    if (cardPublishGate.isCurrent(operation)) cardPublishError.value = String(error)
+  } finally {
+    cardPublishBusy.value = false
+    cardPublishGate.finish(operation)
+  }
+}
+function firstEditableLoadout() {
+  return currentGroup.value?.loadouts?.find(item => !item.isParty) || null
+}
+function optimizerOwnerNames(ownerCodes) {
+  return (ownerCodes || []).map(ownerCode => {
+    const identity = characterIdentityByPLID(ownerCode)
+    return identity ? (language.value === 'en' ? identity.nameEn : identity.nameZh) : ownerCode
+  }).join(language.value === 'en' ? ' / ' : '／')
+}
+async function openAtlasOptimizer(payload) {
+  const route = planAtlasOptimizerRoute({
+    savePath: savePath.value,
+    groups: groups.value,
+    currentGroup: currentGroup.value,
+    payload,
+    requestId: Date.now(),
+  })
+  if (route.kind === 'needs-save') {
+    mode.value = 'view'
+    emit('status', tx('请先在角色配装页选择目标存档和角色，再回到因子图鉴点击“送入优化目标”', 'Choose a target save and character on the Character Loadouts page, then return to the atlas and choose “Use as Optimization Target”'), 'info')
+    return
+  }
+  if (route.kind === 'needs-character') {
+    mode.value = 'view'
+    emit('status', tx('请先选择要优化的角色；通用因子会送入该角色的配装详情', 'Choose the character to optimize first; general sigils will open that character’s loadout details'), 'info')
+    return
+  }
+  if (route.kind === 'missing-owner') {
+    const names = optimizerOwnerNames(route.missingOwnerCodes)
+    mode.value = 'view'
+    emit('status', tx(
+      `该因子只适用于 ${names}，当前存档没有对应角色配装。请先在游戏中为该角色保存一套配装，再重新读取存档`,
+      `This sigil is limited to ${names}, but the current save has no loadout for that character. Save a loadout for that character in game, then reload the save`,
+    ), 'info')
+    return
+  }
+  if (route.kind === 'no-editable-slot') {
+    mode.value = 'view'
+    emit('status', tx(
+      `${route.targetGroup?.charaName || '目标角色'}没有可编辑的存档配装槽。请先在游戏中保存一套角色配装，再重新读取存档`,
+      `${route.targetGroup?.charaName || 'The target character'} has no editable saved loadout slot. Save a character loadout in game, then reload the save`,
+    ), 'info')
+    return
+  }
+
+  if (selectedChara.value !== route.targetGroup.charaName) {
+    selectedChara.value = route.targetGroup.charaName
+    // 切角色的 watcher 会清理上一角色的待处理状态，等它完成后再交付新意图。
+    await nextTick()
+  }
+  pendingOptimizerTarget.value = route.intent
+  editorTargetUnitId.value = Number(route.loadout.unitId || 0)
+  mode.value = 'edit'
+  await nextTick()
+}
+
+async function constructFromAtlas(payload) {
+  if (!savePath.value || !currentGroup.value) {
+    emit('status', tx('请先在配装预设页选择存档和角色', 'Choose a save and character on the preset page first'), 'info')
+    mode.value = 'view'
+    return
+  }
+  pendingAtlasConstruct.value = { ...payload, requestId: Date.now() }
+  mode.value = 'edit'
+  await nextTick()
 }
 
 async function activatePendingImport() {
@@ -163,7 +358,7 @@ async function browseLogsLoadouts() {
 	if (logsLoading.value) return
 	logsLoading.value = true
 	try {
-		logsCandidates.value = await SelectLogsLoadoutShares() || []
+		logsCandidates.value = await (logsSourceKind.value === 'database' ? SelectLogsLoadoutSharesFresh() : SelectLogsLoadoutShares()) || []
 		logsSourceKind.value = 'database'
 		mode.value = 'logs'
 	} catch (error) {
@@ -270,25 +465,26 @@ async function deployLogsCandidate(candidate) {
 }
 
 function openLogsPublish(candidate) {
+	logsPublishGate.invalidate()
 	logsPublishCandidate.value = candidate
 	logsPublishTitle.value = tx(`${candidate.characterName} · Logs 配装`, `${candidate.characterName} · Logs Loadout`)
 	logsPublishError.value = ''
-	logsPublishResult.value = null
+	logsPublishResult.value = publishedLoadoutShare(loadoutShareSessionKey({ compatibilityCode: candidate.compatibilityCode }))
 }
 
 function closeLogsPublish() {
-	if (logsPublishBusy.value) return
+	logsPublishGate.invalidate()
 	logsPublishCandidate.value = null
 	logsPublishError.value = ''
 	logsPublishResult.value = null
 }
 
-async function copyLogsPublishedLink() {
-	const value = logsPublishResult.value?.url
+async function copyLogsPublishedLink(result = logsPublishResult.value) {
+	const value = result?.url
 	if (!value) return
 	try {
-		await navigator.clipboard.writeText(value)
-		emit('status', tx(`已复制配装链接：${logsPublishResult.value.code}`, `Copied loadout link: ${logsPublishResult.value.code}`), 'success')
+		await copyShareText(value)
+		emit('status', tx(`已复制配装链接：${result.code}`, `Copied loadout link: ${result.code}`), 'success')
 	} catch (error) {
 		logsPublishError.value = tx(`复制失败，请手动复制链接：${String(error)}`, `Copy failed; copy the link manually: ${String(error)}`)
 	}
@@ -296,15 +492,30 @@ async function copyLogsPublishedLink() {
 
 async function publishLogsCandidate() {
 	if (!logsPublishCandidate.value || logsPublishBusy.value) return
+	const candidate = logsPublishCandidate.value
+	const cacheKey = candidate.compatibilityCode
+	const sessionKey = loadoutShareSessionKey({ compatibilityCode: cacheKey })
+	const cached = publishedLoadoutShare(sessionKey)
+	if (cached) {
+		logsPublishResult.value = cached
+		await copyLogsPublishedLink(cached)
+		return
+	}
+	const operation = logsPublishGate.begin('publish')
+	if (!operation) return
 	logsPublishBusy.value = true
 	logsPublishError.value = ''
 	try {
-		logsPublishResult.value = await PublishLogsLoadoutShare(logsPublishCandidate.value, logsPublishTitle.value.trim())
-		await copyLogsPublishedLink()
+		const published = await PublishLogsLoadoutShare(candidate, logsPublishTitle.value.trim())
+		rememberPublishedLoadoutShare(sessionKey, published)
+		if (!logsPublishGate.isCurrent(operation) || logsPublishCandidate.value !== candidate) return
+		logsPublishResult.value = published
+		await copyLogsPublishedLink(published)
 	} catch (error) {
-		logsPublishError.value = String(error)
+		if (logsPublishGate.isCurrent(operation)) logsPublishError.value = String(error)
 	} finally {
 		logsPublishBusy.value = false
+		logsPublishGate.finish(operation)
 	}
 }
 
@@ -319,6 +530,9 @@ watch(currentGroup, value => {
   previews.value = new Map()
   previewRequestId++
   previewLoading.value = false
+  activeCardTool.value = null
+  editorTargetUnitId.value = 0
+  pendingOptimizerTarget.value = null
   if (value && savePath.value) loadPreviews()
 })
 
@@ -371,6 +585,9 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 
 <template>
   <div ref="viewerRoot" class="loadout-viewer ui-page is-wide ui-page-stack" :class="{ editing: isEditing }">
+    <nav v-if="!isEditing && !String(mode).startsWith('logs')" class="loadout-subnav" :aria-label="tx('配装工作台功能', 'Loadout Workspace Features')" @wheel="scrollWorkspaceModes">
+      <button v-for="item in workspaceModes" :key="item.id" type="button" :class="{ active: mode === item.id }" :disabled="item.disabled" :title="item.description" @click="selectWorkspaceMode(item.id)"><b>{{ item.label }}</b></button>
+    </nav>
     <section v-if="isEditing" class="editor-workspace ui-page is-fluid" aria-label="配装编辑工作区">
       <header class="editor-workspace-bar ui-card">
         <button type="button" class="back-button ui-btn" @click="leaveEdit">
@@ -388,7 +605,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
       </header>
       <div class="editor-workspace-content">
         <LoadoutEditor :save-path="savePath" :chara-hash="currentGroup.charaHash" :chara-name="currentGroup.charaName"
-          :loadouts="currentGroup.loadouts" :pending-import-code="pendingCodeForEditor"
+          :loadouts="currentGroup.loadouts" :pending-import-code="pendingCodeForEditor" :pending-atlas-construct="pendingAtlasConstruct"
+          :pending-optimizer-target="pendingOptimizerTarget" :preferred-unit-id="editorTargetUnitId"
           @import-consumed="consumePendingImport" @status="(m, t) => emit('status', m, t)" @reload="load(savePath)" />
       </div>
     </section>
@@ -477,52 +695,51 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 		  </footer>
 		</section>
 	  </div>
-	  <div v-if="logsPublishCandidate" class="logs-json-backdrop" @click.self="closeLogsPublish" @keydown.esc="closeLogsPublish">
-		<section class="logs-publish-dialog ui-card" role="dialog" aria-modal="true" :aria-label="tx('上传 Logs 配装', 'Publish Logs Loadout')">
-		  <header>
-			<div><small>{{ tx('社区配装图鉴', 'Community Loadout Archive') }}</small><strong>{{ tx('上传并复制分享链接', 'Publish & Copy Link') }}</strong></div>
-			<button type="button" class="ui-btn is-ghost is-sm" :disabled="logsPublishBusy" :aria-label="tx('关闭', 'Close')" @click="closeLogsPublish">×</button>
-		  </header>
-		  <div class="logs-publish-identity">
-			<img v-if="characterAssetIcon(logsPublishCandidate.characterHash)" :src="characterAssetIcon(logsPublishCandidate.characterHash)" alt="" />
-			<div><strong>{{ logsPublishCandidate.characterName }}</strong><span>{{ logsPublishCandidate.weaponName || tx('未记录武器', 'Weapon Not Recorded') }}</span></div>
-		  </div>
-		  <label class="logs-publish-title"><span>{{ tx('分享标题', 'Share Title') }}</span><input v-model="logsPublishTitle" class="ui-input" maxlength="80" :disabled="logsPublishBusy || !!logsPublishResult" :placeholder="tx('例如：泽塔常规毕业配装', 'For example: Zeta Endgame Loadout')" /></label>
-		  <p>{{ tx('标题可以与其他配装重复；完全相同的配装会沿用原短码和首次标题。线上只保存脱敏后的单套配装。', 'Titles may be reused. An identical loadout reuses its original code and first title. Only the sanitized loadout is stored online.') }}</p>
-		  <div v-if="logsPublishResult" class="logs-publish-result">
-			<div><small>{{ logsPublishResult.reused ? tx('已沿用现有短码', 'Existing Code Reused') : tx('短码已生成', 'Code Created') }}</small><strong>{{ logsPublishResult.code }}</strong><span>{{ logsPublishResult.url }}</span></div>
-			<button type="button" class="ui-btn is-primary" @click="copyLogsPublishedLink">{{ tx('复制链接', 'Copy Link') }}</button>
-		  </div>
-		  <p v-if="logsPublishError" class="logs-json-error" role="alert">{{ logsPublishError }}</p>
-		  <footer>
-			<button type="button" class="ui-btn" :disabled="logsPublishBusy" @click="closeLogsPublish">{{ logsPublishResult ? tx('完成', 'Done') : tx('取消', 'Cancel') }}</button>
-			<button v-if="!logsPublishResult" type="button" class="ui-btn is-primary" :disabled="logsPublishBusy" @click="publishLogsCandidate">{{ logsPublishBusy ? tx('正在上传…', 'Publishing…') : tx('上传并复制链接', 'Publish & Copy Link') }}</button>
-		  </footer>
-		</section>
-	  </div>
+	  <LoadoutPublishDialog
+		:open="Boolean(logsPublishCandidate)"
+		:title="logsPublishTitle"
+		:character-name="logsPublishCandidate?.characterName || ''"
+		:subtitle="logsPublishCandidate?.weaponName || ''"
+		:image="logsPublishCandidate ? characterAssetIcon(logsPublishCandidate.characterHash) : ''"
+		:busy="logsPublishBusy"
+		:result="logsPublishResult"
+		:error="logsPublishError"
+		@update:title="logsPublishTitle = $event"
+		@close="closeLogsPublish"
+		@submit="publishLogsCandidate"
+		@copy="copyLogsPublishedLink"
+	  />
 	</section>
+
+    <KeepAlive v-else-if="mode === 'atlas'">
+      <SigilAtlas class="loadout-tool-subpage" @construct="constructFromAtlas" @optimize="openAtlasOptimizer" @status="(m, t) => emit('status', m, t)" />
+    </KeepAlive>
+    <section v-else-if="mode === 'battles'" class="loadout-tool-subpage"><LogsBattleArchive @status="(m, t) => emit('status', m, t)" /></section>
 
     <template v-else>
 	  <section v-if="effectivePendingImport?.code" class="section ui-notice is-info"><strong>已捕获 {{ effectivePendingImport.charaName || '角色' }} 配装</strong><span>选择目标存档后将自动进入分项导入，不会直接写档。</span></section>
-      <section class="section ui-card ui-panel">
-        <div class="section-title ui-section-title"><span>选择存档</span><small>读取游戏内保存的配装预设（每角色 15 槽）</small></div>
-        <div class="save-row ui-actions">
-          <button v-for="slot in slots" :key="slot.path" class="action ui-btn" :class="{ 'is-primary': savePath === slot.path }" :disabled="loading" @click="load(slot.path)">存档位 {{ slot.index }}</button>
-          <button class="action ui-btn" :disabled="loading" @click="browse">浏览…</button>
-          <button class="action ui-btn is-ghost" :disabled="loading || !savePath" @click="load(savePath)">刷新</button>
-        </div>
-        <div v-if="savePath" class="path-line ui-hint ui-truncate" :title="savePath">{{ savePath }}</div>
-      </section>
+      <SaveSourcePicker
+        class="section"
+        :slots="slots"
+        :model-value="savePath"
+        :busy="loading"
+        :loaded="groups.length > 0"
+        :title="tx('第一步 · 选择来源存档', 'Step 1 · Choose Source Save')"
+        :summary="groups.length ? tx(`${groups.length} 个角色 · ${presetCount} 套预设`, `${groups.length} characters · ${presetCount} presets`) : ''"
+        :helper="tx('后续角色、库存优化和写入目标都绑定这里选择的存档', 'Characters, inventory optimization, and write targets all use this save')"
+        @select="load"
+        @browse="browse"
+      />
 
 	  <button type="button" class="logs-library-entry ui-card" @click="openLogsLibrary">
 		<span class="logs-entry-mark" aria-hidden="true">L</span>
-		<span><small>{{ tx('外部战斗记录', 'External Battle Logs') }}</small><strong>{{ tx('从 GBFR Logs 批量获取队伍配装', 'Import Party Loadouts from GBFR Logs') }}</strong><em>{{ tx('独立解析数据库中的多名角色，可逐个预览后再导入。', 'Parse every character in the database, preview each loadout, then import selectively.') }}</em></span>
+		<span><small>{{ tx('外部战斗记录', 'External Battle Logs') }}</small><strong>{{ tx('从 GBFR Logs 批量获取队伍配装', 'Import Party Loadouts from GBFR Logs') }}</strong><em>{{ tx('扫描最近的兼容记录并拆分多名角色，可逐个预览后再导入。', 'Scan recent supported records into separate character previews, then import selectively.') }}</em></span>
 		<b aria-hidden="true">→</b>
 	  </button>
 
       <section v-if="groups.length" class="section ui-card ui-panel">
         <div class="section-title ui-section-title">
-          <span>角色</span><small>{{ groups.length }} 个角色 · {{ presetCount }} 套预设</small>
+          <span>第二步 · 选择角色</span><small>{{ groups.length }} 个角色 · {{ presetCount }} 套预设；优化和分享都会使用当前角色数据</small>
           <button type="button" class="edit-launch ui-btn is-primary" :disabled="!currentGroup" @click="enterEdit">
             编辑 {{ currentGroup?.charaName || '' }} 配装 <span aria-hidden="true">→</span>
           </button>
@@ -540,7 +757,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
         <div class="card-grid ui-card-grid">
           <article v-for="lo in currentGroup.loadouts" :key="lo.unitId" class="loadout-card ui-card is-flat" :class="{ open: expanded.has(lo.unitId), party: lo.isParty }">
             <button type="button" class="loadout-card-toggle" :aria-expanded="expanded.has(lo.unitId)" @click="toggle(lo)">
-              <img v-if="weaponAssetIcon({ hash: lo.weaponHash })" class="loadout-weapon-icon" :src="weaponAssetIcon({ hash: lo.weaponHash })" alt="" />
+              <img v-if="loadoutWeaponIcon(lo)" class="loadout-weapon-icon" :src="loadoutWeaponIcon(lo)" alt="" />
+              <span v-else class="loadout-weapon-icon loadout-weapon-icon-fallback" role="img" :aria-label="tx('武器图标未收录', 'Weapon icon not cataloged')" :title="tx('武器图标未收录', 'Weapon icon not cataloged')">{{ tx('未收录', 'No icon') }}</span>
               <b v-if="!lo.isParty">槽{{ String(lo.slot).padStart(2, '0') }}</b>
               <b v-else class="party-tag">队伍{{ lo.slot }}</b>
               <strong>{{ lo.name || (lo.isParty ? '当前实时配装' : '(未命名)') }}</strong>
@@ -572,9 +790,35 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
               <span><small>昏厥</small><b>≈{{ formatNumber(previewFor(lo).finalStats.stunPower, 1) }}</b></span>
             </div>
             <p v-if="previewFor(lo)?.error" class="preview-error">{{ previewFor(lo).error }}</p>
+            <div v-if="!lo.isParty" class="loadout-share-row">
+              <span class="loadout-share-state">
+                <small>{{ tx('线上分享短码', 'Online Share Code') }}</small>
+                <strong v-if="publishedShareFor(lo)?.code">{{ publishedShareFor(lo).code }}</strong>
+                <strong v-else class="is-empty">{{ tx('尚未生成', 'Not Generated') }}</strong>
+                <em>{{ publishedShareFor(lo)?.url ? tx('已上传，可直接复制链接或用于分享图二维码', 'Published and ready for link copying or share-image QR') : tx('上传后会在这里保留短码，并自动交给分享图工坊', 'Publish once to keep the code here and reuse it in the share-image workshop') }}</em>
+              </span>
+              <button
+                type="button"
+                class="ui-btn is-sm loadout-share-action"
+                :disabled="cardPublishBusy"
+                @click="publishedShareFor(lo)?.url ? copyCardPublishedLink(publishedShareFor(lo)) : openCardPublish(lo)"
+              >
+                {{ publishedShareFor(lo)?.url ? tx('复制链接', 'Copy Link') : tx('上传短码', 'Publish Code') }}
+              </button>
+            </div>
             <div v-if="expanded.has(lo.unitId)" class="detail">
+              <div class="loadout-detail-actions" aria-label="当前配装操作">
+                <span><b>{{ lo.name || (lo.isParty ? '当前实时配装' : `槽 ${String(lo.slot).padStart(2, '0')}`) }}</b><small>所有操作都绑定 {{ currentGroup.charaName }} 和当前来源存档</small></span>
+                <button type="button" class="ui-btn" :disabled="lo.isParty" @click="enterEdit(lo.unitId)">编辑此配装</button>
+                <button type="button" class="ui-btn share-tool-button" :class="{ 'is-active': cardToolOpen(lo, 'share') }" :disabled="lo.isParty" @click="cardToolOpen(lo, 'share') ? closeCardTool() : openCardTool(lo, 'share')">{{ cardToolOpen(lo, 'share') ? '收起分享图' : '生成分享图' }}</button>
+              </div>
+              <section v-if="cardToolOpen(lo, 'share')" class="loadout-inline-tool">
+                <LoadoutShareWorkshop embedded :group="shareGroup(lo)" :preview-map="previews" :published="publishedShareFor(lo)" @status="(m, t) => emit('status', m, t)" />
+              </section>
               <div class="detail-block sigil-detail-block">
-                <h4>因子（{{ (lo.sigils || []).length }}）</h4>
+                <div class="detail-block-heading">
+                  <span><h4>当前因子</h4><small>智能配装已放入“编辑此配装”里的因子配置区</small></span>
+                </div>
                 <ul class="sigil-detail-list">
                   <li v-for="s in lo.sigils" :key="s.slotId" class="sigil-detail-item">
                     <div class="sigil-detail-title">
@@ -611,6 +855,21 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
       <section v-else-if="!loading && !savePath" class="section ui-card ui-panel is-compact">
         <p class="empty ui-empty">选择存档位或浏览文件后，这里会显示真实角色与配装预设。</p>
       </section>
+
+      <LoadoutPublishDialog
+        :open="Boolean(cardPublishTarget)"
+        :title="cardPublishTitle"
+        :character-name="currentGroup?.charaName || ''"
+        :subtitle="cardPublishTarget?.weaponName || cardPublishTarget?.weapon?.name || ''"
+        :image="currentGroup ? characterAssetIcon(currentGroup.charaHash) : ''"
+        :busy="cardPublishBusy"
+        :result="cardPublishResult"
+        :error="cardPublishError"
+        @update:title="cardPublishTitle = $event"
+        @close="closeCardPublish"
+        @submit="publishCardLoadout"
+        @copy="copyCardPublishedLink(cardPublishResult)"
+      />
     </template>
   </div>
 </template>
@@ -618,9 +877,28 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 <style scoped>
 .loadout-viewer { width:100%; max-width:100%; min-width:0; overflow-x:hidden; font-size:var(--fs-md); container:loadout-viewer / inline-size; }
 .loadout-viewer.editing { width:100%; height:100%; min-height:0; gap:0; overflow:hidden; }
+.loadout-subnav { position:sticky; z-index:12; top:0; min-width:0; min-height:44px; display:flex; flex-wrap:nowrap; align-items:stretch; gap:24px; overflow-x:auto; overflow-y:hidden; padding:0 var(--space-4); border-bottom:1px solid rgba(126,89,40,.38); background:rgba(239,224,190,.96); box-shadow:none; scrollbar-width:thin; scrollbar-color:var(--border-strong) transparent; }
+.loadout-subnav button { position:relative; min-width:max-content; min-height:44px; flex:0 0 auto; display:flex; align-items:center; padding:0 2px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; box-shadow:none; color:var(--text-secondary); text-align:left; cursor:pointer; }
+.loadout-subnav button:hover:not(:disabled) { border-bottom-color:rgba(126,89,40,.36); background:transparent; color:var(--accent-hover); }
+.loadout-subnav button.active { border-bottom-color:#8f6736; background:transparent; box-shadow:none; color:var(--accent-hover); }
+.loadout-subnav button:disabled { opacity:.46; cursor:not-allowed; }
+.loadout-subnav button b { color:inherit; font-family:var(--font-display); font-size:var(--fs-sm); white-space:nowrap; }
+.loadout-tool-subpage { min-width:0; width:100%; }
 .section { width:100%; max-width:100%; min-width:0; overflow:hidden; }
 .section-title { min-width:0; flex-wrap:wrap; }
 .section-title > small { min-width:0; overflow-wrap:anywhere; }
+.loadout-detail-actions { min-width:0; display:grid; grid-template-columns:minmax(180px,1fr) repeat(2,auto); gap:var(--space-2); align-items:center; padding:var(--space-3); border:1px solid var(--border-strong); background:var(--surface-sunken); }
+.loadout-detail-actions > span { min-width:0; display:grid; gap:2px; }
+.loadout-detail-actions > span b,.loadout-detail-actions > span small { min-width:0; overflow-wrap:anywhere; }
+.share-tool-button { border-color:color-mix(in srgb,var(--accent) 22%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 90%,#e5f5ff); box-shadow:none; color:var(--text-secondary); }
+.share-tool-button:hover:not(:disabled),.share-tool-button.is-active { border-color:color-mix(in srgb,var(--accent) 42%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 74%,#d4efff); color:var(--accent-hover); }
+.loadout-detail-actions > span small { color:var(--text-muted); font-size:var(--fs-xs); }
+.loadout-inline-tool { min-width:0; padding:var(--space-3); border:1px solid var(--accent-border); background:rgba(255,253,247,.58); }
+.detail-block-heading { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom:var(--space-3); }
+.detail-block-heading > span { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.detail-block-heading h4 { margin:0; }
+.detail-block-heading small { color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
+.loadout-inline-tool.is-factor-tool { margin:0 0 var(--space-4); }
 .edit-launch { margin-left:auto; }
 .edit-launch span { font-size:var(--fs-lg); }
 .editor-workspace { min-width:0; height:100%; min-height:0; display:flex; flex-direction:column; gap:14px; overflow:hidden; }
@@ -649,7 +927,8 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .loadout-card.party .loadout-card-toggle { grid-template-columns:62px auto minmax(120px,1.2fr) minmax(120px,.8fr) auto auto; }
 .loadout-card.open { border-color:var(--border-strong); grid-column:1/-1; }
 .loadout-card-toggle { width:100%; min-width:0; min-height:var(--control-height-sm); display:grid; grid-template-columns:62px auto minmax(120px,1fr) minmax(100px,.72fr) auto auto; align-items:center; gap:var(--space-3); padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; user-select:none; }
-.loadout-weapon-icon { width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
+.loadout-weapon-icon { box-sizing:border-box; width:62px; height:44px; object-fit:contain; border-radius:6px; background:rgba(255,255,255,.55); }
+.loadout-weapon-icon-fallback { display:grid; place-items:center; padding:3px; border:1px dashed var(--border-default); background:var(--surface-sunken); color:var(--text-muted); font-size:var(--fs-2xs); font-weight:var(--fw-semibold); line-height:1.1; text-align:center; }
 .loadout-card-toggle:hover strong { color:var(--accent-hover); }
 .loadout-card-toggle b { color:var(--accent); font-size:var(--fs-sm); }
 .loadout-card-toggle b.party-tag { color:var(--success-ink); }
@@ -697,6 +976,13 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .loadout-stat-strip span { min-width:0; display:flex; flex-direction:column; padding:4px 6px; background:rgba(139,103,55,.045); }
 .loadout-stat-strip small { color:var(--text-muted); font-size:10px; }
 .loadout-stat-strip b { overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.loadout-share-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:center; padding:8px 10px; border:1px solid color-mix(in srgb,var(--accent) 18%,var(--border-soft)); background:color-mix(in srgb,var(--surface-card-pop) 92%,#e6f4f7); }
+.loadout-share-state { min-width:0; display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:4px var(--space-3); align-items:baseline; }
+.loadout-share-state small { color:var(--text-muted); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
+.loadout-share-state strong { color:var(--success-ink); font-family:var(--font-data); font-size:var(--fs-sm); letter-spacing:0; white-space:nowrap; }
+.loadout-share-state strong.is-empty { color:var(--text-secondary); font-family:var(--font-body); font-weight:var(--fw-semibold); }
+.loadout-share-state em { min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); font-size:var(--fs-xs); font-style:normal; white-space:nowrap; }
+.loadout-share-action { min-width:88px; border-color:color-mix(in srgb,var(--accent) 28%,var(--border-soft)); background:var(--surface-card-pop); color:var(--accent-hover); box-shadow:none; }
 .empty { margin:0; }
 .logs-library-entry { width:100%; min-width:0; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:var(--space-3); padding:var(--space-4); border:1px solid var(--border-strong); border-left:4px solid var(--accent); background:var(--surface-card-pop); color:inherit; text-align:left; cursor:pointer; box-shadow:var(--shadow-1); }
 .logs-library-entry:hover { border-color:var(--accent); background:var(--accent-soft); }
@@ -776,27 +1062,11 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 .logs-json-dialog > footer { min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:var(--space-2); }
 .logs-json-dialog > footer .ui-btn { flex:0 1 auto; }
 .logs-json-error { padding:var(--space-3); border-left:3px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink) !important; overflow-wrap:anywhere; }
-.logs-publish-dialog { width:100%; max-width:min(560px,calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; gap:var(--space-4); overflow:auto; padding:var(--space-5); border-color:var(--accent-border); background:var(--surface-card-pop); box-shadow:var(--shadow-4); }
-.logs-publish-dialog > header { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:start; padding-bottom:var(--space-3); border-bottom:1px solid var(--border-soft); }
-.logs-publish-dialog > header > div { min-width:0; display:grid; gap:2px; }
-.logs-publish-dialog > header small { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
-.logs-publish-dialog > header strong { overflow-wrap:anywhere; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
-.logs-publish-dialog > p { margin:0; color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
-.logs-publish-identity { min-width:0; display:grid; grid-template-columns:52px minmax(0,1fr); gap:var(--space-3); align-items:center; }
-.logs-publish-identity img { width:52px; height:52px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-sunken); object-fit:cover; }
-.logs-publish-identity div { min-width:0; display:grid; gap:2px; }
-.logs-publish-identity strong,.logs-publish-identity span { min-width:0; overflow-wrap:anywhere; }
-.logs-publish-identity span { color:var(--text-muted); font-size:var(--fs-xs); }
-.logs-publish-title { min-width:0; display:grid; gap:var(--space-2); color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
-.logs-publish-title input { width:100%; min-width:0; }
-.logs-publish-result { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3); align-items:center; padding:var(--space-4); border-left:3px solid var(--success); background:var(--success-bg); }
-.logs-publish-result > div { min-width:0; display:grid; gap:3px; }
-.logs-publish-result small { color:var(--success-ink); font-size:var(--fs-2xs); }
-.logs-publish-result strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-lg); }
-.logs-publish-result span { min-width:0; overflow-wrap:anywhere; color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-2xs); }
-.logs-publish-dialog > footer { min-width:0; display:flex; justify-content:flex-end; gap:var(--space-2); }
 @container loadout-viewer (max-width:900px) {
   .section-title .edit-launch { width:100%; margin-left:0; }
+  .loadout-detail-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .loadout-detail-actions > span { grid-column:1/-1; }
+  .loadout-detail-actions .ui-btn { min-width:0; white-space:normal; }
   .editor-workspace-bar { grid-template-columns:1fr auto; }
   .editor-workspace-title { grid-column:1/-1; grid-row:1; }
   .back-button { grid-row:2; }
@@ -810,12 +1080,23 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
   .loadout-card-toggle .expand-mark { grid-column:4; grid-row:1/4; }
   .loadout-weapon-icon { width:52px; height:40px; grid-row:1/3; }
   .loadout-stat-strip { grid-template-columns:repeat(2,minmax(70px,1fr)); }
+  .loadout-share-state { grid-template-columns:auto auto; }
+  .loadout-share-state em { grid-column:1/-1; }
   .logs-library-main { grid-template-columns:48px minmax(0,1fr); }
   .logs-library-seal { width:48px; height:48px; }
   .logs-source-actions { grid-column:1/-1; justify-self:stretch; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
   .logs-source-actions .ui-btn { width:100%; white-space:normal; }
 }
 @container loadout-viewer (max-width:560px) {
+	.loadout-subnav { gap:14px; }
+	.loadout-detail-actions { grid-template-columns:1fr; }
+	.loadout-detail-actions > span { grid-column:auto; }
+	.detail-block-heading { align-items:stretch; flex-direction:column; }
+	.loadout-inline-tool { padding:var(--space-2); }
+	.loadout-share-row { grid-template-columns:minmax(0,1fr); }
+	.loadout-share-state { grid-template-columns:minmax(0,1fr); }
+	.loadout-share-state em { grid-column:auto; overflow:visible; white-space:normal; }
+	.loadout-share-action { width:100%; }
 	.logs-library-entry { grid-template-columns:36px minmax(0,1fr); }
 	.logs-entry-mark { width:36px; height:36px; }
 	.logs-library-entry > b { display:none; }
@@ -833,8 +1114,5 @@ watch(() => effectivePendingImport.value?.requestId, () => { activatePendingImpo
 	.logs-candidate-card dl { grid-template-columns:minmax(0,1fr); }
 	.logs-json-dialog > footer { display:grid; grid-template-columns:minmax(0,1fr); }
 	.logs-json-dialog > footer .ui-btn { width:100%; }
-	.logs-publish-result { grid-template-columns:minmax(0,1fr); }
-	.logs-publish-result .ui-btn,.logs-publish-dialog > footer .ui-btn { width:100%; }
-	.logs-publish-dialog > footer { display:grid; grid-template-columns:minmax(0,1fr); }
 }
 </style>

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
 	"encoding/binary"
 	"encoding/json"
@@ -26,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v1.92.0"
+	appVersion  = "v2.0.3"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -59,6 +60,7 @@ type UpdateInfo struct {
 
 type AppConfig struct {
 	LastSavePath                 string `json:"lastSavePath"`
+	NaturalDropGameExePath       string `json:"naturalDropGameExePath,omitempty"`
 	WindowWidth                  int    `json:"windowWidth"`
 	WindowHeight                 int    `json:"windowHeight"`
 	RuntimeLoadoutDetectorActive bool   `json:"runtimeLoadoutDetectorActive,omitempty"`
@@ -124,8 +126,11 @@ type App struct {
 	// runtimePatchPatchLeases owns only independently verified direct patches. The
 	// process identity and exact bytes make every record a retryable recovery
 	// lease; runtimePatchPatchOrder preserves reverse installation order on detach.
-	runtimePatchPatchLeases map[string]runtimePatchPatchLease
-	runtimePatchPatchOrder  []string
+	runtimePatchPatchLeases     map[string]runtimePatchPatchLease
+	runtimePatchPatchOrder      []string
+	confluxTimerLease           *confluxTimerLease
+	runtimeSpatialGravityLease  *runtimePatchPatchLease
+	runtimePatchVerifiedProcess processInstanceID
 	// The selected-item monitor uses two independent read-only address-capture
 	// hooks. Keep exact recovery evidence until both entry restoration and
 	// tool-owned cave-pointer clearing are proven.
@@ -137,6 +142,11 @@ type App struct {
 	// The metadata is dropped only when this process connection is detached.
 	retiredRuntimeCaves         []retiredRuntimeCave
 	materialConsumeAddr         uintptr
+	materialConsumeLease        *materialConsumeHookLease
+	combatTuningCooldownAddrs   []uintptr
+	combatTuningChargeAddr      uintptr
+	combatTuningCooldownLease   *combatTuningLease
+	combatTuningChargeLease     *combatTuningLease
 	infiniteChallengeAddr       uintptr
 	infiniteChallengeOwnerToken string
 	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
@@ -159,10 +169,34 @@ type App struct {
 	// deliberately independent from every editor and patch ownership token.
 	runtimeLoadoutDetectorMu sync.Mutex
 	runtimeLoadoutDetector   *runtimeLoadoutDetectorSession
-	configMu                 sync.Mutex
-	config                   AppConfig
-	configLoaded             bool
-	configPathOverride       string
+	// The battle archive and loadout importer share one read-only SQLite
+	// connection. Holding the mutex across a query also prevents a database
+	// switch or disconnect from closing the handle underneath an active read.
+	logsArchiveMu                sync.Mutex
+	logsArchivePath              string
+	logsArchiveDB                *sql.DB
+	logsArchiveColumns           map[string]bool
+	saveDiffMu                   sync.Mutex
+	saveDiffSession              *saveDiffSession
+	naturalDropMu                sync.Mutex
+	emergencyStopMu              sync.Mutex
+	emergencyWatcherMu           sync.Mutex
+	emergencyWatcher             context.CancelFunc
+	emergencyWatcherWG           sync.WaitGroup
+	runtimeSpatialHotkeyMu       sync.Mutex
+	runtimeSpatialHotkey         runtimeSpatialHotkeyConfig
+	qolSessionWatcherMu          sync.Mutex
+	qolSessionWatcher            *runtimeQOLSessionWatcher
+	runtimeCompanionOwnerMu      sync.Mutex
+	runtimeCompanionOwnerIDValue string
+	runtimeCompanionLeaseMu      sync.Mutex
+	runtimeCompanionLeases       map[string]runtimeCompanionLease
+	naturalDropRecoveryStatusMu  sync.Mutex
+	naturalDropRecoveryStatus    NaturalDropStartupRecoveryStatus
+	configMu                     sync.Mutex
+	config                       AppConfig
+	configLoaded                 bool
+	configPathOverride           string
 }
 
 var (
@@ -181,6 +215,13 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	if err := recoverNaturalDropTransactionsAtStartup(config.NaturalDropGameExePath); err != nil {
+		a.setNaturalDropStartupRecoveryError(err)
+		runtime.LogErrorf(ctx, "启动时恢复未完成的天然掉落部署失败：%v", err)
+	} else {
+		a.clearNaturalDropStartupRecoveryError()
+	}
+	a.startRuntimeEmergencyWatcher()
 	if config.RuntimeLoadoutDetectorActive {
 		_, _ = a.startRuntimeLoadoutDetector(false)
 	}
@@ -191,12 +232,18 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	a.stopRuntimeEmergencyWatcher()
+	a.stopRuntimeQOLSessionWatcher()
 	_ = a.closeFormulaSampler()
+	a.CloseLogsBattleArchive()
 	a.runtimeLoadoutDetectorMu.Lock()
 	detectorWasRunning := a.runtimeLoadoutDetector != nil
 	a.runtimeLoadoutDetectorMu.Unlock()
 	_ = a.closeRuntimeLoadoutDetector(false)
-	if handleDetachBeforeClose(ctx, a.CharaDetach()) {
+	restoreErr := errors.Join(a.closeRuntimeCompanions(), a.CharaDetach())
+	if handleDetachBeforeClose(ctx, restoreErr) {
+		a.startRuntimeEmergencyWatcher()
+		a.startRuntimeQOLSessionWatcherForCurrent()
 		if detectorWasRunning {
 			_, _ = a.startRuntimeLoadoutDetector(false)
 		}
@@ -207,10 +254,13 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopRuntimeEmergencyWatcher()
+	a.stopRuntimeQOLSessionWatcher()
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
+	a.CloseLogsBattleArchive()
 	_ = a.closeRuntimeLoadoutDetector(false)
-	if err := a.CharaDetach(); err != nil {
+	if err := errors.Join(a.closeRuntimeCompanions(), a.CharaDetach()); err != nil {
 		logPath := appendDiagnosticError("shutdown hook restoration", err)
 		runtime.LogErrorf(ctx, "关闭时恢复运行时 Hook 失败；诊断日志：%s；错误：%v", logPath, err)
 	}
@@ -515,7 +565,10 @@ func (a *App) BackupFile(force bool) error {
 	if err != nil {
 		return fmt.Errorf("读取文件失败: %w", err)
 	}
-	return os.WriteFile(bakPath, data, 0644)
+	if err := writeFileAtomicVerified(bakPath, data); err != nil {
+		return fmt.Errorf("原子写入备份失败: %w", err)
+	}
+	return nil
 }
 
 // RestoreFile 从备份恢复
@@ -531,7 +584,10 @@ func (a *App) RestoreFile() error {
 	if err != nil {
 		return fmt.Errorf("读取备份失败: %w", err)
 	}
-	return os.WriteFile(a.exePath, data, 0644)
+	if err := writeFileAtomicVerified(a.exePath, data); err != nil {
+		return fmt.Errorf("原子恢复目标文件失败: %w", err)
+	}
+	return nil
 }
 
 // ── PE / 工具函数 ──
@@ -719,8 +775,18 @@ var potionDefs = []potionDef{
 	{ID: "group_chat", Name: "群疗药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x18}},
 }
 
+const maximumPlausiblePotionSnapshot = int32(999)
+
+func validatePotionSnapshot(name string, value int32) error {
+	if value < 0 || value > maximumPlausiblePotionSnapshot {
+		return fmt.Errorf("%s数据未就绪，请进入副本后刷新", name)
+	}
+	return nil
+}
+
 // CharaAttach finds the game process, opens a handle, reads module base and manager pointer.
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if len(a.runtimePatchPatchLeases) != 0 || len(a.runtimePatchPatchOrder) != 0 {
@@ -731,6 +797,12 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由当前页面持有，请先关闭或断开该页面")
+	}
+	if a.confluxTimerLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("极沌空域快速等待仍由当前页面持有，请先安全释放")
+	}
+	if a.runtimeSpatialGravityLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("重力抑制仍由当前页面持有，请先恢复重力并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err == nil {
@@ -743,6 +815,7 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 
 // CharaAcquire attaches to the game and rotates the frontend owner lease.
 func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
@@ -756,6 +829,12 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	}
 	if len(a.monsterEnhanceOwned) != 0 {
 		return CharaProcessInfo{}, fmt.Errorf("怪物增强 Hook 仍由另一个页面持有，请等待该页面完成安全释放后重试")
+	}
+	if a.confluxTimerLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("极沌空域快速等待由另一个运行时页面持有，请先安全释放")
+	}
+	if a.runtimeSpatialGravityLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("重力抑制由另一个运行时页面持有，请先恢复重力并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err != nil {
@@ -1094,6 +1173,7 @@ func isCharaListData(data []byte, countIndex int) bool {
 
 // CharaDetach restores owned runtime hooks before closing the process handle.
 func (a *App) CharaDetach() error {
+	a.disableRuntimeSpatialHotkeysOwned("", true)
 	liveMemoryWriteMu.Lock()
 	defer liveMemoryWriteMu.Unlock()
 	a.procMu.Lock()
@@ -1108,6 +1188,7 @@ func (a *App) CharaDetach() error {
 // CharaRelease detaches only when token still owns the logical connection.
 // A stale cleanup is an idempotent no-op and cannot close a newer page's lease.
 func (a *App) CharaRelease(token string) error {
+	a.disableRuntimeSpatialHotkeysOwned(token, false)
 	liveMemoryWriteMu.Lock()
 	defer liveMemoryWriteMu.Unlock()
 	a.procMu.Lock()
@@ -1118,19 +1199,27 @@ func (a *App) CharaRelease(token string) error {
 	processLive := a.hProcess != 0 && processHandleAlive(a.hProcess)
 	if processLive {
 		a.runtimePatchMu.Lock()
+		tuningErr := a.restoreCombatTuningOwnedLocked(token, false)
+		materialErr := a.restoreMaterialConsumeOwnedLocked(token, false)
 		selectedErr := a.releaseRuntimePatchSelectedCaptureHooksLocked(token, false)
 		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
+		confluxErr := a.restoreConfluxTimerOwnedLocked(token, false)
+		gravityErr := a.restoreRuntimeSpatialGravityOwnedLocked(token, false)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(selectedErr, ctErr, challengeErr); combined != nil {
+		if combined := errors.Join(tuningErr, materialErr, selectedErr, ctErr, confluxErr, gravityErr, challengeErr); combined != nil {
 			return fmt.Errorf("runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
 			return fmt.Errorf("monster-enhance hook restoration failed; connection remains owned: %w", err)
 		}
 	} else {
+		a.dropCombatTuningOwnerLocked(token, false)
+		a.dropMaterialConsumeOwnerLocked(token, false)
 		a.dropRuntimePatchSelectedCaptureHooksLocked(token, false)
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
+		a.dropConfluxTimerOwnerLocked(token)
+		a.dropRuntimeSpatialGravityOwnerLocked(token)
 		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
 			a.infiniteChallengeOwnerToken = ""
 			a.infiniteChallengeAddr = 0
@@ -1181,6 +1270,12 @@ func (a *App) charaDetachLocked() error {
 	if a.hProcess != 0 && processHandleAlive(a.hProcess) {
 		var releaseErr error
 		a.runtimePatchMu.Lock()
+		if err := a.restoreCombatTuningOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("combat tuning: %w", err))
+		}
+		if err := a.restoreMaterialConsumeOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("material consumption: %w", err))
+		}
 		if err := a.restoreInfiniteChallengeOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous challenge: %w", err))
 		}
@@ -1189,6 +1284,12 @@ func (a *App) charaDetachLocked() error {
 		}
 		if err := a.restoreAllRuntimePatchPatchesLocked(""); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("live patches: %w", err))
+		}
+		if err := a.restoreConfluxTimerOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("Conflux timer: %w", err))
+		}
+		if err := a.restoreRuntimeSpatialGravityOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("spatial gravity: %w", err))
 		}
 		a.runtimePatchMu.Unlock()
 		if err := a.releaseOverLimitHook(); err != nil {
@@ -1222,6 +1323,8 @@ func (a *App) charaDetachLocked() error {
 	a.charaListBase = 0
 	a.charaPID = 0
 	a.charaCreated = 0
+	a.confluxTimerLease = nil
+	a.runtimePatchVerifiedProcess = processInstanceID{}
 	a.countdownAddr = 0
 	a.faceAccessoryAddr = 0
 	a.overLimitHookAddr = 0
@@ -1242,10 +1345,16 @@ func (a *App) charaDetachLocked() error {
 	a.monsterEnhanceOwned = nil
 	a.runtimePatchPatchLeases = nil
 	a.runtimePatchPatchOrder = nil
+	a.runtimeSpatialGravityLease = nil
 	a.runtimePatchSelectedMaterialHook = runtimePatchSelectedCaptureLease{}
 	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
 	a.materialConsumeAddr = 0
+	a.materialConsumeLease = nil
+	a.combatTuningCooldownAddrs = nil
+	a.combatTuningChargeAddr = 0
+	a.combatTuningCooldownLease = nil
+	a.combatTuningChargeLease = nil
 	a.infiniteChallengeAddr = 0
 	a.infiniteChallengeOwnerToken = ""
 	a.charaOwnerToken = ""
@@ -1609,6 +1718,9 @@ func (a *App) readPotion(def potionDef) (PotionInfo, error) {
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&value), unsafe.Sizeof(value)); err != nil {
 		return PotionInfo{}, fmt.Errorf("读取%s失败: %w", def.Name, err)
 	}
+	if err := validatePotionSnapshot(def.Name, value); err != nil {
+		return PotionInfo{}, err
+	}
 	return PotionInfo{ID: def.ID, Name: def.Name, RVA: uint64(def.RVA), Offsets: potionOffsetsJSON(def.Offsets), Address: uint64(addr), Value: value}, nil
 }
 
@@ -1673,8 +1785,8 @@ func (a *App) PotionSetOneOwned(token, id string, value int) (PotionInfo, error)
 
 func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 	id = strings.TrimSpace(id)
-	if value < 0 || value > math.MaxInt32 {
-		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", math.MaxInt32)
+	if value < 0 || value > int(maximumPlausiblePotionSnapshot) {
+		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", maximumPlausiblePotionSnapshot)
 	}
 	for _, def := range potionDefs {
 		if def.ID != id {
@@ -1687,6 +1799,9 @@ func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 		var originalValue int32
 		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
 			return PotionInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
+		}
+		if err := validatePotionSnapshot(def.Name, originalValue); err != nil {
+			return PotionInfo{}, err
 		}
 		if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
 			return PotionInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
@@ -1701,6 +1816,9 @@ func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 		var confirmedValue int32
 		if err := readProcessMemory(a.hProcess, confirmedAddr, unsafe.Pointer(&confirmedValue), unsafe.Sizeof(confirmedValue)); err != nil {
 			return PotionInfo{}, fmt.Errorf("自动备份后复核%s原值失败: %w", def.Name, err)
+		}
+		if err := validatePotionSnapshot(def.Name, confirmedValue); err != nil {
+			return PotionInfo{}, err
 		}
 		if confirmedValue != originalValue {
 			return PotionInfo{}, fmt.Errorf("自动备份期间%s已从 %d 变化为 %d，请刷新后重试", def.Name, originalValue, confirmedValue)
@@ -2002,160 +2120,6 @@ func (a *App) readInfiniteChallengeStatusAt(addr uintptr) (InfiniteChallengeStat
 		Owned:        a.infiniteChallengeOwnerToken != "",
 		CurrentBytes: bytesToHex(buf),
 	}, nil
-}
-
-// ── 升级/强化材料消耗 (运行时 NOP add [r14+04],esi) ──
-
-type MaterialConsumeStatus struct {
-	RVA          uint64 `json:"rva"`
-	Enabled      bool   `json:"enabled"`
-	CurrentBytes string `json:"currentBytes"`
-}
-
-const materialConsumeRVA = uintptr(0x356621)
-
-var (
-	materialConsumeOrig  = []byte{0x41, 0x01, 0x76, 0x04}
-	materialConsumePatch = []byte{0x90, 0x90, 0x90, 0x90}
-)
-
-func (a *App) MaterialConsumeGetStatus() (MaterialConsumeStatus, error) {
-	if err := a.acquireGameProcessLease(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	return a.materialConsumeGetStatusLocked()
-}
-
-func (a *App) MaterialConsumeGetStatusOwned(token string) (MaterialConsumeStatus, error) {
-	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	return a.materialConsumeGetStatusLocked()
-}
-
-func (a *App) materialConsumeGetStatusLocked() (MaterialConsumeStatus, error) {
-	a.runtimePatchMu.Lock()
-	defer a.runtimePatchMu.Unlock()
-	if _, err := a.locateMaterialConsume(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.readMaterialConsumeStatus()
-}
-
-func (a *App) MaterialConsumeSetEnabled(enabled bool) (MaterialConsumeStatus, error) {
-	liveMemoryWriteMu.Lock()
-	defer liveMemoryWriteMu.Unlock()
-	if err := a.acquireGameProcessLease(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.materialConsumeSetEnabledLocked(enabled)
-}
-
-func (a *App) MaterialConsumeSetEnabledOwned(token string, enabled bool) (MaterialConsumeStatus, error) {
-	liveMemoryWriteMu.Lock()
-	defer liveMemoryWriteMu.Unlock()
-	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	defer a.procMu.Unlock()
-	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	return a.materialConsumeSetEnabledLocked(enabled)
-}
-
-func (a *App) materialConsumeSetEnabledLocked(enabled bool) (MaterialConsumeStatus, error) {
-	a.runtimePatchMu.Lock()
-	defer a.runtimePatchMu.Unlock()
-	patch := materialConsumeOrig
-	if enabled {
-		patch = materialConsumePatch
-	}
-	addr, err := a.locateMaterialConsume()
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	current, err := a.readSharedRuntimePatch(addr)
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	if err := validateSharedRuntimePatchTransition(current, sharedRuntimePatchOwnerMaterialConsume, enabled); err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	writer := func(data []byte) error { return writeCodeMemory(a.hProcess, addr, data) }
-	reader := func() ([]byte, error) { return a.readSharedRuntimePatch(addr) }
-	installResult, err := installCodeHookAtomic(current, patch, writer, reader)
-	if err != nil {
-		if installResult.RequiresRecoveryLease() {
-			a.poisonCurrentLiveMemoryWrites()
-		}
-		return MaterialConsumeStatus{}, fmt.Errorf("写入升级/强化材料消耗失败: %w", err)
-	}
-	return a.readMaterialConsumeStatus()
-}
-
-func (a *App) readMaterialConsumeStatus() (MaterialConsumeStatus, error) {
-	addr, err := a.locateMaterialConsume()
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	buf, err := a.readSharedRuntimePatch(addr)
-	if err != nil {
-		return MaterialConsumeStatus{}, err
-	}
-	owner := classifySharedRuntimePatch(buf)
-	if owner != sharedRuntimePatchOwnerNone && owner != sharedRuntimePatchOwnerMaterialConsume {
-		if owner == sharedRuntimePatchOwnerUnknown {
-			return MaterialConsumeStatus{}, fmt.Errorf("升级/强化材料消耗指令字节异常: %s", bytesToHex(buf))
-		}
-		return MaterialConsumeStatus{}, fmt.Errorf("共享补丁地址正由%s占用，请先恢复后再读取素材状态", sharedRuntimePatchOwnerLabel(owner))
-	}
-	return MaterialConsumeStatus{
-		RVA:          uint64(addr - a.moduleBase),
-		Enabled:      owner == sharedRuntimePatchOwnerMaterialConsume,
-		CurrentBytes: bytesToHex(buf),
-	}, nil
-}
-
-func (a *App) readSharedRuntimePatch(addr uintptr) ([]byte, error) {
-	buf := make([]byte, len(sharedInventoryMaterialOriginal))
-	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&buf[0]), uintptr(len(buf))); err != nil {
-		return nil, fmt.Errorf("读取素材/小钳蟹共享指令失败: %w", err)
-	}
-	return buf, nil
-}
-
-func (a *App) locateMaterialConsume() (uintptr, error) {
-	if a.materialConsumeAddr != 0 {
-		return a.materialConsumeAddr, nil
-	}
-	fixed := a.moduleBase + materialConsumeRVA
-	if buf, err := a.readSharedRuntimePatch(fixed); err == nil {
-		owner := classifySharedRuntimePatch(buf)
-		if owner == sharedRuntimePatchOwnerNone || owner == sharedRuntimePatchOwnerMaterialConsume {
-			a.materialConsumeAddr = fixed
-			return fixed, nil
-		}
-		if owner == sharedRuntimePatchOwnerInventoryQuantity {
-			return 0, fmt.Errorf("共享补丁地址正由%s占用，请先恢复", sharedRuntimePatchOwnerLabel(owner))
-		}
-	}
-	mask := make([]bool, len(materialConsumeOrig))
-	for i := range mask {
-		mask[i] = true
-	}
-	addr, err := a.scanPatternUnique(materialConsumeOrig, mask, "升级/强化材料增减指令")
-	if err != nil {
-		return 0, fmt.Errorf("固定 RVA 已变化且特征扫描失败: %w", err)
-	}
-	a.materialConsumeAddr = addr
-	return addr, nil
 }
 
 // ── 其他皮肤紫色符文显示 (运行时 JNE/JE 切换) ──
@@ -2778,6 +2742,11 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.monsterEnhanceOwned) != 0 ||
 		len(a.runtimePatchPatchLeases) != 0 ||
 		len(a.runtimePatchPatchOrder) != 0 ||
+		a.confluxTimerLease != nil ||
+		a.runtimeSpatialGravityLease != nil ||
+		a.materialConsumeLease != nil ||
+		a.combatTuningCooldownLease != nil ||
+		a.combatTuningChargeLease != nil ||
 		a.infiniteChallengeOwnerToken != "" ||
 		a.hasRuntimePatchSelectedCaptureLeaseLocked()
 }
@@ -2963,6 +2932,8 @@ type MonsterEnhanceItem struct {
 	Name              string `json:"name"`
 	RVA               uint64 `json:"rva"`
 	Available         bool   `json:"available"`
+	Candidate         bool   `json:"candidate,omitempty"`
+	EvidenceNote      string `json:"evidenceNote,omitempty"`
 	UnavailableReason string `json:"unavailableReason,omitempty"`
 	Enabled           bool   `json:"enabled"`
 	CurrentBytes      string `json:"currentBytes"`
@@ -2976,6 +2947,8 @@ type monsterPatchPoint struct {
 	Patch             []byte
 	Hook              bool
 	Available         bool
+	Candidate         bool
+	EvidenceNote      string
 	UnavailableReason string
 }
 
@@ -3005,12 +2978,22 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Available: true,
 	},
 	{
-		ID:        "monster_damage",
-		Name:      "怪物伤害",
-		RVA:       0x1FBDEB4,
-		Original:  []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05},
-		Hook:      true,
-		Available: true,
+		ID:           "monster_damage_new",
+		Name:         "怪物伤害（全队）",
+		RVA:          0x1F7A810,
+		Original:     []byte{0x48, 0x89, 0x51, 0x10, 0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC},
+		Hook:         true,
+		Available:    true,
+		Candidate:    true,
+		EvidenceNote: "2.0.2 EXE 入口、安装回读和恢复已验证；全队受击范围与倍率效果仍待多人实机样本。",
+	},
+	{
+		ID:                "monster_damage",
+		Name:              "怪物伤害（旧入口）",
+		RVA:               0x1FBDEB4,
+		Original:          []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05},
+		Hook:              true,
+		UnavailableReason: "旧入口只覆盖部分伤害路径，已由全队生效入口替代",
 	},
 	{
 		ID:                "crocodile_damage",
@@ -3153,6 +3136,9 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		}
 		return MonsterEnhanceResult{}, fmt.Errorf("%s不可用：%s", point.Name, reason)
 	}
+	if enabled && point != nil && point.Candidate && !stableReleaseCandidateWriteEnabled {
+		return MonsterEnhanceResult{}, fmt.Errorf("%s在稳定版中保持禁用：仍缺少可见游戏效果验收", point.Name)
+	}
 	if pointID == "all" || (point != nil && point.ID == "inventory_set_45") {
 		a.runtimePatchMu.Lock()
 		defer a.runtimePatchMu.Unlock()
@@ -3170,6 +3156,12 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	}
 
 	if enabled {
+		if err := a.verifyRuntimePatchExecutableLocked(
+			a.currentProcessInstance(),
+			runtimePatchMonitorText("怪物增强", "Monster enhancement"),
+		); err != nil {
+			return MonsterEnhanceResult{}, err
+		}
 		if pointID == "all" {
 			return MonsterEnhanceResult{}, fmt.Errorf("怪物增强批量 Hook 无法证明逐项所有权，请分别开启需要的功能")
 		}
@@ -3178,7 +3170,7 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			return MonsterEnhanceResult{}, err
 		}
 		var auxiliary *monsterEnhanceAuxPreflight
-		if point != nil && point.ID == "monster_damage" {
+		if point != nil && (point.ID == "monster_damage" || point.ID == "monster_damage_new") {
 			auxiliary, err = a.prepareMonsterDamageAuxiliaryHook()
 			if err != nil {
 				return MonsterEnhanceResult{}, err
@@ -3204,11 +3196,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			}
 			command = fmt.Sprintf("%s %.8g", command, commandValue)
 		}
-		dllPath, err := extractPatchCoreDLL(command)
+		dllPath, err := extractAndInjectPatchCore(a.hProcess, command)
 		if err != nil {
-			return MonsterEnhanceResult{}, err
-		}
-		if err := injectDLL(a.hProcess, dllPath); err != nil {
 			if isRemoteCallIndeterminate(err) {
 				a.poisonCurrentLiveMemoryWrites()
 			}
@@ -3317,18 +3306,25 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 		} else {
 			enabled = bytesEqual(current, point.Patch)
 		}
-		if point.Available {
+		effectiveAvailable := point.Available && (!point.Candidate || enabled || stableReleaseCandidateWriteEnabled)
+		if effectiveAvailable {
 			available++
 		}
-		if enabled && point.Available {
+		if enabled && effectiveAvailable {
 			patched++
+		}
+		unavailableReason := point.UnavailableReason
+		if point.Candidate && !enabled && !stableReleaseCandidateWriteEnabled {
+			unavailableReason = "稳定版未开放：安装与恢复链路已验证，但可见游戏效果仍待实机验收"
 		}
 		items = append(items, MonsterEnhanceItem{
 			ID:                point.ID,
 			Name:              point.Name,
 			RVA:               uint64(point.RVA),
-			Available:         point.Available,
-			UnavailableReason: point.UnavailableReason,
+			Available:         effectiveAvailable,
+			Candidate:         point.Candidate,
+			EvidenceNote:      point.EvidenceNote,
+			UnavailableReason: unavailableReason,
 			Enabled:           enabled,
 			CurrentBytes:      currentHex,
 		})
@@ -3369,7 +3365,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 	}
 	invalidNumber := math.IsNaN(value) || math.IsInf(value, 0)
 	switch point.ID {
-	case "monster_hp", "monster_stun", "monster_damage", "crocodile_damage":
+	case "monster_hp", "monster_stun", "monster_damage", "monster_damage_new", "crocodile_damage":
 		if invalidNumber || value <= 0 || value > 9999 {
 			return fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
 		}
@@ -3390,7 +3386,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 }
 
 func monsterPatchNeedsArgument(id string) bool {
-	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "crocodile_damage" || id == "overdrive_state"
+	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "monster_damage_new" || id == "crocodile_damage" || id == "overdrive_state"
 }
 
 func monsterPatchActivity(available, patched int) (injected, allEnabled bool) {
@@ -3415,11 +3411,12 @@ func extractPatchCoreDLL(patchID string) (string, error) {
 		return "", err
 	}
 	pruneUnlockedPatchCoreDLLs(dir)
-	if err := os.WriteFile(filepath.Join(dir, "patch_core_command.txt"), []byte(patchID), 0o644); err != nil {
-		return "", err
-	}
 	path := filepath.Join(dir, fmt.Sprintf("patch_core_%d.dll", time.Now().UnixNano()))
 	if err := os.WriteFile(path, patchCoreDLL, 0o644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path+".command", []byte(patchID), 0o644); err != nil {
+		_ = os.Remove(path)
 		return "", err
 	}
 	return path, nil
@@ -3435,8 +3432,12 @@ func pruneUnlockedPatchCoreDLLs(dir string) {
 		if entry.IsDir() || !strings.HasPrefix(name, "patch_core_") || !strings.HasSuffix(strings.ToLower(name), ".dll") {
 			continue
 		}
-		// Loaded DLLs are locked by Windows and remain until the game exits.
-		_ = os.Remove(filepath.Join(dir, name))
+		// Loaded DLLs are locked by Windows. Remove the sidecar only after its
+		// module file can be removed, because its InitThread may still read it.
+		dllPath := filepath.Join(dir, name)
+		if os.Remove(dllPath) == nil {
+			_ = os.Remove(dllPath + ".command")
+		}
 	}
 }
 

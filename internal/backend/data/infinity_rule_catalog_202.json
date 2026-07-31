@@ -1,0 +1,559 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": "2.0.2",
+  "sources": {
+    "sqlite": {
+      "file": "system-tables-full-202.sqlite",
+      "sha256": "51f6098d838bc1067d26eefbb74bd7aa6faee42c25bdbb7bd274772bfe829176"
+    },
+    "ruleTable": {
+      "file": "infinity_rule.tbl",
+      "sha256": "bc885a3254c786ad94a1d80532785d0f8bc275cb54fb7350693b258a5da5b9eb"
+    },
+    "effectTable": {
+      "file": "infinity_rule_effect.tbl",
+      "sha256": "3bdeffc28fe7d18f58b3f22d0799593422f93d15c671995b43da417893d5a1a8"
+    },
+    "difficultyTable": {
+      "file": "endlessmode_difficulty.tbl",
+      "sha256": "e3f26b8b95973179bac454cac5e2f6c01105b7c9c5406b9c08ba38f00f83f700"
+    },
+    "textZh": {
+      "file": "text/cs/text_stage.msg",
+      "sha256": "13a98eafbb04ee39647b8ebcd255461f9bc0a063dfc09a2eabf34e5738611506"
+    },
+    "textEn": {
+      "file": "text/en/text_stage.msg",
+      "sha256": "54235940a5c891d050ad8ea6bebf233c06cddfc547b3698b03bb5e46c44769ef"
+    }
+  },
+  "rules": [
+    {
+      "questId": "0040B301",
+      "nameKey": "TXT_QI_NAME_EM8300_01",
+      "descriptionKey": "TXT_QI_EXPL_EM8300_01",
+      "nameZh": "敌人的能力值UP",
+      "nameEn": "Foes have boosted stats",
+      "descriptionZh": "世界第一形态HP+230% / 第二形态HP+230%\n昏厥抗性大幅提升且更难触发连锁时机",
+      "descriptionEn": "The World's first form: HP +230%\nThe World's second form: HP +230%\nGreatly boosts The World's resistance to stun, and link chances\nare harder to trigger.",
+      "effects": [
+        {
+          "key": "38D34C9F",
+          "id": 0,
+          "value": 230.0
+        },
+        {
+          "key": "C6D02544",
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "key": "9DD8C76C",
+          "id": 2,
+          "value": 400.0
+        },
+        {
+          "key": "459AA0F1",
+          "id": 3,
+          "value": 230.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B301",
+      "nameKey": "TXT_QI_NAME_EM8300_02",
+      "descriptionKey": "TXT_QI_EXPL_EM8300_02",
+      "nameZh": "精准格挡待诞可获得额外效果",
+      "nameEn": "Boosts effects of perfect guarding Quickening",
+      "descriptionZh": "触发精准格挡时反弹的待诞命中时\n造成高额昏厥伤害并触发连锁时机\n同时赋予世界持续15秒的[世界裂痕]效果\n效果期间世界受到的伤害+300%",
+      "descriptionEn": "Reflecting Quickening with a perfect guard deals a massive\namount of stun on hit, triggers a link chance, and inflicts\nFractured World  to The World for 15 sec.\nWhile in effect, The World takes 300% more damage.",
+      "effects": [
+        {
+          "key": "7B270915",
+          "id": 17,
+          "value": 15.0
+        },
+        {
+          "key": "FD869619",
+          "id": 18,
+          "value": 300.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B301",
+      "nameKey": "TXT_QI_NAME_EM8300_03",
+      "descriptionKey": "TXT_QI_EXPL_EM8300_03",
+      "nameZh": "第二形态根据第一形态的持续时间获得强化",
+      "nameEn": "Starting slow has dire consequences",
+      "descriptionZh": "任务开始100秒后世界仍处于第一形态时\n世界获得[纯白之境]效果（最大Lv10）\n此后第一形态每持续20秒提升1次该效果Lv\n第二形态下世界攻击力根据效果Lv提升（最大+50%）",
+      "descriptionEn": "After the first 100 sec., if The World is in its first form,\nit gains a lvl of Proto-White World  (max lvl 10).\nWhile in effect, it gains a lvl every 20 sec. until The World\ntransforms into its second form.\nWhile in its second form, The World gains a max of ATK +50%\nbased on Proto-White World's lvl.",
+      "effects": [
+        {
+          "key": "EDFE7B9E",
+          "id": 60,
+          "value": 0.5
+        },
+        {
+          "key": "DE583905",
+          "id": 22,
+          "value": 10.0
+        },
+        {
+          "key": "944A1EF3",
+          "id": 23,
+          "value": 100.0
+        },
+        {
+          "key": "CA086099",
+          "id": 24,
+          "value": 20.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B301",
+      "nameKey": "TXT_QI_NAME_EM8300_04",
+      "descriptionKey": "TXT_QI_EXPL_EM8300_04",
+      "nameZh": "阿卡姆卡牌获得强化",
+      "nameEn": "Arcarum cards are stronger",
+      "descriptionZh": "世界召唤的阿卡姆卡牌HP+50%\n阿卡姆系列招式发动前的准备时间缩短",
+      "descriptionEn": "Arcarum cards: HP +50%\nArcarum special attacks now take less time to activate.",
+      "effects": [
+        {
+          "key": "1176A282",
+          "id": 30,
+          "value": 50.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B301",
+      "nameKey": "TXT_QI_NAME_EM8300_05",
+      "descriptionKey": "TXT_QI_EXPL_EM8300_05",
+      "nameZh": "世界的攻击造成的拉近效果获得强化",
+      "nameEn": "The pull of The World is more powerful",
+      "descriptionZh": "世界攻击的拉近效果获得强化",
+      "descriptionEn": "The World's suction-type attacks pull with even greater force.",
+      "effects": []
+    },
+    {
+      "questId": "0040B309",
+      "nameKey": "TXT_QI_NAME_EM7600_01",
+      "descriptionKey": "TXT_QI_EXPL_EM7600_01",
+      "nameZh": "敌人的能力值UP",
+      "nameEn": "Foes have boosted stats",
+      "descriptionZh": "巴哈姆特·异型的HP+330% / 昏厥槽+70%",
+      "descriptionEn": "Bahamut Versa: HP +330% / Stun Gauge +70%",
+      "effects": [
+        {
+          "key": "D066137B",
+          "id": 300,
+          "value": 330.0
+        },
+        {
+          "key": "1AED4A82",
+          "id": 302,
+          "value": 70.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B309",
+      "nameKey": "TXT_QI_NAME_EM7600_02",
+      "descriptionKey": "TXT_QI_EXPL_EM7600_02",
+      "nameZh": "？？？参战",
+      "nameEn": "??? joins the fight",
+      "descriptionZh": "任务中会有神秘敌人[？？？]参战\n击败？？？时己方全体获得紫银之炎\n已有紫银之炎时不会因此发生爆炸\n？？？会在被击败40秒后复活",
+      "descriptionEn": "The mysterious ??? fights against you.\nUpon defeating ???, the entire party is inflicted with\nDarkflame . It won't cause an existing infliction of\nDarkflame to explode.\n??? revives after 40 sec.",
+      "effects": [
+        {
+          "key": "39E58B01",
+          "id": 312,
+          "value": 40.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B309",
+      "nameKey": "TXT_QI_NAME_EM7600_03",
+      "descriptionKey": "TXT_QI_EXPL_EM7600_03",
+      "nameZh": "紫银之炎追加攻击性能强化的效果",
+      "nameEn": "Fired up by Darkflame",
+      "descriptionZh": "[紫银之炎]效果期间\n赋予自身攻击造成伤害200%的追击效果",
+      "descriptionEn": "While inflicted with Darkflame , your attacks gain\nSupplementary DMG (200%).",
+      "effects": [
+        {
+          "key": "EA64E5D1",
+          "id": 320,
+          "value": 200.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B309",
+      "nameKey": "TXT_QI_NAME_EM7600_04",
+      "descriptionKey": "TXT_QI_EXPL_EM7600_04",
+      "nameZh": "巴哈姆特·异型的攻击附带紫银之炎",
+      "nameEn": "Bahamut Versa's attacks inflict Darkflame",
+      "descriptionZh": "每次受到巴哈姆特·异型攻击\n都会被赋予[紫银之炎]效果\n但巴哈姆特·异型的攻击更难导致破防",
+      "descriptionEn": "Bahamut Versa's attacks inflict Darkflame \nbut won't break your guard as easily.",
+      "effects": []
+    },
+    {
+      "questId": "0040B309",
+      "nameKey": "TXT_QI_NAME_EM7600_05",
+      "descriptionKey": "TXT_QI_EXPL_EM7600_05",
+      "nameZh": "紫银之炎的爆炸伤害大幅提升",
+      "nameEn": "Darkflame explosions are more damaging",
+      "descriptionZh": "[紫银之炎]效果期间\n再次获得[紫银之炎]效果\n会发生爆炸并受到50000伤害",
+      "descriptionEn": "While inflicted with Darkflame , the next infliction of\nDarkflame triggers a big explosion that deals 50000 damage.",
+      "effects": [
+        {
+          "key": "5AED71CB",
+          "id": 321,
+          "value": 50000.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B313",
+      "nameKey": "TXT_QI_NAME_EM7700_01",
+      "descriptionKey": "TXT_QI_EXPL_EM7700_01",
+      "nameZh": "敌人的能力值UP",
+      "nameEn": "Foes have boosted stats",
+      "descriptionZh": "路西法的HP+250% / 昏厥槽+65%\n终焉神器的HP+400%",
+      "descriptionEn": "Lucilius: HP +250% / Stun Gauge +65%\nDark Opus swords: HP +400%",
+      "effects": [
+        {
+          "key": "5A05068F",
+          "id": 200,
+          "value": 250.0
+        },
+        {
+          "key": "A1936BCE",
+          "id": 202,
+          "value": 65.0
+        },
+        {
+          "key": "A5212DD6",
+          "id": 203,
+          "value": 400.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B313",
+      "nameKey": "TXT_QI_NAME_EM7700_02",
+      "descriptionKey": "TXT_QI_EXPL_EM7700_02",
+      "nameZh": "自身陷入的弱化效果持续时间变化",
+      "nameEn": "Fluctuating debuff durations",
+      "descriptionZh": "路西法和终焉神器赋予的\n弱化效果持续时间+100%\n角色攻击每次命中敌人时\n可使自身的弱化效果持续时间-15%\n基于攻击威力提升效果量",
+      "descriptionEn": "Debuffs inflicted by Lucilius and his swords last 100% longer.\nWhenever you land a hit, you recover 15% faster from debuffs.\nThe stronger the attack, the faster the recovery.",
+      "effects": [
+        {
+          "key": "2731C8E1",
+          "id": 230,
+          "value": 1.0
+        },
+        {
+          "key": "ADB5E322",
+          "id": 231,
+          "value": 0.15
+        }
+      ]
+    },
+    {
+      "questId": "0040B313",
+      "nameKey": "TXT_QI_NAME_EM7700_03",
+      "descriptionKey": "TXT_QI_EXPL_EM7700_03",
+      "nameZh": "路西法的攻击附带最大HP减少效果",
+      "nameEn": "Certain Lucilius attacks inflict Max HP↓",
+      "descriptionZh": "每次受到路西法特定攻击\n都会被赋予弱化效果[最大HP减少]（最大Lv5）\nLv随着时间经过而降低",
+      "descriptionEn": "Some of Lucilius's special attacks also inflict a lvl of\nMax HP↓  (max lvl 5). The lvl gradually lowers over time.",
+      "effects": []
+    },
+    {
+      "questId": "0040B313",
+      "nameKey": "TXT_QI_NAME_EM7700_04",
+      "descriptionKey": "TXT_QI_EXPL_EM7700_04",
+      "nameZh": "攻击DOWN和防御DOWN的效果提升",
+      "nameEn": "ATK↓ and DEF↓ are more debilitating",
+      "descriptionZh": "强化自身赋予的攻击DOWN和防御DOWN\n效果量：攻击力-40% / 防御力-30%\n强化路西法和终焉神器赋予的\n攻击DOWN和防御DOWN\n效果量：攻击力-30% / 防御力-20%",
+      "descriptionEn": "When inflicted by you:\nATK↓  lowers ATK by an additional 40%\nDEF↓  lowers DEF by an additional 30%\nWhen inflicted by Lucilius and his swords:\nATK↓  lowers ATK by an additional 30%\nDEF↓  lowers DEF by an additional 20%",
+      "effects": [
+        {
+          "key": "4215A94C",
+          "id": 242,
+          "value": 0.4
+        },
+        {
+          "key": "23FD47BB",
+          "id": 243,
+          "value": 0.3
+        },
+        {
+          "key": "F8C55D99",
+          "id": 240,
+          "value": 0.3
+        },
+        {
+          "key": "F5B7D2AC",
+          "id": 241,
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "questId": "0040B313",
+      "nameKey": "TXT_QI_NAME_EM7700_05",
+      "descriptionKey": "TXT_QI_EXPL_EM7700_05",
+      "nameZh": "路西法的部分攻击获得强化",
+      "nameEn": "Certain Lucilius attacks are enhanced",
+      "descriptionZh": "最后抗争或绝对虚无效果范围内\n追加强大的持续伤害效果\n失乐园准备阶段会产生落雷",
+      "descriptionEn": "AoE pools spawned by Final Rebellion and Absolute Nothing\nnow deal heavy continuous damage.\nWhile Paradise Lost is being primed, lightning steadily falls.",
+      "effects": []
+    },
+    {
+      "questId": "0040B314",
+      "nameKey": "TXT_QI_NAME_EM8200_01",
+      "descriptionKey": "TXT_QI_EXPL_EM8200_01",
+      "nameZh": "敌人的能力值UP",
+      "nameEn": "Foes have boosted stats",
+      "descriptionZh": "别西卜的HP+170% / 昏厥槽+110%",
+      "descriptionEn": "Beelzebub: HP +170% / Stun Gauge +110%",
+      "effects": [
+        {
+          "key": "28078B67",
+          "id": 100,
+          "value": 170.0
+        },
+        {
+          "key": "4E22492D",
+          "id": 102,
+          "value": 110.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B314",
+      "nameKey": "TXT_QI_NAME_EM8200_02",
+      "descriptionKey": "TXT_QI_EXPL_EM8200_02",
+      "nameZh": "更容易从场地跌落",
+      "nameEn": "Easier to fall off or get knocked off the stage",
+      "descriptionZh": "任务开始时场地边缘的部分结界消失\n别西卜攻击的击飞效果获得强化",
+      "descriptionEn": "Quest begins with parts of the stage's outer edge exposed.\nBeelzebub's attacks deal more knockback.",
+      "effects": []
+    },
+    {
+      "questId": "0040B314",
+      "nameKey": "TXT_QI_NAME_EM8200_03",
+      "descriptionKey": "TXT_QI_EXPL_EM8200_03",
+      "nameZh": "从场地跌落时获得最大HP减少效果",
+      "nameEn": "Falling off the stage reduces max HP",
+      "descriptionZh": "每次从场地跌落\n都会被赋予[最大HP减少]（永久/最大Lv5）\n效果无法通过全体净化等手段解除",
+      "descriptionEn": "Upon falling from the stage, you gain a permanent lvl of\nMax HP↓  (max lvl 5). It can't be removed.",
+      "effects": []
+    },
+    {
+      "questId": "0040B314",
+      "nameKey": "TXT_QI_NAME_EM8200_04",
+      "descriptionKey": "TXT_QI_EXPL_EM8200_04",
+      "nameZh": "别西卜的光弹攻击获得强化",
+      "nameEn": "Beelzebub has more robust orbs",
+      "descriptionZh": "别西卜的光弹攻击变得更加猛烈\n且会同时使用红黄两种光弹",
+      "descriptionEn": "Beelzebub's light orb projectiles are more powerful.\nA mix of red and yellow orbs can now be fired together.",
+      "effects": []
+    },
+    {
+      "questId": "0040B314",
+      "nameKey": "TXT_QI_NAME_EM8200_05",
+      "descriptionKey": "TXT_QI_EXPL_EM8200_05",
+      "nameZh": "角色每次被束缚都会使别西卜获得强化",
+      "nameEn": "Getting Bound energizes Beelzebub",
+      "descriptionZh": "己方每次被束缚\n别西卜都会获得[混沌转换]（永久/最大Lv5）\nLv每级效果量：别西卜的攻击力+4%\n每次使别西卜陷入硬直可降低Lv1",
+      "descriptionEn": "Whenever Beelzebub inflicts Bound, he gains a permanent lvl\nof Chaos Shift  (max lvl 5). While in effect, he gains\nATK +4% per effect lvl.\nCausing Beelzebub to flinch lowers the lvl by 1.",
+      "effects": [
+        {
+          "key": "64F116F1",
+          "id": 140,
+          "value": 5.0
+        },
+        {
+          "key": "33FD4C26",
+          "id": 141,
+          "value": 0.04
+        },
+        {
+          "key": "0E2089A4",
+          "id": 142,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B316",
+      "nameKey": "TXT_QI_NAME_EM8400_01",
+      "descriptionKey": "TXT_QI_EXPL_EM8400_01",
+      "nameZh": "敌人的能力值UP",
+      "nameEn": "Foes have boosted stats",
+      "descriptionZh": "天元泽卡定榫的HP+160% / 攻击力+30% / 昏厥槽+100%\n各属性至理的HP+200% / 攻击力+20% / 昏厥槽+100%\n天元回响和理天之像的HP+200% / 攻击力+30%\n天元回响的昏厥槽+100%\n理天之像的昏厥槽+100%",
+      "descriptionEn": "Omnis Zegalith: HP +160% / ATK +30% / Stun Gauge +100%\nEach Elemental Law: HP +200% / ATK +20% / Stun Gauge +100%\nLogos Echo / Logos Empyreal: HP +200% / ATK +30%\nLogos Echo: Stun Gauge +100%\nLogos Empyreal: Stun Gauge +100%",
+      "effects": [
+        {
+          "key": "F3A87865",
+          "id": 400,
+          "value": 160.0
+        },
+        {
+          "key": "CFA3E476",
+          "id": 401,
+          "value": 30.0
+        },
+        {
+          "key": "7216B30A",
+          "id": 402,
+          "value": 100.0
+        },
+        {
+          "key": "ECF73BBE",
+          "id": 403,
+          "value": 200.0
+        },
+        {
+          "key": "D3E30029",
+          "id": 404,
+          "value": 20.0
+        },
+        {
+          "key": "BAF51F25",
+          "id": 405,
+          "value": 100.0
+        },
+        {
+          "key": "8D8172A7",
+          "id": 406,
+          "value": 200.0
+        },
+        {
+          "key": "0FD9B509",
+          "id": 407,
+          "value": 30.0
+        },
+        {
+          "key": "FED51E98",
+          "id": 408,
+          "value": 100.0
+        },
+        {
+          "key": "A06DF778",
+          "id": 409,
+          "value": 100.0
+        }
+      ]
+    },
+    {
+      "questId": "0040B316",
+      "nameKey": "TXT_QI_NAME_EM8400_02",
+      "descriptionKey": "TXT_QI_EXPL_EM8400_02",
+      "nameZh": "任务开始时消耗部分危机槽",
+      "nameEn": "Enter battle with less critical gauge",
+      "descriptionZh": "任务开始时大幅消耗危机槽",
+      "descriptionEn": "Starts the quest with a greatly depleted critical gauge.",
+      "effects": []
+    },
+    {
+      "questId": "0040B316",
+      "nameKey": "TXT_QI_NAME_EM8400_03",
+      "descriptionKey": "TXT_QI_EXPL_EM8400_03",
+      "nameZh": "根据战况回复危机槽",
+      "nameEn": "Speed is critical to survival",
+      "descriptionZh": "任务中根据通过各类难关所用时间回复危机槽\n所用时间越短回复量越高",
+      "descriptionEn": "Critical gauge is restored based on how quickly various\ntrials during the quest are overcome.",
+      "effects": []
+    },
+    {
+      "questId": "0040B316",
+      "nameKey": "TXT_QI_NAME_EM8400_04",
+      "descriptionKey": "TXT_QI_EXPL_EM8400_04",
+      "nameZh": "天元泽卡定榫的攻击变得更加猛烈",
+      "nameEn": "Omnis Zegalith attacks are more devastating",
+      "descriptionZh": "天元泽卡定榫的攻击变得更加猛烈\n穹龙试炼的规定时间缩短\n各属性至理在场时天元泽卡定榫也会进行攻击",
+      "descriptionEn": "Omnis Zegalith's attacks are enhanced, and Sky Dragons' Trial\nchannels faster. Omnis Zegalith now may attack during\ntrials against elemental laws.",
+      "effects": []
+    },
+    {
+      "questId": "0040B316",
+      "nameKey": "TXT_QI_NAME_EM8400_05",
+      "descriptionKey": "TXT_QI_EXPL_EM8400_05",
+      "nameZh": "天元回响和理天之像的攻击变得更加猛烈",
+      "nameEn": "Logos attacks are more devastating",
+      "descriptionZh": "天元回响和理天之像的攻击变得更加猛烈",
+      "descriptionEn": "Logos Echo and Logos Empyreal attacks are enhanced.",
+      "effects": []
+    }
+  ],
+  "difficulties": [
+    {
+      "Unk1": "BBD5E364",
+      "Unk2": "",
+      "Unk3": "",
+      "SortOrder": 0,
+      "EnemyMinLevel": 20,
+      "Unk6": 0,
+      "EnemyMaxLevel": 20,
+      "Power": 1500,
+      "Unk9": 5.0,
+      "Unk10": 0.1
+    },
+    {
+      "Unk1": "5D1C8C52",
+      "Unk2": "4B3694D3",
+      "Unk3": "",
+      "SortOrder": 1,
+      "EnemyMinLevel": 50,
+      "Unk6": 0,
+      "EnemyMaxLevel": 50,
+      "Power": 4000,
+      "Unk9": 10.0,
+      "Unk10": 0.1
+    },
+    {
+      "Unk1": "350011E1",
+      "Unk2": "736EF8FF",
+      "Unk3": "56961F99",
+      "SortOrder": 2,
+      "EnemyMinLevel": 90,
+      "Unk6": 20,
+      "EnemyMaxLevel": 110,
+      "Power": 9000,
+      "Unk9": 15.0,
+      "Unk10": 0.1
+    },
+    {
+      "Unk1": "985ABC8D",
+      "Unk2": "445D6F5C",
+      "Unk3": "DC93780A",
+      "SortOrder": 3,
+      "EnemyMinLevel": 180,
+      "Unk6": 20,
+      "EnemyMaxLevel": 200,
+      "Power": 22000,
+      "Unk9": 40.0,
+      "Unk10": 0.1
+    },
+    {
+      "Unk1": "26810EEA",
+      "Unk2": "3AD9B92E",
+      "Unk3": "48BAECCA",
+      "SortOrder": 4,
+      "EnemyMinLevel": 210,
+      "Unk6": 20,
+      "EnemyMaxLevel": 230,
+      "Power": 30000,
+      "Unk9": 45.0,
+      "Unk10": 0.1
+    }
+  ],
+  "interpretation": "Effect id/value pairs are raw table parameters. Only localized placeholders are substituted; unknown field semantics remain unnamed."
+}

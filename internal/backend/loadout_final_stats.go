@@ -80,6 +80,7 @@ func calculateLoadoutDefenseModel(bonuses []TraitBonus, unconditionalDefense flo
 	common := unconditionalDefense
 	stoutHeart := float64(0)
 	stronghold := float64(0)
+	grayWhiteShield := float64(0)
 	hasGarrison := false
 	hasReferenceZone := false
 	for _, bonus := range bonuses {
@@ -88,8 +89,8 @@ func calculateLoadoutDefenseModel(bonuses []TraitBonus, unconditionalDefense flo
 			common += defenseTraitComponent(bonus, func(component BonusComponent) bool {
 				return component.Unit == "pct" && strings.Contains(component.Label, "受到的伤害")
 			})
-		case "SKILL_141_00": // 钳蟹的报恩：无标签的百分比是减伤，最大HP另行计算
-			common += defenseTraitComponent(bonus, func(component BonusComponent) bool {
+		case "SKILL_141_00": // 钳蟹的报恩：无标签的百分比属于灰/白盾独立区
+			grayWhiteShield += defenseTraitComponent(bonus, func(component BonusComponent) bool {
 				return component.Unit == "pct" && component.Label == ""
 			})
 		case "SKILL_044_00":
@@ -110,10 +111,11 @@ func calculateLoadoutDefenseModel(bonuses []TraitBonus, unconditionalDefense flo
 	}
 
 	zones := []LoadoutDefenseZone{
-		{Key: "common", Label: "通用加算区", Reduction: common, Included: common != 0, Condition: "无条件防御、坚持与钳蟹减伤同区相加", Evidence: "2.0.2-table + Io runtime +5%"},
+		{Key: "common", Label: "通用加算区", Reduction: common, Included: common != 0, Condition: "无条件防御与坚持同区相加", Evidence: "2.0.2-table + Io runtime +5%"},
 		{Key: "stout-heart", Label: "霸体乘区", Reduction: stoutHeart, Included: stoutHeart != 0, Condition: "装备霸体时", Evidence: "reference-candidate"},
 		{Key: "stronghold", Label: "刚健乘区", Reduction: stronghold, Included: stronghold != 0, Condition: "静态草稿按 HP 100%", Evidence: "2.0.2-table + reference-zone"},
 		{Key: "garrison", Label: "坚守乘区", Reduction: 0, Included: false, Condition: "随失去 HP 变化；满血静态草稿不计", Evidence: "2.0.2-table; runtime-curve-open"},
+		{Key: "gray-white-shield", Label: "灰/白盾乘区", Reduction: grayWhiteShield, Included: grayWhiteShield != 0, Condition: "钳蟹的报恩与同类角色技能盾同区相加", Evidence: "v2-video-review + 2.0.2-table"},
 		{Key: "attack-down", Label: "攻击 DOWN 乘区", Reduction: 0, Included: false, Condition: "取决于受击敌人的当前弱化", Evidence: "battle-state-unavailable"},
 		{Key: "independent", Label: "独立减伤区", Reduction: 0, Included: false, Condition: "伤害减免 Buff、祝福等需战斗状态", Evidence: "battle-state-unavailable"},
 		{Key: "defense-up", Label: "防御 UP 乘区", Reduction: 0, Included: false, Condition: "当前 Buff 未由离线配装提供", Evidence: "battle-state-unavailable"},

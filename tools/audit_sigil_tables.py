@@ -123,6 +123,15 @@ def main() -> None:
             sigil["primaryTraitId"] = game["SkillId1"]
             sigil["supportsSecondaryTrait"] = bool(pool)
             sigil["allowedSecondaryTraitIds"] = sorted(pool)
+            player_req = str(game["PlayerReq"] or "").strip()
+            if sigil.get("category") == "character_sigil":
+                owners = [player_req] if player_req else []
+                # Gran and Djeeta share the protagonist-only factor family.
+                if player_req == "PL0000":
+                    owners.append("PL0100")
+                sigil["allowedOwnerCodes"] = owners
+            else:
+                sigil.pop("allowedOwnerCodes", None)
             if sigil["internalId"] in task_item_max_levels:
                 max_level = task_item_max_levels[sigil["internalId"]]
                 sigil["allowedSigilLevels"] = list(range(1, max_level + 1))

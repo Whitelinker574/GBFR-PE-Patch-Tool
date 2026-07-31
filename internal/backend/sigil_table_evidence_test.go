@@ -83,8 +83,8 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 			supplemental++
 		}
 	}
-	if tableBacked != len(evidence.Rows) || supplemental != 32 || len(catalog.Sigils) != tableBacked+supplemental {
-		t.Fatalf("catalog rows=%d, table-backed=%d, DLC 2.0.2 runtime catalog supplemental=%d; want 221/189/32", len(catalog.Sigils), tableBacked, supplemental)
+	if tableBacked != len(evidence.Rows) || supplemental != 33 || len(catalog.Sigils) != tableBacked+supplemental {
+		t.Fatalf("catalog rows=%d, generated table-backed=%d, locked 2.0.2 supplemental=%d; want 222/189/33", len(catalog.Sigils), tableBacked, supplemental)
 	}
 	for _, row := range evidence.Rows {
 		if row.Status != "verified" {

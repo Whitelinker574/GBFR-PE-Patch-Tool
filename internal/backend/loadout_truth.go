@@ -10,7 +10,26 @@ import (
 // character factors and unknown real-save factors require an existing use by
 // the same character. The generic result is true only when the catalog proves
 // that classification.
-func loadoutSigilAccess(cat *Catalog, hash uint32, precedent map[uint32]bool) (generic, allowed bool) {
+func sigilAllowedForOwner(def *SigilDef, ownerCode string) bool {
+	if def == nil {
+		return false
+	}
+	if derefStr(def.Category) != "character_sigil" && len(def.AllowedOwnerCodes) == 0 {
+		return true
+	}
+	ownerCode = strings.TrimSpace(ownerCode)
+	if ownerCode == "" {
+		return false
+	}
+	for _, allowed := range def.AllowedOwnerCodes {
+		if strings.EqualFold(strings.TrimSpace(allowed), ownerCode) {
+			return true
+		}
+	}
+	return false
+}
+
+func loadoutSigilAccess(cat *Catalog, hash uint32, ownerCode string, precedent map[uint32]bool) (generic, allowed bool) {
 	if cat == nil || hash == 0 || hash == EmptyHash {
 		return false, false
 	}
@@ -18,10 +37,31 @@ func loadoutSigilAccess(cat *Catalog, hash uint32, precedent map[uint32]bool) (g
 	if def == nil {
 		return false, precedent[hash]
 	}
-	if def.Category != nil && *def.Category == "character_sigil" {
+	if (def.Category != nil && *def.Category == "character_sigil") || len(def.AllowedOwnerCodes) > 0 {
+		if len(def.AllowedOwnerCodes) > 0 {
+			return false, sigilAllowedForOwner(def, ownerCode)
+		}
 		return false, precedent[hash]
 	}
 	return true, true
+}
+
+func validateKnownSigilOwner(cat *Catalog, hash uint32, ownerCode string) error {
+	if cat == nil {
+		return fmt.Errorf("因子归属校验缺少统一目录")
+	}
+	def := cat.LookupSigilByHash(hash)
+	if def == nil || (derefStr(def.Category) != "character_sigil" && len(def.AllowedOwnerCodes) == 0) {
+		return nil
+	}
+	if sigilAllowedForOwner(def, ownerCode) {
+		return nil
+	}
+	owners := strings.Join(def.AllowedOwnerCodes, "、")
+	if owners == "" {
+		owners = "未记录"
+	}
+	return fmt.Errorf("因子「%s」是角色专属因子，只适用于 %s；当前角色 %s 使用后不会按预期生效，已阻止写入", displaySigilName(def), owners, ownerCode)
 }
 
 // loadoutSigilDisplayNameFromTraits keeps traits in their own fields and derives
@@ -149,7 +189,9 @@ func synthesizeSigilNameForTraits(cat *Catalog, primaryName string, hasSecondary
 		}
 		return fallbackSynthesizedSigilName(base, "secondary", chinese)
 	}
-	for _, suffix := range []string{"V+", "V", "+", ""} {
+	// A hashless instance without a secondary trait represents the single-trait
+	// family shape. Do not let a newly cataloged V+ shell rename it to V+.
+	for _, suffix := range []string{"V", "+", ""} {
 		if suffixes[suffix] {
 			if suffix == "" {
 				return base
@@ -159,6 +201,9 @@ func synthesizeSigilNameForTraits(cat *Catalog, primaryName string, hasSecondary
 			}
 			return base + " " + suffix
 		}
+	}
+	if suffixes["V+"] {
+		return base + " V"
 	}
 	return fallbackSynthesizedSigilName(base, "", chinese)
 }

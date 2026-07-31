@@ -13,6 +13,7 @@ import { traitAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import CatalogSelect from './CatalogSelect.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 
@@ -62,8 +63,8 @@ const showExisting = ref(false)
 const isDeleting = ref(false)
 const loadingExisting = ref(false)
 
-const secondaryPickerOptions = computed(() => allTraits.value)
-const effectiveSupportsSecondary = computed(() => true)
+const secondaryPickerOptions = computed(() => secondaryTraits.value)
+const effectiveSupportsSecondary = computed(() => supportsSecondary.value)
 const editableLevelMax = 50
 
 function traitIconForOption(trait) {
@@ -157,12 +158,6 @@ async function selectSaveSlot(path) {
   await loadSave()
 }
 
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
-}
-
 async function loadSave() {
   if (!inputPath.value.trim()) { showStatus('请输入存档路径', 'error'); return }
   try {
@@ -221,7 +216,7 @@ async function deleteSelected() {
     const ids = Array.from(selectedForDelete.value)
     const result = await DeleteSelectedSigils(ids, inputPath.value.trim())
     await loadSave()
-    showStatus(`已删除 ${result.createdCount} 个因子`, 'success')
+    showStatus(`已从所选存档删除 ${result.createdCount} 个因子；备份已保留，回读验证通过。`, 'success')
   } catch (e) {
     showStatus(String(e), 'error')
   } finally {
@@ -305,7 +300,7 @@ async function refreshLegality() {
     const report = await CheckLegality(buildCurrentItem())
     if (ticket === legalityTicket) Object.assign(legality, report)
   } catch (e) {
-    if (ticket === legalityTicket) Object.assign(legality, { status: 'unknown', writable: true, message: `检验失败：${String(e)}`, reasons: [] })
+    if (ticket === legalityTicket) Object.assign(legality, { status: 'impossible', writable: false, message: `检验失败，已禁止写入：${String(e)}`, reasons: [] })
   }
 }
 
@@ -376,7 +371,7 @@ async function applyQueueToSave() {
     queue.value = []
     await loadSave()
     flashApplySuccess()
-    showStatus(`已写入 ${result.createdCount} 个因子 (验证 ${result.verifiedCount})`, 'success')
+    showStatus(`已向所选存档新增 ${result.createdCount} 个独立因子实例；回读确认 ${result.verifiedCount} 个，写入前备份已保留。`, 'success')
   } catch (e) { showStatus(String(e), 'error') }
   finally { isApplying.value = false }
 }
@@ -396,7 +391,7 @@ async function removeAll() {
   try {
     const result = await RemoveAllSigils(inputPath.value.trim(), inputPath.value.trim())
     await loadSave()
-    showStatus(`已清除 ${result.createdCount} 个因子 (剩余 ${result.verifiedCount})`, 'success')
+    showStatus(`已清除所选存档中的 ${result.createdCount} 个因子，回读剩余 ${result.verifiedCount} 个；写入前备份已保留。`, 'success')
   } catch (e) { showStatus(String(e), 'error') }
 }
 
@@ -405,22 +400,12 @@ async function removeAll() {
 <template>
   <div class="sigil-container">
     <!-- 存档选择 -->
-    <div class="section ui-card compact-save-bar">
-      <div class="section-title ui-section-title"><span>选择存档槽</span><small>与物品、武器页面使用同一组存档</small></div>
-      <div class="save-slots">
-        <button v-for="slot in slots" :key="slot.index" class="slot-choice ui-btn is-sm" :class="{ on: inputPath === slot.path }" @click="selectSaveSlot(slot.path)">{{ saveSlotLabel(slot) }}</button>
-        <button class="slot-choice secondary ui-btn is-sm" @click="browseInput">选择其他存档</button>
-      </div>
-      <div class="selected-save" :class="{ empty: !inputPath }">{{ inputPath || '尚未选择存档' }}</div>
-      <div v-if="saveLoaded" class="save-info">
-        已加载 · {{ saveInfo.occupiedSigils }} 个因子 · 最大槽位 {{ saveInfo.maxSlotId }}
-      </div>
-    </div>
+    <SaveSourcePicker v-model="inputPath" :slots="slots" :busy="isApplying || dataLoading" :loaded="saveLoaded" :summary="saveLoaded ? `已加载 · ${saveInfo.occupiedSigils} 个因子 · 最大槽位 ${saveInfo.maxSlotId}` : ''" helper="第一步：选择要写入的存档；必须先完全退出游戏" @select="selectSaveSlot" @browse="browseInput" />
 
     <!-- 已有因子 -->
     <div v-if="showExisting" class="section ui-card">
       <div class="section-title ui-section-title">
-        已有因子 {{ loadingExisting ? '加载中...' : `(${existingSigils.length})` }}
+        查看或删除已有因子 {{ loadingExisting ? '加载中...' : `(${existingSigils.length})` }}
         <div class="existing-actions">
           <button class="btn-link ui-btn is-subtle" @click="toggleSelectAll"
             :disabled="loadingExisting">
@@ -434,11 +419,11 @@ async function removeAll() {
           </button>
         </div>
       </div>
-      <div v-if="loadingExisting" class="loading-hint">正在读取已有因子，数量较多时请耐心等待...</div>
+      <div v-if="loadingExisting" class="loading-hint">正在读取所选存档中的已有因子，数量较多时请稍候…</div>
       <div v-else-if="saveInfo.occupiedSigils > 500" class="warning-hint">
         注意：当前存档有 {{ saveInfo.occupiedSigils }} 个因子，目前批量编辑处于测试阶段，不建议使用
       </div>
-      <div v-if="!loadingExisting && existingSigils.length === 0" class="empty-hint ui-empty">暂无已有因子或读取失败</div>
+      <div v-if="!loadingExisting && existingSigils.length === 0" class="empty-hint ui-empty">所选存档中没有已有因子</div>
       <div v-else class="existing-table">
         <div class="existing-row existing-header">
           <span class="ex-col-cb"><input type="checkbox" :checked="selectedForDelete.size === existingSigils.length && existingSigils.length > 0" @change="toggleSelectAll" /></span>
@@ -466,7 +451,7 @@ async function removeAll() {
 
     <!-- 因子配置 -->
     <div class="section ui-card">
-      <div class="section-title ui-section-title">因子配置</div>
+      <div class="section-title ui-section-title"><span>第二步 · 配置要新增的因子</span><small>选择因子后，主词条会自动固定；只显示合法副词条</small></div>
 
       <div class="field-row">
       <div class="field ui-field">
@@ -486,7 +471,11 @@ async function removeAll() {
       <div class="field-row">
       <div class="field ui-field">
         <label class="ui-field-label">主特性 <small>由 gem.tbl 固定</small></label>
-        <CatalogSelect v-model="selectedPrimaryTraitID" :options="allTraits" :icon-resolver="traitIconForOption" placeholder="选择主特性" search-placeholder="搜索全部特性" />
+        <div class="fixed-primary-trait ui-input" aria-live="polite">
+          <img v-if="traitIconForOption(selectedPrimaryTrait)" :src="traitIconForOption(selectedPrimaryTrait)" alt="" />
+          <span>{{ primaryTraitName || '选择因子后自动确定' }}</span>
+          <small>不可替换</small>
+        </div>
       </div>
 
       <div class="field level-field ui-field">
@@ -499,7 +488,7 @@ async function removeAll() {
       <template v-if="effectiveSupportsSecondary">
         <div class="field-row">
         <div class="field ui-field">
-          <label class="ui-field-label">副特性 <small>显示全部已知特性；天然词池仅用于提醒</small></label>
+          <label class="ui-field-label">副特性 <small>只显示该因子在 2.0.2 表中的合法副词条</small></label>
           <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryPickerOptions.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
         </div>
         <div class="field level-field ui-field">
@@ -521,7 +510,7 @@ async function removeAll() {
           </div>
           <button class="btn-action btn-purple add-btn ui-btn is-primary" @click="addToQueue"
             :disabled="!selectedSigilID || !legality.writable">
-            添加到队列
+            加入待写入清单
           </button>
         </div>
       </div>
@@ -531,10 +520,10 @@ async function removeAll() {
     <!-- 队列 -->
     <div class="section ui-card">
       <div class="section-title ui-section-title">
-        队列 ({{ queue.length }})
+        第三步 · 核对待写入清单 ({{ queue.length }})
         <button v-if="queue.length" class="btn-link ui-btn is-subtle" @click="clearQueueAll">清空</button>
       </div>
-      <div v-if="!queue.length" class="empty-hint ui-empty">暂无待写入因子，请先添加</div>
+      <div v-if="!queue.length" class="empty-hint ui-empty">还没有待写入内容。先在上方配置因子，再加入清单。</div>
       <div v-else class="queue-list">
         <div v-for="(item, i) in queue" :key="i" class="queue-item ui-row">
           <img v-if="queueItemIcon(item)" class="queue-icon" :src="queueItemIcon(item)" alt="" />
@@ -555,11 +544,11 @@ async function removeAll() {
 
     <!-- 保存 -->
     <div class="section ui-card apply-section" :class="{ 'apply-flash': applyFlash }">
-      <div class="section-title ui-section-title"><span>保存到当前存档</span><small>自动备份，写入后回读验证</small></div>
+      <div class="section-title ui-section-title"><span>第四步 · 保存到当前存档</span><small>自动备份，写入后重新打开并回读验证</small></div>
       <div class="save-action-row">
         <button class="btn-action btn-cyan ui-btn is-primary" @click="applyQueueToSave"
           :disabled="isApplying || !queue.length || !inputPath.trim()">
-          {{ isApplying ? '保存中...' : '保存因子修改' }}
+          {{ isApplying ? '正在备份并写入…' : `备份并写入 ${queue.length} 项` }}
         </button>
       </div>
     </div>
@@ -594,37 +583,14 @@ async function removeAll() {
   min-width:0;
   padding:var(--space-6);
 }
-.compact-save-bar { padding:var(--space-4) var(--space-5); }
 .section-title { margin-bottom:var(--space-4); }
 .section-title > small { margin-left:auto; text-align:right; }
-.save-slots,
 .existing-actions {
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:var(--space-2);
 }
-.slot-choice.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
-.selected-save {
-  min-width:0;
-  margin-top:var(--space-3);
-  padding:var(--space-3) var(--space-4);
-  overflow:hidden;
-  border:1px solid var(--border-soft);
-  border-radius:var(--radius-sm);
-  background:var(--surface-sunken);
-  color:var(--text-secondary);
-  font-family:var(--font-data);
-  font-size:var(--fs-sm);
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.selected-save.empty { color:var(--text-secondary); }
-.save-info { margin-top:var(--space-2); color:var(--success-ink); font-size:var(--fs-sm); }
 .loading-hint,
 .warning-hint,
 .data-error {
@@ -711,6 +677,10 @@ async function removeAll() {
   border-top:1px solid var(--border-soft);
 }
 .config-legality { min-width:0; flex:1; }
+.fixed-primary-trait { min-height:var(--control-h-md); display:flex; align-items:center; gap:var(--space-2); }
+.fixed-primary-trait img { width:24px; height:24px; object-fit:contain; }
+.fixed-primary-trait span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fixed-primary-trait small { flex:0 0 auto; color:var(--text-muted); font-size:var(--fs-2xs); }
 .selection-note { color:var(--text-secondary); font-size:var(--fs-sm); }
 .qty-add { display:flex; align-items:flex-end; gap:var(--space-3); }
 .quantity-field { width:184px; flex:0 0 184px; }
@@ -788,8 +758,7 @@ input[type="checkbox"] { accent-color:var(--accent); }
 }
 
 @container (max-width:620px) {
-  .section,
-  .compact-save-bar { padding:var(--space-4); }
+  .section { padding:var(--space-4); }
   .field-row { align-items:stretch; flex-direction:column; }
   .level-field { width:100%; flex-basis:auto; }
   .section-title { align-items:flex-start; }
@@ -800,7 +769,6 @@ input[type="checkbox"] { accent-color:var(--accent); }
 }
 
 @container (max-width:440px) {
-  .save-slots .ui-btn { flex:1; }
   .qty-add { align-items:stretch; flex-direction:column; }
   .quantity-field { width:100%; }
   .add-btn { width:100%; }

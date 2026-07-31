@@ -146,10 +146,14 @@ test('verified character hash selects the matching official compact icon', () =>
 })
 
 test('complete build simulation follows weapon, factors, mastery and summon slots', () => {
-  assert.match(source, /LoadoutSimulateBuild/)
+	assert.match(source, /LoadoutSimulateBuild/)
 	assert.match(source, /form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*selectedMasteryHashes\.value[\s\S]*backendSummonSlotIDs\(\)/)
-	assert.match(source, /watch\(\(\)\s*=>\s*form\.value\.weaponSlotId\s*,\s*refreshSim\)/)
-	assert.match(source, /watch\(\(\)\s*=>\s*selectedMasteryHashes\.value\.slice\(\)\s*,\s*refreshSim/)
+	assert.match(source, /const simulationInputKey = computed\(\(\) => \{/)
+	assert.match(source, /JSON\.stringify\(\[[\s\S]*loadContextRevision\.value[\s\S]*form\.value\.weaponSlotId[\s\S]*payload\.sigilSlotIds[\s\S]*payload\.constructedSigils[\s\S]*selectedMasteryHashes\.value[\s\S]*backendSummonSlotIDs\(\)[\s\S]*\]\)/)
+	assert.match(source, /watch\(simulationInputKey, refreshSim\)/)
+	assert.doesNotMatch(source, /watch\(factorSlots, refreshSim, \{ deep: true \}\)/)
+	assert.match(source, /masterySummaryKey = computed\(\(\) => `\$\{loadContextRevision\.value\}:\$\{ctx\.value\?\.ownerCode \|\| ''\}/)
+	assert.match(source, /hydrateFromTarget\(\)\s*\n\s*loadContextRevision\.value \+= 1/)
   assert.match(source, /w\.summonSlotIds\s*=\s*backendSummonSlotIDs\(\)/)
 })
 
@@ -282,6 +286,9 @@ test('dedicated editing hides the global portrait background while ordinary view
 test('simulation request sequencing prevents stale results from replacing the current build', () => {
 	assert.match(source, /let simRequestId = 0/)
 	assert.match(source, /requestId !== simRequestId/)
+	assert.match(source, /let simInFlight = false/)
+	assert.match(source, /pendingSimulation = null/)
+	assert.match(source, /async function drainSimulations\(\)/)
 	assert.match(source, /async function loadCtx\(\)\s*\{\s*simRequestId\+\+\s*\n\s*clearTimeout\(simTimer\)\s*\n\s*clearSimulationResult\(\)/)
 })
 
@@ -363,6 +370,14 @@ test('single-loadout import constructs independent factors and blocks partial wr
   assert.match(importDialog, /class="import-slot-grid"/)
   assert.match(importDialog, /该槽已有配装/)
   assert.match(importDialog, /毕业归一化 Lv100 · MLv55/)
+})
+
+test('loadout import keeps automatic sigil repairs visible without treating them as missing resources', () => {
+  assert.match(importDialog, /draft\.warnings\?\.length/)
+  assert.match(importDialog, /已自动修正无效副词条/)
+  assert.match(source, /const importWarnings = ref\(\[\]\)/)
+  assert.match(source, /importWarnings\.value = \[\.\.\.new Set\(\(draft\.warnings \|\| \[\]\)\.filter\(Boolean\)\)\]/)
+  assert.match(source, /v-if="op === 'write' && importWarnings\.length" class="import-warning"/)
 })
 
 test('missing loadout scopes stay visible but cannot be selected or submitted', () => {
@@ -479,19 +494,29 @@ test('constructor and bag controls expose real filtering, sorting and empty stat
 	assert.match(source, /主词条等级从高到低/)
 })
 
-test('constructor exposes the complete trait catalog while natural table rules remain advisory', () => {
+test('constructor locks fixed factor identity and uses the audited secondary pool', () => {
 	assert.match(source, /GetSigilList/)
 	assert.match(source, /GetTraitList/)
 	assert.match(source, /GetCompatibleSecondaryTraits/)
 	assert.match(source, /Promise\.all\(\[GetSigilList\(\), GetTraitList\(\)\]\)/)
 	assert.match(source, /import CatalogSelect from '.\/CatalogSelect\.vue'/)
-	assert.match(source, /v-model="constructPrimaryId" :options="constructTraits"/)
+	assert.doesNotMatch(source, /v-model="constructPrimaryId"/)
+	assert.match(source, /class="[^"]*constructor-fixed-trait[^"]*"/)
 	assert.match(source, /v-model="constructSecondaryId"/)
 	assert.match(source, /search-placeholder="搜索副词条"/)
-	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructTraits\.value\)/)
+	assert.match(source, /constructSecondaryOptions = computed\(\(\) => constructCompatibleTraits\.value\)/)
   assert.match(source, /天然等级是默认值；最高可填到对应技能效果曲线的目录上限/)
 	assert.doesNotMatch(source, /forceWrite/)
 	assert.doesNotMatch(source, /templateSlotId:\s*Number\(sigil\.templateSlotId/)
+})
+
+test('optimizer stages mixed owned-first plans in constructor mode when any gap must be created', () => {
+  assert.match(source, /factorMode\.value = next\.some\(entry => entry\?\.kind === 'construct'\) \? 'construct' : 'bag'/u)
+})
+
+test('share publication caches the captured unit id instead of referencing an undefined variable', () => {
+  assert.match(source, /const unitID = selectedLoadout\.value\.unitId[\s\S]*?loadoutShareSessionKey\(\{[\s\S]*?unitId: unitID/u)
+  assert.doesNotMatch(source, /charaHash: props\.charaHash,\s*unitId,\s*\}\), published/u)
 })
 
 test('narrow weapon skill editor uses a single shrinkable column', () => {
@@ -501,4 +526,14 @@ test('narrow weapon skill editor uses a single shrinkable column', () => {
 	assert.match(source, /\.dynamic-skill-level\s*\{[^}]*white-space\s*:\s*nowrap/is)
 	assert.match(source, /\.runtime-comparison-row\s*\{[^}]*grid-template-columns\s*:\s*minmax\(44px,\.8fr\) repeat\(2,minmax\(0,1fr\)\) minmax\(0,1fr\)/is)
 	assert.match(source, /\.runtime-comparison-row em\s*\{[^}]*overflow-wrap\s*:\s*anywhere/is)
+})
+
+test('combat references expose exact unpacked nodes without claiming final move caps', () => {
+	assert.match(source, /combatReference\.damageCalculate\?\.atkTypeDamageLimit_Normal/)
+	assert.match(source, /exactCurveValue\(combatReference\.normalCurve, 1\)/)
+	assert.match(source, /exactCurveValue\(combatReference\.artsCurve, 1\)/)
+	assert.match(source, /全局类型值是解包基线，不是每个招式的最终绝对上限/)
+	assert.match(source, /combatReference\.interpolationNote/)
+	assert.match(source, /\.combat-baseline-grid\s*\{[^}]*grid-template-columns\s*:\s*repeat\(4,minmax\(0,1fr\)\)/is)
+	assert.match(source, /@container loadout-editor \(max-width:760px\)[\s\S]*?\.combat-baseline-grid\s*\{[^}]*repeat\(2,minmax\(0,1fr\)\)/is)
 })

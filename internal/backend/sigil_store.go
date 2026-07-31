@@ -647,6 +647,45 @@ func replaceFileAtomic(source, destination string) error {
 	return windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 }
 
+func writeFileAtomicVerified(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	replaced := false
+	defer func() {
+		_ = tmp.Close()
+		if !replaced {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := replaceFileAtomic(tmpPath, path); err != nil {
+		return err
+	}
+	replaced = true
+	readback, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(readback, data) {
+		return fmt.Errorf("写后校验失败: %s", path)
+	}
+	return nil
+}
+
 func (s *SaveData) LastBackupPath() string { return s.lastBackupPath }
 
 func pruneTimestampedFileBackups(path string, keep int) error {

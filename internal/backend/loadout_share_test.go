@@ -66,6 +66,31 @@ func TestLoadoutShareExportUsesReadableCompactJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeLoadoutShareFileAcceptsJSONAndDownloadedFrame(t *testing.T) {
+	share := loadoutShareCodeFixture()
+	share.Name = "下载导入测试"
+	jsonPayload, err := marshalLoadoutShare(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromJSON, err := decodeLoadoutShareFile(jsonPayload)
+	if err != nil || fromJSON.CharaHash != share.CharaHash || fromJSON.Name != share.Name {
+		t.Fatalf("decode JSON: share=%+v err=%v", fromJSON, err)
+	}
+	encoded, err := encodeLoadoutShareCode(share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := loadoutShareFrameFromCompatibilityCode(encoded.CompatibilityCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromFrame, err := decodeLoadoutShareFile(frame)
+	if err != nil || fromFrame.CharaHash != share.CharaHash || fromFrame.Name != share.Name {
+		t.Fatalf("decode downloaded frame: share=%+v err=%v", fromFrame, err)
+	}
+}
+
 func TestLoadoutShareStillReadsLegacyEnhancementNodeObjects(t *testing.T) {
 	payload := []byte(`{"format":"gbfr-loadout","version":9,"character":{"enhancementNodes":[{"index":1,"value":2},{"index":7,"value":3}]}}`)
 	var share LoadoutShare
@@ -213,6 +238,16 @@ func TestLoadoutShareRoundTripWithActualSave(t *testing.T) {
 	decodedDraft, err := resolveLoadoutShare(path, source.CharaHash, encodedShare)
 	if err != nil {
 		t.Fatalf("重新读取 v10 JSON 后导入解析失败: %v", err)
+	}
+	if len(decodedDraft.Warnings) == 0 ||
+		!strings.Contains(strings.Join(decodedDraft.Warnings, "；"), "不会生效") ||
+		!strings.Contains(strings.Join(decodedDraft.Warnings, "；"), "已自动清空") {
+		t.Fatalf("旧版非法副词条没有返回易懂的非阻断说明: %v", decodedDraft.Warnings)
+	}
+	first := decodedDraft.ConstructedSigils[0]
+	if first.Item.SecondaryTraitID != "" || first.Item.SecondaryTraitName != "" ||
+		first.Item.SecondaryLevel != 0 || first.ExactSecondaryTraitHash != "" {
+		t.Fatalf("旧版非法副词条没有从导入草稿中完整清空: %+v", first)
 	}
 	if len(decodedDraft.ConstructedSigils) != 12 || len(decodedDraft.MasteryHashes) != 50 {
 		t.Fatalf("重新读取 v10 JSON 后导入草稿不完整: factors=%d mastery=%d", len(decodedDraft.ConstructedSigils), len(decodedDraft.MasteryHashes))
@@ -419,6 +454,48 @@ func TestSingleTraitShareImportReplacesOpaqueSigilNameAndKeepsSecondaryEmpty(t *
 	}
 }
 
+func TestShareImportClearsKnownSecondaryThatCannotApplyToTheCapturedSigil(t *testing.T) {
+	previous := getCurrentLanguage()
+	t.Cleanup(func() { setCurrentLanguage(previous) })
+	setCurrentLanguage("zh")
+
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := LoadoutShareSigil{
+		Hash: "5BF84FD1", Name: "浪迹天涯 V+", Level: 15,
+		PrimaryTraitHash: "D029FE08", PrimaryTraitLevel: 15,
+		SecondaryTraitHash: "3FEC5F80", SecondaryTraitLevel: 15,
+	}
+	if _, err := loadoutShareConstructedSigil(catalog, want, 0); err == nil {
+		t.Fatal("非法副词条组合应先被统一合法性层拒绝")
+	}
+
+	draft, warning, err := loadoutShareConstructedSigilForImport(catalog, want, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(warning, "不会生效") || !strings.Contains(warning, "已自动清空") {
+		t.Fatalf("自动修正说明不清楚: %q", warning)
+	}
+	if draft.Item.SecondaryTraitID != "" || draft.Item.SecondaryTraitName != "" ||
+		draft.Item.SecondaryLevel != 0 || draft.ExactSecondaryTraitHash != "" {
+		t.Fatalf("非法副词条没有从构造草稿中完整清空: %+v", draft)
+	}
+
+	setCurrentLanguage("en")
+	_, englishWarning, err := loadoutShareConstructedSigilForImport(catalog, want, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(englishWarning, "will not take effect in-game") ||
+		!strings.Contains(englishWarning, "cleared it automatically") ||
+		strings.Contains(englishWarning, "因子") || strings.Contains(englishWarning, "副词条") {
+		t.Fatalf("English import warning is mixed or unclear: %q", englishWarning)
+	}
+}
+
 func TestCombinationShareImportUsesTheUniqueLegalItemNameWithoutJoiningTraits(t *testing.T) {
 	previous := getCurrentLanguage()
 	setCurrentLanguage("en")
@@ -469,12 +546,14 @@ func TestNamedLocalTableAliasesNeverFallBackToOpaqueHashes(t *testing.T) {
 			0x2D85102A: "属性克制转换+",
 			0x99E8B892: "狂战士+",
 			0x97CF485D: "万能药+",
+			0x9A60FBF0: "万能药+",
 			0x4AE72C9E: "斯巴达+",
 		}},
 		{language: "en", names: map[uint32]string{
 			0x2D85102A: "War Elemental+",
 			0x99E8B892: "Berserker Echo+",
 			0x97CF485D: "Potent Greens+",
+			0x9A60FBF0: "Potent Greens+",
 			0x4AE72C9E: "Spartan Echo+",
 		}},
 	} {

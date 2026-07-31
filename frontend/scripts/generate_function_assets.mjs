@@ -1,0 +1,125 @@
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import sharp from 'sharp'
+
+const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = join(frontendRoot, 'src', 'assets', 'gbfr')
+const outputRoot = join(frontendRoot, 'public', 'generated', 'function-assets')
+const modulePath = join(frontendRoot, 'src', 'generated', 'functionAssetManifest.js')
+
+const sources = Object.freeze({
+  progression: ['progression-official-edge-safe.webp', 'progression.webp'],
+  sigil: ['sigil-official-edge-safe.webp', 'sigil.webp'],
+  sigilMemory: ['sigil-memory-official-edge-safe.webp', 'sigil-memory.webp'],
+  loadout: ['loadout-live-official-edge-safe.webp', 'loadout.webp'],
+  loadoutPresets: ['loadout-presets-official-edge-safe.webp', 'loadout-presets.webp'],
+  wrightstone: ['wrightstone-official-edge-safe.webp', 'wrightstone.webp'],
+  wrightstoneMemory: ['wrightstone-memory-official-edge-safe.webp', 'wrightstone-memory.webp'],
+  summon: ['summon-official-edge-safe.webp', 'summon.webp'],
+  summonSave: ['summon-save-official-edge-safe.webp', 'summon-save.webp'],
+  overlimit: ['overlimit-official-edge-safe.webp', 'overlimit.webp'],
+  runtime: ['runtime-official-edge-safe.webp', 'runtime.webp'],
+  patchCombat: ['patch-combat-official-edge-safe.webp', 'patch-combat.webp'],
+  patchCharacters: ['patch-characters-official-edge-safe.webp', 'patch-characters.webp'],
+  patchQuest: ['patch-quest-official-edge-safe.webp', 'patch-quest.webp'],
+  runtimeMonitor: ['runtime-monitor-official-edge-safe.webp', 'runtime-monitor.webp'],
+  spatialTools: ['spatial-tools-official-edge-safe.webp', 'spatial-tools.webp'],
+  selectedItemMonitor: ['selected-item-monitor-official-edge-safe.webp', 'selected-item-monitor.webp'],
+  saveDiff: ['save-diff-official-edge-safe.webp', 'save-diff.webp'],
+  naturalDrop: ['natural-drop-official-edge-safe.webp', 'natural-drop.webp'],
+  audioMixer: ['audio-mixer-official-edge-safe.webp', 'audio-mixer.webp'],
+  camera: ['camera-official-edge-safe.webp', 'camera.webp'],
+  virtualSigils: ['virtual-sigils-official-edge-safe.webp', 'virtual-sigils.webp'],
+  runtimeQOL: ['runtime-qol-official-edge-safe.webp', 'runtime-qol.webp'],
+  formulaSampler: ['formula-sampler-official-edge-safe.webp', 'formula-sampler.webp'],
+  chara: ['chara-official-edge-safe.webp', 'chara.webp'],
+  save: ['save-official-edge-safe.webp', 'save.webp'],
+  compatibility: ['compatibility-official-edge-safe.webp', 'compatibility.webp'],
+  monster: ['monster-official-edge-safe.webp', 'monster.webp'],
+  patch: ['patch-official-edge-safe.webp', 'patch.webp'],
+  language: ['language-official-edge-safe.webp', 'language.webp'],
+})
+
+const variantProfiles = Object.freeze({
+  art: Object.freeze({
+    display: { width: 2520, height: 2520, quality: 87, alphaQuality: 95 },
+  }),
+  sticker: Object.freeze({
+    display: { width: 512, height: 512, quality: 87, alphaQuality: 95 },
+  }),
+})
+
+function publicUrl(path) {
+  return `/${relative(join(frontendRoot, 'public'), path).split(sep).join('/')}`
+}
+
+async function buildVariants(kind, sourcePath, hash) {
+  const sourceName = basename(sourcePath, '.webp')
+  const kindRoot = join(outputRoot, kind)
+  await mkdir(kindRoot, { recursive: true })
+  const variants = {}
+
+  for (const [name, profile] of Object.entries(variantProfiles[kind])) {
+    const outputPath = join(kindRoot, `${sourceName}.${name}.${hash}.webp`)
+    await sharp(sourcePath)
+      .resize({ width: profile.width, height: profile.height, fit: 'inside', withoutEnlargement: true })
+      .webp({
+        quality: profile.quality,
+        alphaQuality: profile.alphaQuality,
+        effort: 4,
+        smartSubsample: true,
+      })
+      .toFile(outputPath)
+    const outputMetadata = await sharp(outputPath).metadata()
+    variants[name] = {
+      url: publicUrl(outputPath),
+      width: outputMetadata.width,
+      height: outputMetadata.height,
+    }
+  }
+
+  return { sourceHash: hash, variants }
+}
+
+async function main() {
+  const resolvedOutput = resolve(outputRoot)
+  const expectedOutput = resolve(frontendRoot, 'public', 'generated', 'function-assets')
+  if (resolvedOutput !== expectedOutput || !resolvedOutput.startsWith(`${resolve(frontendRoot)}${sep}`)) {
+    throw new Error(`Refusing to replace unexpected asset directory: ${resolvedOutput}`)
+  }
+  await rm(resolvedOutput, { recursive: true, force: true })
+  await mkdir(resolvedOutput, { recursive: true })
+
+  const assets = {}
+  for (const id of Object.keys(sources).sort((left, right) => left.localeCompare(right, 'en'))) {
+    const [artName, stickerName] = sources[id]
+    const artPath = join(sourceRoot, 'cutouts', artName)
+    const stickerPath = join(sourceRoot, 'stickers', stickerName)
+    const [artBytes, stickerBytes] = await Promise.all([readFile(artPath), readFile(stickerPath)])
+    const artHash = createHash('sha256').update(artBytes).digest('hex').slice(0, 12)
+    const stickerHash = createHash('sha256').update(stickerBytes).digest('hex').slice(0, 12)
+    const [art, sticker] = await Promise.all([
+      buildVariants('art', artPath, artHash),
+      buildVariants('sticker', stickerPath, stickerHash),
+    ])
+    assets[id] = { art, sticker }
+  }
+
+  const manifest = { schemaVersion: 1, assets }
+  await writeFile(join(resolvedOutput, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  await mkdir(dirname(modulePath), { recursive: true })
+  await writeFile(
+    modulePath,
+    `// Generated by frontend/scripts/generate_function_assets.mjs.\nexport const functionAssetManifest = ${JSON.stringify(manifest)}\n`,
+    'utf8',
+  )
+  process.stdout.write(`Generated ${Object.keys(assets).length} function asset entries.\n`)
+}
+
+main().catch(error => {
+  process.stderr.write(`${error.stack || error.message}\n`)
+  process.exitCode = 1
+})

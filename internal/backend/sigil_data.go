@@ -21,6 +21,7 @@ type SigilDef struct {
 	Source                       string                        `json:"source"`
 	Confidence                   string                        `json:"confidence"`
 	Category                     *string                       `json:"category"`
+	AllowedOwnerCodes            []string                      `json:"allowedOwnerCodes,omitempty"`
 	IsPlusSigil                  *bool                         `json:"isPlusSigil"`
 	SupportsSecondaryTrait       *bool                         `json:"supportsSecondaryTrait"`
 	AllowedSigilLevels           []int                         `json:"allowedSigilLevels"`

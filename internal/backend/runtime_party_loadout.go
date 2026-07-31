@@ -263,6 +263,24 @@ func readRuntimePatchPartyLoadoutAtWithModule(memory runtimePatchPartyMemory, mo
 	return loadout, sha256.Sum256(fingerprintInput), nil
 }
 
+// validateRuntimePatchPartyLoadoutSlot binds the equipment record to the
+// party slot that produced it.  The game can briefly expose a local profile
+// while an online slot is being populated; accepting that record makes a
+// teammate appear to have the host's sigils.  0xFF is the game's explicit
+// "not assigned" marker and is only tolerated for offline records.
+func validateRuntimePatchPartyLoadoutSlot(loadout RuntimePatchPartyLoadout, slot int) error {
+	if slot < 0 || slot >= 4 {
+		return fmt.Errorf("party slot %d is invalid", slot)
+	}
+	if loadout.PartyIndex != 0xFF && loadout.PartyIndex != uint32(slot) {
+		return fmt.Errorf("runtime loadout party index %d does not match slot %d", loadout.PartyIndex, slot)
+	}
+	if loadout.Online && loadout.PartyIndex == 0xFF {
+		return fmt.Errorf("online runtime loadout has no assigned party slot")
+	}
+	return nil
+}
+
 func readRuntimePatchPartyExpansionLoadout(memory runtimePatchPartyMemory, moduleBase, base uintptr, loadout *RuntimePatchPartyLoadout) ([]byte, error) {
 	if memory == nil || moduleBase == 0 || loadout == nil {
 		return nil, fmt.Errorf("runtime expansion loadout parameters are invalid")

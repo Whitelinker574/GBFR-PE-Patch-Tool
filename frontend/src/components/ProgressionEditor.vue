@@ -3,9 +3,11 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { FindSaveFiles, ProgressionGetCatalog, ProgressionLoad, ProgressionApply, SelectProgressionSave } from '../../wailsjs/go/backend/App'
 import { language } from '../i18n'
 import { backendLanguageReady } from '../backendLanguage'
+import { characterNameByPLID } from '../characterRoster.js'
 import { itemAssetIcon, weaponAssetIcon } from '../gameAssetIcons'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 const slots = ref([])
@@ -26,7 +28,7 @@ const itemQuantity = ref(1)
 const itemMode = ref('add')
 const allowDangerous = ref(false)
 const weaponView = ref('owned')
-const weaponOwner = ref(window.localStorage.getItem('gbfr.progression.weaponOwner') || '全部角色')
+const weaponOwner = ref(window.localStorage.getItem('gbfr.progression.weaponOwnerCode') || '')
 const weaponSort = ref('owner')
 const selectedWeapon = ref(null)
 const weaponLevel = ref(150)
@@ -45,17 +47,15 @@ const weaponAwakeningOptions = Array.from({ length: 11 }, (_, i) => i)
 const weaponTranscendenceOptions = Array.from({ length: 8 }, (_, i) => i)
 let loadEpoch = 0
 
+const tx = (zh, en) => language.value === 'en' ? en : zh
 function itemIcon(item) { return itemAssetIcon(item) }
 function weaponIcon(weapon) { return weaponAssetIcon(weapon) }
 
 const collator = computed(() => new Intl.Collator(language.value === 'zh' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' }))
 const replacementSkillSlots = computed(() => selectedWeapon.value?.skillSlots || [])
-const ownerNames = {
-  PL0000:'古兰', PL0100:'姬塔', PL0200:'卡塔莉娜', PL0300:'拉卡姆', PL0400:'伊欧', PL0500:'欧根',
-  PL0600:'萝赛塔', PL0700:'菲莉', PL0800:'兰斯洛特', PL0900:'巴恩', PL1000:'珀西瓦尔', PL1100:'齐格飞',
-  PL1200:'夏洛特', PL1300:'尤达拉哈', PL1400:'娜露梅', PL1500:'冈达葛萨', PL1600:'泽塔', PL1700:'巴萨拉卡',
-  PL1800:'卡莉奥丝特罗', PL1900:'伊德', PL2100:'圣德芬', PL2200:'希耶提', PL2300:'索恩', PL2400:'伽兰查',
-  PL2500:'玛琪拉菲菈', PL2600:'贝阿朵丽丝', PL2700:'尤斯塔斯', PL2800:'芙劳', PL2900:'菲迪埃尔',
+function ownerName(ownerCode) {
+  return characterNameByPLID(ownerCode, language.value)
+    || (ownerCode ? tx(`角色 ${ownerCode.replace('PL', '')}`, `Character ${ownerCode.replace('PL', '')}`) : tx('通用武器', 'Shared Weapon'))
 }
 
 function itemCategoryName(category = '') {
@@ -76,9 +76,9 @@ function enrichWeapon(weapon) {
   const ownerCode = catalogWeapon.ownerCode || ''
   return {
     ...catalogWeapon, ...weapon, ownerCode,
-    ownerName: ownerNames[ownerCode] || (ownerCode ? `角色 ${ownerCode.replace('PL', '')}` : '通用武器'),
+    ownerName: ownerName(ownerCode),
     displayName: language.value === 'zh'
-      ? (catalogWeapon.nameCn || (ownerCode ? `${ownerNames[ownerCode] || '角色武器'} · ${weaponIndex(catalogWeapon)}号武器` : `未收录武器 ${catalogWeapon.hash || ''}`.trim()))
+      ? (catalogWeapon.nameCn || (ownerCode ? `${ownerName(ownerCode)} · ${weaponIndex(catalogWeapon)}号武器` : `未收录武器 ${catalogWeapon.hash || ''}`.trim()))
       : (catalogWeapon.name || `Uncatalogued Weapon ${catalogWeapon.hash || ''}`.trim()),
     searchNameCN: catalogWeapon.nameCn || '',
     searchNameEN: catalogWeapon.name || '',
@@ -86,7 +86,11 @@ function enrichWeapon(weapon) {
 }
 
 const itemCategories = computed(() => ['全部分类', ...new Set(catalog.value.items.map(i => itemCategoryName(i.category)))])
-const weaponOwners = computed(() => ['全部角色', ...new Set(catalog.value.weapons.filter(w => !w.catalogHidden).map(w => ownerNames[w.ownerCode] || (w.ownerCode ? `角色 ${w.ownerCode.replace('PL', '')}` : '通用武器')))])
+const weaponOwners = computed(() => [
+  { code: '', label: tx('全部角色', 'All Characters') },
+  ...[...new Set(catalog.value.weapons.filter(w => !w.catalogHidden).map(w => w.ownerCode || ''))]
+    .map(code => ({ code, label: ownerName(code) })),
+])
 
 const normalizedSearch = computed(() => search.value.trim().toLowerCase())
 const itemResults = computed(() => {
@@ -111,7 +115,7 @@ const weaponResults = computed(() => {
   const rows = (weaponView.value === 'owned' ? (inventory.value?.weapons || []) : catalog.value.weapons.filter(w => !w.catalogHidden)).map(enrichWeapon)
   const needle = normalizedSearch.value
   return rows
-    .filter(w => (weaponOwner.value === '全部角色' || w.ownerName === weaponOwner.value)
+    .filter(w => (!weaponOwner.value || w.ownerCode === weaponOwner.value)
       && (!needle || `${w.displayName} ${w.searchNameCN} ${w.searchNameEN} ${w.hash} ${w.internalId || ''} ${w.ownerCode || ''} ${w.ownerName}`.toLowerCase().includes(needle)))
     .sort((a, b) => weaponSort.value === 'level' ? ((b.level || 0) - (a.level || 0))
       : weaponSort.value === 'name' ? collator.value.compare(a.displayName, b.displayName)
@@ -165,7 +169,7 @@ async function init() {
     const [foundSlots, foundCatalog] = await Promise.all([FindSaveFiles(), ProgressionGetCatalog()])
     slots.value = foundSlots || []
     catalog.value = foundCatalog || { items: [], weapons: [] }
-    if (!weaponOwners.value.includes(weaponOwner.value)) weaponOwner.value = '全部角色'
+    if (!weaponOwners.value.some(owner => owner.code === weaponOwner.value)) weaponOwner.value = ''
   } catch (err) { emit('status', String(err), 'error') }
 }
 
@@ -294,30 +298,23 @@ function saveWeapon() {
 function switchSection(value) { section.value = value; search.value = ''; selectedItem.value = null; selectedWeapon.value = null }
 function switchWeaponView(value) { weaponView.value = value; selectedWeapon.value = null; allowWeaponUnlockRisk.value = false }
 
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
-}
-
 onMounted(init)
-watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weaponOwner', value))
+watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weaponOwnerCode', value))
 </script>
 
 <template>
   <div class="root">
-    <section class="save-card ui-card compact-save-bar">
-      <div class="save-title">
-        <div><strong>2.0.2 养成编辑（离线）</strong><small>用于添加具体物品、素材和武器；请完全退出游戏后修改存档</small></div>
-        <span v-if="inventory" class="capacity">物品空位 {{ inventory.emptyItems }} · 武器空位 {{ inventory.emptyWeapons }}</span>
-      </div>
-      <div class="slots">
-        <button v-for="slot in slots" :key="slot.index" class="slot-btn ui-btn is-sm" :class="{ on: savePath === slot.path }" @click="load(slot.path)">{{ saveSlotLabel(slot) }}</button>
-        <button class="plain-btn ui-btn is-sm" @click="browse">浏览…</button>
-        <button class="plain-btn ui-btn is-sm" :disabled="!savePath" @click="load(savePath)">刷新</button>
-      </div>
-      <div v-if="savePath" class="path" :title="savePath">{{ savePath }}</div>
-    </section>
+    <SaveSourcePicker
+      v-model="savePath"
+      :slots="slots"
+      :busy="loading"
+      :loaded="!!inventory"
+      :summary="inventory ? tx(`物品空位 ${inventory.emptyItems} · 武器空位 ${inventory.emptyWeapons}`, `Item slots ${inventory.emptyItems} · Weapon slots ${inventory.emptyWeapons}`) : ''"
+      :helper="tx('用于添加具体物品、素材和武器；请完全退出游戏后修改存档', 'Add items, materials, and weapons after fully exiting the game')"
+      @select="load"
+      @browse="browse"
+    />
+    <div class="save-refresh-row"><strong>{{ tx('2.0.2 养成编辑（离线）', '2.0.2 Progression Editor (Offline)') }}</strong><button type="button" class="ui-btn is-sm" :disabled="!savePath || loading" @click="load(savePath)">{{ tx('刷新当前存档', 'Refresh Current Save') }}</button></div>
 
     <div class="section-tabs ui-seg">
       <button class="ui-seg-btn" :class="{ on: section === 'items', 'is-on': section === 'items' }" @click="switchSection('items')">物品</button>
@@ -375,7 +372,7 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
       <section class="editor-card toolbar ui-card">
         <div class="mini-tabs ui-seg"><button class="ui-seg-btn" :class="{ on: weaponView === 'owned', 'is-on': weaponView === 'owned' }" @click="switchWeaponView('owned')">修改已有</button><button class="ui-seg-btn" :class="{ on: weaponView === 'catalog', 'is-on': weaponView === 'catalog' }" @click="switchWeaponView('catalog')">添加武器</button></div>
         <input v-model="search" class="search ui-input" placeholder="搜索中文角色、英文武器名、编号或 Hash">
-        <select v-model="weaponOwner" class="ui-select" aria-label="所属角色"><option v-for="owner in weaponOwners" :key="owner">{{ owner }}</option></select>
+        <select v-model="weaponOwner" class="ui-select" aria-label="所属角色"><option v-for="owner in weaponOwners" :key="owner.code" :value="owner.code">{{ owner.label }}</option></select>
         <select v-model="weaponSort" class="ui-select" aria-label="武器排序"><option value="owner">按角色与编号</option><option value="name">按名称排序</option><option v-if="weaponView==='owned'" value="level">按等级从高到低</option></select>
         <span class="result-count">显示 {{ weaponResults.length }} 把</span>
       </section>
@@ -429,28 +426,8 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
   container-type:inline-size;
 }
 
-.compact-save-bar {
-  display:flex;
-  flex-direction:column;
-  gap:var(--space-3);
-  padding:var(--space-4) var(--space-5);
-}
-.save-title { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-5); min-width:0; }
-.save-title > div { min-width:0; }
-.save-title strong { display:block; color:var(--text-primary); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
-.save-title small { display:block; margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
-.capacity { flex:0 0 auto; color:var(--success-ink); font-size:var(--fs-sm); white-space:nowrap; }
-.slots { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
-.slot-btn.on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); }
-.path {
-  overflow:hidden;
-  color:var(--text-secondary);
-  font-family:var(--font-data);
-  font-size:var(--fs-xs);
-  font-variant-numeric:tabular-nums lining-nums;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
+.save-refresh-row { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:0 var(--space-1); }
+.save-refresh-row strong { color:var(--text-secondary); font-size:var(--fs-sm); }
 
 .section-tabs { align-self:flex-start; }
 .editor-card { min-width:0; }
@@ -633,8 +610,7 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
 }
 
 @container (max-width:680px) {
-  .save-title { flex-direction:column; gap:var(--space-2); }
-  .capacity { white-space:normal; }
+  .save-refresh-row { align-items:stretch; flex-direction:column; }
   .section-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; }
   .section-tabs .ui-seg-btn { min-width:0; padding-inline:var(--space-2); white-space:normal; }
   .toolbar,
@@ -650,7 +626,6 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
 }
 
 @container (max-width:460px) {
-  .compact-save-bar,
   .resource-grid,
   .detail-panel { padding:var(--space-4); }
   .section-tabs { grid-template-columns:1fr; }

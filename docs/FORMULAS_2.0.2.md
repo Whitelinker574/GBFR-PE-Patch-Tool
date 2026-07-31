@@ -285,6 +285,18 @@ pre-cap raw damage
   -> supplemental / echo paths (exact order still unproven)
 ```
 
+### 解包战斗参考目录
+
+配装页现在同时加载一份带来源哈希的 2.0.2 只读参考目录。它不是伤害模拟器，作用是把可复验的表值与尚未闭环的运行时公式分开：
+
+- `chara_damage_limit.tbl`：975 条普通伤害上限记录；
+- `chara_arts_damage_limit.tbl`：930 条 Arts 上限记录；
+- `damagecalcparam.msg`：普通 `9999`、能力 `14999`、特殊 Arts `19999`、Chain Burst `9999999` 四个全局基线及其他原始常量；
+- `guardparam.msg`：Just Guard `5` 帧、格挡槽 `40`、破防恢复 `20` 秒；
+- 七份战斗曲线：按当前角色展示原始条件节点，保留节点顺序和字段值。
+
+页面只把当前角色 `attackRate=1.0` 的精确行作为表内参考，并明确标记为“基线”。七份曲线中的 `Smooth`、`SmoothSide` 等插值方式没有用线性插值替代；没有命中动作 producer 的记录也不会被拼成虚假的最终上限。
+
 参考：
 
 - 2.0.2 官方更新说明的本地留档

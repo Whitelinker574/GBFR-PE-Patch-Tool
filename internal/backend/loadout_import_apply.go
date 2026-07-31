@@ -66,12 +66,21 @@ func prepareWeaponWrightstone(source *LoadoutWeaponWrightstone) (preparedWeaponW
 	if source == nil {
 		return prepared, nil
 	}
+	catalog, err := LoadWrightstoneCatalog()
+	if err != nil {
+		return prepared, err
+	}
 	hash, err := ParseHashHex(source.Hash)
 	if err != nil {
 		return prepared, fmt.Errorf("导入武器祝福哈希无效: %w", err)
 	}
+	wrightstone := catalog.LookupWrightstoneByHash(hash)
+	if wrightstone == nil {
+		return prepared, fmt.Errorf("导入武器祝福哈希 0x%08X 不在统一目录", hash)
+	}
 	prepared.hash = hash
 	seen := make(map[int]bool, 3)
+	update := WrightstoneMemoryUpdate{}
 	for _, trait := range source.Traits {
 		if trait.Index < 0 || trait.Index >= 3 || seen[trait.Index] || trait.Level < 0 {
 			return prepared, fmt.Errorf("导入武器祝福词条槽位无效")
@@ -83,6 +92,28 @@ func prepareWeaponWrightstone(source *LoadoutWeaponWrightstone) (preparedWeaponW
 		seen[trait.Index] = true
 		prepared.traits[trait.Index].hash = traitHash
 		prepared.traits[trait.Index].level = trait.Level
+		switch trait.Index {
+		case 0:
+			update.FirstHash, update.FirstLevel = traitHash, uint32(trait.Level)
+		case 1:
+			update.SecondHash, update.SecondLevel = traitHash, uint32(trait.Level)
+		case 2:
+			update.ThirdHash, update.ThirdLevel = traitHash, uint32(trait.Level)
+		}
+	}
+	if err := validateWrightstoneMemoryUpdate(catalog, update); err != nil {
+		return prepared, fmt.Errorf("导入武器祝福组合无效: %w", err)
+	}
+	first, err := catalog.RequireTrait(wrightstone.DefaultTraitID)
+	if err != nil {
+		return prepared, err
+	}
+	firstHash, err := ParseHashHex(first.Hash)
+	if err != nil {
+		return prepared, err
+	}
+	if update.FirstHash != firstHash {
+		return prepared, fmt.Errorf("导入武器祝福第一词条与 %s 的固有词条不匹配", cnWrightstone(wrightstone.DisplayName))
 	}
 	return prepared, nil
 }

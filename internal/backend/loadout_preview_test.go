@@ -20,6 +20,9 @@ func TestLoadoutPreviewListKeepsCurrentLoadoutFirstAndCalculatesApproximatePanel
 		if entry.FinalStats.HP <= 0 || entry.FinalStats.Attack <= 0 {
 			t.Fatalf("preview lacks approximate HP/attack values: %+v", entry.FinalStats)
 		}
+		if len(entry.CombinedSkills) == 0 {
+			t.Fatal("preview must reuse the editor's combined skill ledger")
+		}
 		if entry.RuntimeBaseline && entry.BaselineEvidence == "" {
 			t.Fatal("runtime-backed preview must expose its fixed-growth evidence")
 		}

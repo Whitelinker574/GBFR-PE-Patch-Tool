@@ -5,6 +5,9 @@ import {
   loadoutShareCodeCharacters,
   normalizeLoadoutShareText,
 } from '../loadoutShareCode'
+import { language } from '../i18n.js'
+import { decodeLoadoutShareQRFile } from '../loadoutShareQR.js'
+import { copyShareText } from '../loadoutShareSession.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -24,7 +27,10 @@ const pasteCode = ref('')
 const copied = ref('')
 const localError = ref('')
 const pasteBox = ref(null)
+const imageInput = ref(null)
+const qrReading = ref(false)
 const offlineMode = ref('compact')
+const tx = (zh, en) => language.value === 'en' ? en : zh
 
 const compactCode = computed(() => {
   if (!props.result?.compatibilityCode) return ''
@@ -39,62 +45,37 @@ const offlineCode = computed(() => offlineMode.value === 'compact'
   : (props.result?.compatibilityCode || ''))
 const offlineCount = computed(() => loadoutShareCodeCharacters(offlineCode.value))
 const importReady = computed(() => normalizeLoadoutShareText(pasteCode.value).length > 8)
-const working = computed(() => props.busy || props.publishing)
+const working = computed(() => props.busy || props.publishing || qrReading.value)
 
 watch(() => props.open, value => {
   if (!value) return
   localError.value = ''
   copied.value = ''
-  if (!props.result && props.canGenerate) emit('generate')
 })
 
 async function copyText(value, key) {
   if (!value) return
   localError.value = ''
   try {
-    const legacyCopy = () => {
-      const field = document.createElement('textarea')
-      field.value = value
-      field.style.position = 'fixed'
-      field.style.left = '-9999px'
-      field.style.opacity = '0'
-      document.body.appendChild(field)
-      field.focus()
-      field.select()
-      field.setSelectionRange(0, field.value.length)
-      try {
-        if (!document.execCommand('copy')) throw new Error('系统拒绝复制')
-      } finally {
-        field.remove()
-      }
-    }
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-      } catch {
-        legacyCopy()
-      }
-    } else {
-      legacyCopy()
-    }
+    await copyShareText(value)
     copied.value = key
     window.setTimeout(() => {
       if (copied.value === key) copied.value = ''
     }, 1800)
   } catch (error) {
-    localError.value = `复制失败：${String(error?.message || error)}`
+    localError.value = tx(`复制失败：${String(error?.message || error)}`, `Copy failed: ${String(error?.message || error)}`)
   }
 }
 
 async function readClipboard() {
   localError.value = ''
   try {
-    if (!navigator.clipboard?.readText) throw new Error('当前系统不允许直接读取剪贴板')
+    if (!navigator.clipboard?.readText) throw new Error(tx('当前系统不允许直接读取剪贴板', 'This system does not allow direct clipboard access'))
     pasteCode.value = await navigator.clipboard.readText()
     await nextTick()
     pasteBox.value?.focus()
   } catch (error) {
-    localError.value = `${String(error?.message || error)}，请手动粘贴到输入框。`
+    localError.value = `${String(error?.message || error)}${tx('，请手动粘贴到输入框。', '; paste into the input manually.')}`
   }
 }
 
@@ -103,6 +84,42 @@ function submitImport() {
   localError.value = ''
   emit('import', pasteCode.value)
 }
+
+function qrErrorText(error) {
+  const messages = {
+    qr_image_type: tx('请选择 PNG、JPG、WebP 或 BMP 配装图。', 'Choose a PNG, JPG, WebP, or BMP loadout image.'),
+    qr_image_empty: tx('图片文件为空，请重新选择。', 'The image file is empty; choose it again.'),
+    qr_image_too_large: tx('图片超过 32 MiB，请压缩后再试。', 'The image exceeds 32 MiB; compress it and try again.'),
+    qr_image_failed: tx('图片无法读取，请重新截图或换用 PNG。', 'The image could not be read; take another screenshot or use PNG.'),
+    qr_not_found: tx('没有识别到二维码。请使用完整配装图，避免裁掉二维码或让图片过度模糊。', 'No QR code was found. Use the complete loadout image without cropping or heavy blur.'),
+    qr_not_loadout: tx('识别到了二维码，但它不是本工具的配装短码或分享链接。', 'A QR code was found, but it is not a loadout code or share link from this tool.'),
+  }
+  return messages[error?.code] || tx(`配装图识别失败：${String(error?.message || error)}`, `Loadout image recognition failed: ${String(error?.message || error)}`)
+}
+
+function chooseLoadoutImage() {
+  if (working.value) return
+  imageInput.value?.click()
+}
+
+async function importLoadoutImage(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || working.value) return
+  qrReading.value = true
+  localError.value = ''
+  try {
+    const decoded = await decodeLoadoutShareQRFile(file)
+    pasteCode.value = decoded
+    await nextTick()
+    emit('import', decoded)
+  } catch (error) {
+    localError.value = qrErrorText(error)
+  } finally {
+    qrReading.value = false
+  }
+}
 </script>
 
 <template>
@@ -110,31 +127,31 @@ function submitImport() {
     <div v-if="open" class="share-backdrop" role="presentation" @click.self="emit('close')">
       <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
         <header class="share-header">
-          <div class="share-mark" aria-hidden="true">交</div>
+          <div class="share-mark" aria-hidden="true">{{ tx('交', 'SH') }}</div>
           <div>
-            <small>单套配装 · 在线短码</small>
-            <h2 id="share-title">分享与接收配装</h2>
-            <p>只分享当前配装。接收后仍会进入分项导入确认，不会直接写入存档。</p>
+            <small>{{ tx('单套配装 · 在线短码', 'Single Loadout · Online Code') }}</small>
+            <h2 id="share-title">{{ tx('分享与接收配装', 'Share and Receive Loadouts') }}</h2>
+            <p>{{ tx('只分享当前配装。接收后仍会进入分项导入确认，不会直接写入存档。', 'Only the current loadout is shared. Receivers still confirm import scopes before anything is written.') }}</p>
           </div>
-          <button class="icon-close" type="button" aria-label="关闭" title="关闭" @click="emit('close')">×</button>
+          <button class="icon-close" type="button" :aria-label="tx('关闭', 'Close')" :title="tx('关闭', 'Close')" @click="emit('close')">×</button>
         </header>
 
         <div class="share-body">
           <section class="online-section">
             <div class="section-heading">
-              <span><i>01</i><b>生成短链接</b><small>{{ result ? `${result.characterName} · ${result.loadoutName}` : selectedName || '请先选择一套配装' }}</small></span>
-              <button v-if="result" type="button" class="ui-btn is-ghost" :disabled="working || !canGenerate" @click="emit('generate')">重新读取</button>
+              <span><i>01</i><b>{{ tx('生成短链接', 'Generate Short Link') }}</b><small>{{ result ? `${result.characterName} · ${result.loadoutName}` : selectedName || tx('请先选择一套配装', 'Select a loadout first') }}</small></span>
+              <button v-if="result" type="button" class="ui-btn is-ghost" :disabled="working || !canGenerate" @click="emit('generate')">{{ tx('重新读取', 'Reload') }}</button>
             </div>
 
             <div v-if="published" class="published-ticket">
               <div class="published-code">
-                <small>聊天群直接发送</small>
+                <small>{{ tx('聊天群直接发送', 'Ready to send') }}</small>
                 <strong>{{ published.code }}</strong>
-                <span>{{ published.reused ? '相同配装已存在，沿用原短码' : '短码已生成' }} · {{ published.bytes.toLocaleString() }} B</span>
+                <span>{{ published.reused ? tx('相同配装已存在，沿用原短码', 'Matching loadout already exists; reused its code') : tx('短码已生成', 'Short code generated') }} · {{ published.bytes.toLocaleString() }} B</span>
               </div>
               <div class="published-actions">
-                <button type="button" class="ui-btn is-primary" @click="copyText(published.code, 'short')">{{ copied === 'short' ? '已复制' : '复制短码' }}</button>
-                <button type="button" class="ui-btn is-ghost" @click="copyText(published.url, 'link')">{{ copied === 'link' ? '已复制' : '复制链接' }}</button>
+                <button type="button" class="ui-btn is-primary" @click="copyText(published.code, 'short')">{{ copied === 'short' ? tx('已复制', 'Copied') : tx('复制短码', 'Copy Code') }}</button>
+                <button type="button" class="ui-btn is-ghost" @click="copyText(published.url, 'link')">{{ copied === 'link' ? tx('已复制', 'Copied') : tx('复制链接', 'Copy Link') }}</button>
               </div>
               <div class="published-url" title="在线分享链接">{{ published.url }}</div>
             </div>
@@ -142,45 +159,50 @@ function submitImport() {
             <div v-else class="publish-prompt">
               <span class="prompt-glyph" aria-hidden="true">⌁</span>
               <div>
-                <b>{{ result ? '配装已在本机打包完成' : (canGenerate ? '正在读取当前配装…' : '当前配装不可分享') }}</b>
-                <small>{{ result ? '发布后得到 16 位短码和可点击链接，适合 QQ、微信与论坛。' : '请选择一个非队伍槽的单套配装。' }}</small>
+                <b>{{ result ? tx('配装已在本机打包完成', 'Loadout packed locally') : (canGenerate ? tx('可以生成当前配装', 'This loadout can be generated') : tx('当前配装不可分享', 'This loadout cannot be shared')) }}</b>
+                <small>{{ result ? tx('开启线上分享后可得到短码和链接；关闭则只保留本机离线码。', 'Enable online sharing to get a short code and link; disable it to keep only the offline code.') : tx('生成前可先选择是否上传到线上分享站。', 'Choose whether to upload before generating.') }}</small>
               </div>
-              <button type="button" class="ui-btn is-primary publish-button" :disabled="working || !result" @click="emit('publish')">
-                {{ publishing ? '正在生成…' : '生成短链接' }}
+              <button type="button" class="ui-btn is-primary publish-button" :disabled="working || (result ? !autoPublish : !canGenerate)" @click="result ? emit('publish') : emit('generate')">
+                {{ publishing ? tx('正在上传…', 'Uploading…') : (busy ? tx('正在生成…', 'Generating…') : (result ? (autoPublish ? tx('上传并生成短链接', 'Upload and Create Link') : tx('离线码已生成', 'Offline Code Ready')) : tx('生成配装码', 'Generate Loadout Code'))) }}
               </button>
-              <label class="share-title"><span>分享名称</span><input :value="shareTitle" maxlength="80" placeholder="例如：伊欧 · 训练场上限" @input="emit('update:share-title', $event.target.value)"></label>
-              <label class="share-optin"><input type="checkbox" :checked="autoPublish" @change="emit('update:auto-publish', $event.target.checked)"><span>生成后同时上传到线上分享站</span><small>默认开启；关闭后只生成本机离线码</small></label>
+              <label class="share-title"><span>{{ tx('分享名称', 'Share Title') }}</span><input :value="shareTitle" maxlength="80" :placeholder="tx('例如：伊欧 · 训练场上限', 'Example: Io · Training Cap')" @input="emit('update:share-title', $event.target.value)"></label>
+              <label class="share-optin"><input type="checkbox" :checked="autoPublish" @change="emit('update:auto-publish', $event.target.checked)"><span>{{ tx('同时上传到线上分享站', 'Upload to the online share site') }}</span><small>{{ tx('默认开启；关闭后只生成本机离线码', 'Enabled by default; disable to generate only a local offline code') }}</small></label>
             </div>
-            <p class="online-note">线上仅保存压缩后的单套配装，不包含整个存档。获得短码的人可读取该配装；当前短码不自动过期。</p>
+            <p class="online-note">{{ tx('线上仅保存压缩后的单套配装，不包含整个存档。获得短码的人可读取该配装；当前短码不自动过期。', 'Only the compressed loadout is stored online, never the full save. Anyone with the code can read it; codes do not currently expire automatically.') }}</p>
           </section>
 
           <section class="receive-section">
             <div class="section-heading">
-              <span><i>02</i><b>接收别人的配装</b><small>短码、完整链接和离线长码都能识别</small></span>
-              <button type="button" class="ui-btn is-ghost" :disabled="working" @click="readClipboard">读取剪贴板</button>
+              <span><i>02</i><b>{{ tx('接收别人的配装', 'Receive a Loadout') }}</b><small>{{ tx('短码、完整链接和离线长码都能识别', 'Short codes, full links, and offline codes are supported') }}</small></span>
+              <div class="receive-heading-actions">
+                <input ref="imageInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" tabindex="-1" @change="importLoadoutImage" />
+                <button type="button" class="ui-btn is-ghost" :disabled="working" @click="chooseLoadoutImage">{{ qrReading ? tx('正在识别…', 'Scanning…') : tx('导入配装图', 'Import Loadout Image') }}</button>
+                <button type="button" class="ui-btn is-ghost" :disabled="working" @click="readClipboard">{{ tx('读取剪贴板', 'Read Clipboard') }}</button>
+              </div>
             </div>
-            <textarea ref="pasteBox" v-model="pasteCode" spellcheck="false" placeholder="输入 0123-4567-89AB-CDEF，或粘贴分享链接 / GBFRC1 离线长码"></textarea>
+            <p class="image-import-note">{{ tx('选择带二维码的配装图即可识别并进入导入范围确认；图片只在本机处理，不会上传。', 'Choose a loadout image with a QR code to open import-scope confirmation. The image stays on this device.') }}</p>
+            <textarea ref="pasteBox" v-model="pasteCode" spellcheck="false" :placeholder="tx('输入 0123-4567-89AB-CDEF，或粘贴分享链接 / GBFRC1 离线长码', 'Enter 0123-4567-89AB-CDEF, a share link, or a GBFRC1 offline code')"></textarea>
             <div class="receive-actions">
-              <span v-if="pasteCode">已输入 {{ loadoutShareCodeCharacters(pasteCode) }} 个字符</span>
-              <span v-else>解析后可选择因子、技能、专精、武器、祝福、召唤石与上限突破等范围。</span>
-              <button type="button" class="ui-btn is-primary" :disabled="working || !importReady" @click="submitImport">{{ busy ? '解析中…' : '解析并选择导入范围' }}</button>
+              <span v-if="pasteCode">{{ tx(`已输入 ${loadoutShareCodeCharacters(pasteCode)} 个字符`, `${loadoutShareCodeCharacters(pasteCode)} characters entered`) }}</span>
+              <span v-else>{{ tx('解析后可选择因子、技能、专精、武器、祝福、召唤石与上限突破等范围。', 'After parsing, choose sigils, skills, mastery, weapons, wrightstones, summons, and overmastery scopes.') }}</span>
+              <button type="button" class="ui-btn is-primary" :disabled="working || !importReady" @click="submitImport">{{ busy ? tx('解析中…', 'Parsing…') : tx('解析并选择导入范围', 'Parse and Choose Import Scopes') }}</button>
             </div>
           </section>
 
           <details class="offline-section">
             <summary>
-              <span><b>离线长码</b><small>服务不可用时的备用方式，无需联网</small></span>
+              <span><b>{{ tx('离线长码', 'Offline Code') }}</b><small>{{ tx('服务不可用时的备用方式，无需联网', 'Fallback when the service is unavailable; no network required') }}</small></span>
               <i aria-hidden="true"></i>
             </summary>
             <div class="offline-body">
-              <div class="offline-tabs" role="tablist" aria-label="离线分享码格式">
-                <button type="button" :class="{ on: offlineMode === 'compact' }" role="tab" :aria-selected="offlineMode === 'compact'" @click="offlineMode = 'compact'">较短 Unicode 码</button>
-                <button type="button" :class="{ on: offlineMode === 'compatible' }" role="tab" :aria-selected="offlineMode === 'compatible'" @click="offlineMode = 'compatible'">纯 ASCII 兼容码</button>
+              <div class="offline-tabs" role="tablist" :aria-label="tx('离线分享码格式', 'Offline Code Format')">
+                <button type="button" :class="{ on: offlineMode === 'compact' }" role="tab" :aria-selected="offlineMode === 'compact'" @click="offlineMode = 'compact'">{{ tx('较短 Unicode 码', 'Short Unicode Code') }}</button>
+                <button type="button" :class="{ on: offlineMode === 'compatible' }" role="tab" :aria-selected="offlineMode === 'compatible'" @click="offlineMode = 'compatible'">{{ tx('纯 ASCII 兼容码', 'ASCII-Compatible Code') }}</button>
               </div>
-              <textarea :value="offlineCode" readonly spellcheck="false" aria-label="离线配装长码" @focus="$event.target.select()"></textarea>
+              <textarea :value="offlineCode" readonly spellcheck="false" :aria-label="tx('离线配装长码', 'Offline Loadout Code')" @focus="$event.target.select()"></textarea>
               <footer>
-                <span>{{ offlineCount.toLocaleString() }} 字符 · GBLC1 完整性校验</span>
-                <button type="button" class="ui-btn is-ghost" :disabled="!offlineCode" @click="copyText(offlineCode, 'offline')">{{ copied === 'offline' ? '已复制' : '复制离线码' }}</button>
+                <span>{{ tx(`${offlineCount.toLocaleString()} 字符 · GBLC1 完整性校验`, `${offlineCount.toLocaleString()} characters · GBLC1 checksum`) }}</span>
+                <button type="button" class="ui-btn is-ghost" :disabled="!offlineCode" @click="copyText(offlineCode, 'offline')">{{ copied === 'offline' ? tx('已复制', 'Copied') : tx('复制离线码', 'Copy Offline Code') }}</button>
               </footer>
             </div>
           </details>
@@ -228,6 +250,9 @@ function submitImport() {
 .published-url { grid-column:1/-1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-top:10px; border-top:1px solid rgba(74,119,89,.2); color:#607361; font: .72rem Consolas,"Cascadia Mono",monospace; }
 .online-note { margin:8px 0 0; color:#7b6b57; font-size:.72rem; line-height:1.5; }
 .receive-section { padding-top:17px; border-top:1px solid rgba(126,88,42,.22); }
+.receive-heading-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
+.image-import-note { margin:-3px 0 9px; color:#7b6b57; font-size:.72rem; line-height:1.5; }
 .receive-section > textarea { width:100%; min-height:82px; resize:vertical; padding:12px 13px; border:1px solid rgba(126,88,42,.34); border-radius:7px; outline:none; background:#fffdf7; color:#413426; font: .8rem Consolas,"Cascadia Mono",monospace; line-height:1.5; }
 .receive-section > textarea:focus,.offline-body > textarea:focus { border-color:#8b6737; box-shadow:0 0 0 3px rgba(139,103,55,.1); }
 .receive-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:9px; }
@@ -259,6 +284,9 @@ function submitImport() {
   .published-ticket { grid-template-columns:1fr; }
   .published-actions { display:grid; grid-template-columns:1fr 1fr; }
   .published-url { grid-column:1; }
+  .receive-section .section-heading { align-items:stretch; flex-direction:column; }
+  .receive-heading-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .receive-heading-actions .ui-btn { min-width:0; white-space:normal; }
   .receive-actions { align-items:stretch; flex-direction:column; }
   .receive-actions button { width:100%; }
 }

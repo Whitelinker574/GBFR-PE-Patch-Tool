@@ -113,28 +113,14 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 }
 
 func validateSigilMemoryWriteRequest(catalog *Catalog, update SigilMemoryUpdate) error {
-	if update.SigilHash == 0 || update.PrimaryTraitHash == 0 {
-		return fmt.Errorf("因子和主词条 Hash 必须是可编码的非零值")
-	}
-	if catalog == nil || catalog.LookupSigilByHash(update.SigilHash) == nil {
-		return fmt.Errorf("未知因子哈希 0x%08X；运行时写入只接受统一目录", update.SigilHash)
-	}
-	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
-		return fmt.Errorf("因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
-	}
-	if err := validateSigilMemoryTraitLevel(catalog, update.PrimaryTraitHash, update.PrimaryTraitLevel, "主词条"); err != nil {
-		return err
-	}
-	if isEmptySigilMemoryTrait(update.SecondaryTraitHash) {
-		if update.SecondaryTraitLevel != 0 {
-			return fmt.Errorf("副词条为空时等级必须为 0")
-		}
-		return nil
-	}
-	if err := validateSigilMemoryTraitLevel(catalog, update.SecondaryTraitHash, update.SecondaryTraitLevel, "副词条"); err != nil {
-		return err
-	}
-	return nil
+	return validateSigilMemoryUpdate(catalog, update)
+}
+
+// Selection identity is validated separately. Factor structure still has to
+// come from the unified catalog: observing unknown bytes is not evidence that
+// an arbitrary shell/trait combination is legal to write.
+func validateSigilMemoryWriteRequestForSelection(catalog *Catalog, update SigilMemoryUpdate, _ SigilMemoryStatus) error {
+	return validateSigilMemoryWriteRequest(catalog, update)
 }
 
 func isEmptySigilMemoryTrait(hash uint32) bool {

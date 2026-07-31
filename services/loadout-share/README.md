@@ -7,9 +7,9 @@
 - `POST /api/v1/loadouts`：保留的二进制发布接口；
 - `GET /api/v1/loadouts/<短码>`：桌面端使用的原始 GBLC 帧；
 - `GET /api/v1/loadouts/<短码>/meta`：网页使用的预览元数据；
-- `GET /api/v1/loadouts?character=伊欧`：目录查询；
+- `GET /api/v1/loadouts?character=伊欧&sort=time`：D1 目录查询，支持 `time`、`name`、`likes` 和稳定游标；
 - `POST .../like`、`POST .../comments`：可选 D1 社区互动。
 
 网页预览只接受桌面端传来的白名单字段，绝不公开 `OwnerCode`、SlotID、存档路径、PID 或原始内存。旧客户端只发布二进制帧时，仍可正常导入；网页会显示有限的基础信息。
 
-部署顺序：先部署 R2 版本并绑定自定义域名，再按 `migrations/README.md` 启用 D1。不要把 API 令牌、R2 密钥或真实 D1 ID 写入仓库。
+部署顺序：先部署 R2 版本并绑定自定义域名，再按 `migrations/README.md` 启用 D1、设置回填令牌并增量回填。发布会双写 R2/D1；配置了 D1 时，索引写入失败会返回可重试的 `503`，相同内容可安全重试，不会出现“短码成功但目录漏卡片”的假成功。D1 查询故障时目录自动回退 R2。不要把 API 令牌、R2 密钥或管理令牌写入仓库。

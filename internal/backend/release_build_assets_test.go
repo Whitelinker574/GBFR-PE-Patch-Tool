@@ -11,6 +11,7 @@ import (
 )
 
 const patchCoreResourcePath = "resources/patch_core.dll"
+const patchCoreReleaseSizeLimit = 10 * 1024 * 1024
 
 func TestPatchCoreEmbedUsesStableResource(t *testing.T) {
 	source, err := os.ReadFile("app.go")
@@ -35,6 +36,17 @@ func TestPatchCoreResourceMatchesEmbeddedAMD64DLL(t *testing.T) {
 	if !bytes.Equal(resource, patchCoreDLL) {
 		t.Fatal("stable patch_core resource differs from bytes compiled into the Go application")
 	}
+	if len(resource) > patchCoreReleaseSizeLimit {
+		t.Fatalf("patch_core resource size = %d bytes, limit = %d", len(resource), patchCoreReleaseSizeLimit)
+	}
+	for _, leakedBuildPath := range [][]byte{
+		[]byte(`GBFR-Codex-Field-Lab`),
+		[]byte(`source-git\src_dll\patch_core`),
+	} {
+		if bytes.Contains(resource, leakedBuildPath) {
+			t.Fatalf("patch_core resource leaks local build path segment %q", leakedBuildPath)
+		}
+	}
 
 	dll, err := pe.Open(filepath.FromSlash(patchCoreResourcePath))
 	if err != nil {
@@ -50,45 +62,167 @@ func TestPatchCoreResourceMatchesEmbeddedAMD64DLL(t *testing.T) {
 	}
 }
 
-func TestReleaseBatchUsesCleanWindowsAMD64Build(t *testing.T) {
-	script, err := os.ReadFile(filepath.Join("..", "..", "build-windows.bat"))
+func TestReleaseBatchUsesGuardedCleanWindowsAMD64Build(t *testing.T) {
+	batch, err := os.ReadFile(filepath.Join("..", "..", "build-windows.bat"))
 	if err != nil {
 		t.Fatalf("read build-windows.bat: %v", err)
 	}
+	batchSource := strings.ToLower(string(batch))
+	if !strings.Contains(batchSource, `tools\build_windows.ps1`) ||
+		!strings.Contains(batchSource, `exit /b %build_exit%`) {
+		t.Fatal("build-windows.bat must delegate the complete guarded build and preserve its exit code")
+	}
+	if strings.Contains(batchSource, "cd /d") || strings.Contains(batchSource, "copy /b") {
+		t.Fatal("batch wrapper must not bypass PowerShell rollback with its own directory or copy control flow")
+	}
 
-	line := regexp.MustCompile(`(?mi)^\s*wails\s+build\b.*$`).Find(script)
-	if line == nil {
-		t.Fatal("build-windows.bat has no wails build command")
+	script, err := os.ReadFile(filepath.Join("..", "..", "tools", "build_windows.ps1"))
+	if err != nil {
+		t.Fatalf("read guarded Windows build script: %v", err)
 	}
-	fields := strings.Fields(strings.ToLower(string(line)))
-	if !containsField(fields, "-clean") {
-		t.Fatalf("release build command %q must clean stale build output", strings.TrimSpace(string(line)))
-	}
-	if !containsField(fields, "-s") {
-		t.Fatalf("release build command %q must reuse the explicitly built frontend", strings.TrimSpace(string(line)))
-	}
-	if !containsAdjacentFields(fields, "-platform", "windows/amd64") {
-		t.Fatalf("release build command %q must pin platform windows/amd64", strings.TrimSpace(string(line)))
+	source := string(script)
+	for _, required := range []string{
+		"-Arguments @('build', '-clean', '-platform', 'windows/amd64', '-s')",
+		"Enter-GBFRExclusiveLease",
+		"Remove-GBFRStaleNamedPaths",
+		"Invoke-GBFRPendingPatchCoreRecovery",
+		"Start-GBFRPatchCoreRecoveryTransaction",
+		"Complete-GBFRPatchCoreRecoveryTransaction",
+		"Rollback-GBFRPatchCoreRecoveryTransaction",
+		"Push-Location -LiteralPath",
+		"atomically restored and hash-verified",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("guarded Windows build is missing %q", required)
+		}
 	}
 }
 
-func TestPatchCoreProjectPublishesStableResource(t *testing.T) {
+func TestReleasePackagerIncludesThirdPartyNoticesAndNativeLicenses(t *testing.T) {
+	script, err := os.ReadFile(filepath.Join("..", "..", "tools", "package_windows_release.ps1"))
+	if err != nil {
+		t.Fatalf("read release packager: %v", err)
+	}
+	source := string(script)
+	for _, required := range []string{
+		"THIRD_PARTY_NOTICES.md",
+		`src_dll\thirdparty\libmem\licenses\*.txt`,
+		"RELEASE_NOTES_$Version.md",
+		"BUILD_PROVENANCE.json",
+		"status --porcelain=v1 --untracked-files=all",
+		`tools\build_windows.ps1`,
+		"rev-parse HEAD",
+		"Compress-Archive",
+		"Get-FileHash -Algorithm SHA256",
+		"Release output must be outside the Git repository",
+		".partial-",
+		"Enter-GBFRExclusiveLease",
+		"Start-GBFRPatchCoreRecoveryTransaction",
+		"Complete-GBFRPatchCoreRecoveryTransaction",
+		"Rollback-GBFRPatchCoreRecoveryTransaction",
+		"InheritedBuildLease",
+		"Remove-GBFRStaleNamedPaths",
+		"$partialNamePattern",
+		"$finalHead",
+		"Release inputs or executable copies changed after provenance was recorded",
+		"$preserveTemporaryOutput",
+		"[System.IO.Directory]::Move($temporaryOutput, $outputPath)",
+		"Remove-Item -LiteralPath $temporaryOutput -Recurse -Force",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("release packager does not include %q", required)
+		}
+	}
+	licenses, err := filepath.Glob(filepath.Join("..", "..", "src_dll", "thirdparty", "libmem", "licenses", "*.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(licenses) != 7 {
+		t.Fatalf("native license count = %d, want 7", len(licenses))
+	}
+}
+
+func TestPatchCoreBuildPublishesStableResourceAtomically(t *testing.T) {
 	project, err := os.ReadFile(filepath.Join("..", "..", "src_dll", "patch_core", "patch_core.vcxproj"))
 	if err != nil {
 		t.Fatalf("read patch_core project: %v", err)
 	}
 	normalized := strings.ToLower(filepath.ToSlash(string(project)))
-	if !strings.Contains(normalized, `$(projectdir)../../internal/backend/resources/`) {
-		t.Fatal("patch_core Release x64 post-build output must publish to the stable resources directory")
-	}
-	if strings.Contains(normalized, `$(solutiondir)`) || strings.Contains(normalized, `$(projectdir)../../build/bin/`) {
-		t.Fatal("patch_core project must not publish an embed input into Wails' disposable build/bin directory")
+	if strings.Contains(normalized, `internal/backend/resources`) || strings.Contains(normalized, `<postbuildevent>`) {
+		t.Fatal("MSBuild must not copy directly over the tracked embedded DLL")
 	}
 	if strings.Count(normalized, `<platformtoolset>v143</platformtoolset>`) != 4 || strings.Contains(normalized, `<platformtoolset>v145</platformtoolset>`) {
 		t.Fatal("all patch_core configurations must use the installed Visual Studio 2022 v143 toolset")
 	}
 	if !strings.Contains(normalized, `../thirdparty/libmem/lib/debug`) {
 		t.Fatal("patch_core Debug x64 must link the bundled debug libmem library")
+	}
+	releaseX64 := regexp.MustCompile(`(?s)<itemdefinitiongroup\s+condition="'\$\(configuration\)\|\$\(platform\)'=='release\|x64'">.*?</itemdefinitiongroup>`).FindString(normalized)
+	if releaseX64 == "" || !strings.Contains(releaseX64, `<generatedebuginformation>false</generatedebuginformation>`) {
+		t.Fatal("patch_core Release x64 must omit CodeView/PDB paths from the distributed DLL")
+	}
+	buildScript, err := os.ReadFile(filepath.Join("..", "..", "tools", "build_patch_core.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(buildScript)
+	for _, required := range []string{
+		"windows_release_common.ps1",
+		"Enter-GBFRExclusiveLease",
+		"InheritedBuildLease",
+		"Assert-GBFRBuildLeaseHeld",
+		"Remove-GBFRStaleNamedPaths",
+		"Invoke-GBFRPendingPatchCoreRecovery",
+		"Start-GBFRPatchCoreRecoveryTransaction",
+		"Rollback-GBFRPatchCoreRecoveryTransaction",
+		"Copy-GBFRVerifiedFile",
+		"[GBFRAtomicFilePublisher]::Replace($embeddedTemporary, $embedded)",
+		"Get-GBFRSha256Hex -LiteralPath $embedded",
+		"finally",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("native build publisher is missing %q", required)
+		}
+	}
+	if !strings.Contains(releaseX64, `<additionaloptions>/brepro %(additionaloptions)</additionaloptions>`) {
+		t.Fatal("patch_core Release x64 must use reproducible linker output")
+	}
+	common, err := os.ReadFile(filepath.Join("..", "..", "tools", "windows_release_common.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"MoveFileEx",
+		"MoveFileWriteThrough",
+		"[System.IO.FileShare]::None",
+		"[System.IO.FileOptions]::DeleteOnClose",
+		"Restore-GBFRFileFromVerifiedBackup",
+		"Atomically restored file failed read-back verification",
+		"Write-GBFRDurableJsonFileAtomic",
+		"Sync-GBFRFile",
+		"ownerStartedUtc",
+		"Invoke-GBFRPendingPatchCoreRecovery",
+	} {
+		if !strings.Contains(string(common), required) {
+			t.Errorf("Windows build safety helper is missing %q", required)
+		}
+	}
+
+	safetyTest, err := os.ReadFile(filepath.Join("..", "..", "tools", "test_windows_release_safety.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"A concurrent build lease was not rejected",
+		"Formal patch_core.dll was removed by stale cleanup",
+		"Formal release directory was removed by stale cleanup",
+		"A corrupted rollback backup was accepted",
+		"Interrupted-build recovery did not restore the original formal DLL",
+		"Completed interrupted-build recovery retained its live journal",
+	} {
+		if !strings.Contains(string(safetyTest), required) {
+			t.Errorf("Windows release safety regression test is missing %q", required)
+		}
 	}
 }
 
@@ -107,6 +241,8 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 		`0x1FBDEB4`,
 		`0xB29128`,
 		`0x22CB316`,
+		`kStableReleaseCandidateMonsterDamageEnabled = false`,
+		`kStableReleaseVirtualSigilsEnabled = false`,
 	} {
 		if !strings.Contains(source, required) {
 			t.Errorf("patch_core source missing monster safety guard %q", required)
@@ -161,7 +297,10 @@ func TestCodePatchPublishersSuspendAndResumeTargetExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	cpp := string(cppBytes)
-	for _, required := range []string{"ScopedOtherThreadSuspension", "SuspendThread(", "ResumeThread(", "if (!suspension.Active()) return false"} {
+	for _, required := range []string{
+		"ScopedOtherThreadSuspension", "SuspendThread(", "ResumeThread(",
+		"return suspension.Active() && PatchBytesWhileSuspended", "InstructionPointersOutside", "RetireQOLLevelCaves",
+	} {
 		if !strings.Contains(cpp, required) {
 			t.Errorf("patch_core code publisher is missing %q", required)
 		}
@@ -191,22 +330,4 @@ func TestRetiredDamageOverlayBackendIsRemoved(t *testing.T) {
 			t.Errorf("app.go still contains retired damage runtime symbol %q", retired)
 		}
 	}
-}
-
-func containsField(fields []string, want string) bool {
-	for _, field := range fields {
-		if field == want {
-			return true
-		}
-	}
-	return false
-}
-
-func containsAdjacentFields(fields []string, first, second string) bool {
-	for index := 0; index+1 < len(fields); index++ {
-		if fields[index] == first && fields[index+1] == second {
-			return true
-		}
-	}
-	return false
 }

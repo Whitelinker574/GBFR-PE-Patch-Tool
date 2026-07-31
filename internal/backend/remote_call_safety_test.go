@@ -35,9 +35,10 @@ func TestClassifyRemoteCallWait(t *testing.T) {
 func TestPruneUnlockedPatchCoreDLLsRemovesOnlyGeneratedDLLs(t *testing.T) {
 	dir := t.TempDir()
 	generated := filepath.Join(dir, "patch_core_123.dll")
-	keep := filepath.Join(dir, "patch_core_command.txt")
+	sidecar := generated + ".command"
+	keep := filepath.Join(dir, "patch_core_notes.txt")
 	foreign := filepath.Join(dir, "other.dll")
-	for _, path := range []string{generated, keep, foreign} {
+	for _, path := range []string{generated, sidecar, keep, foreign} {
 		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -45,6 +46,9 @@ func TestPruneUnlockedPatchCoreDLLsRemovesOnlyGeneratedDLLs(t *testing.T) {
 	pruneUnlockedPatchCoreDLLs(dir)
 	if _, err := os.Stat(generated); !os.IsNotExist(err) {
 		t.Fatalf("generated DLL was not removed: %v", err)
+	}
+	if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
+		t.Fatalf("generated command sidecar was not removed: %v", err)
 	}
 	for _, path := range []string{keep, foreign} {
 		if _, err := os.Stat(path); err != nil {

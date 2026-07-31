@@ -2,7 +2,7 @@ package backend
 
 import "testing"
 
-func TestSigilLegalityAllowsForcedSecondary(t *testing.T) {
+func TestSigilLegalityRejectsIncompatibleSecondary(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -49,15 +49,15 @@ func TestSigilLegalityAllowsForcedSecondary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityForced || !report.Writable {
-		t.Fatalf("expected forced+writable, got %+v", report)
+	if report.Status != LegalityImpossible || report.Writable {
+		t.Fatalf("expected impossible+not writable, got %+v", report)
 	}
-	if err := sg.AddToQueue(item); err != nil {
-		t.Fatalf("forced combination must remain user-writable: %v", err)
+	if err := sg.AddToQueue(item); err == nil {
+		t.Fatal("incompatible secondary must not enter the write queue")
 	}
 }
 
-func TestSigilLegalityPreservesFreeformPrimaryTrait(t *testing.T) {
+func TestSigilLegalityRejectsFreeformPrimaryTrait(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -75,19 +75,16 @@ func TestSigilLegalityPreservesFreeformPrimaryTrait(t *testing.T) {
 		t.Fatal("test catalog has no alternate primary trait")
 	}
 	item := QueueItem{SigilID: sigil.InternalID, Level: 15, PrimaryTraitID: primary.InternalID, PrimaryLevel: 15, Quantity: 1}
-	normalized, report, err := (&SigilGen{catalog: catalog}).normalizeQueueItem(item)
+	_, report, err := (&SigilGen{catalog: catalog}).normalizeQueueItem(item)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.Writable || report.Status != LegalityForced {
-		t.Fatalf("alternate primary must be forced+writable: %+v", report)
-	}
-	if normalized.PrimaryTraitID != primary.InternalID {
-		t.Fatalf("selected primary was replaced: got %s want %s", normalized.PrimaryTraitID, primary.InternalID)
+	if report.Writable || report.Status != LegalityImpossible {
+		t.Fatalf("alternate primary must be rejected: %+v", report)
 	}
 }
 
-func TestSigilLegalityAllowsForcedSecondaryOnNaturalSingleSlot(t *testing.T) {
+func TestSigilLegalityRejectsSecondaryOnNaturalSingleSlot(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -111,8 +108,8 @@ func TestSigilLegalityAllowsForcedSecondaryOnNaturalSingleSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityForced || !report.Writable {
-		t.Fatalf("non-natural secondary must warn but remain writable, got %+v", report)
+	if report.Status != LegalityImpossible || report.Writable {
+		t.Fatalf("non-natural secondary must be rejected, got %+v", report)
 	}
 }
 
@@ -277,7 +274,7 @@ func TestWrightstoneRegenWritableCapIsFortyFive(t *testing.T) {
 	}
 }
 
-func TestWrightstoneLegalityAllowsForcedFirstTrait(t *testing.T) {
+func TestWrightstoneLegalityRejectsNonFixedFirstTrait(t *testing.T) {
 	catalog, err := LoadWrightstoneCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -314,11 +311,11 @@ func TestWrightstoneLegalityAllowsForcedFirstTrait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityForced || !report.Writable {
-		t.Fatalf("expected forced+writable, got %+v", report)
+	if report.Status != LegalityImpossible || report.Writable {
+		t.Fatalf("expected impossible+not writable, got %+v", report)
 	}
-	if err := wg.AddToQueue(item); err != nil {
-		t.Fatalf("forced wrightstone must remain user-writable: %v", err)
+	if err := wg.AddToQueue(item); err == nil {
+		t.Fatal("wrightstone with a non-fixed first trait must not enter the queue")
 	}
 }
 
@@ -331,10 +328,17 @@ func TestWrightstoneSlotNaturalCapsRemainWritable(t *testing.T) {
 		t.Fatal("wrightstone catalog is empty")
 	}
 	w := &catalog.Wrightstones[0]
-	var picked []*WrightstoneTraitDef
+	first, err := catalog.RequireTrait(w.DefaultTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picked := []*WrightstoneTraitDef{first}
 	for i := range catalog.Traits {
 		trait := &catalog.Traits[i]
-		if _, levelErr := requireWrightstoneTraitLevels(trait); levelErr == nil {
+		if trait.InternalID != first.InternalID {
+			if _, levelErr := requireWrightstoneTraitLevels(trait); levelErr != nil {
+				continue
+			}
 			picked = append(picked, trait)
 		}
 		if len(picked) == 3 {

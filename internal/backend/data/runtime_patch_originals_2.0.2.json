@@ -1216,6 +1216,18 @@
         48,
         200
       ]
+    },
+    {
+      "featureId": "runtime-patch-059",
+      "catalogId": 59,
+      "siteIndex": 0,
+      "symbol": "GBFR_PATCH_059_1",
+      "aob": "75 ?? 48 89 ?? 48 89 ?? E8 ?? ?? ?? ?? 44 0F",
+      "offset": 0,
+      "patchRva": 10214545,
+      "expectedOriginalBytes": [
+        117
+      ]
     }
   ],
   "gameVersion": "2.0.2"

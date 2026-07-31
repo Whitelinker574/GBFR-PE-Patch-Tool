@@ -19,9 +19,13 @@ const (
 	loadoutShareOnlineMaxFrameSize = 8 * 1024
 	loadoutSharePreviewMaxBytes    = 12 * 1024
 	loadoutShareTitleMaxRunes      = 80
+	loadoutShareRequestAttempts    = 3
 )
 
-var loadoutShareShortCodePattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{16,24}$`)
+var (
+	loadoutShareShortCodePattern    = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{16,24}$`)
+	loadoutShareLegacyPrefixPattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{12}$`)
+)
 
 type LoadoutPublishedShare struct {
 	Code          string `json:"code"`
@@ -39,7 +43,55 @@ type loadoutShareOnlineError struct {
 }
 
 func loadoutShareHTTPClient() *http.Client {
-	return &http.Client{Timeout: 15 * time.Second}
+	return &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:     false,
+			DisableKeepAlives:     true,
+			MaxIdleConns:          2,
+			MaxIdleConnsPerHost:   1,
+			IdleConnTimeout:       5 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+}
+
+func loadoutShareDo(ctx context.Context, client *http.Client, method, target string, body []byte, headers map[string]string) (*http.Response, error) {
+	if client == nil {
+		client = loadoutShareHTTPClient()
+	}
+	var lastErr error
+	for attempt := 0; attempt < loadoutShareRequestAttempts; attempt++ {
+		request, err := http.NewRequestWithContext(loadoutShareRequestContext(ctx), method, target, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+		response, err := client.Do(request)
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		if request.Context().Err() != nil {
+			return nil, request.Context().Err()
+		}
+		if attempt+1 < loadoutShareRequestAttempts {
+			delay := time.Duration(attempt+1) * 180 * time.Millisecond
+			timer := time.NewTimer(delay)
+			select {
+			case <-request.Context().Done():
+				timer.Stop()
+				return nil, request.Context().Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return nil, fmt.Errorf("连接被远端中断，请重试；也可使用离线长码或下载文件: %w", lastErr)
 }
 
 func loadoutShareRequestContext(ctx context.Context) context.Context {
@@ -84,8 +136,8 @@ func normalizeLoadoutShareShortCode(input string) (string, error) {
 	}
 	value = strings.ToUpper(value)
 	value = strings.NewReplacer("-", "", " ", "", "\t", "", "\r", "", "\n", "").Replace(value)
-	if !loadoutShareShortCodePattern.MatchString(value) {
-		return "", fmt.Errorf("短码格式无效；请输入 16 位短码或完整分享链接")
+	if !loadoutShareShortCodePattern.MatchString(value) && !loadoutShareLegacyPrefixPattern.MatchString(value) {
+		return "", fmt.Errorf("短码格式无效；请输入 12 位旧码、16 位短码或完整分享链接")
 	}
 	return value, nil
 }
@@ -321,6 +373,28 @@ func previewChineseSource(source string, preview *loadoutSharePreview, bonus Tra
 	return strings.Join(parts, " · ")
 }
 
+func setPreviewCombinedSkills(preview *loadoutSharePreview, bonuses []TraitBonus) {
+	if preview == nil {
+		return
+	}
+	preview.CombinedSkills = preview.CombinedSkills[:0]
+	for _, bonus := range bonuses {
+		sources := make([]string, 0, len(bonus.Sources))
+		for _, source := range bonus.Sources {
+			if localized := previewChineseSource(source, preview, bonus); localized != "" {
+				sources = append(sources, localized)
+			}
+		}
+		if len(sources) > 8 {
+			sources = sources[:8]
+		}
+		preview.CombinedSkills = append(preview.CombinedSkills, loadoutSharePreviewTrait{
+			Hash: bonus.TraitID, Name: previewChineseName(bonus.TraitID, bonus.Name), Level: bonus.Level, RawLevel: bonus.RawLevel, MaxLevel: bonus.MaxLevel,
+			Effect: bonus.Effect, Sources: sources,
+		})
+	}
+}
+
 func previewForLoadout(share *LoadoutShare, entry *LoadoutEntry, context *LoadoutStatContext, simulation *LoadoutSimulation) *loadoutSharePreview {
 	if share == nil {
 		return nil
@@ -447,21 +521,7 @@ func previewForLoadout(share *LoadoutShare, entry *LoadoutEntry, context *Loadou
 		}
 	}
 	if simulation != nil {
-		for _, bonus := range simulation.Bonuses {
-			sources := make([]string, 0, len(bonus.Sources))
-			for _, source := range bonus.Sources {
-				if localized := previewChineseSource(source, preview, bonus); localized != "" {
-					sources = append(sources, localized)
-				}
-			}
-			if len(sources) > 8 {
-				sources = sources[:8]
-			}
-			preview.CombinedSkills = append(preview.CombinedSkills, loadoutSharePreviewTrait{
-				Hash: bonus.TraitID, Name: previewChineseName(bonus.TraitID, bonus.Name), Level: bonus.Level, RawLevel: bonus.RawLevel, MaxLevel: bonus.MaxLevel,
-				Effect: bonus.Effect, Sources: sources,
-			})
-		}
+		setPreviewCombinedSkills(preview, simulation.Bonuses)
 	}
 	mastery := make([]uint32, 0, len(share.MasteryHashes))
 	for _, value := range share.MasteryHashes {
@@ -570,25 +630,38 @@ func publishLoadoutShareFrameWithMetadata(ctx context.Context, client *http.Clie
 	if len(frame) == 0 || len(frame) > loadoutShareOnlineMaxFrameSize {
 		return nil, fmt.Errorf("线上分享只接受不超过 %d KB 的配装帧", loadoutShareOnlineMaxFrameSize/1024)
 	}
+	ctx = loadoutShareRequestContext(ctx)
 	endpoint = strings.TrimRight(endpoint, "/")
-	request, err := http.NewRequestWithContext(loadoutShareRequestContext(ctx), http.MethodPost, endpoint+"/api/v1/loadouts", bytes.NewReader(frame))
-	if err != nil {
-		return nil, fmt.Errorf("创建配装发布请求失败: %w", err)
+	headers := map[string]string{
+		"Content-Type": "application/octet-stream",
+		"Accept":       "application/json",
+		"User-Agent":   repoName + "/" + appVersion,
 	}
-	request.Header.Set("Content-Type", "application/octet-stream")
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", repoName+"/"+appVersion)
 	if preview != nil {
 		if encoded := encodeLoadoutSharePreview(preview); encoded != "" {
-			request.Header.Set("X-Loadout-Preview", encoded)
+			headers["X-Loadout-Preview"] = encoded
 		}
-		request.Header.Set("X-Loadout-Title-B64", base64.RawStdEncoding.EncodeToString([]byte(preview.Title)))
-		request.Header.Set("X-Loadout-Character-B64", base64.RawStdEncoding.EncodeToString([]byte(preview.CharacterName)))
-		request.Header.Set("X-Loadout-Character-Hash", preview.CharacterHash)
+		headers["X-Loadout-Title-B64"] = base64.RawStdEncoding.EncodeToString([]byte(preview.Title))
+		headers["X-Loadout-Character-B64"] = base64.RawStdEncoding.EncodeToString([]byte(preview.CharacterName))
+		headers["X-Loadout-Character-Hash"] = preview.CharacterHash
 	}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("连接配装分享服务失败: %w", err)
+	var response *http.Response
+	for attempt := 0; attempt < 2; attempt++ {
+		var err error
+		response, err = loadoutShareDo(ctx, client, http.MethodPost, endpoint+"/api/v1/loadouts", frame, headers)
+		if err != nil {
+			return nil, fmt.Errorf("连接配装分享服务失败: %w", err)
+		}
+		if response.StatusCode != http.StatusServiceUnavailable || attempt > 0 {
+			break
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4*1024))
+		_ = response.Body.Close()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
@@ -619,13 +692,10 @@ func fetchLoadoutShareFrame(ctx context.Context, client *http.Client, endpoint, 
 		return nil, err
 	}
 	endpoint = strings.TrimRight(endpoint, "/")
-	request, err := http.NewRequestWithContext(loadoutShareRequestContext(ctx), http.MethodGet, endpoint+"/api/v1/loadouts/"+code, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建配装下载请求失败: %w", err)
-	}
-	request.Header.Set("Accept", "application/vnd.gbfr.loadout")
-	request.Header.Set("User-Agent", repoName+"/"+appVersion)
-	response, err := client.Do(request)
+	response, err := loadoutShareDo(ctx, client, http.MethodGet, endpoint+"/api/v1/loadouts/"+code, nil, map[string]string{
+		"Accept":     "application/vnd.gbfr.loadout",
+		"User-Agent": repoName + "/" + appVersion,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("连接配装分享服务失败: %w", err)
 	}

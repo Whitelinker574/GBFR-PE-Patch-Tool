@@ -330,6 +330,10 @@ func buildRuntimePatchFeatureStatuses(features []RuntimePatchFeature, memory run
 		}
 		lease, active := leases[feature.ID]
 		if !active {
+			if !runtimePatchFeatureAvailableInStableRelease(feature) {
+				status.Available = false
+				status.Error = "稳定版未开放：该候选功能仍缺少可见游戏效果验收"
+			}
 			if conflict := findRuntimePatchCatalogConflict(feature, leases); conflict != "" {
 				status.Available = false
 				status.Error = fmt.Sprintf("conflicts with active RuntimePatch feature %s", conflict)
@@ -574,6 +578,15 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 			return empty, err
 		}
 	}
+	process := a.currentProcessInstance()
+	if enabled {
+		// Pattern uniqueness and original-byte checks are not a substitute for
+		// proving the complete game executable. Recovery deliberately skips this
+		// gate so an older owned session can still restore after an update.
+		if err := a.verifyRuntimePatchExecutableLocked(process, "RuntimePatch"); err != nil {
+			return empty, err
+		}
+	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
 
@@ -585,8 +598,10 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 	if feature == nil {
 		return empty, fmt.Errorf("unknown RuntimePatch feature: %s", strings.TrimSpace(id))
 	}
+	if enabled && !runtimePatchFeatureAvailableInStableRelease(*feature) {
+		return empty, fmt.Errorf("%s在稳定版中保持禁用：仍缺少可见游戏效果验收", feature.DisplayName)
+	}
 	memory := runtimePatchProcessMemory{handle: a.hProcess}
-	process := a.currentProcessInstance()
 	lease, active := a.runtimePatchPatchLeases[feature.ID]
 
 	if !enabled {
@@ -625,6 +640,10 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 		a.runtimePatchPatchLeases[feature.ID] = cloneRuntimePatchPatchLease(lease)
 		a.poisonCurrentLiveMemoryWrites()
 		return status, errors.Join(fmt.Errorf("RuntimePatch feature requires recovery before it can be enabled again"), errLiveMemoryRollbackUnproven)
+	}
+	if err := validateRuntimePatchCombatChargeConflict(feature.ID, a.combatTuningChargeLease); err != nil {
+		return a.runtimePatchStatusForFeatureLocked(*feature, token, memory),
+			err
 	}
 	for activeID, activeLease := range a.runtimePatchPatchLeases {
 		if !runtimeOwnerTokenMatches(activeLease.OwnerToken, token) {
@@ -678,6 +697,13 @@ func (a *App) RuntimePatchSetEnabledOwned(token, id string, enabled bool) (Runti
 	return a.runtimePatchStatusForFeatureLocked(*feature, token, memory), nil
 }
 
+func validateRuntimePatchCombatChargeConflict(featureID string, chargeLease *combatTuningLease) error {
+	if featureID == "runtime-patch-017" && chargeLease != nil {
+		return fmt.Errorf("冈达葛萨“瞬间直冲拳”与三角色共享蓄力调整不能同时开启；请先恢复共享蓄力调整")
+	}
+	return nil
+}
+
 // RuntimePatchReleaseOwned restores all patches owned by the presented Chara token.
 // Poison never prevents this recovery path.
 func (a *App) RuntimePatchReleaseOwned(token string) error {
@@ -688,7 +714,7 @@ func (a *App) RuntimePatchReleaseOwned(token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
 	}
-	hasOwnedLease := false
+	hasOwnedLease := a.confluxTimerLease != nil && a.confluxTimerLease.OwnerToken == token
 	for _, lease := range a.runtimePatchPatchLeases {
 		if lease.OwnerToken == token {
 			hasOwnedLease = true
@@ -700,9 +726,10 @@ func (a *App) RuntimePatchReleaseOwned(token string) error {
 	}
 	if a.hProcess == 0 || !processHandleAlive(a.hProcess) {
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
+		a.dropConfluxTimerOwnerLocked(token)
 		return nil
 	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
-	return a.restoreAllRuntimePatchPatchesLocked(token)
+	return errors.Join(a.restoreAllRuntimePatchPatchesLocked(token), a.restoreConfluxTimerOwnedLocked(token, false))
 }

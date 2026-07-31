@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { FindSaveFiles, GetCharacterStats, UpdateCharacterStats } from '../../wailsjs/go/backend/App'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 const slots = ref([])
@@ -20,12 +21,6 @@ const sorted = computed(() => sortDesc.value
 const allSelected = computed(() => list.value.length > 0 && selected.value.size === list.value.length)
 
 async function scanSaves() { slots.value = await FindSaveFiles() || [] }
-
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
-}
 
 async function load(path) {
   const epoch = ++loadEpoch
@@ -86,10 +81,17 @@ onMounted(scanSaves)
 <template>
   <div class="root">
     <div class="section ui-card ui-panel">
-      <div class="slots">
-        <button v-for="s in slots" :key="s.index" class="slot-btn ui-btn is-sm" :class="{ on: savePath === s.path }" @click="load(s.path)">{{ saveSlotLabel(s) }}</button>
-        <button class="plain-btn ui-btn is-sm" @click="refresh">刷新</button>
-      </div>
+      <SaveSourcePicker
+        v-model="savePath"
+        :slots="slots"
+        :busy="loading || saving"
+        :loaded="!!savePath && !loading && !error"
+        :summary="list.length ? `已加载 · ${list.length} 个角色` : ''"
+        helper="选择要修改角色使用次数的存档"
+        action-label="刷新存档列表"
+        @select="load"
+        @browse="refresh"
+      />
 
       <div class="version-row">
         <span class="version-label ui-hint">已按存档内角色身份 Hash 自动识别，不再需要选择新档/转换档</span>
@@ -132,18 +134,12 @@ onMounted(scanSaves)
   container-type:inline-size;
 }
 .section { min-width:0; }
-.slots,
 .version-row,
 .batch-row {
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:var(--space-2);
-}
-.slot-btn.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
 }
 .version-row { justify-content:space-between; }
 .version-label { min-width:220px; flex:1; color:var(--text-secondary); }

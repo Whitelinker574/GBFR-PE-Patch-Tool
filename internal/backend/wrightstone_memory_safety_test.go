@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -102,6 +103,18 @@ func TestValidateWrightstoneMemoryUpdateUsesSkillCurveCaps(t *testing.T) {
 	}
 }
 
+func TestWrightstoneRuntimeSelectionLocksTheCapturedFirstTrait(t *testing.T) {
+	catalog, update := validWrightstoneMemoryUpdate(t)
+	current := WrightstoneMemoryStatus{FirstHash: update.FirstHash}
+	if err := validateWrightstoneMemoryWriteRequestForSelection(catalog, update, current); err != nil {
+		t.Fatalf("unchanged captured first trait was rejected: %v", err)
+	}
+	current.FirstHash = update.SecondHash
+	if err := validateWrightstoneMemoryWriteRequestForSelection(catalog, update, current); err == nil || !strings.Contains(err.Error(), "固有第一词条") {
+		t.Fatalf("runtime write changed the captured first trait: %v", err)
+	}
+}
+
 func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsHardCap(t *testing.T) {
 	catalog, err := LoadWrightstoneCatalog()
 	if err != nil {
@@ -116,13 +129,68 @@ func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsHardCap(t *testing.T) 
 	}
 }
 
-func TestWrightstoneMemoryWriteKeepsCombinationsAdvisoryButEnforcesCurveCaps(t *testing.T) {
+func TestWrightstoneDuplicateTraitsAreRejectedAcrossRuntimeSaveAndLoadoutImport(t *testing.T) {
 	catalog, update := validWrightstoneMemoryUpdate(t)
 	update.SecondHash = update.FirstHash
 	update.SecondLevel = update.FirstLevel
-	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
-		t.Fatalf("duplicate but curve-valid traits should remain force-writable: %v", err)
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {
+		t.Fatal("runtime write accepted duplicate blessing traits")
 	}
+
+	wrightstone := &catalog.Wrightstones[0]
+	first, err := catalog.RequireTrait(wrightstone.DefaultTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstHash, err := ParseHashHex(first.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var third *WrightstoneTraitDef
+	for index := range catalog.Traits {
+		candidate := &catalog.Traits[index]
+		if candidate.InternalID != first.InternalID {
+			third = candidate
+			break
+		}
+	}
+	if third == nil {
+		t.Fatal("wrightstone catalog has no distinct third trait")
+	}
+	item := WrightstoneQueueItem{
+		WrightstoneID: wrightstone.InternalID,
+		FirstTraitID:  first.InternalID, FirstLevel: 1,
+		SecondTraitID: first.InternalID, SecondLevel: 1,
+		ThirdTraitID: third.InternalID, ThirdLevel: 1,
+		Quantity: 1,
+	}
+	report, err := (&WrightstoneGen{catalog: catalog}).CheckLegality(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Writable {
+		t.Fatalf("offline save blessing editor accepted duplicate traits: %+v", report)
+	}
+	stoneHash, err := ParseHashHex(wrightstone.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdHash, err := ParseHashHex(third.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareWeaponWrightstone(&LoadoutWeaponWrightstone{
+		Hash: fmt.Sprintf("%08X", stoneHash),
+		Traits: []LoadoutWeaponWrightstoneTrait{
+			{Index: 0, Hash: fmt.Sprintf("%08X", firstHash), Level: 1},
+			{Index: 1, Hash: fmt.Sprintf("%08X", firstHash), Level: 1},
+			{Index: 2, Hash: fmt.Sprintf("%08X", thirdHash), Level: 1},
+		},
+	}); err == nil {
+		t.Fatal("loadout blessing import accepted duplicate traits")
+	}
+
+	_, update = validWrightstoneMemoryUpdate(t)
 	trait := catalog.LookupTraitByHash(update.FirstHash)
 	levels, err := requireWrightstoneTraitLevels(trait)
 	if err != nil {

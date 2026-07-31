@@ -10,6 +10,7 @@ import { language } from '../i18n.js'
 import LegalityIndicator from './LegalityIndicator.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import CatalogSelect from './CatalogSelect.vue'
+import SaveSourcePicker from './SaveSourcePicker.vue'
 
 const emit = defineEmits(['status'])
 function showStatus(msg, type) { emit('status', msg, type) }
@@ -103,12 +104,6 @@ async function selectSaveSlot(path) {
   await loadSave()
 }
 
-function saveSlotLabel(slot) {
-  const fileName = String(slot?.name || slot?.path || '').split(/[\\/]/).pop()
-  const match = fileName.match(/SaveData\d+/i)
-  return match ? match[0].replace(/^savedata/i, 'SaveData') : fileName.replace(/\.dat$/i, '')
-}
-
 async function loadSave() {
   if (!inputPath.value.trim()) { showStatus(text('请输入存档路径', 'Enter a save path.'), 'error'); return }
   try {
@@ -167,6 +162,12 @@ function traitIconByID(id) {
   const trait = traits.value.find(item => item.internalId === id)
   return traitIconForOption(trait || { internalId: id })
 }
+function wrightstoneTraitOptions(slot) {
+  const used = new Set(selectedTraits
+    .map((trait, index) => index === slot ? '' : trait.id)
+    .filter(Boolean))
+  return traits.value.filter(trait => !used.has(trait.internalId) || trait.internalId === selectedTraits[slot].id)
+}
 
 function buildCurrentItem() {
   return {
@@ -201,6 +202,20 @@ async function refreshLegality() {
 }
 
 watch(() => [selectedWrightstoneID.value, quantity.value, ...selectedTraits.flatMap(t => [t.id, t.level])], refreshLegality)
+watch(() => selectedTraits.map(trait => trait.id), ids => {
+  const seen = new Set()
+  ids.forEach((id, index) => {
+    if (!id) return
+    if (seen.has(id) && index > 0) {
+      selectedTraits[index].id = ''
+      selectedTraits[index].level = 0
+      selectedTraits[index].levels = []
+      showStatus(text(`${traitLabel(index)}与前面的词条重复，已自动清除`, `${traitLabel(index)} duplicated an earlier trait and was cleared.`), 'warning')
+      return
+    }
+    seen.add(id)
+  })
+})
 
 function validateCurrentSelection() {
   if (!selectedWrightstoneID.value) { showStatus(text('请选择祝福', 'Select a wrightstone.'), 'error'); return false }
@@ -258,8 +273,8 @@ async function applyQueueToSave() {
     await loadSave()
     flashApplySuccess()
     showStatus(language.value === 'en'
-      ? `Wrote ${result.createdCount} wrightstones (${result.verifiedCount} verified).`
-      : `已写入 ${result.createdCount} 个祝福 (验证 ${result.verifiedCount})`, 'success')
+      ? `Added ${result.createdCount} independent wrightstone instances to the selected save; ${result.verifiedCount} passed read-back. The pre-write backup was kept.`
+      : `已向所选存档新增 ${result.createdCount} 个独立祝福石实例；回读确认 ${result.verifiedCount} 个，写入前备份已保留。`, 'success')
   } catch (e) { showStatus(isolatedError(e, 'Failed to write the wrightstone save.'), 'error') }
   finally { isApplying.value = false }
 }
@@ -267,24 +282,13 @@ async function applyQueueToSave() {
 
 <template>
   <div class="wrightstone-container">
-    <div class="section ui-card compact-save-bar">
-      <div class="section-title ui-section-title"><span>选择存档槽</span><small>与物品、武器页面使用同一组存档</small></div>
-      <div class="save-slots">
-        <button v-for="slot in slots" :key="slot.index" class="slot-choice ui-btn is-sm" :class="{ on: inputPath === slot.path }" @click="selectSaveSlot(slot.path)">{{ saveSlotLabel(slot) }}</button>
-        <button class="slot-choice secondary ui-btn is-sm" @click="browseInput">选择其他存档</button>
-      </div>
-      <div class="selected-save" :class="{ empty: !inputPath }">{{ inputPath || text('尚未选择存档', 'No Save Selected') }}</div>
-      <div v-if="saveLoaded" class="save-info">
-        {{ language === 'en'
-          ? `Loaded · ${saveInfo.occupiedWrightstones} wrightstones · Highest slot ${saveInfo.maxSlotId}`
-          : `已加载 · ${saveInfo.occupiedWrightstones} 个祝福 · 最大槽位 ${saveInfo.maxSlotId}` }}
-      </div>
-    </div>
+    <SaveSourcePicker v-model="inputPath" :slots="slots" :busy="isApplying || dataLoading" :loaded="saveLoaded" :summary="saveLoaded ? text(`已加载 · ${saveInfo.occupiedWrightstones} 个祝福石 · 最大槽位 ${saveInfo.maxSlotId}`, `Loaded · ${saveInfo.occupiedWrightstones} wrightstones · Highest slot ${saveInfo.maxSlotId}`) : ''" :helper="text('第一步：选择要写入的存档；必须先完全退出游戏', 'Step 1: Choose the save to edit; fully exit the game first')" @select="selectSaveSlot" @browse="browseInput" />
 
     <div class="section ui-card">
       <div class="section-title ui-section-title">
-        祝福配置
-        <span class="info-dot" title="选择祝福后配置三个词条与等级；不加入队列时，直接点击应用会写入当前选择。">!</span>
+        <span>{{ text('第二步 · 配置要新增的祝福石', 'Step 2 · Configure the Wrightstone to Add') }}</span>
+        <small>{{ text('祝福类型固定第一条技能；第二、三条从合法目录中选择', 'The wrightstone type fixes the first trait; choose traits two and three from the legal catalog') }}</small>
+        <span class="info-dot" :title="text('选择祝福石和三条技能，再加入待写入清单。', 'Choose a wrightstone and three traits, then add it to the pending list.')">!</span>
       </div>
       <div v-if="dataError" class="data-error">{{ dataError }}</div>
       <div class="field ui-field wrightstone-pick">
@@ -297,9 +301,9 @@ async function applyQueueToSave() {
         <div class="field flex-1 ui-field">
           <label class="ui-field-label trait-label-with-icon">
             <img v-if="traitIconByID(selectedTraits[i].id)" :src="traitIconByID(selectedTraits[i].id)" alt="" />
-            <span>{{ traitLabel(i) }} <small>{{ text('点击下拉选择特性', 'Open the list to choose a trait') }}</small></span>
+            <span>{{ traitLabel(i) }} <small>{{ i === 0 ? text('固有特性由祝福类型固定', 'The wrightstone type fixes this intrinsic trait') : text('点击下拉选择特性', 'Open the list to choose a trait') }}</small></span>
           </label>
-          <CatalogSelect v-model="selectedTraits[i].id" :options="traits" :icon-resolver="traitIconForOption" :placeholder="text('尚未选择特性', 'No Trait Selected')" :search-placeholder="text('搜索特性名称', 'Search Traits')" detail-key="maxLevel" @pick="loadTraitLevels(i)" />
+          <CatalogSelect v-model="selectedTraits[i].id" :options="wrightstoneTraitOptions(i)" :disabled="i === 0" :icon-resolver="traitIconForOption" :placeholder="text('尚未选择特性', 'No Trait Selected')" :search-placeholder="text('搜索特性名称', 'Search Traits')" detail-key="maxLevel" @pick="loadTraitLevels(i)" />
         </div>
         <div class="field level-field ui-field">
           <label class="ui-field-label">{{ text('等级', 'Level') }} <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ language === 'en'
@@ -313,14 +317,14 @@ async function applyQueueToSave() {
       <div class="config-footer">
         <small class="ui-hint">{{ text('天然等级是默认值；最高可填到对应技能效果曲线的目录上限。', 'Natural levels are defaults; the maximum follows the skill effect-curve cap.') }}</small>
         <LegalityIndicator v-if="currentSelectionValid" class="config-legality" :status="legality.status" :message="displayedLegalityMessage" />
-        <span v-else class="selection-note">选完祝福与三项特性后显示合法性结果</span>
+        <span v-else class="selection-note">{{ text('选完祝福石与三条技能后，这里会显示能否写入。', 'After choosing the wrightstone and all three traits, this area shows whether it can be written.') }}</span>
         <div class="qty-add">
           <div class="field quantity-field ui-field">
             <label class="ui-field-label">数量</label>
             <span class="quantity-combo"><input v-model.number="quantity" type="number" min="1" max="999" class="text-input ui-input" /><button class="ui-btn is-sm" type="button" @click="quantity=999">最大</button></span>
           </div>
           <button class="btn-action btn-purple add-btn ui-btn is-primary" @click="addToQueue" :disabled="!selectedWrightstoneID || !legality.writable">
-            添加到队列
+            {{ text('加入待写入清单', 'Add to Pending List') }}
           </button>
         </div>
       </div>
@@ -329,10 +333,10 @@ async function applyQueueToSave() {
     <div class="wrightstone-lower-grid">
     <div class="section ui-card">
       <div class="section-title ui-section-title">
-        队列 ({{ queue.length }})
-        <button v-if="queue.length" class="btn-link ui-btn is-subtle" @click="clearQueueAll">清空</button>
+        {{ text('第三步 · 核对待写入清单', 'Step 3 · Review the Pending List') }} ({{ queue.length }})
+        <button v-if="queue.length" class="btn-link ui-btn is-subtle" @click="clearQueueAll">{{ text('清空', 'Clear') }}</button>
       </div>
-      <div v-if="!queue.length" class="empty-hint ui-empty">暂无队列；直接点击应用时会写入当前选择</div>
+      <div v-if="!queue.length" class="empty-hint ui-empty">{{ text('还没有待写入内容。先在上方配置祝福石，再加入清单。', 'Nothing is pending. Configure a wrightstone above, then add it to the list.') }}</div>
       <div v-else class="queue-list">
         <div v-for="(item, i) in queue" :key="i" class="queue-item ui-row">
           <div class="queue-info">
@@ -343,16 +347,16 @@ async function applyQueueToSave() {
               {{ item.thirdTraitName }} Lv {{ item.thirdLevel }} · x{{ item.quantity }}
             </span>
           </div>
-          <button class="btn-icon ui-btn is-subtle" @click="removeFromQueue(i)" title="移除">✕</button>
+          <button class="btn-icon ui-btn is-subtle" @click="removeFromQueue(i)" :title="text('从清单移除', 'Remove from List')">✕</button>
         </div>
       </div>
     </div>
 
     <div class="section ui-card apply-section" :class="{ 'apply-flash': applyFlash }">
-      <div class="section-title ui-section-title"><span>保存到当前存档</span><small>自动备份，写入后回读验证</small></div>
+      <div class="section-title ui-section-title"><span>{{ text('第四步 · 保存到当前存档', 'Step 4 · Save to the Current Save') }}</span><small>{{ text('自动备份，写入后重新打开并回读验证', 'Automatic backup, then reopen and verify by read-back after writing') }}</small></div>
       <div class="save-action-row">
         <button class="btn-action btn-cyan ui-btn is-primary" @click="applyQueueToSave" :disabled="isApplying || !canApply">
-          {{ isApplying ? '保存中...' : '保存祝福修改' }}
+          {{ isApplying ? text('正在备份并写入…', 'Backing Up and Writing…') : text(`备份并写入 ${queue.length || 1} 项`, `Back Up and Write ${queue.length || 1} Item(s)`) }}
         </button>
       </div>
     </div>
@@ -372,37 +376,8 @@ async function applyQueueToSave() {
   container-type:inline-size;
 }
 .section { min-width:0; padding:var(--space-6); }
-.compact-save-bar { padding:var(--space-4) var(--space-5); }
 .section-title { margin-bottom:var(--space-4); }
 .section-title > small { margin-left:auto; text-align:right; }
-
-.save-slots {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:var(--space-2);
-}
-.slot-choice.on {
-  border-color:var(--selected-border);
-  background:var(--selected-bg);
-  color:var(--selected-fg);
-}
-.selected-save {
-  min-width:0;
-  margin-top:var(--space-3);
-  padding:var(--space-3) var(--space-4);
-  overflow:hidden;
-  border:1px solid var(--border-soft);
-  border-radius:var(--radius-sm);
-  background:var(--surface-sunken);
-  color:var(--text-secondary);
-  font-family:var(--font-data);
-  font-size:var(--fs-sm);
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.selected-save.empty { color:var(--text-secondary); }
-.save-info { margin-top:var(--space-2); color:var(--success-ink); font-size:var(--fs-sm); }
 .info-dot {
   display:inline-grid;
   width:20px;
@@ -524,15 +499,13 @@ input[type="checkbox"] { accent-color:var(--accent); }
 }
 
 @container (max-width:620px) {
-  .section,
-  .compact-save-bar { padding:var(--space-4); }
+  .section { padding:var(--space-4); }
   .section-title { align-items:flex-start; }
   .section-title > small { width:100%; margin-left:0; text-align:left; }
   .save-action-row .ui-btn { width:100%; }
 }
 
 @container (max-width:440px) {
-  .save-slots .ui-btn { flex:1; }
   .qty-add { align-items:stretch; flex-direction:column; }
   .quantity-field,
   .add-btn { width:100%; }

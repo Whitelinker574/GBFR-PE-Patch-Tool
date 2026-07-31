@@ -880,6 +880,10 @@ var runtimeNameCN = map[uint32]string{
 	0x3EA4134B: "天司长的灵威+",
 	0x43F26A91: "魔法师的战气+",
 	0x4AA48417: "万能药+",
+	// Compatibility-only alias emitted by the upstream v1.9.3 generator.
+	// The locally extracted 2.0.2 gem.tbl still defines GEEN_156_24 as
+	// 0x4AA48417, so this hash must never replace the constructible catalog row.
+	0x9A60FBF0: "万能药+",
 	0x97CF485D: "万能药+",
 	0x4C28585A: "圣骑士的战气+",
 	0x4CDCE25B: "王者的战气+",

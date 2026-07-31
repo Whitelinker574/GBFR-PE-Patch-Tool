@@ -20,7 +20,9 @@ test('offline pages consume the shared parchment primitives instead of a second 
 })
 
 test('progression keeps a compact save strip and container-driven master detail layout', () => {
-  assert.match(progression, /class="save-card ui-card compact-save-bar"/)
+  assert.match(progression, /import SaveSourcePicker from '\.\/SaveSourcePicker\.vue'/)
+  assert.match(progression, /<SaveSourcePicker[\s\S]*?@select="load"[\s\S]*?@browse="browse"/)
+  assert.match(progression, /class="save-refresh-row"/)
   assert.match(progression, /\.workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,\s*1\.6fr\)\s+minmax\(300px,\s*\.9fr\)/is)
   assert.match(progression, /@container\s*\(max-width:\s*760px\)[\s\S]*?\.workspace\s*\{[^}]*grid-template-columns\s*:\s*1fr/is)
   assert.doesNotMatch(progression, /@media\s*\(max-width:\s*900px\)[\s\S]*?\.workspace/)

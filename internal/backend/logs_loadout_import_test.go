@@ -193,6 +193,60 @@ func TestReadLogsLoadoutSharesProducesPartialDeployableCode(t *testing.T) {
 	}
 }
 
+func TestLogsBattleArchiveAndLoadoutImportReuseOneDatabaseSession(t *testing.T) {
+	player := &logsLoadoutPlayer{
+		DisplayName: "Player", CharacterName: "Zeta", CharacterType: logsCharacterType{Code: "Pl1600"},
+		Sigils: []logsLoadoutSigil{{
+			FirstTraitID: 0x50079A1C, FirstTraitLevel: 15,
+			SecondTraitID: 0xDC584F60, SecondTraitLevel: 15,
+			SigilID: 0x2D7F2E70, SigilLevel: 15,
+		}},
+	}
+	path := createLogsTestDatabase(t, 1, encodeLogsTestEncounter(t, logsLoadoutEncounter{PlayerData: [4]*logsLoadoutPlayer{player}}))
+	app := &App{logsArchivePath: path}
+	t.Cleanup(app.CloseLogsBattleArchive)
+
+	if _, err := app.LogsBattleArchivePage(LogsBattleArchiveRequest{Limit: 1}); err != nil {
+		t.Fatal(err)
+	}
+	opened := app.logsArchiveDB
+	if opened == nil {
+		t.Fatal("battle archive did not retain the shared database session")
+	}
+
+	if _, err := app.SelectLogsLoadoutShares(); err != nil {
+		t.Fatal(err)
+	}
+	if app.logsArchiveDB != opened {
+		t.Fatal("loadout import replaced the database session opened by the battle archive")
+	}
+
+	app.CloseLogsBattleArchive()
+	if app.logsArchiveDB != nil || app.logsArchivePath != "" || app.logsArchiveColumns != nil {
+		t.Fatal("disconnect did not clear the shared Logs database session")
+	}
+}
+
+func TestReadLogsLoadoutSharesRejectsOversizedBlobBeforeDecode(t *testing.T) {
+	path := createLogsTestDatabase(t, 1, nil)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(
+		`INSERT INTO logs (name, time, duration, data, version) VALUES (?, ?, ?, zeroblob(?), 1)`,
+		"oversized", 123, 1000, logsLoadoutMaximumBlob+1,
+	); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	_, err = readLogsLoadoutShares(path)
+	if err == nil || !strings.Contains(err.Error(), "压缩记录大小") {
+		t.Fatalf("oversized Logs blob was not rejected at the SQL boundary: %v", err)
+	}
+}
+
 func TestLogsPlayerLoadoutRejectsUnknownCharacter(t *testing.T) {
 	_, err := logsPlayerLoadoutShare(1, &logsLoadoutPlayer{CharacterType: logsCharacterType{UnknownHash: 1}, Sigils: []logsLoadoutSigil{{SigilID: 1}}})
 	if err == nil {

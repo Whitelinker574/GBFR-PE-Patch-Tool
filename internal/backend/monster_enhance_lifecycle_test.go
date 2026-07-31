@@ -2,6 +2,7 @@ package backend
 
 import (
 	"bytes"
+	"debug/pe"
 	"os"
 	"strings"
 	"testing"
@@ -179,15 +180,19 @@ func TestEmbeddedPatchCoreCarriesMonsterHookOwnershipMarker(t *testing.T) {
 	if !bytes.Contains(patchCoreDLL, monsterEnhanceCaveMarker) {
 		t.Fatalf("embedded patch_core.dll does not carry marker %q", monsterEnhanceCaveMarker)
 	}
+	if !bytes.Contains(patchCoreDLL, []byte("monster_damage_new")) {
+		t.Fatal("embedded patch_core.dll was not rebuilt with the party-wide monster damage command")
+	}
 }
 
 func TestMonsterPatchCatalogOnlyEnablesVerifiedCurrentLayouts(t *testing.T) {
 	wantAvailable := map[string]bool{
-		"monster_hp":       true,
-		"monster_damage":   true,
-		"monster_stun":     true,
-		"overdrive_state":  true,
-		"inventory_set_45": true,
+		"monster_hp":         true,
+		"monster_damage":     false,
+		"monster_damage_new": true,
+		"monster_stun":       true,
+		"overdrive_state":    true,
+		"inventory_set_45":   true,
 	}
 	for _, point := range monsterPatchPoints {
 		if point.Available != wantAvailable[point.ID] {
@@ -198,9 +203,9 @@ func TestMonsterPatchCatalogOnlyEnablesVerifiedCurrentLayouts(t *testing.T) {
 		}
 	}
 
-	damage := findMonsterPatchPoint("monster_damage")
-	if damage.RVA != 0x1FBDEB4 || !bytes.Equal(damage.Original, []byte{0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05}) {
-		t.Fatalf("monster damage layout is not the v1.8.6/current-EXE layout: %+v", damage)
+	damage := findMonsterPatchPoint("monster_damage_new")
+	if damage.RVA != 0x1F7A810 || !bytes.Equal(damage.Original, []byte{0x48, 0x89, 0x51, 0x10, 0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC}) {
+		t.Fatalf("party monster damage layout is not the current 2.0.2 EXE layout: %+v", damage)
 	}
 	stun := findMonsterPatchPoint("monster_stun")
 	if stun.RVA != 0xB29128 || !bytes.Equal(stun.Original, []byte{0xC5, 0xFA, 0x58, 0x86, 0x60, 0x08, 0x00, 0x00}) {
@@ -246,7 +251,7 @@ func TestFailedMonsterDamageEnableRollsBackAuxiliaryPlayerHook(t *testing.T) {
 		}
 	})
 
-	point := findMonsterPatchPoint("monster_damage")
+	point := findMonsterPatchPoint("monster_damage_new")
 	mainTarget, mainCave := page, page+0x800
 	auxTarget, auxCave := page+0x100, page+0x1000
 	mainOriginal := append([]byte(nil), point.Original...)
@@ -311,7 +316,7 @@ func TestMonsterEnhanceLiveInstallRestore(t *testing.T) {
 		applyOnce bool
 	}{
 		{id: "monster_hp", pointID: "monster_hp", value: 1},
-		{id: "monster_damage", pointID: "monster_damage", value: 1},
+		{id: "monster_damage_new", pointID: "monster_damage_new", value: 1},
 		{id: "monster_stun", pointID: "monster_stun", value: 1},
 		{id: "overdrive_state", pointID: "overdrive_state", value: 9},
 		{id: "overdrive_state_empty_once", pointID: "overdrive_state", value: 0, applyOnce: true},
@@ -374,6 +379,11 @@ func TestScanMonsterPatchOriginals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	executable, err := pe.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer executable.Close()
 	for _, point := range monsterPatchPoints {
 		matches := make([]int, 0, 2)
 		for offset := 0; offset <= len(data)-len(point.Original); {
@@ -386,8 +396,16 @@ func TestScanMonsterPatchOriginals(t *testing.T) {
 			offset = match + 1
 		}
 		t.Logf("%s configured=0x%X matches=%#x", point.ID, point.RVA, matches)
-		if point.Available && len(matches) != 1 {
-			t.Errorf("available %s original matched %d locations, want exactly one", point.ID, len(matches))
+		if !point.Available {
+			continue
+		}
+		rawOffset, ok := monsterPatchRawOffset(executable, uint32(point.RVA))
+		if !ok || int(rawOffset)+len(point.Original) > len(data) {
+			t.Errorf("available %s RVA 0x%X does not map into the executable", point.ID, point.RVA)
+			continue
+		}
+		if actual := data[rawOffset : int(rawOffset)+len(point.Original)]; !bytes.Equal(actual, point.Original) {
+			t.Errorf("available %s configured RVA bytes=% X, want % X", point.ID, actual, point.Original)
 		}
 	}
 	playerMatches := findPatternMatches(data, 0, monsterDamagePlayerPointerPattern, monsterDamagePlayerPointerMask)
@@ -402,4 +420,26 @@ func TestScanMonsterPatchOriginals(t *testing.T) {
 		t.Fatalf("unexpected monster damage player-pointer instruction at raw offset %#x: % X", target, got)
 	}
 	t.Logf("monster damage player-pointer target raw offset=%#x", target)
+}
+
+func monsterPatchRawOffset(executable *pe.File, rva uint32) (int, bool) {
+	if executable == nil {
+		return 0, false
+	}
+	for _, section := range executable.Sections {
+		start := section.VirtualAddress
+		size := section.Size
+		if section.VirtualSize > size {
+			size = section.VirtualSize
+		}
+		if rva < start || uint64(rva-start) >= uint64(size) {
+			continue
+		}
+		raw := uint64(section.Offset) + uint64(rva-start)
+		if raw > uint64(^uint(0)>>1) {
+			return 0, false
+		}
+		return int(raw), true
+	}
+	return 0, false
 }

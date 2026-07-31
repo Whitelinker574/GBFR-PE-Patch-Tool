@@ -103,11 +103,11 @@ test('the directory restores the original upper-left journal ornament', () => {
   assert.match(patchTool, /\.sidebar-heading\s*,\s*\.sidebar-home-compact\s*,\s*\.primary-nav\s*,\s*\.sidebar-mascot\s*,\s*\.sidebar-foot\s*\{[^}]*position\s*:\s*relative[^}]*z-index\s*:\s*1/is)
 })
 
-test('window chrome, tabs, page heading and portrait caption use the legacy warm paper hierarchy instead of white cards', () => {
+test('window chrome, flat tabs, page heading and portrait caption use the legacy warm paper hierarchy instead of white cards', () => {
   assert.match(patchTool, /\.titlebar\s*\{[^}]*background\s*:\s*linear-gradient\(90deg,#594937,#756044 52%,#5b4a37\)/is)
   assert.match(patchTool, /\.workspace-bar\s*\{[^}]*background\s*:\s*#ead8b2/is)
   assert.match(patchTool, /\.tool-switcher\s*\{[^}]*background\s*:\s*#eddfc0/is)
-  assert.match(patchTool, /\.tool-switcher \.ui-tab\.active\s*\{[^}]*background\s*:\s*#dfc79b/is)
+  assert.match(patchTool, /\.tool-switcher \.ui-tab\.active\s*\{[^}]*background\s*:\s*transparent[^}]*border-bottom-color\s*:\s*#9a7440[^}]*box-shadow\s*:\s*none/is)
   assert.match(patchTool, /\.tool-page-heading\s*\{[^}]*background\s*:\s*#f7ebcf/is)
   assert.match(patchTool, /\.art-caption\s*\{[^}]*background\s*:\s*#f4e6c7/is)
 })
@@ -117,27 +117,64 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 })
 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
-  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave', 'chara', 'save'])
-  assert.deepEqual(navigationIds(patchTool, 'memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
-  assert.deepEqual(navigationIds(patchTool, 'monitor'), ['runtimeMonitor', 'formulaSampler'])
-  assert.deepEqual(navigationIds(patchTool, 'tools'), ['compatibility', 'language', 'patch'])
-  assert.match(patchTool, /window\.setTimeout\(\(\) => warmTool\(navigation\.value\[0\]\?\.items\[0\]\), 60\)/)
+  assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'])
+  assert.deepEqual(navigationIds(patchTool, 'memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
+  assert.deepEqual(navigationIds(patchTool, 'loadoutFlow'), ['runtimeMonitor', 'loadout'])
+  assert.deepEqual(navigationIds(patchTool, 'runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
+  assert.deepEqual(navigationIds(patchTool, 'tools'), ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'])
+  assert.doesNotMatch(patchTool, /\{ id: 'monitor',/)
+  assert.match(patchTool, /@pointerenter="queueWarmToolIntent\(id\)"/)
+  assert.match(patchTool, /@pointerleave="cancelWarmToolIntent\(id\)"/)
+  assert.match(patchTool, /@pointerdown="queueWarmTool\(id\)"/)
+  assert.match(patchTool, /await waitForTool\(id\)/)
+  assert.match(patchTool, /navigationError\.value = \{ id, message:/)
+  assert.match(patchTool, /await afterNextPaint\(\)/)
+  assert.match(patchTool, /warmImage\(functionArt\[id\]\)/)
+  assert.match(patchTool, /warmImage\(functionStickers\[id\]\)/)
+  assert.doesNotMatch(patchTool, /queueWarmTools\(Object\.keys\(functionArt\)\)/)
+})
+
+test('every top tab has one explicit work-mode badge independent from maturity status', () => {
+  const expectedModes = {
+    progression: 'offline', sigil: 'offline', loadoutPresets: 'offline', wrightstone: 'offline',
+    summonSave: 'offline', chara: 'offline', save: 'offline',
+    sigilMemory: 'live', wrightstoneMemory: 'live', summon: 'live', overlimit: 'live', runtime: 'live',
+    runtimeMonitor: 'background', loadout: 'live',
+    runtimeQOL: 'live', virtualSigils: 'live', audioMixer: 'live', camera: 'live', spatialTools: 'live',
+    patchCombat: 'live', patchCharacters: 'live', patchQuest: 'live', monster: 'live',
+    naturalDrop: 'file', saveDiff: 'offline', selectedItemMonitor: 'live', formulaSampler: 'live',
+    compatibility: 'local', patch: 'file', language: 'local',
+  }
+  for (const [id, mode] of Object.entries(expectedModes)) {
+    assert.match(patchTool, new RegExp(`\\b${id}: '${mode}'`), `${id} mode`)
+  }
+  assert.match(patchTool, /v-if="toolNavigationMode\(id\)"\s+:class="\['switcher-tag', toolNavigationMode\(id\)\]"/)
+  for (const label of ['离线', '实时', '后台', '游戏文件', '只读', '本机']) {
+    assert.match(patchTool, new RegExp(`'${label}'`))
+  }
+  assert.match(patchTool, /\.switcher-tag\.background/)
+  assert.match(patchTool, /\.switcher-tag\.file/)
+  assert.match(patchTool, /\.switcher-tag\.readonly/)
+  assert.match(patchTool, /\.switcher-tag\.local/)
 })
 
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
-  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'progression', 'wrightstone', 'summonSave'])
-  assert.deepEqual(homeEntryIds('memory'), ['runtime', 'sigilMemory', 'wrightstoneMemory', 'loadout', 'summon', 'overlimit', 'patchCombat', 'patchCharacters', 'patchQuest'])
-  assert.deepEqual(homeEntryIds('monitor'), ['runtimeMonitor', 'formulaSampler'])
+  assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'saveDiff'])
+  assert.deepEqual(homeEntryIds('memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
+  assert.deepEqual(homeEntryIds('loadoutFlow'), ['runtimeMonitor', 'loadout'])
+  assert.deepEqual(homeEntryIds('runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
+  assert.doesNotMatch(homeJournal, /id: 'monitor'/)
 })
 
 test('user-facing page titles omit historical source-version suffixes', () => {
-  assert.match(patchTool, /runtimeMonitor:\s*\{[\s\S]*?title:\s*'角色配装检测'[\s\S]*?eyebrow:\s*'只读后台检测'/)
+  assert.match(patchTool, /runtimeMonitor:\s*\{[\s\S]*?title:\s*'队友配装持续检测'[\s\S]*?eyebrow:\s*'队伍配装 · 后台服务'/)
+  assert.match(patchTool, /spatialTools:\s*\{[\s\S]*?title:\s*'坐标与移动工具'[\s\S]*?eyebrow:\s*'单机空间操作'/)
   assert.match(patchTool, /patchCombat:\s*\{[\s\S]*?eyebrow:\s*'战斗补丁'/)
   assert.match(patchTool, /patchCharacters:\s*\{[\s\S]*?eyebrow:\s*'角色机制'/)
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'DLC 2\.0\.2'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v1\.92\.0"/)
+  assert.match(appGo, /appVersion\s*=\s*"v2\.0\.3"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 
@@ -166,7 +203,11 @@ test('portrait is a fixed top-anchored right background with stable per-page opt
 
 test('compact navigation always retains a real home control and the Q sticker', () => {
   assert.match(patchTool, /class="sidebar-home-compact"[^>]*aria-label="返回功能首页"/)
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.sidebar-home-compact\s*\{[^}]*display\s*:\s*grid/is)
+  assert.match(patchTool, /class="tool-switcher-collapse"[^>]*aria-label="[^"]*目录"/)
+  assert.doesNotMatch(patchTool, /<aside class="sidebar">[\s\S]*?class="sidebar-collapse"/)
+  assert.match(patchTool, /v-for="id in activeGroup\.items"/)
+  assert.match(patchTool, /\.sidebar-collapsed \.sidebar-home-compact\s*\{[^}]*display\s*:\s*grid/is)
+  assert.doesNotMatch(patchTool, /@media\s*\(max-width\s*:\s*1024px\)[\s\S]*?\.app-body\s*\{[^}]*grid-template-columns\s*:\s*70px/is)
   assert.doesNotMatch(patchTool, /\.app-body\.art-visible \.sidebar-mascot\s*\{[^}]*display\s*:\s*none/is)
   assert.match(patchTool, /@media\s*\(max-height\s*:\s*620px\)[\s\S]*?\.sidebar-mascot-say\s*\{[^}]*display\s*:\s*none/is)
   assert.doesNotMatch(patchTool, /@media\s*\(max-height\s*:\s*620px\)[\s\S]*?\.sidebar-mascot\s*\{[^}]*display\s*:\s*none/is)
@@ -181,14 +222,19 @@ test('wrightstone live selection guidance is a compact inline notice, not a cent
 test('the obsolete experimental runtime page is removed while the verified monster page remains reachable', () => {
   assert.doesNotMatch(patchTool, /legacyRuntime|实验性实时功能|待适配运行时功能|兼容性实验室/)
   assert.doesNotMatch(patchTool, /<MiscTools[^>]*\bmode=/)
-  assert.match(patchTool, /id:\s*'memory'[\s\S]*?items:\s*\[[^\]]*'monster'[^\]]*\]/)
-  assert.match(patchTool, /monster:\s*\{[\s\S]*?group:\s*'memory'[\s\S]*?status:\s*'实验'[\s\S]*?tone:\s*'live'/)
+  assert.match(patchTool, /id:\s*'runtimeTools'[\s\S]*?items:\s*\[[^\]]*'monster'[^\]]*\]/)
+  assert.match(patchTool, /monster:\s*\{[\s\S]*?group:\s*'runtimeTools'[\s\S]*?status:\s*'实验'[\s\S]*?tone:\s*'live'/)
   assert.match(patchTool, /:class="\{ active: activeTab === id,/)
 })
 
-test('memory tools stay in one compact horizontally reachable row on narrow windows', () => {
-  assert.match(patchTool, /class="tool-switcher ui-tabs"[^>]*:data-group="activeGroup\.id"/)
-  assert.match(patchTool, /@media\s*\(max-width\s*:\s*1439px\)[\s\S]*?\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*flex[^}]*min-height\s*:\s*46px[^}]*flex\s*:\s*0 0 46px[^}]*overflow-x\s*:\s*auto[^}]*overflow-y\s*:\s*hidden/is)
-  assert.match(patchTool, /\.tool-switcher\[data-group="memory"\] \.ui-tab\s*\{[^}]*flex\s*:\s*0 0 auto[^}]*min-height\s*:\s*46px[^}]*white-space\s*:\s*nowrap/is)
-  assert.doesNotMatch(patchTool, /\.tool-switcher\[data-group="memory"\]\s*\{[^}]*display\s*:\s*grid/is)
+test('large tool groups expose every function in one flat horizontally scrollable row without a hidden More menu', () => {
+  assert.match(patchTool, /class="tool-switcher-shell"[^>]*:data-group="activeGroup\.id"/)
+  assert.match(patchTool, /class="tool-switcher-collapse"[\s\S]*?<nav ref="toolSwitcher"/)
+  assert.match(patchTool, /ref="toolSwitcher" class="tool-switcher ui-tabs"[^>]*@wheel="scrollToolSwitcher"/)
+  assert.match(patchTool, /v-for="id in activeGroup\.items"/)
+  assert.match(patchTool, /function scrollToolSwitcher\(event\)/)
+  assert.match(patchTool, /event\.currentTarget\.scrollLeft \+= event\.deltaY/)
+  assert.match(patchTool, /\.tool-switcher\s*\{[^}]*display\s*:\s*flex[^}]*flex-wrap\s*:\s*nowrap[^}]*overflow-x\s*:\s*auto[^}]*overflow-y\s*:\s*hidden/is)
+  assert.match(patchTool, /\.tool-switcher \.ui-tab\s*\{[^}]*flex\s*:\s*0 0 auto[^}]*border-radius\s*:\s*0[^}]*background\s*:\s*transparent/is)
+  assert.doesNotMatch(patchTool, /更多|moreMenu|switcher-more|visibleSwitcherItems|hiddenSwitcherItems/)
 })

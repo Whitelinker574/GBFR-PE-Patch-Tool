@@ -91,18 +91,33 @@ test('manual and natural loadout stops release the sigil hook immediately', () =
   assert.doesNotMatch(source, /function stopPolling\([^)]*\)\s*\{[\s\S]{0,180}?mode\.value\s*=/)
 })
 
-test('live sigil legality is advisory by default', () => {
+test('live sigil editor auto-repairs shell coupling and blocks unresolved invalid combinations', () => {
   const source = sources['SigilMemoryGenerator.vue']
   assert.doesNotMatch(source, /forceWrite/)
-  assert.match(source, /status: 'forced'/)
-  assert.match(source, /合规检测仅作提示/)
-  assert.match(source, /legality\.value\.status === 'forced'/)
+  assert.match(source, /function repairFormForSigil\(opt\)/)
+  assert.match(source, /form\.primaryTraitHash = Number\(opt\.primaryTraitHash\) >>> 0/)
+  assert.match(source, /allowedSecondaryTraitHashes/)
+  assert.match(source, /已自动修正/)
+  assert.doesNotMatch(source, /status: 'forced'/)
+  assert.doesNotMatch(source, /合规检测仅作提示/)
+  assert.doesNotMatch(source, /legality\.value\.status === 'forced'/)
+})
+
+test('live sigil write errors explain invalid secondary traits without exposing hash jargon', () => {
+  const source = sources['SigilMemoryGenerator.vue']
+  const writeStart = source.indexOf('async function performWrite()')
+  const writeEnd = source.indexOf('\nasync function write()', writeStart)
+  const writeBody = source.slice(writeStart, writeEnd)
+  assert.ok(writeStart >= 0 && writeEnd > writeStart, 'performWrite implementation is missing')
+  assert.match(writeBody, /explainRuntimeSigilWriteError\(e,\s*\{\s*hasSecondaryTrait:\s*!!form\.secondaryTraitHash\s*\}\)/)
+  assert.doesNotMatch(writeBody, /show\(String\(e\),\s*'error'\)/)
+  assert.match(source, /message:\s*form\.secondaryTraitHash\s*\?\s*invalidSecondaryTraitMessage\(\)\s*:\s*invalidRuntimeSigilMessage\(\)/)
 })
 
 test('sigil memory has an explicit stop action and locks draft controls until a row is captured', () => {
   const source = sources['SigilMemoryGenerator.vue']
   assert.match(source, /async function disable\(\)[\s\S]*?releaseRuntimeLease\([^;]*SigilMemoryRelease\)/)
-  assert.match(source, /class="ui-btn is-sm is-ghost"[^>]*@click="disable"[^>]*>\s*停止读取\s*</)
+  assert.match(source, /class="ui-btn is-sm is-ghost"[^>]*@click="disable"[^>]*>\s*停止读取并恢复\s*</)
   assert.match(source, /class="ui-btn is-sm is-primary"[^>]*:disabled="loading \|\| applying \|\| status\.hooked"[^>]*@click="enable"/)
   assert.equal((source.match(/<SigilMemoryPicker[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying[^\"]*"/g) || []).length, 3)
   assert.equal((source.match(/<input[^>]*class="ui-input"[^>]*:disabled="!status\.selectedAddr \|\| loading \|\| applying"/g) || []).length, 3)
@@ -240,5 +255,11 @@ test('monster safety copy is a full-width notice and raw patch bytes are disclos
   assert.match(source, /!item\.available/)
   assert.match(source, /item\.unavailableReason/)
   assert.match(source, /:disabled="loading \|\| !item\.available/)
+  assert.match(source, /monster_damage_new/, 'party-wide damage entry must be the visible multiplier')
+  assert.match(source, /item\.id !== 'monster_damage'/, 'obsolete partial-path damage entry must stay hidden')
+  assert.match(source, /item\.candidate/, 'unverified party-wide damage scope must render as an experimental candidate')
+  assert.match(source, /实际游戏效果仍待实机验收/)
+  assert.equal(uiTranslations['怪物伤害（全队）'], 'Party-Wide Monster Damage')
+  assert.equal(uiTranslations['输入 32 = 当前队伍承受的怪物伤害 32 倍'], 'Enter 32 for the current party to take 32× monster damage')
 	assert.doesNotMatch(source, /DamageMeter|DamageOverlay|伤害记录|伤害悬浮窗/, 'retired combat data console must not leak into the current monster page')
 })
