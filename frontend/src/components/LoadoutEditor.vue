@@ -531,10 +531,10 @@ function constructTraitWritableMax(trait) {
   const maximum = Number(trait?.maxLevel || 0)
   return maximum > 0 ? maximum : 15
 }
-function constructLevelLimit(maximum = 50) { return Math.max(1, Math.trunc(Number(maximum) || 50)) }
+function constructLevelLimit(maximum = 50) { return 2147483647 }
 function clampConstructLevel(value, max = 50) {
   const number = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0
-  return Math.min(max, Math.max(0, number))
+  return Math.min(2147483647, Math.max(0, number))
 }
 function onConstructSecondaryPick(trait) {
   constructSecondaryLevel.value = trait ? Math.min(15, constructTraitWritableMax(trait)) : 0
@@ -2038,7 +2038,7 @@ async function apply() {
               <label><span>主词条等级</span>
                 <input v-model.number="constructPrimaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary))" class="ui-input" @change="constructPrimaryLevel = clampConstructLevel(constructPrimaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructPrimary)))" />
               </label>
-              <label class="constructor-wide"><span>副词条 · 2.0.2 合法词池</span>
+              <label class="constructor-wide"><span>副词条 · 游戏可写词条</span>
                 <CatalogSelect v-model="constructSecondaryId" :options="constructSecondaryOptions" :icon-resolver="traitIconForOption" optional placeholder="不设置副词条" search-placeholder="搜索副词条" @pick="onConstructSecondaryPick" />
               </label>
               <label v-if="selectedConstructSecondary"><span>副词条等级</span><input v-model.number="constructSecondaryLevel" type="number" min="0" :max="constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary))" class="ui-input" @change="constructSecondaryLevel = clampConstructLevel(constructSecondaryLevel, constructLevelLimit(constructTraitWritableMax(selectedConstructSecondary)))" /></label>

@@ -126,17 +126,12 @@ func (a *App) SigilMemoryGetOptions() (SigilMemoryOptions, error) {
 			return SigilMemoryOptions{}, err
 		}
 		primaryMaxLevel := effectCurveMax(primaryCurve, 15)
-		// Keep the memory editor's legality hints in sync with the save
-		// generator. The explicit IDs are the exact local gem/lot join; the
-		// shared resolver applies the same trait eligibility and duplicate-primary
-		// exclusions as offline construction.
+		// Runtime editing exposes the shared writable pool. Natural gem/lot pools
+		// are advisory and remain isolated in the natural-drop workflow.
 		var allowedSecHashes []uint32
-		if allowedTraits, err := catalog.GetAllowedSecondaryTraits(sigil); err == nil {
+		if allowedTraits, err := catalog.GetWritableSecondaryTraits(sigil); err == nil {
 			allowedSecHashes = make([]uint32, 0, len(allowedTraits))
 			for _, trait := range allowedTraits {
-				if trait.InternalID == sigil.PrimaryTraitID {
-					continue
-				}
 				if h, ok := traitHashByID[trait.InternalID]; ok {
 					allowedSecHashes = append(allowedSecHashes, h)
 				}

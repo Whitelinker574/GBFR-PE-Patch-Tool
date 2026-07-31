@@ -79,7 +79,7 @@ func TestValidateWrightstoneMemoryUpdateRequiresFirstAndCouplesEmptyLevels(t *te
 	}
 }
 
-func TestValidateWrightstoneMemoryUpdateUsesSkillCurveCaps(t *testing.T) {
+func TestValidateWrightstoneMemoryUpdateAllowsLevelsBeyondSkillCurve(t *testing.T) {
 	catalog, update := validWrightstoneMemoryUpdate(t)
 	trait, err := catalog.RequireTrait("SKILL_000_00")
 	if err != nil {
@@ -98,8 +98,8 @@ func TestValidateWrightstoneMemoryUpdateUsesSkillCurveCaps(t *testing.T) {
 		t.Fatalf("within-curve level above natural slot reference must be accepted: %v", err)
 	}
 	update.FirstLevel = uint32(curveMax + 1)
-	if err := validateWrightstoneMemoryUpdate(catalog, update); err == nil {
-		t.Fatal("level above the skill effect curve must be rejected")
+	if err := validateWrightstoneMemoryUpdate(catalog, update); err != nil {
+		t.Fatalf("level above the skill effect curve must remain writable: %v", err)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestWrightstoneRuntimeSelectionLocksTheCapturedFirstTrait(t *testing.T) {
 	}
 }
 
-func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsHardCap(t *testing.T) {
+func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsAdvisory(t *testing.T) {
 	catalog, err := LoadWrightstoneCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -124,8 +124,8 @@ func TestWrightstoneMemoryCurveBelowNaturalSlotReferenceIsHardCap(t *testing.T) 
 	if err := validateWrightstoneMemorySlot(catalog, hash, 6, 1, 20, true); err != nil {
 		t.Fatalf("effect-curve level 6 should be accepted: %v", err)
 	}
-	if err := validateWrightstoneMemorySlot(catalog, hash, 7, 1, 20, true); err == nil {
-		t.Fatal("natural first-slot reference must not raise a six-level effect curve to 20")
+	if err := validateWrightstoneMemorySlot(catalog, hash, 7, 1, 20, true); err != nil {
+		t.Fatalf("effect curve overflow must remain writable: %v", err)
 	}
 }
 
@@ -197,8 +197,8 @@ func TestWrightstoneDuplicateTraitsAreRejectedAcrossRuntimeSaveAndLoadoutImport(
 		t.Fatal(err)
 	}
 	update.FirstLevel = uint32(effectCurveMax(levels, 20) + 1)
-	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {
-		t.Fatal("write must reject a level above the trait effect curve")
+	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err != nil {
+		t.Fatalf("write must allow a field-encodable level above the trait effect curve: %v", err)
 	}
 	update.FirstHash = EmptyHash
 	if err := validateWrightstoneMemoryWriteRequest(catalog, update); err == nil {

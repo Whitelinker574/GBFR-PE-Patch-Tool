@@ -289,7 +289,7 @@ const toolMeta = {
     group: 'save', title: '因子修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
     description: '在所选存档中新增独立因子实例，也能查看或删除已有因子；适合一次准备多颗合法因子。',
     usage: ['完全退出游戏并选择目标存档', '选择因子、主副词条、等级与数量，加入待写入队列', '核对队列后保存；应用会自动备份并回读'],
-    caution: '不合法或未验证的组合不会写入；需要撤销时，从存档保护恢复本次写入前的备份。',
+    caution: '天然或效果曲线之外的组合只会收到提醒；确认后仍按所选值写入，游戏可能在读取时自动替换。需要撤销时，从存档保护恢复本次写入前的备份。',
     speaker: '娜露梅亚', note: '先检验组合，再写入存档。稳稳完成每一步，理想的因子就不会跑掉。',
   },
   sigilMemory: {
@@ -317,7 +317,7 @@ const toolMeta = {
     group: 'save', title: '祝福修改（存档修改）', eyebrow: '离线存档', status: '稳定', tone: 'stable',
     description: '在所选存档中新增祝福石实例；选择祝福类型和三条技能后，可以一次生成一颗或批量加入队列。',
     usage: ['完全退出游戏并选择目标存档', '选择祝福、三条技能、等级与数量', '核对队列后保存；应用会自动备份并回读'],
-    caution: '重复技能、非法组合和超过技能曲线的等级不会写入；可从存档保护恢复写入前备份。',
+    caution: '非天然组合会提示但不会阻止；只有无副槽、非因子词条、错误主词条或超过技能曲线的等级不会写入。可从存档保护恢复写入前备份。',
     speaker: '菲莉', note: '三条词条都确认好再应用，幽灵朋友们也会替你看着。',
   },
   summonSave: {
@@ -899,7 +899,7 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.6</span>
+        <span class="build-chip release-build">v2.0.7</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button

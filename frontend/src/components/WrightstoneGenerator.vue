@@ -67,7 +67,7 @@ function writableTraitMax(slot) {
 
 function clampLevel(value, max) {
   const numeric = Number.isFinite(Number(value)) ? Number(value) : 0
-  return Math.min(max, Math.max(0, Math.trunc(numeric)))
+  return Math.max(0, Math.min(2147483647, Math.trunc(numeric)))
 }
 
 onMounted(async () => {
@@ -309,7 +309,7 @@ async function applyQueueToSave() {
           <label class="ui-field-label">{{ text('等级', 'Level') }} <small :class="{ overcap: selectedTraits[i].level > naturalTraitMax(i) }">{{ language === 'en'
             ? `${selectedTraits[i].level > naturalTraitMax(i) ? 'Above natural reference' : 'Natural reference'} ${naturalTraitMax(i)} / skill cap ${writableTraitMax(i)}`
             : `${selectedTraits[i].level > naturalTraitMax(i) ? '高于自然参考' : '自然参考'} ${naturalTraitMax(i)} / 技能上限 ${writableTraitMax(i)}` }}</small></label>
-          <input v-model.number="selectedTraits[i].level" type="number" min="0" :max="writableTraitMax(i)" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedTraits[i].level > naturalTraitMax(i) }" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, writableTraitMax(i))" />
+          <input v-model.number="selectedTraits[i].level" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :class="{ 'lv-over': selectedTraits[i].level > naturalTraitMax(i) }" :disabled="!selectedTraits[i].id" @change="selectedTraits[i].level = clampLevel(selectedTraits[i].level, 2147483647)" />
         </div>
       </div>
       </div>

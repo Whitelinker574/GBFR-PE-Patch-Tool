@@ -14,7 +14,7 @@
 
 ## Game 2.0.3 compatibility
 
-v2.0.6 carries forward the completed game 2.0.3 extraction and live-entry adaptation, while correcting stale copy and UI gates that still presented implemented features as unavailable. Natural drops, virtual sigils, audio, town camera, world-axis movement, and gravity suppression now consistently appear as available experimental features.
+v2.0.7 unifies the editing rules for sigils and wrightstones. Catalogued, field-encodable combinations and traits found in the 2.0.3 synthesis table can be selected directly. Non-natural combinations and levels above an effect curve now produce a warning instead of blocking the write. Save generation, live editing, loadout construction/import, and virtual-sigil source creation share the same policy while keeping natural values as defaults.
 
 Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
 
@@ -149,6 +149,7 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
+- [Complete v2.0.7 release notes](docs/RELEASE_NOTES_v2.0.7.md)
 - [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)
 - [v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)
 - [v2.0.4 historical release notes](docs/RELEASE_NOTES_v2.0.4.md)

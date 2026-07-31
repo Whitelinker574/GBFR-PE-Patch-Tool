@@ -826,6 +826,10 @@ func TestPrepareLoadoutSigilRejectsFreeformIdentityButAllowsCurveLevels(t *testi
 		t.Fatal(err)
 	}
 	item := naturalConstructedSigilItem(t)
+	sigil, err := cat.RequireSigil(item.SigilID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	item.Level = 16
 	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item}); err != nil {
 		t.Fatalf("固定词条身份不变时，技能曲线内的非天然等级应保留可写: %v", err)
@@ -833,7 +837,7 @@ func TestPrepareLoadoutSigilRejectsFreeformIdentityButAllowsCurveLevels(t *testi
 	var freeTrait *TraitDef
 	for index := range cat.Traits {
 		trait := &cat.Traits[index]
-		if isSelectableTrait(trait) && trait.InternalID != item.PrimaryTraitID {
+		if isSelectableTrait(trait) && trait.InternalID != sigil.PrimaryTraitID {
 			freeTrait = trait
 			break
 		}
@@ -843,10 +847,8 @@ func TestPrepareLoadoutSigilRejectsFreeformIdentityButAllowsCurveLevels(t *testi
 	}
 	item.PrimaryTraitID = freeTrait.InternalID
 	item.PrimaryLevel = 15
-	item.SecondaryTraitID = freeTrait.InternalID
-	item.SecondaryLevel = 15
 	if _, err := prepareLoadoutSigil(cat, LoadoutConstructedSigil{Index: 0, Item: item}); err == nil {
-		t.Fatal("配装构造器不得接受自由主词条或主副重复")
+		t.Fatal("配装构造器不得接受与因子壳不匹配的自由主词条")
 	}
 }
 
@@ -880,8 +882,8 @@ func TestPrepareLoadoutSigilForSaveUsesUnifiedKnownTemplateCombinationRules(t *t
 	_, err = prepareLoadoutSigilForSave(save, index, cat, LoadoutConstructedSigil{
 		Index: 0, TemplateSlotID: slotID,
 	})
-	if err == nil || !strings.Contains(err.Error(), "不能用于因子") {
-		t.Fatalf("已损坏的怒发冲冠模板组合必须被统一合法性门拒绝，实际错误: %v", err)
+	if err != nil {
+		t.Fatalf("目录已知的怒发冲冠模板副词条应允许按原值写入: %v", err)
 	}
 	secondary, ok := save.findUnitExact(TraitHashIDType, traitBase+1)
 	if !ok {

@@ -83,8 +83,8 @@ func TestSigilMemoryWriteRejectsInvalidIdentityAndEnforcesCurveCaps(t *testing.T
 	_, valid := validCatalogSigilMemoryUpdate(t)
 	update = valid
 	update.PrimaryTraitLevel = uint32(effectCurveMax(catalog.LookupTraitByHash(update.PrimaryTraitHash).AllowedLevels, 15) + 1)
-	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
-		t.Fatal("write request must reject a trait level above its effect curve")
+	if err := validateSigilMemoryWriteRequest(catalog, update); err != nil {
+		t.Fatalf("write request must allow a field-encodable trait level above its effect curve: %v", err)
 	}
 	update.SigilHash = 0
 	if err := validateSigilMemoryWriteRequest(catalog, update); err == nil {
@@ -123,15 +123,15 @@ func TestSigilMemoryRuntimeSelectionRequiresUnifiedCatalogEvenWhenObserved(t *te
 	}
 }
 
-func TestValidateSigilMemoryUpdateAllowsCurveLevelsAndRejectsCurveOverflow(t *testing.T) {
+func TestValidateSigilMemoryUpdateAllowsLevelsBeyondCurveReference(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
 	update.SigilLevel = 50
 	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
 		t.Fatalf("factor level 50 should remain writable: %v", err)
 	}
 	update.SigilLevel = 51
-	if err := validateSigilMemoryUpdate(catalog, update); err == nil || !strings.Contains(err.Error(), "上限") {
-		t.Fatalf("factor level above 50 must be rejected, got %v", err)
+	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
+		t.Fatalf("factor level above 50 must remain writable, got %v", err)
 	}
 }
 
@@ -161,13 +161,13 @@ func TestValidateSigilMemoryUpdateRejectsUnknownTraits(t *testing.T) {
 	}
 }
 
-func TestValidateSigilMemoryUpdateRejectsDuplicatePrimaryAsSecondary(t *testing.T) {
+func TestValidateSigilMemoryUpdateAllowsDuplicatePrimaryAsSecondary(t *testing.T) {
 	catalog, update := validCatalogSigilMemoryUpdate(t)
 	update.SecondaryTraitHash = update.PrimaryTraitHash
 	update.SecondaryTraitLevel = 15
 
-	if err := validateSigilMemoryUpdate(catalog, update); err == nil || !strings.Contains(err.Error(), "重复") {
-		t.Fatalf("expected duplicate primary/secondary rejection, got %v", err)
+	if err := validateSigilMemoryUpdate(catalog, update); err != nil {
+		t.Fatalf("duplicate primary/secondary is a writable game combination: %v", err)
 	}
 }
 

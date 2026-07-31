@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -555,8 +556,8 @@ func validateExactLoadoutSigil(cat *Catalog, prepared *preparedLoadoutSigil) err
 	if cat.LookupSigilByHash(prepared.sigilHash) != nil {
 		return validateSigilMemoryUpdate(cat, update)
 	}
-	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
-		return fmt.Errorf("精确因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
+	if update.SigilLevel == 0 || update.SigilLevel > math.MaxInt32 {
+		return fmt.Errorf("精确因子等级必须在 1 到 %d 之间", math.MaxInt32)
 	}
 	if err := validateSigilMemoryTraitLevel(cat, update.PrimaryTraitHash, update.PrimaryTraitLevel, "精确主词条"); err != nil {
 		return err
@@ -566,9 +567,6 @@ func validateExactLoadoutSigil(cat *Catalog, prepared *preparedLoadoutSigil) err
 			return fmt.Errorf("精确副词条为空时哈希与等级必须同时为空")
 		}
 		return nil
-	}
-	if update.PrimaryTraitHash == update.SecondaryTraitHash {
-		return fmt.Errorf("精确因子的主副词条不能重复")
 	}
 	return validateSigilMemoryTraitLevel(cat, update.SecondaryTraitHash, update.SecondaryTraitLevel, "精确副词条")
 }
@@ -713,9 +711,6 @@ func prepareLoadoutSigilNatural(cat *Catalog, draft LoadoutConstructedSigil) (*p
 	secondary, err := cat.RequireTrait(item.SecondaryTraitID)
 	if err != nil {
 		return nil, err
-	}
-	if secondary.InternalID == primary.InternalID {
-		return nil, fmt.Errorf("因子主副词条不能同为「%s」", cnTrait(primary.DisplayName))
 	}
 	explicitlyCompatible := false
 	for _, traitID := range sigil.AllowedSecondaryTraitIDs {

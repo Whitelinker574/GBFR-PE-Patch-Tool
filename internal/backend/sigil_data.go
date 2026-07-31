@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-//go:embed data/sigils.json data/traits.json data/secondary-trait-rules.json
+//go:embed data/sigils.json data/traits.json data/secondary-trait-rules.json data/synthesis-traits.json
 var dataFiles embed.FS
 
 type SigilDef struct {
@@ -71,13 +71,14 @@ type RuleFile struct {
 }
 
 type Catalog struct {
-	Sigils      []SigilDef
-	Traits      []TraitDef
-	Rules       []CompatibilityRule
-	sigilByID   map[string]*SigilDef
-	traitByID   map[string]*TraitDef
-	sigilByHash map[uint32]*SigilDef
-	traitByHash map[uint32]*TraitDef
+	Sigils               []SigilDef
+	Traits               []TraitDef
+	Rules                []CompatibilityRule
+	SynthesisTraitHashes map[uint32]bool
+	sigilByID            map[string]*SigilDef
+	traitByID            map[string]*TraitDef
+	sigilByHash          map[uint32]*SigilDef
+	traitByHash          map[uint32]*TraitDef
 }
 
 var (
@@ -118,6 +119,21 @@ func loadCatalog() (*Catalog, error) {
 		return nil, fmt.Errorf("加载规则数据失败: %w", err)
 	}
 	c.Rules = rules.Rules
+
+	synthesis, err := loadJSON[struct {
+		TraitHashes []string `json:"traitHashes"`
+	}]("data/synthesis-traits.json")
+	if err != nil {
+		return nil, fmt.Errorf("加载因子合成数据失败: %w", err)
+	}
+	c.SynthesisTraitHashes = make(map[uint32]bool, len(synthesis.TraitHashes))
+	for _, value := range synthesis.TraitHashes {
+		hash, parseErr := ParseHashHex(value)
+		if parseErr != nil || hash == 0 || hash == EmptyHash {
+			return nil, fmt.Errorf("因子合成数据含无效词条哈希 %q", value)
+		}
+		c.SynthesisTraitHashes[hash] = true
+	}
 
 	c.sigilByID = make(map[string]*SigilDef, len(c.Sigils))
 	c.sigilByHash = make(map[uint32]*SigilDef, len(c.Sigils))
@@ -424,6 +440,44 @@ func (c *Catalog) GetAllowedSecondaryTraits(sigil *SigilDef) ([]*TraitDef, error
 		result = appendIfAllowed(result, &c.Traits[i])
 	}
 	return result, nil
+}
+
+// GetWritableSecondaryTraits returns every catalogued trait the game can
+// encode in a real secondary slot. Natural gem/lot pools remain available via
+// GetAllowedSecondaryTraits for drop previews and advisory compliance text;
+// they are not a write-safety boundary.
+func (c *Catalog) GetWritableSecondaryTraits(sigil *SigilDef) ([]*TraitDef, error) {
+	if !supportsGeneratedPlusSigil(sigil) {
+		return nil, nil
+	}
+	result := make([]*TraitDef, 0, len(c.Traits))
+	for index := range c.Traits {
+		trait := &c.Traits[index]
+		if !isSelectableTrait(trait) {
+			continue
+		}
+		hash, err := ParseHashHex(trait.Hash)
+		if err != nil {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToUpper(trait.InternalID), "SKILL_") && !c.SynthesisTraitHashes[hash] {
+			continue
+		}
+		if _, err := c.RequireSecondaryTraitLevels(sigil, trait); err != nil {
+			continue
+		}
+		result = append(result, trait)
+	}
+	return result, nil
+}
+
+func catalogContainsTrait(traits []*TraitDef, internalID string) bool {
+	for _, trait := range traits {
+		if trait != nil && trait.InternalID == internalID {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Catalog) GetDefaultSecondaryTrait(sigil *SigilDef) *TraitDef {

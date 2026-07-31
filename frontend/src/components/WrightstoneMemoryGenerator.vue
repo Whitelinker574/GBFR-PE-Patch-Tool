@@ -195,9 +195,8 @@ const validationMessage = computed(() => {
   for (const slot of traitSlots) {
     if (!slot.hash && Number(slot.level) !== 0) return text(`${slotLabel(slot)}为空时等级必须为 0。`, `${slotLabel(slot)} must use level 0 when empty.`)
     if (!slot.hash) continue
-    const max = traitWritableMax(slot)
-    if (!Number.isInteger(Number(slot.level)) || Number(slot.level) < 1 || Number(slot.level) > max) {
-      return language.value === 'en' ? `${slotLabel(slot)} exceeds the skill curve cap (${max}).` : `${slotLabel(slot)}超过技能效果曲线上限 ${max}。`
+    if (!Number.isInteger(Number(slot.level)) || Number(slot.level) < 1 || Number(slot.level) > 2147483647) {
+      return language.value === 'en' ? `${slotLabel(slot)} must be between 1 and 2147483647.` : `${slotLabel(slot)}等级必须在 1 到 2147483647 之间。`
     }
   }
   const duplicate = duplicateTraitMessage()
@@ -210,7 +209,7 @@ const canWrite = computed(() => !loading.value && !writing.value && !validationM
 function normaliseLevel(slot) {
   if (!slot.hash) { slot.level = 0; return }
   const numeric = Number(slot.level)
-  slot.level = Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, traitWritableMax(slot)) : 0
+  slot.level = Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, 2147483647) : 0
 }
 
 function stopPolling() {
@@ -459,7 +458,7 @@ onBeforeUnmount(() => {
               </label>
               <label class="ui-field trait-level-field">
                 <span class="ui-field-label">{{ text('目标等级', 'Target Level') }}</span>
-                <input v-model.number="slot.level" class="ui-input" type="number" min="0" :max="traitWritableMax(slot)" :disabled="!slot.hash || !status.selectedAddr || stale" />
+                <input v-model.number="slot.level" class="ui-input" type="number" min="0" max="2147483647" :disabled="!slot.hash || !status.selectedAddr || stale" />
               </label>
             </div>
           </article>

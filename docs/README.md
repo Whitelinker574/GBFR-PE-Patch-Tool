@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.7.md`](RELEASE_NOTES_v2.0.7.md) | v2.0.7 因子与祝福自由写入规则统一 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 运行结构、代码域、写入边界与测试布局 |
 | [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) | 当前功能的已实现、现场验证和仍未闭环清单 |
 | [`GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md`](GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md) | 游戏 2.0.3 官方安装、解包表、角色配置与 EXE 兼容性核查 |

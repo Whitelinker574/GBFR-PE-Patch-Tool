@@ -454,7 +454,7 @@ func TestSingleTraitShareImportReplacesOpaqueSigilNameAndKeepsSecondaryEmpty(t *
 	}
 }
 
-func TestShareImportClearsKnownSecondaryThatCannotApplyToTheCapturedSigil(t *testing.T) {
+func TestShareImportPreservesCataloguedSynthesisSecondary(t *testing.T) {
 	previous := getCurrentLanguage()
 	t.Cleanup(func() { setCurrentLanguage(previous) })
 	setCurrentLanguage("zh")
@@ -466,22 +466,18 @@ func TestShareImportClearsKnownSecondaryThatCannotApplyToTheCapturedSigil(t *tes
 	want := LoadoutShareSigil{
 		Hash: "5BF84FD1", Name: "浪迹天涯 V+", Level: 15,
 		PrimaryTraitHash: "D029FE08", PrimaryTraitLevel: 15,
-		SecondaryTraitHash: "3FEC5F80", SecondaryTraitLevel: 15,
+		SecondaryTraitHash: "F26BAEA5", SecondaryTraitLevel: 15,
 	}
-	if _, err := loadoutShareConstructedSigil(catalog, want, 0); err == nil {
-		t.Fatal("非法副词条组合应先被统一合法性层拒绝")
+	if _, err := loadoutShareConstructedSigil(catalog, want, 0); err != nil {
+		t.Fatalf("2.0.3 合成表中的副词条应允许导入: %v", err)
 	}
 
-	draft, warning, err := loadoutShareConstructedSigilForImport(catalog, want, 0)
+	draft, _, err := loadoutShareConstructedSigilForImport(catalog, want, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(warning, "不会生效") || !strings.Contains(warning, "已自动清空") {
-		t.Fatalf("自动修正说明不清楚: %q", warning)
-	}
-	if draft.Item.SecondaryTraitID != "" || draft.Item.SecondaryTraitName != "" ||
-		draft.Item.SecondaryLevel != 0 || draft.ExactSecondaryTraitHash != "" {
-		t.Fatalf("非法副词条没有从构造草稿中完整清空: %+v", draft)
+	if draft.Item.SecondaryTraitID == "" || draft.Item.SecondaryLevel != 15 || draft.ExactSecondaryTraitHash == "" {
+		t.Fatalf("合成表副词条没有在导入草稿中保留: %+v", draft)
 	}
 
 	setCurrentLanguage("en")
@@ -489,8 +485,8 @@ func TestShareImportClearsKnownSecondaryThatCannotApplyToTheCapturedSigil(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(englishWarning, "will not take effect in-game") ||
-		!strings.Contains(englishWarning, "cleared it automatically") ||
+	if strings.Contains(englishWarning, "will not take effect in-game") ||
+		strings.Contains(englishWarning, "cleared it automatically") ||
 		strings.Contains(englishWarning, "因子") || strings.Contains(englishWarning, "副词条") {
 		t.Fatalf("English import warning is mixed or unclear: %q", englishWarning)
 	}

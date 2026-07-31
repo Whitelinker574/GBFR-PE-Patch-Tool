@@ -65,7 +65,7 @@ const loadingExisting = ref(false)
 
 const secondaryPickerOptions = computed(() => secondaryTraits.value)
 const effectiveSupportsSecondary = computed(() => supportsSecondary.value)
-const editableLevelMax = 50
+const editableLevelMax = 2147483647
 
 function traitIconForOption(trait) {
   return traitAssetIcon({
@@ -117,7 +117,7 @@ function primaryDefaultLevel(trait, sigil = selectedSigil.value) {
 
 function clampLevel(value, max) {
   const numeric = Number.isFinite(Number(value)) ? Number(value) : 0
-  return Math.min(max, Math.max(0, Math.trunc(numeric)))
+  return Math.max(0, Math.min(2147483647, Math.trunc(numeric)))
 }
 
 // ── 加载数据 ──
@@ -462,7 +462,7 @@ async function removeAll() {
 
       <!-- 因子等级 -->
       <div class="field level-field ui-field">
-        <label class="ui-field-label">因子等级 <small>自然参考 {{ sigilNaturalMax }} / 修改上限 {{ editableLevelMax }}</small></label>
+        <label class="ui-field-label">因子等级 <small>自然参考 {{ sigilNaturalMax }} / 可写范围 1 到 2147483647</small></label>
         <input v-model.number="selectedLevel" type="number" min="0" :max="editableLevelMax" class="text-input compact-number ui-input" :disabled="!selectedSigilID" @change="selectedLevel = clampLevel(selectedLevel, editableLevelMax)" />
       </div>
       </div>
@@ -479,8 +479,8 @@ async function removeAll() {
       </div>
 
       <div class="field level-field ui-field">
-        <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `高于自然参考 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` : `自然参考 ${primaryNaturalMax} / 修改上限 ${primaryWritableMax}` }}</small></label>
-        <input v-model.number="selectedPrimaryLevel" type="number" min="0" :max="primaryWritableMax" class="text-input compact-number ui-input" :disabled="!selectedPrimaryTraitID" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, primaryWritableMax)" />
+        <label class="ui-field-label">主特性等级 <small :class="{ overcap: selectedPrimaryLevel > primaryNaturalMax }">{{ selectedPrimaryLevel > primaryNaturalMax ? `高于自然参考 ${primaryNaturalMax} / 可写范围 1 到 2147483647` : `自然参考 ${primaryNaturalMax} / 可写范围 1 到 2147483647` }}</small></label>
+        <input v-model.number="selectedPrimaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedPrimaryTraitID" @change="selectedPrimaryLevel = clampLevel(selectedPrimaryLevel, 2147483647)" />
       </div>
       </div>
 
@@ -488,12 +488,12 @@ async function removeAll() {
       <template v-if="effectiveSupportsSecondary">
         <div class="field-row">
         <div class="field ui-field">
-          <label class="ui-field-label">副特性 <small>只显示该因子在 2.0.2 表中的合法副词条</small></label>
+          <label class="ui-field-label">副特性 <small>显示 2.0.3 目录与合成表中的可写词条；非天然组合会提示</small></label>
           <CatalogSelect v-model="selectedSecondaryTraitID" :options="secondaryPickerOptions" :disabled="!secondaryPickerOptions.length" :icon-resolver="traitIconForOption" optional placeholder="不选择（生成单词条因子）" search-placeholder="搜索副特性名称" />
         </div>
         <div class="field level-field ui-field">
-          <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `高于自然参考 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` : `自然参考 ${secondaryNaturalMax} / 修改上限 ${secondaryWritableMax}` }}</small></label>
-          <input v-model.number="selectedSecondaryLevel" type="number" min="0" :max="secondaryWritableMax" class="text-input compact-number ui-input" :disabled="!selectedSecondaryTraitID" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, secondaryWritableMax)" />
+          <label class="ui-field-label">副特性等级 <small :class="{ overcap: selectedSecondaryLevel > secondaryNaturalMax }">{{ selectedSecondaryLevel > secondaryNaturalMax ? `高于自然参考 ${secondaryNaturalMax} / 可写范围 1 到 2147483647` : `自然参考 ${secondaryNaturalMax} / 可写范围 1 到 2147483647` }}</small></label>
+          <input v-model.number="selectedSecondaryLevel" type="number" min="0" max="2147483647" class="text-input compact-number ui-input" :disabled="!selectedSecondaryTraitID" @change="selectedSecondaryLevel = clampLevel(selectedSecondaryLevel, 2147483647)" />
         </div>
         </div>
       </template>

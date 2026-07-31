@@ -217,7 +217,7 @@ function highestLevel(values, fallback = 15) {
 }
 
 function clampConstructorLevel(value, maximum) {
-  return Math.max(1, Math.min(Number(maximum) || 1, Math.round(Number(value) || 1)))
+  return Math.max(1, Math.min(2147483647, Math.round(Number(value) || 1)))
 }
 
 async function selectConstructorSigil(id) {
@@ -397,11 +397,11 @@ initialize()
           </label>
           <label class="constructor-field">
             <span>{{ tx('因子等级', 'Sigil level') }}</span>
-            <input v-model.number="constructorSigilLevel" class="ui-input" type="number" min="1" :max="constructorSigilMax" step="1" @change="constructorSigilLevel = clampConstructorLevel(constructorSigilLevel, constructorSigilMax)" />
+            <input v-model.number="constructorSigilLevel" class="ui-input" type="number" min="1" max="2147483647" step="1" @change="constructorSigilLevel = clampConstructorLevel(constructorSigilLevel, 2147483647)" />
           </label>
           <label class="constructor-field">
             <span>{{ tx('主词条等级', 'Primary trait level') }}</span>
-            <input v-model.number="constructorPrimaryLevel" class="ui-input" type="number" min="1" :max="constructorPrimaryMax" step="1" @change="constructorPrimaryLevel = clampConstructorLevel(constructorPrimaryLevel, constructorPrimaryMax)" />
+            <input v-model.number="constructorPrimaryLevel" class="ui-input" type="number" min="1" max="2147483647" step="1" @change="constructorPrimaryLevel = clampConstructorLevel(constructorPrimaryLevel, 2147483647)" />
           </label>
           <div class="constructor-primary constructor-wide">
             <span>{{ tx('主词条', 'Primary trait') }}</span>
@@ -413,7 +413,7 @@ initialize()
           </label>
           <label v-if="selectedConstructorSecondary" class="constructor-field constructor-wide">
             <span>{{ tx('副词条等级', 'Secondary trait level') }}</span>
-            <input v-model.number="constructorSecondaryLevel" class="ui-input" type="number" min="1" :max="constructorSecondaryMax" step="1" @change="constructorSecondaryLevel = clampConstructorLevel(constructorSecondaryLevel, constructorSecondaryMax)" />
+            <input v-model.number="constructorSecondaryLevel" class="ui-input" type="number" min="1" max="2147483647" step="1" @change="constructorSecondaryLevel = clampConstructorLevel(constructorSecondaryLevel, 2147483647)" />
           </label>
           <div v-if="workspace?.gameRunning" class="ui-notice is-danger">{{ tx('游戏运行时不能改写默认存档；请完全退出游戏后再制造因子。', 'The managed save cannot be changed while the game is running. Fully exit the game before creating the sigil.') }}</div>
           <button class="ui-btn is-primary constructor-submit" type="button" :disabled="!canCreateSource" @click="createAndAssignSource">{{ constructorLoading || busy ? tx('处理中…', 'Working…') : tx(`制造并放入槽 ${activeSlot + 1}`, `Create and assign to slot ${activeSlot + 1}`) }}</button>

@@ -98,9 +98,9 @@ test('live sigil editor auto-repairs shell coupling and blocks unresolved invali
   assert.match(source, /form\.primaryTraitHash = Number\(opt\.primaryTraitHash\) >>> 0/)
   assert.match(source, /allowedSecondaryTraitHashes/)
   assert.match(source, /已自动修正/)
-  assert.doesNotMatch(source, /status: 'forced'/)
+  assert.match(source, /status: 'forced'/)
+  assert.match(source, /legality\.value\.status === 'legal' \|\| legality\.value\.status === 'forced'/)
   assert.doesNotMatch(source, /合规检测仅作提示/)
-  assert.doesNotMatch(source, /legality\.value\.status === 'forced'/)
 })
 
 test('live sigil write errors explain invalid secondary traits without exposing hash jargon', () => {

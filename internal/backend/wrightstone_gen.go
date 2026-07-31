@@ -387,7 +387,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	}
 	firstWritableMax := effectCurveMax(firstLevels, 20)
 	if item.FirstLevel > firstWritableMax {
-		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第一特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.FirstTraitName, item.FirstLevel, firstWritableMax)), nil
+		reasons = append(reasons, fmt.Sprintf("第一特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.FirstTraitName, item.FirstLevel, firstWritableMax))
 	}
 	if firstTrait.InternalID != wrightstone.DefaultTraitID {
 		report := newLegalityReport(LegalityImpossible, false, "第一特性与该祝福在目录中的固有特性不一致")
@@ -409,7 +409,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	}
 	secondWritableMax := effectCurveMax(secondLevels, 15)
 	if item.SecondLevel > secondWritableMax {
-		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第二特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondTraitName, item.SecondLevel, secondWritableMax)), nil
+		reasons = append(reasons, fmt.Sprintf("第二特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.SecondTraitName, item.SecondLevel, secondWritableMax))
 	}
 
 	thirdTrait, err := wg.catalog.RequireTrait(item.ThirdTraitID)
@@ -427,7 +427,7 @@ func (wg *WrightstoneGen) normalizeWrightstoneQueueItem(item WrightstoneQueueIte
 	}
 	thirdWritableMax := effectCurveMax(thirdLevels, 10)
 	if item.ThirdLevel > thirdWritableMax {
-		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("第三特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.ThirdTraitName, item.ThirdLevel, thirdWritableMax)), nil
+		reasons = append(reasons, fmt.Sprintf("第三特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.ThirdTraitName, item.ThirdLevel, thirdWritableMax))
 	}
 
 	if item.FirstTraitID == item.SecondTraitID {

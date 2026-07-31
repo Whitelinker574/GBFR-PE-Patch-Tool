@@ -381,20 +381,13 @@ func (sg *SigilGen) GetCompatibleSecondaryTraits(sigilID string) ([]TraitInfo, e
 		return []TraitInfo{}, nil
 	}
 
-	secondaries, err := sg.catalog.GetAllowedSecondaryTraits(sigil)
+	secondaries, err := sg.catalog.GetWritableSecondaryTraits(sigil)
 	if err != nil {
 		return nil, err
 	}
 
-	explicit := make(map[string]bool, len(sigil.AllowedSecondaryTraitIDs))
-	for _, id := range sigil.AllowedSecondaryTraitIDs {
-		explicit[id] = true
-	}
 	result := make([]TraitInfo, 0, len(secondaries))
 	for _, t := range secondaries {
-		if !explicit[t.InternalID] || t.InternalID == sigil.PrimaryTraitID {
-			continue
-		}
 		levels, err := sg.catalog.RequireSecondaryTraitLevels(sigil, t)
 		if err != nil {
 			continue
@@ -662,7 +655,7 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		reasons = append(reasons, fmt.Sprintf("因子等级 %d 偏离目录自然范围 1 到 %d", item.Level, highestLevel(sigilLevels, 1)))
 	}
 	if item.Level > sigilWritableLevelMax {
-		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子等级 %d 超过修改上限 %d", item.Level, sigilWritableLevelMax)), nil
+		reasons = append(reasons, fmt.Sprintf("因子等级 %d 高于常用修改参考 %d；游戏可能按自身规则显示或修正", item.Level, sigilWritableLevelMax))
 	}
 
 	primaryID := item.PrimaryTraitID
@@ -687,7 +680,7 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	}
 	primaryWritableMax := effectCurveMax(primaryLevels, 15)
 	if item.PrimaryLevel > primaryWritableMax {
-		return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax)), nil
+		reasons = append(reasons, fmt.Sprintf("主特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax))
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
 		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」不是因子「%s」在 2.0.2 表中的固定主特性", item.PrimaryTraitName, item.SigilName))
@@ -729,27 +722,20 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 		}
 		secondaryWritableMax := effectCurveMax(secondaryLevels, 15)
 		if item.SecondaryLevel > secondaryWritableMax {
-			return item, newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性 %s 的等级 %d 超过技能效果曲线上限 %d", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax)), nil
+			reasons = append(reasons, fmt.Sprintf("副特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.SecondaryTraitName, item.SecondaryLevel, secondaryWritableMax))
 		}
 		if !supportsGeneratedPlusSigil(sigil) {
 			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("因子「%s」没有副特性槽", item.SigilName))
 			return item, report, nil
 		}
-		if secondaryTrait.InternalID == primaryTrait.InternalID {
-			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」与副特性「%s」重复", item.PrimaryTraitName, item.SecondaryTraitName))
+		writable, _ := sg.catalog.GetWritableSecondaryTraits(sigil)
+		if !catalogContainsTrait(writable, secondaryTrait.InternalID) {
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」没有可写入该因子副槽的游戏记录", item.SecondaryTraitName))
 			return item, report, nil
 		}
-		allowed, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
-		found := false
-		for _, candidate := range allowed {
-			if candidate.InternalID == secondaryTrait.InternalID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("副特性「%s」不属于因子「%s」在 2.0.2 表中的合法词池", item.SecondaryTraitName, item.SigilName))
-			return item, report, nil
+		natural, _ := sg.catalog.GetAllowedSecondaryTraits(sigil)
+		if !catalogContainsTrait(natural, secondaryTrait.InternalID) {
+			reasons = append(reasons, fmt.Sprintf("「%s + %s」不在天然掉落词池中，但真实副槽可按所选哈希写入", item.PrimaryTraitName, item.SecondaryTraitName))
 		}
 		if item.SecondaryLevel < 1 || item.SecondaryLevel > 15 {
 			reasons = append(reasons, fmt.Sprintf("副特性等级 %d 偏离目录自然范围 1 到 15", item.SecondaryLevel))

@@ -1,8 +1,11 @@
 package backend
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestSigilLegalityRejectsIncompatibleSecondary(t *testing.T) {
+func TestSigilLegalityAllowsSynthesisTableSecondaryWithWarning(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -10,37 +13,23 @@ func TestSigilLegalityRejectsIncompatibleSecondary(t *testing.T) {
 	sg := &SigilGen{catalog: catalog}
 
 	var sigil *SigilDef
-	var illegal *TraitDef
 	for i := range catalog.Sigils {
 		candidate := &catalog.Sigils[i]
-		if !supportsGeneratedPlusSigil(candidate) {
-			continue
-		}
-		allowed, _ := catalog.GetAllowedSecondaryTraits(candidate)
-		allowedIDs := map[string]bool{}
-		for _, trait := range allowed {
-			allowedIDs[trait.InternalID] = true
-		}
-		for j := range catalog.Traits {
-			trait := &catalog.Traits[j]
-			if !isSelectableTrait(trait) || allowedIDs[trait.InternalID] {
-				continue
-			}
-			if levels, levelErr := catalog.RequireSecondaryTraitLevels(candidate, trait); levelErr == nil && len(levels) > 0 {
-				sigil, illegal = candidate, trait
-				break
-			}
-		}
-		if sigil != nil {
+		if supportsGeneratedPlusSigil(candidate) && !requiresCharacterSigilSecondary(candidate) {
+			sigil = candidate
 			break
 		}
 	}
+	illegal := catalog.LookupTraitByHash(0xF26BAEA5) // Divergence is present in the 2.0.3 synthesis trait table.
 	if sigil == nil || illegal == nil {
-		t.Fatal("test catalog has no writable but incompatible secondary combination")
+		t.Fatal("test catalog has no normal plus sigil or summon-only trait")
+	}
+	if strings.HasPrefix(illegal.InternalID, "SKILL_") {
+		t.Fatal("test summon-only trait unexpectedly uses a sigil skill identity")
 	}
 	sigilLevels, _ := catalog.RequireSigilLevels(sigil)
 	primaryLevels, _ := catalog.RequirePrimaryTraitLevels(sigil)
-	secondaryLevels, _ := catalog.RequireSecondaryTraitLevels(sigil, illegal)
+	secondaryLevels, _ := requireTraitLevels(illegal, "test summon-only trait")
 	item := QueueItem{
 		SigilID: sigil.InternalID, Level: sigilLevels[0], PrimaryLevel: primaryLevels[0],
 		SecondaryTraitID: illegal.InternalID, SecondaryLevel: secondaryLevels[0], Quantity: 1,
@@ -49,11 +38,33 @@ func TestSigilLegalityRejectsIncompatibleSecondary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("expected impossible+not writable, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("expected forced+writable, got %+v", report)
 	}
-	if err := sg.AddToQueue(item); err == nil {
-		t.Fatal("incompatible secondary must not enter the write queue")
+	if err := sg.AddToQueue(item); err != nil {
+		t.Fatalf("synthesis-table trait should enter the sigil write queue: %v", err)
+	}
+}
+
+func TestSigilLegalityAllowsCataloguedNonNaturalSecondary(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigil, err := catalog.RequireSigil("GEEN_096_24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := QueueItem{
+		SigilID: sigil.InternalID, Level: 15, PrimaryLevel: 15,
+		SecondaryTraitID: "SKILL_036_00", SecondaryLevel: 15, Quantity: 1,
+	}
+	report, err := (&SigilGen{catalog: catalog}).CheckLegality(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("catalogued non-natural secondary should be forced+writable, got %+v", report)
 	}
 }
 
@@ -150,8 +161,8 @@ func TestSigilLevelsRespectEffectCurveAndNaturalDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("factor level above the verified field cap must be rejected, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("factor level above the usual reference must warn but remain writable, got %+v", report)
 	}
 }
 
@@ -378,12 +389,12 @@ func TestWrightstoneSlotNaturalCapsRemainWritable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("level above the skill effect curve must be rejected, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("level above the skill effect curve must warn but remain writable, got %+v", report)
 	}
 }
 
-func TestSigilLevelsRejectValuesBeyondVerifiedFieldCap(t *testing.T) {
+func TestSigilLevelsBeyondUsualReferenceRemainWritable(t *testing.T) {
 	catalog, err := LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -404,8 +415,8 @@ func TestSigilLevelsRejectValuesBeyondVerifiedFieldCap(t *testing.T) {
 		PrimaryTraitID: sigil.PrimaryTraitID, PrimaryLevel: 15, Quantity: 1,
 	}
 	report, err := (&SigilGen{catalog: catalog}).CheckLegality(item)
-	if err != nil || report.Writable || report.Status != LegalityImpossible {
-		t.Fatalf("factor level above 50 must be rejected: report=%+v err=%v", report, err)
+	if err != nil || !report.Writable || report.Status != LegalityForced {
+		t.Fatalf("factor level above 50 must warn but remain writable: report=%+v err=%v", report, err)
 	}
 }
 
@@ -425,8 +436,8 @@ func TestSigilTraitBelowNaturalReferenceUsesItsEffectCurveCap(t *testing.T) {
 	}
 	item.PrimaryLevel = 6
 	report, err = (&SigilGen{catalog: catalog}).CheckLegality(item)
-	if err != nil || report.Writable || report.Status != LegalityImpossible {
-		t.Fatalf("level 6 must exceed the five-level effect curve: report=%+v err=%v", report, err)
+	if err != nil || !report.Writable || report.Status != LegalityForced {
+		t.Fatalf("level 6 must warn but remain writable above the five-level curve: report=%+v err=%v", report, err)
 	}
 }
 
@@ -440,15 +451,19 @@ func TestWrightstoneLevelsRejectValuesBeyondSkillCurve(t *testing.T) {
 	}
 	item := WrightstoneQueueItem{
 		WrightstoneID: catalog.Wrightstones[0].InternalID,
-		FirstTraitID:  catalog.Traits[0].InternalID, FirstLevel: 1,
+		FirstTraitID:  catalog.Wrightstones[0].DefaultTraitID, FirstLevel: 1,
 		SecondTraitID: catalog.Traits[1].InternalID, SecondLevel: 1,
 		ThirdTraitID: catalog.Traits[2].InternalID, ThirdLevel: 1,
 		Quantity: 1,
 	}
-	levels, _ := requireWrightstoneTraitLevels(&catalog.Traits[0])
+	first, err := catalog.RequireTrait(item.FirstTraitID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	levels, _ := requireWrightstoneTraitLevels(first)
 	item.FirstLevel = effectCurveMax(levels, 20) + 1
 	report, err := (&WrightstoneGen{catalog: catalog}).CheckLegality(item)
-	if err != nil || report.Writable || report.Status != LegalityImpossible {
-		t.Fatalf("wrightstone level above the effect curve must be rejected: report=%+v err=%v", report, err)
+	if err != nil || !report.Writable || report.Status != LegalityForced {
+		t.Fatalf("wrightstone level above the effect curve must warn but remain writable: report=%+v err=%v", report, err)
 	}
 }

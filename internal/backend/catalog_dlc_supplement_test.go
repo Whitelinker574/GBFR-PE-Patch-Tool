@@ -163,10 +163,10 @@ func TestPreciseWrathVPlusRuntimeHashUsesTheUnifiedCatalog(t *testing.T) {
 		SigilLevel:          15,
 		PrimaryTraitHash:    primaryHash,
 		PrimaryTraitLevel:   15,
-		SecondaryTraitHash:  0xF26BAEA5, // Divergence is a summon trait, not a type-lot-15 sigil secondary.
+		SecondaryTraitHash:  0xF26BAEA5, // Divergence is present in the 2.0.3 synthesis trait table.
 		SecondaryTraitLevel: 15,
-	}); err == nil {
-		t.Fatal("the invalid live Precise Wrath V+ + Divergence combination was accepted")
+	}); err != nil {
+		t.Fatalf("the synthesis-table Precise Wrath V+ + Divergence combination was rejected: %v", err)
 	}
 
 	divergence := catalog.LookupTraitByHash(0xF26BAEA5)
@@ -183,11 +183,11 @@ func TestPreciseWrathVPlusRuntimeHashUsesTheUnifiedCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Writable {
-		t.Fatalf("offline save factor editor accepted Precise Wrath V+ + Divergence: %+v", report)
+	if !report.Writable || report.Status != LegalityForced {
+		t.Fatalf("offline save factor editor should warn but accept Precise Wrath V+ + Divergence: %+v", report)
 	}
-	if _, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{Index: 0, Item: invalidItem}); err == nil {
-		t.Fatal("loadout factor constructor accepted Precise Wrath V+ + Divergence")
+	if _, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{Index: 0, Item: invalidItem}); err != nil {
+		t.Fatalf("loadout factor constructor rejected Precise Wrath V+ + Divergence: %v", err)
 	}
 	if _, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{
 		Index:                   0,
@@ -195,8 +195,8 @@ func TestPreciseWrathVPlusRuntimeHashUsesTheUnifiedCatalog(t *testing.T) {
 		ExactPrimaryTraitHash:   "7EDD69D0",
 		ExactSecondaryTraitHash: "F26BAEA5",
 		Item:                    invalidItem,
-	}); err == nil {
-		t.Fatal("exact loadout transport bypassed the known Precise Wrath V+ compatibility rules")
+	}); err != nil {
+		t.Fatalf("exact loadout transport rejected a catalogued synthesis trait: %v", err)
 	}
 }
 

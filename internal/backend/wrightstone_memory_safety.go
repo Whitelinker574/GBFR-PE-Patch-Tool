@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 )
 
@@ -43,13 +44,8 @@ func validateWrightstoneMemorySlot(catalog *WrightstoneCatalog, hash, level uint
 	if trait == nil {
 		return fmt.Errorf("未知祝福词条 %d 哈希 0x%08X", slot, hash)
 	}
-	levels, err := requireWrightstoneTraitLevels(trait)
-	if err != nil {
-		return err
-	}
-	maxLevel := effectCurveMax(levels, naturalCap)
-	if level > uint32(maxLevel) {
-		return fmt.Errorf("祝福词条 %d 等级 %d 超过技能效果曲线上限 %d", slot, level, maxLevel)
+	if level > math.MaxInt32 {
+		return fmt.Errorf("祝福词条 %d 等级必须在 1 到 %d 之间", slot, math.MaxInt32)
 	}
 	return nil
 }

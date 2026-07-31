@@ -48,7 +48,7 @@ test('live wrightstone editor exposes current and target values for all three sl
   assert.match(component, /class="[^"]*trait-current[^"]*"/)
   assert.match(component, /class="[^"]*trait-target[^"]*"/)
   assert.match(component, /v-model\.number="slot\.level"/)
-  assert.match(component, /type="number" min="0" :max="traitWritableMax\(slot\)"/)
+  assert.match(component, /type="number" min="0" max="2147483647"/)
   assert.match(component, /天然等级是默认参考；最高可填到对应技能效果曲线的目录上限/)
   assert.doesNotMatch(component, /forceWrite/)
   assert.match(component, /labelZh:\s*'第一槽'[^}]*labelEn:\s*'Slot One'[^}]*maxLevel:\s*20/)

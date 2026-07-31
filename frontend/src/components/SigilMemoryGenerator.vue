@@ -44,11 +44,10 @@ const primaryTraitOptions = computed(() => {
 const secondaryTraitOptions = computed(() => {
   const sigil = selectedSigilOption.value
   if (!sigil || sigil.supportsSecondaryTrait === false) return []
-  const primaryHash = Number(sigil.primaryTraitHash || form.primaryTraitHash || 0) >>> 0
   const allowed = Array.isArray(sigil.allowedSecondaryTraitHashes) ? sigil.allowedSecondaryTraitHashes : []
   return allowed
     .map(hash => traitByHash.value.get(Number(hash) >>> 0))
-    .filter(option => option && (option.hash >>> 0) !== primaryHash)
+    .filter(Boolean)
 })
 
 function traitIconByHash(hash, name = '') {
@@ -323,7 +322,6 @@ function repairFormForSigil(opt) {
   const secondaryHash = form.secondaryTraitHash >>> 0
   const secondaryInvalid = secondaryHash && (
     opt.supportsSecondaryTrait === false ||
-    secondaryHash === (form.primaryTraitHash >>> 0) ||
     !allowedSecondaryTraitHashes.has(secondaryHash)
   )
   if (secondaryInvalid) {
@@ -389,7 +387,7 @@ const secondaryWritableMax = computed(() => form.secondaryTraitHash ? curveMax(t
 function clampLevel(value, max) {
   if (max == null) return 0
   const numeric = Number.isFinite(Number(value)) ? Number(value) : 0
-  return Math.min(max, Math.max(0, Math.trunc(numeric)))
+  return Math.max(0, Math.min(2147483647, Math.trunc(numeric)))
 }
 
 const sigilAtMax = computed(() => form.sigilLevel === sigilWritableMax.value)
@@ -425,9 +423,6 @@ const warnings = computed(() => {
   if (sigilWritableMax.value != null && form.sigilLevel > sigilWritableMax.value) out.push(`因子等级超过修改上限 ${sigilWritableMax.value}`)
   if (primaryWritableMax.value != null && form.primaryTraitLevel > primaryWritableMax.value) out.push(`主词条等级超过修改上限 ${primaryWritableMax.value}`)
   if (secondaryWritableMax.value != null && form.secondaryTraitLevel > secondaryWritableMax.value) out.push(`副词条等级超过修改上限 ${secondaryWritableMax.value}`)
-  if (form.primaryTraitHash && form.secondaryTraitHash && (form.primaryTraitHash >>> 0) === (form.secondaryTraitHash >>> 0)) {
-    out.push(`主词条「${primary?.displayName || hex(form.primaryTraitHash)}」与副词条「${secondary?.displayName || hex(form.secondaryTraitHash)}」重复冲突`)
-  }
   if (form.secondaryTraitHash && sigil && sigil.supportsSecondaryTrait === false) {
     out.push(invalidSecondaryTraitMessage())
   } else if (
@@ -443,9 +438,6 @@ const warnings = computed(() => {
 const legality = computed(() => {
   if (!status.selectedAddr) return { status: 'impossible', message: '请先在游戏内选中一个因子' }
   if (!form.sigilHash || !form.primaryTraitHash) return { status: 'impossible', message: '因子和主词条不能为空' }
-  if (sigilWritableMax.value != null && form.sigilLevel > sigilWritableMax.value) return { status: 'impossible', message: `因子等级修改上限是 ${sigilWritableMax.value}` }
-  if (primaryWritableMax.value != null && form.primaryTraitLevel > primaryWritableMax.value) return { status: 'impossible', message: `主词条等级修改上限是 ${primaryWritableMax.value}` }
-  if (secondaryWritableMax.value != null && form.secondaryTraitLevel > secondaryWritableMax.value) return { status: 'impossible', message: `副词条等级修改上限是 ${secondaryWritableMax.value}` }
   const reasons = [...warnings.value]
   const selectedSigilOption = sigilByHash.value.get(form.sigilHash >>> 0)
   const selectedPrimaryOption = traitByHash.value.get(form.primaryTraitHash >>> 0)
@@ -460,10 +452,10 @@ const legality = computed(() => {
   if (form.secondaryTraitHash && (!selectedSecondaryOption || selectedSecondaryOption.source === 'runtime')) {
     return { status: 'impossible', message: invalidSecondaryTraitMessage() }
   }
-  if (reasons.length) return { status: 'impossible', message: `${reasons.join('；')}；请先修正后再写入` }
+  if (reasons.length) return { status: 'forced', message: `${reasons.join('；')}；确认后仍会按所选值写入` }
   const sigil = sigilByHash.value.get(form.sigilHash >>> 0)
   if (form.secondaryTraitHash && (!sigil || !Array.isArray(sigil.allowedSecondaryTraitHashes) || !sigil.allowedSecondaryTraitHashes.length)) {
-    return { status: 'impossible', message: '该因子的天然副词条池尚未验证，不能提交副词条写入' }
+    return { status: 'impossible', message: '该因子没有可编码的副词条记录，不能提交副词条写入' }
   }
   return { status: 'legal', message: '符合当前已验证的因子、词条与等级规则' }
 })
@@ -480,7 +472,7 @@ const changedCount = computed(() => {
 })
 const changeSummary = computed(() => changedCount.value ? `待写入 ${changedCount.value} 个字段` : '尚未修改')
 const canWrite = computed(() => !!status.selectedAddr && changedCount.value > 0 &&
-  legality.value.status === 'legal')
+  (legality.value.status === 'legal' || legality.value.status === 'forced'))
 
 function revertToRead() { syncFormFromStatus() }
 
@@ -642,7 +634,7 @@ onMounted(async () => {
             <SigilMemoryPicker v-model="form.sigilHash" class="aligned-picker" :options="allSigilOptions" :disabled="!status.selectedAddr || loading || applying" @pick="onPickSigil" placeholder="选择因子" />
             <label class="ui-field level-control">
               <span class="ui-field-label">等级</span>
-              <input v-model.number="form.sigilLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="sigilWritableMax" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, sigilWritableMax)" />
+                <input v-model.number="form.sigilLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" max="2147483647" aria-label="因子等级" @change="form.sigilLevel = clampLevel(form.sigilLevel, 2147483647)" />
               <small v-if="sigilMax != null" class="ui-hint">合规 {{ sigilMax }} / 可写 {{ sigilWritableMax }}</small>
             </label>
             <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || sigilAtMax" @click="maxSigil" :title="`设为上限 ${sigilWritableMax}`">设为上限</button>
@@ -663,7 +655,7 @@ onMounted(async () => {
             <SigilMemoryPicker v-model="form.primaryTraitHash" class="aligned-picker" :options="primaryTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying || primaryTraitOptions.length <= 1" @pick="onPickPrimary" placeholder="固定主词条" />
             <label class="ui-field level-control">
               <span class="ui-field-label">等级</span>
-              <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="primaryWritableMax" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, primaryWritableMax)" />
+              <input v-model.number="form.primaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" max="2147483647" aria-label="主词条等级" @change="form.primaryTraitLevel = clampLevel(form.primaryTraitLevel, 2147483647)" />
               <small v-if="primaryMax != null" class="ui-hint">合规 {{ primaryMax }} / 可写 {{ primaryWritableMax }}</small>
             </label>
             <button class="ui-btn is-sm limit-button" :disabled="!status.selectedAddr || loading || applying || primaryWritableMax == null || primaryAtMax" @click="maxPrimary" :title="`设为上限 ${primaryWritableMax}`">设为上限</button>
@@ -684,7 +676,7 @@ onMounted(async () => {
             <SigilMemoryPicker v-model="form.secondaryTraitHash" class="aligned-picker" :options="secondaryTraitOptions" :icon-resolver="traitOptionIcon" :disabled="!status.selectedAddr || loading || applying || secondaryTraitOptions.length === 0" @pick="onPickSecondary" optional placeholder="本地表无可选副词条" />
             <label class="ui-field level-control" :class="{ 'is-disabled': !form.secondaryTraitHash }">
               <span class="ui-field-label">等级</span>
-              <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" :max="secondaryWritableMax" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, secondaryWritableMax)" />
+              <input v-if="form.secondaryTraitHash" v-model.number="form.secondaryTraitLevel" class="ui-input" :disabled="!status.selectedAddr || loading || applying" type="number" min="0" max="2147483647" aria-label="副词条等级" @change="form.secondaryTraitLevel = clampLevel(form.secondaryTraitLevel, 2147483647)" />
               <span v-else class="empty-level">未选择</span>
               <small v-if="secondaryMax != null" class="ui-hint">合规 {{ secondaryMax }} / 可写 {{ secondaryWritableMax }}</small>
             </label>

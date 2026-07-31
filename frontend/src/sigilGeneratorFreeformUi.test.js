@@ -11,7 +11,7 @@ test('standalone factor generator locks the fixed primary and exposes only the a
   assert.match(source, /<CatalogSelect v-model="selectedSecondaryTraitID"/)
   assert.match(source, /const secondaryPickerOptions = computed\(\(\) => secondaryTraits\.value\)/)
   assert.match(source, /secondaryTraits\.value = allowed/)
-  assert.match(source, /只显示该因子在 2\.0\.2 表中的合法副词条/)
+  assert.match(source, /显示 2\.0\.3 目录与合成表中的可写词条；非天然组合会提示/)
   assert.match(source, /天然等级是默认值；最高可填到对应技能效果曲线的目录上限/)
 })
 

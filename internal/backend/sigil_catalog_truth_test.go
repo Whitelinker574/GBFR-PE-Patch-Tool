@@ -146,14 +146,19 @@ func TestPotentGreensPlusUsesLocal202GemPrimary(t *testing.T) {
 	}
 }
 
-func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
+func TestFearlessDriveNaturalSecondaryAndWritableAlternatives(t *testing.T) {
 	gen := NewSigilGen()
 	compatible, err := gen.GetCompatibleSecondaryTraits("GEEN_114_90")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(compatible) != 1 || compatible[0].InternalID != "SKILL_114_01" {
-		t.Fatalf("GEEN_114_90 compatible secondaries = %+v; local 2.0.2 gem.tbl fixes SkillId2 to SKILL_114_01", compatible)
+	hasFixed, hasAlternative := false, false
+	for _, trait := range compatible {
+		hasFixed = hasFixed || trait.InternalID == "SKILL_114_01"
+		hasAlternative = hasAlternative || trait.InternalID == "SKILL_000_00"
+	}
+	if len(compatible) < 2 || !hasFixed || !hasAlternative {
+		t.Fatalf("GEEN_114_90 writable secondaries must include the natural fixed trait and catalogued alternatives: %+v", compatible)
 	}
 
 	fixed := QueueItem{
@@ -174,11 +179,11 @@ func TestFearlessDriveFixedSecondaryRejectsAnythingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != LegalityImpossible || report.Writable {
-		t.Fatalf("GEEN_114_90 non-fixed secondary must be rejected, got %+v", report)
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("GEEN_114_90 non-fixed secondary must warn but remain writable, got %+v", report)
 	}
-	if err := gen.AddToQueue(nonFixed); err == nil {
-		t.Fatal("GEEN_114_90 non-fixed secondary must not enter the queue")
+	if err := gen.AddToQueue(nonFixed); err != nil {
+		t.Fatalf("GEEN_114_90 non-fixed secondary should enter the queue after warning: %v", err)
 	}
 
 	missing := fixed
@@ -373,10 +378,17 @@ func TestConstructibleSigilMetadataUsesOnlyNaturalLevels(t *testing.T) {
 	}
 }
 
-func TestCompatibleSecondaryTraitsMatchFreshLocalLots(t *testing.T) {
-	gen := NewSigilGen()
+func TestNaturalSecondaryTraitsMatchFreshLocalLots(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for id, wantCount := range map[string]int{"GEEN_063_24": 16, "GEEN_146_24": 38, "GEEN_000_24": 59} {
-		traits, err := gen.GetCompatibleSecondaryTraits(id)
+		sigil, err := catalog.RequireSigil(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		traits, err := catalog.GetAllowedSecondaryTraits(sigil)
 		if err != nil {
 			t.Fatalf("%s 读取兼容副词条失败: %v", id, err)
 		}
@@ -385,7 +397,11 @@ func TestCompatibleSecondaryTraitsMatchFreshLocalLots(t *testing.T) {
 		}
 	}
 
-	traits, err := gen.GetCompatibleSecondaryTraits("GEEN_045_24")
+	sigil, err := catalog.RequireSigil("GEEN_045_24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	traits, err := catalog.GetAllowedSecondaryTraits(sigil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,10 +409,11 @@ func TestCompatibleSecondaryTraitsMatchFreshLocalLots(t *testing.T) {
 		t.Fatal("已验证且有显式白名单的因子没有返回兼容副词条")
 	}
 	for _, trait := range traits {
-		if trait.MaxLevel < 1 || trait.MaxLevel > 15 {
-			t.Fatalf("兼容副词条 %s 暴露的自然上限=%d，期望 1..15", trait.InternalID, trait.MaxLevel)
+		levels, levelErr := catalog.RequireSecondaryTraitLevels(sigil, trait)
+		if levelErr != nil {
+			t.Fatal(levelErr)
 		}
-		for _, level := range trait.AllowedLevels {
+		for _, level := range naturalSigilLevels(levels) {
 			if level < 1 || level > 15 {
 				t.Fatalf("兼容副词条 %s 暴露了非自然等级 %d", trait.InternalID, level)
 			}

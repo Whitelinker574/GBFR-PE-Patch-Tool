@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 )
 
@@ -45,16 +46,7 @@ func validateSigilMemorySnapshot(expected, statusSelected, caveSelected uintptr,
 }
 
 func sigilMemoryLevelAllowed(level uint32, allowed []int) bool {
-	if level == 0 {
-		return false
-	}
-	max := 0
-	for _, candidate := range allowed {
-		if candidate > max {
-			max = candidate
-		}
-	}
-	return max > 0 && level <= uint32(max)
+	return level > 0 && level <= math.MaxInt32
 }
 
 func validateSigilMemoryTraitLevel(catalog *Catalog, hash, level uint32, label string) error {
@@ -87,8 +79,8 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 		return fmt.Errorf("未知因子哈希 0x%08X；四个编辑入口只接受统一目录", update.SigilHash)
 	}
 
-	if update.SigilLevel == 0 || update.SigilLevel > sigilWritableLevelMax {
-		return fmt.Errorf("因子等级 %d 超过修改上限 %d", update.SigilLevel, sigilWritableLevelMax)
+	if update.SigilLevel == 0 || update.SigilLevel > math.MaxInt32 {
+		return fmt.Errorf("因子等级必须在 1 到 %d 之间", math.MaxInt32)
 	}
 
 	primary, err := catalog.RequireTrait(sigil.PrimaryTraitID)
@@ -107,7 +99,7 @@ func validateSigilMemoryUpdate(catalog *Catalog, update SigilMemoryUpdate) error
 		return err
 	}
 	if !sigilMemoryLevelAllowed(update.PrimaryTraitLevel, primaryLevels) {
-		return fmt.Errorf("主词条等级 %d 超过技能效果曲线上限", update.PrimaryTraitLevel)
+		return fmt.Errorf("主词条等级必须在 1 到 %d 之间", math.MaxInt32)
 	}
 	return validateSigilMemorySecondary(catalog, sigil, update)
 }
@@ -151,10 +143,7 @@ func validateSigilMemorySecondary(catalog *Catalog, sigil *SigilDef, update Sigi
 	if secondary == nil {
 		return fmt.Errorf("未知副词条哈希 0x%08X", update.SecondaryTraitHash)
 	}
-	if secondary.InternalID == sigil.PrimaryTraitID {
-		return fmt.Errorf("主词条与副词条重复: %s", cnTrait(secondary.DisplayName))
-	}
-	allowed, err := catalog.GetAllowedSecondaryTraits(sigil)
+	allowed, err := catalog.GetWritableSecondaryTraits(sigil)
 	if err != nil {
 		return err
 	}
@@ -166,14 +155,14 @@ func validateSigilMemorySecondary(catalog *Catalog, sigil *SigilDef, update Sigi
 		}
 	}
 	if !found {
-		return fmt.Errorf("副词条 %s 不能用于因子 %s", cnTrait(secondary.DisplayName), displaySigilName(sigil))
+		return fmt.Errorf("副词条 %s 没有可写入因子 %s 副槽的游戏记录", cnTrait(secondary.DisplayName), displaySigilName(sigil))
 	}
 	levels, err := catalog.RequireSecondaryTraitLevels(sigil, secondary)
 	if err != nil {
 		return err
 	}
 	if !sigilMemoryLevelAllowed(update.SecondaryTraitLevel, levels) {
-		return fmt.Errorf("副词条等级 %d 不在已验证范围内", update.SecondaryTraitLevel)
+		return fmt.Errorf("副词条等级必须在 1 到 %d 之间", math.MaxInt32)
 	}
 	return nil
 }

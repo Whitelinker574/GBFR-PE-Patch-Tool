@@ -2,7 +2,7 @@
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
 
-## v2.0.6 game 2.0.3 compatibility
+## v2.0.7 game 2.0.3 compatibility
 
 The 2.0.3 archive comparison covers 2,120 `system/table` files and 332 reviewed character/combat MessagePack configs. Only four localization bundles changed; every project-used gameplay table and all reviewed configs are byte-identical to the locked 2.0.2 baseline. Static catalogs, loadout computation, sharing, Logs, and process-independent offline workflows therefore retain their verified data inputs.
 
@@ -20,8 +20,8 @@ The stable build refuses new writes for cooldown tuning, shared three-character 
 | --- | --- |
 | Multiple save slots | Save discovery is shared by offline editors and displays each detected slot independently. |
 | Offline transaction safety | Backup, checksum repair, temporary output, atomic replacement and readback are implemented. |
-| Sigil catalogs | Offline save generation, live-memory editing, loadout construction/import and runtime loadout restore share the same strict 2.0.2 catalog. Known shells lock their table primary and accept only the audited secondary pool; duplicate, missing-required and incompatible traits fail closed in both UI and backend. Exact captured legacy/share hashes remain transportable only when their trait identities and levels pass the unified catalog safety gate. DLC entries remain searchable. |
-| Wrightstones | Offline save generation, live-memory editing and loadout import share the same trait catalog, duplicate rejection and skill-curve limits. Offline generation fixes slot one from the selected wrightstone type; live editing preserves the captured record's first trait because it does not rewrite the wrightstone type; loadout import verifies that the stored type and first trait agree. Tier index and the independent stored state/rank field remain labelled separately. |
+| Sigil catalogs | Offline save generation, live-memory editing, loadout construction/import and virtual-sigil source creation share the same 2.0.3 catalog and synthesis-trait pool. Known shells keep their encoded primary and real secondary-slot structure; catalogued non-natural combinations and levels above the effect curve are writable with a warning. Unknown hashes, missing required fields, absent secondary slots and values outside the stored int32 range still fail closed. |
+| Wrightstones | Offline save generation, live-memory editing and loadout import share the same trait catalog. Levels above the natural or effect-curve reference are writable with a warning; defaults remain natural values. Unknown hashes, empty required slots, duplicate traits and values outside the stored int32 range still fail closed. |
 | Summons | Offline creation/update, live editing and loadout editing share catalog options. Type replacement creates a fresh SlotID, migrates equipped references and survives disk reopen; unpacked fixed-template levels are included. Natural rules remain advisory. |
 | Loadout workspace | Weapons, twelve sigils, four active skills, mastery, permanent growth, Over Mastery and summons are editable. v3 single-loadout import creates twelve independent sigils, creates missing summons, and copies Master Level progress, permanent character enhancement, weapon progression, awakening/transcendence and the equipped wrightstone in one verified transaction. A missing matching weapon still blocks a partial write. |
 | Pre-DLC saves | Editors remain usable when mastery/summon records are absent and do not claim that writing a record unlocks the DLC system. |
