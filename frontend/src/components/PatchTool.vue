@@ -16,6 +16,7 @@ import SaveBackupDrawer from './SaveBackupDrawer.vue'
 import { language, translateText } from '../i18n'
 import { functionAssetManifest } from '../generated/functionAssetManifest.js'
 import { beginPerformanceMeasure } from '../performanceMonitor.js'
+import { translateRuntimeCompatibilityError } from '../runtimeCompatibilityErrors.js'
 
 const pageLoaders = Object.freeze({
   progression: () => import('./ProgressionEditor.vue'),
@@ -273,7 +274,7 @@ const toolNavigationModes = Object.freeze({
 
 const toolMeta = {
   home: {
-    group: 'home', title: '首页', eyebrow: '功能入口', status: 'DLC 2.0.2', tone: 'stable',
+    group: 'home', title: '首页', eyebrow: '功能入口', status: '游戏 2.0.3', tone: 'stable',
     description: '从目标出发选择功能，常用养成、实时工具和记录编辑都从这里进入。',
     usage: [], caution: '',
   },
@@ -460,8 +461,8 @@ const toolMeta = {
 		speaker: '夏洛特', note: '只开验证过的选项；没实测的继续锁住，F12 可以恢复。',
 	},
   compatibility: {
-    group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: 'DLC 2.0.2', tone: 'calibrate',
-    description: '确认当前工具版本、游戏 EXE 和各功能是否匹配 DLC 2.0.2；这里不修改游戏或存档。',
+    group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: '2.0.3 分层适配', tone: 'calibrate',
+    description: '查看游戏 2.0.3 的离线功能适配情况，以及仍锁定在 2.0.2 的实时功能；这里不修改游戏或存档。',
     usage: ['检查是否有新的工具版本', '确认已识别正确的游戏 EXE', '查看各功能的已适配、实验或未开放状态'],
     caution: '“已识别”只代表版本和文件匹配，不代表尚未完成的实机功能已经验证。',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
@@ -500,15 +501,15 @@ const navigation = computed(() => [
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
-  baselineVersion: 'DLC 2.0.2',
-    baselineSummary: '30 个实际工具页 + 1 个主页已接入。',
-  baselineBoundary: '关键运行时路径已完成 DLC 2.0.2 现场验证；其余功能按页面证据标注',
+  baselineVersion: '游戏 2.0.3（静态与离线）',
+    baselineSummary: '2,116 张核心表和 332 份角色/战斗配置逐字节一致。',
+  baselineBoundary: '静态目录、配装、分享与 Logs 数据已核对；2.0.3 游戏重启存档回读待验收，实时功能和 data.i 部署仍锁定 2.0.2',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
   featureHint: '只展示能由代码、测试与锁定游戏数据证明的状态。',
   resourceKicker: '资源适配',
   resourceTitle: '官方图标映射',
-  resourceHint: '命中率来自当前 2.0.2 图标目录；缺口保持显式，不用相似图片伪装。',
+  resourceHint: '图标目录在 2.0.3 核心表差分中未变；缺口保持显式，不用相似图片伪装。',
   scope: '范围',
   status: '状态',
   evidence: '证据与边界',
@@ -520,15 +521,15 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 } : {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
-  baselineVersion: 'DLC 2.0.2',
-    baselineSummary: '30 tool pages plus the home page are integrated.',
-  baselineBoundary: 'Critical runtime paths have DLC 2.0.2 field evidence; remaining features keep page-level evidence labels',
+  baselineVersion: 'Game 2.0.3 (static and offline)',
+    baselineSummary: '2,116 core tables and 332 character/combat configs are byte-identical.',
+  baselineBoundary: 'Static catalogs, loadouts, sharing, and Logs data are verified; game 2.0.3 save/restart readback is pending, while live features and data.i deployment remain locked to 2.0.2',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
   featureHint: 'Only states supported by code, tests, and locked game data are shown.',
   resourceKicker: 'Asset Compatibility',
   resourceTitle: 'Official icon mapping',
-  resourceHint: 'Coverage comes from the current 2.0.2 catalog; gaps stay explicit instead of using look-alike art.',
+  resourceHint: 'The icon catalogs are unchanged in the 2.0.3 core-table diff; gaps stay explicit instead of using look-alike art.',
   scope: 'Scope',
   status: 'Status',
   evidence: 'Evidence and boundary',
@@ -540,6 +541,10 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
+  { scope: '游戏 2.0.3 静态数据', status: '已核对', tone: 'ok', detail: '2,120 张表中仅 4 个本地化文本包变化；因子、祝福、召唤石、掉落、武器、伤害上限、成长与规则表逐字节不变' },
+  { scope: '静态与离线流程', status: '数据已核对', tone: 'ok', detail: '内置目录、配装编辑与优化、配装 JSON、短码、二维码、分享图和 Logs 使用未变化的数据；现有真实存档副本事务通过，2.0.3 游戏重启回读仍待验收' },
+  { scope: '游戏 2.0.3 实时功能', status: '安全锁定', tone: 'flow', detail: 'EXE 地址已迁移；共享连接入口会在持有连接前识别 2.0.3 并拒绝旧实时写入，不会沿用 2.0.2 固定地址' },
+  { scope: '天然掉落 data.i 部署', status: '2.0.3 暂停', tone: 'flow', detail: '目标表虽未变化，但新版归档生成、游戏加载与恢复尚未闭环；当前继续只接受精确匹配的 2.0.2 安装' },
   { scope: '存档修改页面', status: '8 / 8', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录、双存档对比复制' },
   { scope: '游戏内即时编辑', status: '5 / 5', tone: 'flow', detail: '因子、祝福石、召唤石、上限突破与当前会话资源；均需启动并连接游戏' },
   { scope: '配装采集与复刻', status: '2 / 2', tone: 'flow', detail: '队友配装检测按点击开启后持续后台运行；十二因子录制与复刻使用实时捕获' },
@@ -552,6 +557,10 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: 'DLC 2.0.2 已验证最终 HP 回读、单人队伍监测、防御 +5% 重复受击样本与自动完美格挡连招；未逐项覆盖功能仍保留原证据等级' },
 ] : [
+  { scope: 'Game 2.0.3 static data', status: 'Verified', tone: 'ok', detail: 'Only 4 localization bundles changed among 2,120 tables; sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and rule tables are byte-identical' },
+  { scope: 'Static and offline flows', status: 'Data verified', tone: 'ok', detail: 'Embedded catalogs, loadout editing and optimization, loadout JSON, short codes, QR import, share images, and Logs use unchanged data. Existing real-save-copy transactions pass; game 2.0.3 save/restart readback remains pending' },
+  { scope: 'Game 2.0.3 live features', status: 'Safely locked', tone: 'flow', detail: 'Executable addresses moved. The shared attach boundary identifies 2.0.3 before publishing a handle and refuses legacy live writes instead of reusing 2.0.2 RVAs' },
+  { scope: 'Natural-drop data.i deployment', status: 'Paused on 2.0.3', tone: 'flow', detail: 'Target tables are unchanged, but archive generation, game loading, and restoration are not field-closed; deployment still requires the exact verified 2.0.2 install' },
   { scope: 'Save editing pages', status: '8 / 8', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records, and two-save copying' },
   { scope: 'In-game live editing', status: '5 / 5', tone: 'flow', detail: 'Sigils, wrightstones, summons, overmastery, and current-session resources all require the running game' },
   { scope: 'Loadout capture and restore', status: '2 / 2', tone: 'flow', detail: 'Party detection starts only on click and then runs in the background; 12-sigil recording and restore use live capture' },
@@ -876,7 +885,7 @@ function openReleasePage() {
 let statusTimer = 0
 function showStatus(message, type) {
   window.clearTimeout(statusTimer)
-  saveStatus.value = translateText(String(message))
+  saveStatus.value = translateText(translateRuntimeCompatibilityError(message, language.value))
   statusType.value = type
   statusTimer = window.setTimeout(() => { saveStatus.value = '' }, 3600)
 }
@@ -889,8 +898,8 @@ function showStatus(message, type) {
       <div class="titlebar-brand">
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
-        <span class="build-chip">DLC 2.0.2</span>
-        <span class="build-chip release-build">v2.0.3</span>
+        <span class="build-chip">GAME 2.0.3</span>
+        <span class="build-chip release-build">v2.0.4</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button
@@ -976,7 +985,7 @@ function showStatus(message, type) {
           <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
         </div>
         <div class="sidebar-foot">
-          <div class="target-row"><span class="target-dot"></span><div><strong>当前游戏版本</strong><small>Relink DLC 2.0.2</small></div></div>
+          <div class="target-row"><span class="target-dot"></span><div><strong>{{ language === 'en' ? 'Current Compatibility' : '当前适配版本' }}</strong><small>{{ language === 'en' ? 'Relink 2.0.3 · live features remain locked to verified 2.0.2' : 'Relink 2.0.3 · 实时功能仍锁定已验证的 2.0.2' }}</small></div></div>
           <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool" target="_blank" rel="noreferrer">项目仓库 ↗</a>
         </div>
       </aside>

@@ -1,3 +1,5 @@
+import { translateRuntimeCompatibilityError } from './runtimeCompatibilityErrors.js'
+
 const zhFeatureNames = Object.freeze({
   'runtime-patch-001': '源氏秒蓄(长按左键)',
   'runtime-patch-002': '无限蓄力',
@@ -371,7 +373,7 @@ export function translateRuntimePatchGroupName(group, locale = 'zh') {
 }
 
 export function translateRuntimePatchText(value, locale = 'zh') {
-  let output = String(value ?? '')
+  let output = translateRuntimeCompatibilityError(value, locale)
   if (locale !== 'en') return output
   for (const [source, translated] of englishReplacements) output = output.split(source).join(translated)
   return output

@@ -156,6 +156,8 @@ export const uiTranslations = {
   '核对数量后保存；应用会自动备份并回读': 'Review the count, then save; the app backs up and verifies by read-back',
   '称号奖励是否领取不会在这里改变；需要撤销时，从存档保护恢复写入前备份。': 'Title reward claim state is not changed here. To undo a write, restore the pre-write backup from Save Protection.',
   '确认当前工具版本、游戏 EXE 和各功能是否匹配 DLC 2.0.2；这里不修改游戏或存档。': 'Confirm that the tool version, game EXE, and features match DLC 2.0.2. This page changes neither the game nor the save.',
+  '2.0.3 分层适配': '2.0.3 Tiered Support',
+  '查看游戏 2.0.3 的离线功能适配情况，以及仍锁定在 2.0.2 的实时功能；这里不修改游戏或存档。': 'Review offline support for game 2.0.3 and live features that remain locked to 2.0.2. This page changes neither the game nor the save.',
   '检查是否有新的工具版本': 'Check for a newer tool version',
   '确认已识别正确的游戏 EXE': 'Confirm that the correct game EXE is detected',
   '查看各功能的已适配、实验或未开放状态': 'Review whether each feature is supported, experimental, or unavailable',

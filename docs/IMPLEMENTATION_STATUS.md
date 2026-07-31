@@ -1,6 +1,12 @@
-# DLC 2.0.2 implementation status
+# Game 2.0.3 compatibility and implementation status
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
+
+## v2.0.4 game 2.0.3 compatibility
+
+The 2.0.3 archive comparison covers 2,120 `system/table` files and 332 reviewed character/combat MessagePack configs. Only four localization bundles changed; every project-used gameplay table and all reviewed configs are byte-identical to the locked 2.0.2 baseline. Static catalogs, loadout computation, sharing, Logs, and process-independent offline workflows therefore retain their verified data inputs.
+
+The 2.0.3 executable is a different binary and all inspected runtime addresses moved. The shared high-privilege attach boundary now hashes the executable before publishing the handle, module base, PID, or creation time. It gives a specific 2.0.3 compatibility message, closes the temporary handle, and leaves all runtime connection state empty. Runtime editors, process capture, patches, native companions, and natural-drop `data.i` deployment remain restricted to the exact 2.0.2 identities until each 2.0.3 path has new address, original-byte, recovery, and field-readback evidence.
 
 ## v2.0.3 stable-promotion controls
 

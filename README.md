@@ -4,13 +4,21 @@
 
 <h1 align="center">GBFR PE Patch Tool</h1>
 
-<p align="center">面向《Granblue Fantasy: Relink》DLC 2.0.2 的 Windows 存档、配装、分享与单机运行时工具。</p>
+<p align="center">面向《Granblue Fantasy: Relink》2.0.3 的 Windows 存档、配装与分享工具，并保留经过版本守卫的 2.0.2 单机运行时能力。</p>
 
 <p align="center">
   <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>下载最新正式版</strong></a> ·
   <a href="https://share.whitelinker.top"><strong>打开在线配装图鉴</strong></a> ·
   <a href="README_EN.md"><strong>English</strong></a>
 </p>
+
+## 游戏 2.0.3 适配说明
+
+v2.0.4 已重新解包并逐文件核对游戏 2.0.3：2,120 张核心表中只有 4 个本地化文本包变化，项目使用的因子、祝福、召唤石、掉落、武器、伤害上限、角色成长和无尽规则表均与 2.0.2 逐字节一致；332 份角色与战斗配置也全部一致。
+
+因此，内置目录、配装计算、分享码/二维码/分享图和 Logs 的数据依据可以继续使用；现有真实存档副本的解析、原子写入与回读也通过了回归。由于本机存档尚未在游戏 2.0.3 中重新保存，这一版仍把“2.0.3 游戏保存并重启后的回读”列为现场验收项。游戏 EXE 的地址已经迁移，所以实时编辑、队友进程采集、运行时补丁、镜头/音频 Hook 和 `data.i` 天然掉落部署在 2.0.3 上暂不开放。应用会在共享连接入口识别新版 EXE 并拒绝旧地址写入，不会先连接后碰运气。
+
+完整证据和仍待实机验收的项目见 [游戏 2.0.3 一手资料核查](docs/GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md)。
 
 ## 先说清楚它能做什么
 
@@ -109,7 +117,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 4. 原子替换目标文件；
 5. 重新打开并逐字段回读。
 
-实时功能统一绑定完整的 `{PID, creation time}`，启用前校验游戏 2.0.2 EXE、签名和原字节，写后回读；停用、断开和退出时恢复。F12 可以集中停止后台采集、移动和内置运行时。
+实时功能统一绑定完整的 `{PID, creation time}`，启用前校验游戏 2.0.2 EXE、签名和原字节，写后回读；停用、断开和退出时恢复。游戏 2.0.3 会在共享连接入口被明确识别并拒绝旧运行时写入。F12 可以集中停止后台采集、移动和内置运行时。
 
 请仍然手工保留重要存档副本。游戏更新后，在仓库明确确认兼容之前不要继续使用实时写入。
 
@@ -130,7 +138,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 
 ## 性能与兼容
 
-- Windows 10/11 x64，游戏基线为 DLC 2.0.2；
+- Windows 10/11 x64；游戏 2.0.3 的静态目录、配装、分享与 Logs 数据已核对，现有真实存档副本事务通过，但 2.0.3 游戏保存/重启回读仍待验收；实时功能锁定已验证的 2.0.2；
 - 最小窗口 960×640，覆盖常见宽屏和 100%/125%/150% 缩放布局；
 - 初始 JS/CSS 已拆分为按页加载，配装求解在可取消的 Web Worker 中运行；
 - 存档差异单份最多 64 MiB；Logs 文件、记录和解压数据都有明确上限；
@@ -165,7 +173,8 @@ CI 状态见 [GitHub Actions](https://github.com/Whitelinker574/GBFR-PE-Patch-To
 
 ## 资料与声明
 
-- [v2.0.3 完整更新说明](docs/RELEASE_NOTES_v2.0.3.md)
+- [v2.0.4 完整更新说明](docs/RELEASE_NOTES_v2.0.4.md)
+- [v2.0.3 历史更新说明](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 实现状态](docs/IMPLEMENTATION_STATUS.md)
 - [公式与证据边界](docs/FORMULAS_2.0.2.md)
 - [第三方组件说明](THIRD_PARTY_NOTICES.md)

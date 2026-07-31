@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.3"
+	appVersion  = "v2.0.4"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -863,31 +863,16 @@ func (a *App) charaAttachLocked() (CharaProcessInfo, error) {
 		}
 	}
 
-	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
+	verified, err := openVerifiedLegacyRuntimeProcess(pid)
 	if err != nil {
-		return CharaProcessInfo{}, fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+		return CharaProcessInfo{}, err
 	}
 
-	modBase, err := getModuleBase(h)
-	if err != nil {
-		windows.CloseHandle(h)
-		return CharaProcessInfo{}, fmt.Errorf("无法获取模块基址 (ptrSize=%d): %v", unsafe.Sizeof(uintptr(0)), err)
-	}
-	created, err := processCreationTime(h)
-	if err != nil {
-		windows.CloseHandle(h)
-		return CharaProcessInfo{}, fmt.Errorf("无法读取游戏进程创建时间: %v", err)
-	}
-
-	a.hProcess = h
-	a.moduleBase = modBase
-	a.charaPID = pid
-	a.charaCreated = created
-	a.clearLiveMemoryPoisonForNewProcess(a.currentProcessInstance())
+	a.publishVerifiedGameProcess(verified)
 
 	return CharaProcessInfo{
 		PID:        pid,
-		ModuleBase: uint64(modBase),
+		ModuleBase: uint64(verified.moduleBase),
 		Connected:  true,
 	}, nil
 }
@@ -2572,25 +2557,11 @@ func (a *App) ensureGameProcessLocked() error {
 			return fmt.Errorf("cannot safely replace the current game-process connection: %w", err)
 		}
 	}
-	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
+	verified, err := openVerifiedLegacyRuntimeProcess(pid)
 	if err != nil {
-		return fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+		return err
 	}
-	modBase, err := getModuleBase(h)
-	if err != nil {
-		windows.CloseHandle(h)
-		return fmt.Errorf("无法获取模块基址: %v", err)
-	}
-	created, err := processCreationTime(h)
-	if err != nil {
-		windows.CloseHandle(h)
-		return fmt.Errorf("无法读取游戏进程创建时间: %v", err)
-	}
-	a.hProcess = h
-	a.moduleBase = modBase
-	a.charaPID = pid
-	a.charaCreated = created
-	a.clearLiveMemoryPoisonForNewProcess(a.currentProcessInstance())
+	a.publishVerifiedGameProcess(verified)
 	return nil
 }
 
@@ -2767,6 +2738,51 @@ func (a *App) grantCharaOwner(info CharaProcessInfo) CharaProcessInfo {
 type processInstanceID struct {
 	PID     uint32
 	Created uint64
+}
+
+type verifiedGameProcess struct {
+	handle     windows.Handle
+	moduleBase uintptr
+	instance   processInstanceID
+}
+
+func openVerifiedLegacyRuntimeProcess(pid uint32) (verified verifiedGameProcess, err error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
+	if err != nil {
+		return verifiedGameProcess{}, fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+	}
+	defer func() {
+		if err != nil {
+			windows.CloseHandle(handle)
+		}
+	}()
+
+	if err = verifyLegacyRuntimeExecutableHandle(handle, "实时功能"); err != nil {
+		return verifiedGameProcess{}, err
+	}
+	moduleBase, err := getModuleBase(handle)
+	if err != nil {
+		return verifiedGameProcess{}, fmt.Errorf("无法获取模块基址 (ptrSize=%d): %v", unsafe.Sizeof(uintptr(0)), err)
+	}
+	created, err := processCreationTime(handle)
+	if err != nil {
+		return verifiedGameProcess{}, fmt.Errorf("无法读取游戏进程创建时间: %v", err)
+	}
+	return verifiedGameProcess{
+		handle:     handle,
+		moduleBase: moduleBase,
+		instance:   processInstanceID{PID: pid, Created: created},
+	}, nil
+}
+
+// publishVerifiedGameProcess is called while procMu is held. The handle and
+// identity become visible together only after the executable gate succeeds.
+func (a *App) publishVerifiedGameProcess(verified verifiedGameProcess) {
+	a.hProcess = verified.handle
+	a.moduleBase = verified.moduleBase
+	a.charaPID = verified.instance.PID
+	a.charaCreated = verified.instance.Created
+	a.clearLiveMemoryPoisonForNewProcess(verified.instance)
 }
 
 func sameProcessInstance(left, right processInstanceID) bool {

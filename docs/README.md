@@ -6,6 +6,7 @@
 | --- | --- |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 运行结构、代码域、写入边界与测试布局 |
 | [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) | 当前功能的已实现、现场验证和仍未闭环清单 |
+| [`GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md`](GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md) | 游戏 2.0.3 官方安装、解包表、角色配置与 EXE 兼容性核查 |
 | [`FORMULAS_2.0.2.md`](FORMULAS_2.0.2.md) | 配装数值来源、证据等级与已知边界 |
 | [`COMMUNITY_SPECIAL_FEATURES_EXPERIMENT_PLAN.md`](COMMUNITY_SPECIAL_FEATURES_EXPERIMENT_PLAN.md) | 实验分支的社区功能重做、页面素材、风险隔离和分阶段验收计划 |
 | [`角色公式采样操作说明.md`](角色公式采样操作说明.md) | 严格只读运行时公式采样操作 |

@@ -2,14 +2,10 @@ package backend
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"os"
-	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -236,45 +232,12 @@ func reconcileConfluxTimerLease(memory confluxTimerMemory, moduleBase uintptr, l
 	}
 }
 
-func queryProcessImagePath(handle windows.Handle) (string, error) {
-	buffer := make([]uint16, 32768)
-	size := uint32(len(buffer))
-	if err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &size); err != nil {
-		return "", err
-	}
-	if size == 0 || int(size) > len(buffer) {
-		return "", fmt.Errorf("游戏可执行文件路径为空")
-	}
-	return windows.UTF16ToString(buffer[:size]), nil
-}
-
-func hashFileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%X", hasher.Sum(nil)), nil
-}
-
 func (a *App) verifyRuntimePatchExecutableLocked(process processInstanceID, featureName string) error {
 	if sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
 		return nil
 	}
-	path, err := queryProcessImagePath(a.hProcess)
-	if err != nil {
-		return fmt.Errorf("读取游戏可执行文件路径失败: %w", err)
-	}
-	digest, err := hashFileSHA256(path)
-	if err != nil {
-		return fmt.Errorf("校验游戏可执行文件失败: %w", err)
-	}
-	if !strings.EqualFold(digest, runtimePatchCatalogGameSHA256) {
-		return fmt.Errorf("%s仅支持已验证的游戏 2.0.2 可执行文件", featureName)
+	if err := verifyLegacyRuntimeExecutableHandle(a.hProcess, featureName); err != nil {
+		return err
 	}
 	a.runtimePatchVerifiedProcess = process
 	return nil

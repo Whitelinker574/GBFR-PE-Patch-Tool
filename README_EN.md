@@ -4,13 +4,21 @@
 
 <h1 align="center">GBFR PE Patch Tool</h1>
 
-<p align="center">A Windows save, loadout, sharing, and offline runtime utility for Granblue Fantasy: Relink DLC 2.0.2.</p>
+<p align="center">A Windows save, loadout, and sharing utility for Granblue Fantasy: Relink 2.0.3, with legacy live features guarded to the verified 2.0.2 executable.</p>
 
 <p align="center">
   <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download the latest stable release</strong></a> ·
   <a href="https://share.whitelinker.top/?lang=en"><strong>Open the community loadout catalog</strong></a> ·
   <a href="README.md"><strong>简体中文</strong></a>
 </p>
+
+## Game 2.0.3 compatibility
+
+v2.0.4 re-extracted and compared the game 2.0.3 data. Only four localization bundles changed among 2,120 tables. Every project-owned sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and Endless rule table is byte-identical to 2.0.2, as are all 332 reviewed character and combat configs.
+
+Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Executable addresses moved, so live editors, party process capture, runtime patches, camera/audio hooks, and natural-drop `data.i` deployment are not enabled on game 2.0.3 yet. The shared attach boundary identifies the new executable and refuses legacy writes before publishing a process connection.
+
+See [the primary game 2.0.3 research report](docs/GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md) for evidence and remaining field checks.
 
 ## What the application is for
 
@@ -92,7 +100,7 @@ Regular items currently target only the verified Endless Mode Forger's Bounty pa
 
 Every offline save transaction creates a recoverable backup, edits a temporary file, repairs the checksum, atomically replaces the target, reopens it, and reads the changed fields back.
 
-Live features bind the complete `{PID, creation time}` identity. Before writing, they verify the supported 2.0.2 executable, signature, and original bytes; after writing, they read the target back. Stop, disconnect, and application exit restore owned state. F12 provides a central stop and recovery action.
+Live features bind the complete `{PID, creation time}` identity. Before writing, they verify the supported 2.0.2 executable, signature, and original bytes; after writing, they read the target back. Game 2.0.3 is identified and rejected at the shared attach boundary before any legacy runtime write. Stop, disconnect, and application exit restore owned state. F12 provides a central stop and recovery action.
 
 Keep your own copy of important saves. After a game update, do not use live writes until the repository explicitly confirms compatibility.
 
@@ -112,7 +120,7 @@ Cooldown tuning, shared charge tuning, candidate party-wide monster damage, cand
 
 ## Performance and compatibility
 
-- Windows 10/11 x64; game baseline DLC 2.0.2.
+- Windows 10/11 x64. Game 2.0.3 static catalogs, loadouts, sharing, and Logs data are verified, and existing real-save-copy transactions pass; a game 2.0.3 save/restart readback is still pending. Live features remain guarded to verified 2.0.2.
 - Minimum 960×640 window, with common widescreen layouts and 100%/125%/150% scaling covered.
 - Initial code is split by page; loadout solving runs in a cancellable Web Worker.
 - Each save-diff input is capped at 64 MiB. Logs files, records, and decompression all have explicit bounds.
@@ -147,7 +155,8 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
-- [Complete v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
+- [Complete v2.0.4 release notes](docs/RELEASE_NOTES_v2.0.4.md)
+- [Historical v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Formula and evidence boundaries](docs/FORMULAS_2.0.2.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

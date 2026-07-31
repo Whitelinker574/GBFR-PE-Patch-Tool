@@ -2,11 +2,28 @@ package backend
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
 )
+
+func functionBodyInFile(t *testing.T, path, name string) *ast.BlockStmt {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Recv == nil && function.Name.Name == name {
+			return function.Body
+		}
+	}
+	return nil
+}
 
 func TestCanReuseGameProcessRequiresSameLiveHandle(t *testing.T) {
 	tests := []struct {
@@ -99,6 +116,18 @@ func firstIdentCallPosition(body *ast.BlockStmt, name string) token.Pos {
 }
 
 func TestProcessPoisonIsNotClearedBeforeSuccessfulOpen(t *testing.T) {
+	openHelper := functionBodyInFile(t, "app.go", "openVerifiedLegacyRuntimeProcess")
+	if openHelper == nil ||
+		firstSelectorCallPosition(openHelper, "windows", "OpenProcess") == token.NoPos ||
+		firstIdentCallPosition(openHelper, "verifyLegacyRuntimeExecutableHandle") == token.NoPos ||
+		firstIdentCallPosition(openHelper, "getModuleBase") == token.NoPos ||
+		firstIdentCallPosition(openHelper, "processCreationTime") == token.NoPos {
+		t.Fatal("shared process helper must open, verify and fully identify the replacement process")
+	}
+	publishHelper := appMethodBodyInFile(t, "app.go", "publishVerifiedGameProcess")
+	if publishHelper == nil || firstSelectorCallPosition(publishHelper, "a", "clearLiveMemoryPoisonForNewProcess") == token.NoPos {
+		t.Fatal("verified process publication must clear poison only after accepting a complete identity")
+	}
 	checks := []struct {
 		name   string
 		method string
@@ -112,15 +141,10 @@ func TestProcessPoisonIsNotClearedBeforeSuccessfulOpen(t *testing.T) {
 			if body == nil {
 				t.Fatalf("%s implementation %s not found", check.name, check.method)
 			}
-			clearPosition := firstSelectorCallPosition(body, "a", "clearLiveMemoryPoisonForNewProcess")
-			openPosition := firstSelectorCallPosition(body, "windows", "OpenProcess")
-			modulePosition := firstIdentCallPosition(body, "getModuleBase")
-			creationPosition := firstIdentCallPosition(body, "processCreationTime")
-			if clearPosition == token.NoPos || openPosition == token.NoPos || modulePosition == token.NoPos || creationPosition == token.NoPos {
-				t.Fatalf("%s must open and identify a process before considering clearing poison", check.name)
-			}
-			if clearPosition < openPosition || clearPosition < modulePosition || clearPosition < creationPosition {
-				t.Fatalf("%s clears poison before the replacement handle, module and creation time are all known", check.name)
+			openPosition := firstIdentCallPosition(body, "openVerifiedLegacyRuntimeProcess")
+			publishPosition := firstSelectorCallPosition(body, "a", "publishVerifiedGameProcess")
+			if openPosition == token.NoPos || publishPosition == token.NoPos || publishPosition < openPosition {
+				t.Fatalf("%s must fully open and identify a process before publishing and clearing poison", check.name)
 			}
 		})
 	}
@@ -167,5 +191,50 @@ func TestGenericRuntimeAttachDoesNotScanLegacyCharacterList(t *testing.T) {
 	}
 	if firstSelectorCallPosition(body, "a", "charaManager") != token.NoPos {
 		t.Fatal("generic runtime attach must not scan the legacy character list before returning")
+	}
+}
+
+func TestLegacyRuntimeExecutableErrorExplainsGame203Boundary(t *testing.T) {
+	err := legacyRuntimeExecutableError("实时功能", game203ExecutableSHA256)
+	if err == nil {
+		t.Fatal("game 2.0.3 must remain fail closed for legacy runtime access")
+	}
+	message := err.Error()
+	for _, part := range []string{"2.0.3", "静态目录", "离线存档", "重启回读仍待验收", "不会连接或写入"} {
+		if !strings.Contains(message, part) {
+			t.Fatalf("2.0.3 boundary message %q does not contain %q", message, part)
+		}
+	}
+}
+
+func TestLegacyRuntimeExecutableErrorRejectsUnknownBuild(t *testing.T) {
+	message := legacyRuntimeExecutableError("实时功能", strings.Repeat("0", 64)).Error()
+	if !strings.Contains(message, "仅支持已验证的游戏 2.0.2") ||
+		!strings.Contains(message, "不会连接或写入") {
+		t.Fatalf("unknown executable message does not fail closed clearly: %q", message)
+	}
+}
+
+func TestSharedRuntimeAttachVerifiesExecutableBeforePublishingConnection(t *testing.T) {
+	helper := functionBodyInFile(t, "app.go", "openVerifiedLegacyRuntimeProcess")
+	if helper == nil {
+		t.Fatal("openVerifiedLegacyRuntimeProcess not found")
+	}
+	if firstIdentCallPosition(helper, "verifyLegacyRuntimeExecutableHandle") == token.NoPos {
+		t.Fatal("shared runtime attach helper does not verify the executable")
+	}
+	for _, method := range []string{"charaAttachLocked", "ensureGameProcessLocked"} {
+		body := appMethodBodyInFile(t, "app.go", method)
+		if body == nil {
+			t.Fatalf("%s not found", method)
+		}
+		openPosition := firstIdentCallPosition(body, "openVerifiedLegacyRuntimeProcess")
+		if openPosition == token.NoPos {
+			t.Fatalf("%s bypasses the verified shared attach helper", method)
+		}
+		publishPosition := firstSelectorCallPosition(body, "a", "publishVerifiedGameProcess")
+		if publishPosition == token.NoPos || openPosition > publishPosition {
+			t.Fatalf("%s publishes the connection before verified open succeeds", method)
+		}
 	}
 }
