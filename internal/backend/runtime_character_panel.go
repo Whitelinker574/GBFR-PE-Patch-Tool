@@ -77,6 +77,12 @@ const (
 	runtimeCharacterPanelVerification = "游戏真实回读"
 )
 
+type runtimeCharacterPanelRuntimeLayout struct {
+	Version    string
+	ManagerRVA uintptr
+	Guards     []runtimeCharacterPanelVersionGuard
+}
+
 type runtimeWeaponTrait struct {
 	Hash  uint32
 	Level int
@@ -288,7 +294,7 @@ func readStableRuntimeWeaponWrightstoneSnapshot(readSnapshot func() (runtimeWeap
 }
 
 func loadoutRuntimeWeaponObservation(charaHash, expectedWeaponSlotID uint32) (*LoadoutWeaponWrightstone, []runtimeWeaponTrait, error) {
-	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -429,7 +435,7 @@ func readStableRuntimeCharacterGrowthSnapshots(readSnapshot func() (runtimeChara
 }
 
 func loadoutRuntimeCharacterGrowth(charaHash uint32) (runtimeCharacterGrowthSnapshot, error) {
-	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 	if err != nil {
 		return runtimeCharacterGrowthSnapshot{}, err
 	}
@@ -479,6 +485,17 @@ var runtimeCharacterPanelVersionGuards = []runtimeCharacterPanelVersionGuard{
 	{RVA: 0x2DC081, Bytes: []byte{0x41, 0x8B, 0x55, 0x00, 0x45, 0x8B, 0x84, 0x24, 0x58, 0x0A, 0x00, 0x00, 0x41, 0x21, 0xD0, 0x49, 0x8B, 0x84, 0x24, 0x30, 0x0A, 0x00, 0x00, 0x4D, 0x8B, 0x8C, 0x24, 0x40, 0x0A, 0x00, 0x00, 0x4C, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x04, 0x49, 0x8B, 0x4C, 0x09, 0x08}},
 	{RVA: 0x2DC11E, Bytes: []byte{0xC6, 0x44, 0x24, 0x38, 0x00, 0x4C, 0x89, 0xE1, 0x4C, 0x89, 0xE2, 0xE8, 0x52, 0x9E, 0x74, 0x00, 0x41, 0xC6, 0x84, 0x24, 0xBC, 0x5E, 0x00, 0x00, 0x01}},
 	{RVA: 0xA296F3, Bytes: []byte{0xC5, 0xFA, 0x7E, 0x4B, 0x04, 0xC5, 0xE8, 0x57, 0xD2, 0xC4, 0xE2, 0x71, 0x3D, 0xCA, 0xC4, 0xE2, 0x71, 0x3B, 0x0D, 0xA6, 0xDB, 0xA7, 0x04, 0xC5, 0xF9, 0xD6, 0x4B, 0x04, 0xC5, 0xFB, 0x10, 0x5B, 0x10, 0xC5, 0xE8, 0x5F, 0xD3, 0xC5, 0xFB, 0x12, 0x1D, 0xB0, 0xDB, 0xA7, 0x04, 0xC5, 0xE0, 0x5D, 0xD2, 0xC5, 0xF8, 0x13, 0x53, 0x10}},
+}
+
+var runtimeCharacterPanel203VersionGuards = []runtimeCharacterPanelVersionGuard{
+	{RVA: 0x2D5351, Bytes: []byte{0x41, 0x8B, 0x55, 0x00, 0x45, 0x8B, 0x84, 0x24, 0x58, 0x0A, 0x00, 0x00, 0x41, 0x21, 0xD0, 0x49, 0x8B, 0x84, 0x24, 0x30, 0x0A, 0x00, 0x00, 0x4D, 0x8B, 0x8C, 0x24, 0x40, 0x0A, 0x00, 0x00, 0x4C, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x04, 0x49, 0x8B, 0x4C, 0x09, 0x08}},
+	{RVA: 0x2D53EE, Bytes: []byte{0xC6, 0x44, 0x24, 0x38, 0x00, 0x4C, 0x89, 0xE1, 0x4C, 0x89, 0xE2, 0xE8, 0xE2, 0xA2, 0x74, 0x00, 0x41, 0xC6, 0x84, 0x24, 0xBC, 0x5E, 0x00, 0x00, 0x01}},
+	{RVA: 0xA22E53, Bytes: []byte{0xC5, 0xFA, 0x7E, 0x4B, 0x04, 0xC5, 0xE8, 0x57, 0xD2, 0xC4, 0xE2, 0x71, 0x3D, 0xCA, 0xC4, 0xE2, 0x71, 0x3B, 0x0D, 0xE6, 0x03, 0xA8, 0x04, 0xC5, 0xF9, 0xD6, 0x4B, 0x04, 0xC5, 0xFB, 0x10, 0x5B, 0x10, 0xC5, 0xE8, 0x5F, 0xD3, 0xC5, 0xFB, 0x12, 0x1D, 0xF0, 0x03, 0xA8, 0x04, 0xC5, 0xE0, 0x5D, 0xD2, 0xC5, 0xF8, 0x13, 0x53, 0x10}},
+}
+
+var runtimeCharacterPanelRuntimeLayouts = []runtimeCharacterPanelRuntimeLayout{
+	{Version: "2.0.2", ManagerRVA: runtimeCharacterPanelManagerRVA, Guards: runtimeCharacterPanelVersionGuards},
+	{Version: "2.0.3", ManagerRVA: 0x7C21940, Guards: runtimeCharacterPanel203VersionGuards},
 }
 
 // RuntimeCharacterPanelStats contains values produced by the game's own 2.0.2
@@ -551,7 +568,7 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 	if err != nil || targetHash == 0 {
 		return nil, fmt.Errorf("角色 hash %q 无效", charaHex)
 	}
-	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 	if err != nil {
 		return nil, err
 	}
@@ -643,6 +660,10 @@ func readRuntimeCharacterPanel(memory runtimeCharacterPanelMemory, moduleBase ui
 	} else {
 		stats.IdentitySource = "candidate_object_hash"
 	}
+	if process, ok := memory.(*readOnlyGameProcess); ok && process.version != "" {
+		stats.Source = "game_runtime_" + process.version
+		stats.GameVersion = process.version
+	}
 	return stats, nil
 }
 
@@ -706,7 +727,11 @@ func enumerateRuntimeCharacterPanelStatuses(memory runtimeCharacterPanelMemory, 
 	if err := verifyRuntimeCharacterPanelVersion(memory, moduleBase); err != nil {
 		return runtimeCharacterPanelEnumeration{}, err
 	}
-	managerAddress, ok := checkedRuntimePanelAddress(moduleBase, runtimeCharacterPanelManagerRVA)
+	managerRVA := runtimeCharacterPanelManagerRVA
+	if process, ok := memory.(*readOnlyGameProcess); ok && process.managerRVA != 0 {
+		managerRVA = process.managerRVA
+	}
+	managerAddress, ok := checkedRuntimePanelAddress(moduleBase, managerRVA)
 	if !ok {
 		return runtimeCharacterPanelEnumeration{}, fmt.Errorf("角色状态 manager 地址溢出")
 	}
@@ -829,17 +854,25 @@ func enumerateRuntimeCharacterPanelStatuses(memory runtimeCharacterPanelMemory, 
 }
 
 func verifyRuntimeCharacterPanelVersion(memory runtimeCharacterPanelMemory, moduleBase uintptr) error {
-	for _, guard := range runtimeCharacterPanelVersionGuards {
+	guards := runtimeCharacterPanelVersionGuards
+	version := "2.0.2"
+	if process, ok := memory.(*readOnlyGameProcess); ok && len(process.guards) > 0 {
+		guards = process.guards
+		if process.version != "" {
+			version = process.version
+		}
+	}
+	for _, guard := range guards {
 		address, ok := checkedRuntimePanelAddress(moduleBase, guard.RVA)
 		if !ok {
-			return fmt.Errorf("2.0.2 版本守卫地址溢出: RVA 0x%X", guard.RVA)
+			return fmt.Errorf("%s 版本守卫地址溢出: RVA 0x%X", version, guard.RVA)
 		}
 		actual := make([]byte, len(guard.Bytes))
 		if err := memory.ReadAt(address, actual); err != nil {
-			return fmt.Errorf("读取 2.0.2 版本守卫 RVA 0x%X 失败: %w", guard.RVA, err)
+			return fmt.Errorf("读取 %s 版本守卫 RVA 0x%X 失败: %w", version, guard.RVA, err)
 		}
 		if !bytes.Equal(actual, guard.Bytes) {
-			return fmt.Errorf("2.0.2 版本守卫不匹配（RVA 0x%X），已拒绝按旧布局读取", guard.RVA)
+			return fmt.Errorf("%s 版本守卫不匹配（RVA 0x%X），已拒绝按过时布局读取", version, guard.RVA)
 		}
 	}
 	return nil

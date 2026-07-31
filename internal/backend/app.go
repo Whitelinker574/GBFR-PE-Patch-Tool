@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.4"
+	appVersion  = "v2.0.5"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -131,6 +131,7 @@ type App struct {
 	confluxTimerLease           *confluxTimerLease
 	runtimeSpatialGravityLease  *runtimePatchPatchLease
 	runtimePatchVerifiedProcess processInstanceID
+	runtimePatchVerifiedDigest  string
 	// The selected-item monitor uses two independent read-only address-capture
 	// hooks. Keep exact recovery evidence until both entry restoration and
 	// tool-owned cave-pointer clearing are proven.
@@ -1310,6 +1311,7 @@ func (a *App) charaDetachLocked() error {
 	a.charaCreated = 0
 	a.confluxTimerLease = nil
 	a.runtimePatchVerifiedProcess = processInstanceID{}
+	a.runtimePatchVerifiedDigest = ""
 	a.countdownAddr = 0
 	a.faceAccessoryAddr = 0
 	a.overLimitHookAddr = 0

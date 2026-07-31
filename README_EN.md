@@ -14,9 +14,9 @@
 
 ## Game 2.0.3 compatibility
 
-v2.0.4 re-extracted and compared the game 2.0.3 data. Only four localization bundles changed among 2,120 tables. Every project-owned sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and Endless rule table is byte-identical to 2.0.2, as are all 332 reviewed character and combat configs.
+v2.0.5 carries forward the v2.0.4 re-extraction and comparison of game 2.0.3. Only four localization bundles changed among 2,120 tables. Every project-owned sigil, wrightstone, summon, drop, weapon, damage-cap, progression, and Endless rule table is byte-identical to 2.0.2, as are all 332 reviewed character and combat configs.
 
-Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Executable addresses moved, so live editors, party process capture, runtime patches, camera/audio hooks, and natural-drop `data.i` deployment are not enabled on game 2.0.3 yet. The shared attach boundary identifies the new executable and refuses legacy writes before publishing a process connection.
+Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
 
 See [the primary game 2.0.3 research report](docs/GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md) for evidence and remaining field checks.
 
@@ -29,7 +29,7 @@ v2.0.3 organizes the application around five normal user workflows:
 | Saves & Loadouts | Edit characters, weapons, sigils, wrightstones, summons, and loadouts; compare two saves | Offline writes with backup, atomic replacement, reopen, and readback |
 | Live Editors | Edit the currently selected sigil, wrightstone, summon, or Over Mastery value | Requires the game; every write is bound to the current process and captured object |
 | Loadout Capture & Restore | Persistently capture party loadouts, import Logs JSON/databases, and browse battle archives | Capture is off by default and runs continuously only after the user enables it |
-| Offline Runtime Tools | Display helpers, room ID, party leader, position, audio, camera, and combat rules | Intended for offline/host use; candidates without field evidence remain disabled |
+| Offline Runtime Tools | Display helpers, room ID, party leader, position, audio, camera, and combat rules | Intended for offline/host use; candidates without field evidence retain an experimental or restoration boundary |
 | Game Files, Diagnostics & Settings | Natural-drop rules, read-only sampling, compatibility diagnostics, language, and settings | `data.i` deployment creates a backup and restore path; diagnostics do not write |
 
 The Offline, Live, Read-only, Experimental, and Unavailable labels are functional promises. They describe where data is written, whether a game process is required, and how far the evidence currently reaches.
@@ -155,7 +155,8 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
-- [Complete v2.0.4 release notes](docs/RELEASE_NOTES_v2.0.4.md)
+- [Complete v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)
+- [v2.0.4 historical release notes](docs/RELEASE_NOTES_v2.0.4.md)
 - [Historical v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
 - [DLC 2.0.2 implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Formula and evidence boundaries](docs/FORMULAS_2.0.2.md)

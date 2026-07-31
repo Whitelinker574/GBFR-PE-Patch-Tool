@@ -394,7 +394,18 @@ func readRuntimePatchPartyExpansionLoadout(memory runtimePatchPartyMemory, modul
 }
 
 func readRuntimePatchPartySkillboard(memory runtimePatchPartyMemory, moduleBase, base uintptr, ownerCode string, characterHash uint32) ([]LoadoutMasteryNode, []byte, error) {
-	managerSlot, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyCharaPowerRVA)
+	charaPowerRVA := runtimePatchPartyCharaPowerRVA
+	if moduleBase != 0 {
+		switch memory.(type) {
+		case remoteRuntimePatchPartyMemory, *readOnlyGameProcess:
+			if layout, layoutErr := detectRuntimeGameLayout(memory, moduleBase); layoutErr == nil {
+				charaPowerRVA = layout.PartyCharaPowerRVA
+			} else {
+				return nil, nil, fmt.Errorf("detect runtime layout for CharaPower manager: %w", layoutErr)
+			}
+		}
+	}
+	managerSlot, ok := checkedRuntimePatchMonitorAddress(moduleBase, charaPowerRVA)
 	if !ok {
 		return nil, nil, fmt.Errorf("CharaPower manager address overflow")
 	}

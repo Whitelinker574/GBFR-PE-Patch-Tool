@@ -33,6 +33,66 @@ type readOnlyGameProcess struct {
 	created    uint64
 	moduleBase uintptr
 	guards     []runtimeCharacterPanelVersionGuard
+	version    string
+	managerRVA uintptr
+}
+
+func openReadOnlyGameProcessForLayouts(backend readOnlyProcessBackend, name string, layouts []runtimeCharacterPanelRuntimeLayout) (*readOnlyGameProcess, error) {
+	if backend == nil {
+		return nil, fmt.Errorf("read-only process backend is nil")
+	}
+	if len(layouts) == 0 {
+		return nil, fmt.Errorf("read-only process runtime layouts are empty")
+	}
+	pid, err := backend.FindProcess(name)
+	if err != nil || pid == 0 {
+		return nil, fmt.Errorf("find game process: %w", normalizeRuntimePanelReadError(err))
+	}
+	handle, err := backend.OpenProcess(readonlyGameProcessAccess, pid)
+	if err != nil {
+		return nil, fmt.Errorf("open game process read-only: %w", err)
+	}
+	if handle == nil {
+		return nil, fmt.Errorf("open game process read-only returned nil handle")
+	}
+	closeOnFailure := true
+	defer func() {
+		if closeOnFailure {
+			_ = handle.Close()
+		}
+	}()
+	if err := handle.VerifyExecutable("实时只读采集"); err != nil {
+		return nil, err
+	}
+	moduleBase, err := handle.ModuleBase()
+	if err != nil || moduleBase == 0 {
+		return nil, fmt.Errorf("read game module base: %w", normalizeRuntimePanelReadError(err))
+	}
+	created, err := handle.CreationTime()
+	if err != nil || created == 0 {
+		return nil, fmt.Errorf("read game process identity: %w", normalizeRuntimePanelReadError(err))
+	}
+	if !handle.Alive() {
+		return nil, fmt.Errorf("game process exited during read-only attach")
+	}
+	var selected *runtimeCharacterPanelRuntimeLayout
+	for index := range layouts {
+		if len(layouts[index].Guards) == 0 || layouts[index].ManagerRVA == 0 {
+			continue
+		}
+		if err := verifyReadOnlyGameProcessGuards(handle, moduleBase, layouts[index].Guards); err == nil {
+			selected = &layouts[index]
+			break
+		}
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("当前游戏未匹配任何已知的角色面板运行时布局")
+	}
+	closeOnFailure = false
+	return &readOnlyGameProcess{
+		handle: handle, pid: pid, created: created, moduleBase: moduleBase,
+		guards: cloneRuntimePanelGuards(selected.Guards), version: selected.Version, managerRVA: selected.ManagerRVA,
+	}, nil
 }
 
 func openReadOnlyGameProcess(backend readOnlyProcessBackend, name string, guards []runtimeCharacterPanelVersionGuard) (*readOnlyGameProcess, error) {

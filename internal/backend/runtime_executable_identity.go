@@ -40,23 +40,33 @@ func hashFileSHA256(path string) (string, error) {
 	return fmt.Sprintf("%X", hasher.Sum(nil)), nil
 }
 
-func legacyRuntimeExecutableError(featureName, digest string) error {
-	if strings.EqualFold(digest, game203ExecutableSHA256) {
-		return fmt.Errorf("[%s] %s暂未支持游戏 2.0.3：静态目录、配装计算、分享与 Logs 数据已核对；离线存档的 2.0.3 游戏重启回读仍待验收，实时功能不会连接或写入", runtimeGame203ErrorCode, featureName)
-	}
-	return fmt.Errorf("[%s] %s仅支持已验证的游戏 2.0.2 可执行文件；当前游戏版本不会连接或写入", runtimeUnknownExeErrorCode, featureName)
-}
-
-func verifyLegacyRuntimeExecutableHandle(handle windows.Handle, featureName string) error {
+func runtimeExecutableDigestForHandle(handle windows.Handle) (string, error) {
 	path, err := queryProcessImagePath(handle)
 	if err != nil {
-		return fmt.Errorf("读取游戏可执行文件路径失败: %w", err)
+		return "", fmt.Errorf("读取游戏可执行文件路径失败: %w", err)
 	}
 	digest, err := hashFileSHA256(path)
 	if err != nil {
-		return fmt.Errorf("校验游戏可执行文件失败: %w", err)
+		return "", fmt.Errorf("校验游戏可执行文件失败: %w", err)
 	}
-	if !strings.EqualFold(digest, runtimePatchCatalogGameSHA256) {
+	return digest, nil
+}
+
+func legacyRuntimeExecutableError(featureName, digest string) error {
+	return fmt.Errorf("[%s] %s仅支持已识别的游戏 2.0.2 / 2.0.3 可执行文件；当前游戏版本不会连接或写入", runtimeUnknownExeErrorCode, featureName)
+}
+
+func isSupportedRuntimeExecutableDigest(digest string) bool {
+	return strings.EqualFold(digest, runtimePatchCatalogGameSHA256) ||
+		strings.EqualFold(digest, game203ExecutableSHA256)
+}
+
+func verifyLegacyRuntimeExecutableHandle(handle windows.Handle, featureName string) error {
+	digest, err := runtimeExecutableDigestForHandle(handle)
+	if err != nil {
+		return err
+	}
+	if !isSupportedRuntimeExecutableDigest(digest) {
 		return legacyRuntimeExecutableError(featureName, digest)
 	}
 	return nil

@@ -14,7 +14,7 @@ import (
 
 const (
 	virtualSigilDisabledFlag              uint32 = 0x10
-	stableReleaseVirtualSigilWriteEnabled        = false
+	stableReleaseVirtualSigilWriteEnabled        = true
 )
 
 var virtualSigilModMu sync.Mutex

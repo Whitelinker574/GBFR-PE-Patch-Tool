@@ -19,9 +19,7 @@ const (
 	runtimePatchSelectedMaterialAOB = "488Bxxxx4885xx74xx448Bxxxx4889xxE8xxxxxxxx498B"
 	runtimePatchSelectedKeyItemAOB  = "448Bxxxx4889xx89xxE8xxxxxxxx488Bxxxxxxxxxx488Bxxxxxxxxxx4839"
 
-	runtimePatchSelectedMaterialRVA = uintptr(0x3F4BAC3)
-	runtimePatchSelectedKeyItemRVA  = uintptr(0x3F2061C)
-	runtimePatchSelectedHookSize    = 7
+	runtimePatchSelectedHookSize = 7
 
 	runtimePatchSelectedItemRecordSize    = 0x0C
 	runtimePatchSelectedCaveMarkerOffset  = uintptr(0x30)
@@ -325,7 +323,15 @@ func (a *App) prepareRuntimePatchSelectedCaptureLease(kind RuntimePatchSelectedI
 }
 
 func (a *App) locateRuntimePatchSelectedHookLocked(kind RuntimePatchSelectedItemKind) (uintptr, []byte, error) {
-	rawPattern, rva, expected, err := runtimePatchSelectedHookDefinition(kind)
+	rawPattern, expected, err := runtimePatchSelectedHookDefinition(kind)
+	if err != nil {
+		return 0, nil, err
+	}
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%s: %w", runtimePatchSelectedKindName(kind), err)
+	}
+	rva, err := runtimePatchSelectedHookRVA(layout, kind)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -342,7 +348,7 @@ func (a *App) locateRuntimePatchSelectedHookLocked(kind RuntimePatchSelectedItem
 		return 0, nil, fmt.Errorf("%s: %w", runtimePatchSelectedKindName(kind), err)
 	}
 	if !matchRuntimePatchPattern(actualPattern, pattern) {
-		return 0, nil, fmt.Errorf("%s: %s RVA 0x%X", runtimePatchSelectedKindName(kind), runtimePatchMonitorText("签名与游戏 2.0.2 不匹配", "signature does not match game 2.0.2"), rva)
+		return 0, nil, fmt.Errorf("%s: %s %s RVA 0x%X", runtimePatchSelectedKindName(kind), runtimePatchMonitorText("签名与已识别游戏布局不匹配", "signature does not match the identified game layout"), layout.Version, rva)
 	}
 	if !bytes.Equal(actualPattern[:runtimePatchSelectedHookSize], expected) {
 		return 0, nil, fmt.Errorf("%s: %s %s", runtimePatchSelectedKindName(kind), runtimePatchMonitorText("入口原始字节不匹配", "entry bytes mismatch"), bytesToHex(actualPattern[:runtimePatchSelectedHookSize]))
@@ -351,9 +357,13 @@ func (a *App) locateRuntimePatchSelectedHookLocked(kind RuntimePatchSelectedItem
 }
 
 func (a *App) readRuntimePatchSelectedItemsStatusLocked(token string) (RuntimePatchSelectedItemsStatus, error) {
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return RuntimePatchSelectedItemsStatus{}, err
+	}
 	result := RuntimePatchSelectedItemsStatus{
 		OwnerToken: token, PID: a.charaPID, ProcessCreated: a.charaCreated,
-		ReadOnly: true, GameVersion: "2.0.2", Source: "game_selected_item_read_only_2.0.2",
+		ReadOnly: true, GameVersion: layout.Version, Source: "game_selected_item_read_only_" + layout.Version,
 	}
 	material, err := a.readRuntimePatchSelectedCaptureStatusLocked(token, RuntimePatchSelectedItemMaterial, &a.runtimePatchSelectedMaterialHook)
 	if err != nil {
@@ -371,7 +381,15 @@ func (a *App) readRuntimePatchSelectedItemsStatusLocked(token string) (RuntimePa
 
 func (a *App) readRuntimePatchSelectedCaptureStatusLocked(token string, kind RuntimePatchSelectedItemKind, lease *runtimePatchSelectedCaptureLease) (RuntimePatchSelectedItemCapture, error) {
 	result := RuntimePatchSelectedItemCapture{Kind: kind, DisplayName: runtimePatchSelectedKindName(kind)}
-	_, rva, _, definitionErr := runtimePatchSelectedHookDefinition(kind)
+	_, _, definitionErr := runtimePatchSelectedHookDefinition(kind)
+	if definitionErr != nil {
+		return result, definitionErr
+	}
+	layout, definitionErr := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if definitionErr != nil {
+		return result, definitionErr
+	}
+	rva, definitionErr := runtimePatchSelectedHookRVA(layout, kind)
 	if definitionErr != nil {
 		return result, definitionErr
 	}
@@ -519,7 +537,7 @@ func decorateRuntimePatchSelectedItemRecord(record *RuntimePatchSelectedItemReco
 }
 
 func buildRuntimePatchSelectedCaptureCave(kind RuntimePatchSelectedItemKind, cave, returnAddr uintptr, original []byte, process processInstanceID, ownerToken string) ([]byte, error) {
-	_, _, expected, err := runtimePatchSelectedHookDefinition(kind)
+	_, expected, err := runtimePatchSelectedHookDefinition(kind)
 	if err != nil {
 		return nil, err
 	}
@@ -663,14 +681,25 @@ func isRuntimePatchSelectedJump(entry []byte) bool {
 	return len(entry) == runtimePatchSelectedHookSize && entry[0] == 0xE9 && entry[5] == 0x90 && entry[6] == 0x90
 }
 
-func runtimePatchSelectedHookDefinition(kind RuntimePatchSelectedItemKind) (string, uintptr, []byte, error) {
+func runtimePatchSelectedHookDefinition(kind RuntimePatchSelectedItemKind) (string, []byte, error) {
 	switch kind {
 	case RuntimePatchSelectedItemMaterial:
-		return runtimePatchSelectedMaterialAOB, runtimePatchSelectedMaterialRVA, runtimePatchSelectedMaterialOriginal, nil
+		return runtimePatchSelectedMaterialAOB, runtimePatchSelectedMaterialOriginal, nil
 	case RuntimePatchSelectedItemKeyItem:
-		return runtimePatchSelectedKeyItemAOB, runtimePatchSelectedKeyItemRVA, runtimePatchSelectedKeyItemOriginal, nil
+		return runtimePatchSelectedKeyItemAOB, runtimePatchSelectedKeyItemOriginal, nil
 	default:
-		return "", 0, nil, fmt.Errorf("unknown selected-item kind %q", kind)
+		return "", nil, fmt.Errorf("unknown selected-item kind %q", kind)
+	}
+}
+
+func runtimePatchSelectedHookRVA(layout runtimeGameLayout, kind RuntimePatchSelectedItemKind) (uintptr, error) {
+	switch kind {
+	case RuntimePatchSelectedItemMaterial:
+		return layout.SelectedMaterialRVA, nil
+	case RuntimePatchSelectedItemKeyItem:
+		return layout.SelectedKeyItemRVA, nil
+	default:
+		return 0, fmt.Errorf("unknown selected-item kind %q", kind)
 	}
 }
 

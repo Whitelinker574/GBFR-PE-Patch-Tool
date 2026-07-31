@@ -24,8 +24,8 @@ func putRuntimePatchPartySignature(t *testing.T, memory *fakeRuntimePanelMemory,
 		t.Fatal(err)
 	}
 	bytes := append([]byte(nil), pattern.Values...)
-	site := moduleBase + runtimePatchPartyPointerRVA
-	root := moduleBase + runtimePatchPartySlotTableRVA
+	site := moduleBase + runtimeGameLayouts[0].PartyPointerRVA
+	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
 	displacement := int64(root) - int64(site+7)
 	if displacement < math.MinInt32 || displacement > math.MaxInt32 {
 		t.Fatalf("party RIP displacement out of range: %d", displacement)
@@ -163,7 +163,7 @@ func newRuntimePatchPartyFixture(t *testing.T) (*fakeRuntimePanelMemory, uintptr
 	moduleBase := uintptr(0x10000000)
 	putRuntimePatchPartySignature(t, memory, moduleBase)
 
-	root := moduleBase + runtimePatchPartySlotTableRVA
+	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
 	entities := [...]uintptr{0x21000000, 0x22000000, 0x23000000, 0x24000000}
 	for index, entity := range entities {
 		specified := entity + 0x10000
@@ -206,7 +206,7 @@ func TestReadRuntimePatchPartySnapshotUsesVerified202LayoutAndOptionalCompanionF
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Topology.Root != moduleBase+runtimePatchPartySlotTableRVA {
+	if snapshot.Topology.Root != moduleBase+runtimeGameLayouts[0].PartySlotTableRVA {
 		t.Fatalf("root=0x%X", snapshot.Topology.Root)
 	}
 	if got, want := len(snapshot.Result.Entities), 5; got != want {
@@ -541,10 +541,10 @@ func putRuntimePatchPartyValidatedHandle(memory *fakeRuntimePanelMemory, moduleB
 	entityTable := uintptr(0x41000000)
 	entityArray := uintptr(0x42000000)
 	idArray := uintptr(0x43000000)
-	memory.putPtr(moduleBase+runtimePatchPartyEntityTableRVA, entityTable)
+	memory.putPtr(moduleBase+runtimeGameLayouts[0].PartyEntityTableRVA, entityTable)
 	memory.putPtr(entityTable+runtimePatchPartyEntityArrayOffset, entityArray)
 	memory.putPtr(entityTable+runtimePatchPartyIDArrayOffset, idArray)
-	handle := moduleBase + runtimePatchPartyHandleTableRVA + uintptr(slot)*runtimePatchPartyHandleStride
+	handle := moduleBase + runtimeGameLayouts[0].PartyHandleTableRVA + uintptr(slot)*runtimePatchPartyHandleStride
 	memory.putU32(handle, indexPlusOne)
 	memory.putPtr(handle+runtimePatchPartyHandleEntityOffset, entity)
 	memory.putU64(handle+runtimePatchPartyHandleIDOffset, id)
@@ -559,7 +559,7 @@ func TestResolveRuntimePatchPartyLoadoutHandleUsesValidatedSpecifiedInstance(t *
 	moduleBase := uintptr(0x10000000)
 	putRuntimePatchPartyValidatedHandle(memory, moduleBase, 2, 7, 0x44000000, 0x1122334455667788, 0x45000000)
 
-	resolved, err := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, 2)
+	resolved, err := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, moduleBase, runtimeGameLayouts[0], 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +573,7 @@ func TestResolveRuntimePatchPartyLoadoutHandleRejectsStaleID(t *testing.T) {
 	moduleBase := uintptr(0x10000000)
 	putRuntimePatchPartyValidatedHandle(memory, moduleBase, 0, 3, 0x44000000, 0x1111, 0x45000000)
 	memory.putU64(0x43000000+2*8, 0x2222)
-	if _, err := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, 0); err == nil || !strings.Contains(strings.ToLower(err.Error()), "id") {
+	if _, err := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, moduleBase, runtimeGameLayouts[0], 0); err == nil || !strings.Contains(strings.ToLower(err.Error()), "id") {
 		t.Fatalf("stale handle ID error=%v", err)
 	}
 }
@@ -583,7 +583,7 @@ func TestResolveRuntimePatchPartyLoadoutHandleRejectsEntityTableMismatch(t *test
 	moduleBase := uintptr(0x10000000)
 	putRuntimePatchPartyValidatedHandle(memory, moduleBase, 1, 4, 0x44000000, 0x1111, 0x45000000)
 	memory.putPtr(0x42000000+3*8, 0x46000000)
-	if _, err := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, 1); err == nil || !strings.Contains(strings.ToLower(err.Error()), "entity") {
+	if _, err := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, moduleBase, runtimeGameLayouts[0], 1); err == nil || !strings.Contains(strings.ToLower(err.Error()), "entity") {
 		t.Fatalf("entity table mismatch error=%v", err)
 	}
 }
@@ -591,11 +591,11 @@ func TestResolveRuntimePatchPartyLoadoutHandleRejectsEntityTableMismatch(t *test
 func TestResolveRuntimePatchPartyLoadoutHandleRejectsNullAndOverflowPointers(t *testing.T) {
 	memory := newFakeRuntimePanelMemory()
 	moduleBase := uintptr(0x10000000)
-	memory.putPtr(moduleBase+runtimePatchPartyEntityTableRVA, 0)
-	if _, err := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, 0); err == nil {
+	memory.putPtr(moduleBase+runtimeGameLayouts[0].PartyEntityTableRVA, 0)
+	if _, err := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, moduleBase, runtimeGameLayouts[0], 0); err == nil {
 		t.Fatal("null entity table was accepted")
 	}
-	if _, err := resolveRuntimePatchPartyLoadoutHandle(memory, ^uintptr(0)-runtimePatchPartyEntityTableRVA+1, 0); err == nil || !strings.Contains(strings.ToLower(err.Error()), "overflow") {
+	if _, err := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, ^uintptr(0)-runtimeGameLayouts[0].PartyEntityTableRVA+1, runtimeGameLayouts[0], 0); err == nil || !strings.Contains(strings.ToLower(err.Error()), "overflow") {
 		t.Fatalf("overflowing module base error=%v", err)
 	}
 }
@@ -632,7 +632,7 @@ func TestReadStableRuntimePatchPartySnapshotsRejectsChangingLoadoutFingerprint(t
 
 func TestReadRuntimePatchPartySnapshotAcceptsEmptyTrainingPartySlots(t *testing.T) {
 	memory, moduleBase := newRuntimePatchPartyFixture(t)
-	root := moduleBase + runtimePatchPartySlotTableRVA
+	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
 	for index := 1; index < 4; index++ {
 		memory.putPtr(root+uintptr(index)*8, 0)
 	}
@@ -679,7 +679,7 @@ func TestReadRuntimePatchPartySnapshotRejectsLoadoutHandleFromAnotherRootSlot(t 
 
 func TestReadRuntimePatchPartySnapshotAcceptsMissingCompanion(t *testing.T) {
 	memory, moduleBase := newRuntimePatchPartyFixture(t)
-	root := moduleBase + runtimePatchPartySlotTableRVA
+	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
 	memory.putPtr(root+runtimePatchPartyCompanionSlotOffset, 0)
 
 	snapshot, err := readRuntimePatchPartySnapshot(memory, moduleBase)
@@ -694,7 +694,7 @@ func TestReadRuntimePatchPartySnapshotAcceptsMissingCompanion(t *testing.T) {
 
 func TestReadRuntimePatchPartySnapshotStillRejectsMissingPlayer(t *testing.T) {
 	memory, moduleBase := newRuntimePatchPartyFixture(t)
-	memory.putPtr(moduleBase+runtimePatchPartySlotTableRVA, 0)
+	memory.putPtr(moduleBase+runtimeGameLayouts[0].PartySlotTableRVA, 0)
 	_, err := readRuntimePatchPartySnapshot(memory, moduleBase)
 	if err == nil || (!strings.Contains(err.Error(), "玩家") && !strings.Contains(strings.ToLower(err.Error()), "player")) {
 		t.Fatalf("missing player error=%v", err)

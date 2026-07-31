@@ -38,9 +38,9 @@ func TestRuntimePatchReadOnlyMonitorsMatchLocalGame202(t *testing.T) {
 		wantRVA  uintptr
 		original []byte
 	}{
-		{name: "party pointer", raw: runtimePatchPartyPointerAOB, wantRVA: runtimePatchPartyPointerRVA},
-		{name: "selected material", raw: runtimePatchSelectedMaterialAOB, wantRVA: runtimePatchSelectedMaterialRVA, original: runtimePatchSelectedMaterialOriginal},
-		{name: "selected key item", raw: runtimePatchSelectedKeyItemAOB, wantRVA: runtimePatchSelectedKeyItemRVA, original: runtimePatchSelectedKeyItemOriginal},
+		{name: "party pointer", raw: runtimePatchPartyPointerAOB, wantRVA: runtimeGameLayouts[0].PartyPointerRVA},
+		{name: "selected material", raw: runtimePatchSelectedMaterialAOB, wantRVA: runtimeGameLayouts[0].SelectedMaterialRVA, original: runtimePatchSelectedMaterialOriginal},
+		{name: "selected key item", raw: runtimePatchSelectedKeyItemAOB, wantRVA: runtimeGameLayouts[0].SelectedKeyItemRVA, original: runtimePatchSelectedKeyItemOriginal},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -61,13 +61,13 @@ func TestRuntimePatchReadOnlyMonitorsMatchLocalGame202(t *testing.T) {
 		})
 	}
 
-	partyEntry := runtimePatchLocalBytesAtRVA(sections, uint32(runtimePatchPartyPointerRVA), 7)
+	partyEntry := runtimePatchLocalBytesAtRVA(sections, uint32(runtimeGameLayouts[0].PartyPointerRVA), 7)
 	if len(partyEntry) != 7 {
 		t.Fatal("party RIP-relative entry is unavailable")
 	}
 	displacement := int64(int32(binary.LittleEndian.Uint32(partyEntry[3:7])))
-	resolved := int64(runtimePatchPartyPointerRVA) + 7 + displacement
-	if resolved != int64(runtimePatchPartySlotTableRVA) {
-		t.Fatalf("party root target RVA=0x%X, want 0x%X", resolved, runtimePatchPartySlotTableRVA)
+	resolved := int64(runtimeGameLayouts[0].PartyPointerRVA) + 7 + displacement
+	if resolved != int64(runtimeGameLayouts[0].PartySlotTableRVA) {
+		t.Fatalf("party root target RVA=0x%X, want 0x%X", resolved, runtimeGameLayouts[0].PartySlotTableRVA)
 	}
 }

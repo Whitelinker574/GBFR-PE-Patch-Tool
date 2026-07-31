@@ -139,6 +139,71 @@ func TestRuntimePatchCatalogCloneDoesNotShareMutableSlices(t *testing.T) {
 	}
 }
 
+func TestRuntimePatchExpectedOriginalBytesSelectsKnown203RIPDisplacements(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	seen := 0
+	for _, feature := range catalog.Features {
+		for _, site := range feature.Sites {
+			expected203, compatible := runtimePatch203OriginalBytes[site.Symbol]
+			if !compatible {
+				continue
+			}
+			seen++
+			got := runtimePatchExpectedOriginalBytes(site, runtimePatchLocalGame203SHA256)
+			if !bytes.Equal(got, expected203) || bytes.Equal(got, site.ExpectedOriginalBytes) {
+				t.Fatalf("%s 2.0.3 original=% X, want version variant % X", site.Symbol, got, expected203)
+			}
+			got[0] ^= 0xff
+			if bytes.Equal(got, runtimePatch203OriginalBytes[site.Symbol]) {
+				t.Fatalf("%s returned shared 2.0.3 original-byte storage", site.Symbol)
+			}
+			if got202 := runtimePatchExpectedOriginalBytes(site, runtimePatchLocalGame202SHA256); !bytes.Equal(got202, site.ExpectedOriginalBytes) {
+				t.Fatalf("%s 2.0.2 original=% X, want catalog % X", site.Symbol, got202, site.ExpectedOriginalBytes)
+			}
+		}
+	}
+	if seen != 3 {
+		t.Fatalf("2.0.3 RuntimePatch original-byte variants=%d, want 3", seen)
+	}
+}
+
+func TestRuntimePatchSiteForExecutableSelectsKnown203SignatureVariants(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	bySymbol := make(map[string]RuntimePatchSite)
+	for _, feature := range catalog.Features {
+		for _, site := range feature.Sites {
+			bySymbol[site.Symbol] = site
+		}
+	}
+	for symbol, variant := range runtimePatch203SiteVariants {
+		catalogSite, exists := bySymbol[symbol]
+		if !exists {
+			t.Fatalf("2.0.3 signature variant %s has no catalog site", symbol)
+		}
+		resolved, err := runtimePatchSiteForExecutable(catalogSite, runtimePatchLocalGame203SHA256)
+		if err != nil {
+			t.Fatalf("resolve %s: %v", symbol, err)
+		}
+		pattern, err := parseRuntimePatchPattern(variant.AOB)
+		if err != nil {
+			t.Fatalf("parse locked variant %s: %v", symbol, err)
+		}
+		if resolved.AOB != canonicalRuntimePatchAOB(pattern) || resolved.Offset != variant.Offset {
+			t.Fatalf("%s resolved AOB/offset=%q/%d, want %q/%d", symbol, resolved.AOB, resolved.Offset, canonicalRuntimePatchAOB(pattern), variant.Offset)
+		}
+		if !bytes.Equal(resolved.PatternValues, pattern.Values) || !bytes.Equal(resolved.PatternMasks, pattern.Mask) {
+			t.Fatalf("%s resolved pattern arrays do not match its AOB", symbol)
+		}
+		resolved202, err := runtimePatchSiteForExecutable(catalogSite, runtimePatchLocalGame202SHA256)
+		if err != nil {
+			t.Fatalf("resolve 2.0.2 %s: %v", symbol, err)
+		}
+		if resolved202.AOB != catalogSite.AOB || resolved202.Offset != catalogSite.Offset {
+			t.Fatalf("%s changed the locked 2.0.2 definition", symbol)
+		}
+	}
+}
+
 func TestRuntimePatchCatalogKnownMultiSiteAndConflicts(t *testing.T) {
 	catalog := readRuntimePatchCatalogFile(t)
 	byNumber := make(map[int]RuntimePatchFeature, len(catalog.Features))

@@ -143,7 +143,7 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		}
 	})
 
-	t.Run("virtual sigil stable gate", func(t *testing.T) {
+	t.Run("virtual sigil entrypoint", func(t *testing.T) {
 		before, err := app.GetVirtualSigilWorkspace("", "")
 		if err != nil {
 			t.Fatal(err)
@@ -151,15 +151,12 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		if before.RecoveryRequired || (before.Installed && !before.Owned) {
 			t.Fatalf("virtual sigils start in an unsafe state: %+v", before)
 		}
-		if before.Available || before.UnavailableReason == "" {
-			t.Fatalf("stable build exposed a new virtual-sigil session: %+v", before)
-		}
-		if _, err := app.DeployVirtualSigilMod(VirtualSigilDeployRequest{Config: before.Config}); err == nil {
-			t.Fatal("stable build accepted a new virtual-sigil session")
+		if !before.Available || before.UnavailableReason != "" {
+			t.Fatalf("virtual-sigil entrypoint remains locked: %+v", before)
 		}
 	})
 
-	t.Run("spatial lifecycle and gravity stable gate", func(t *testing.T) {
+	t.Run("spatial and gravity lifecycle", func(t *testing.T) {
 		info, err := app.CharaAcquire(1)
 		if err != nil {
 			t.Fatal(err)
@@ -187,11 +184,49 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if available.Available || available.Enabled || available.Error == "" {
-			t.Fatalf("stable build exposed a new gravity-suppression write: %+v", available)
+		if !available.Available || available.Enabled || available.Error != "" {
+			t.Fatalf("gravity entrypoint is unavailable: %+v", available)
 		}
-		if _, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, true); err == nil {
-			t.Fatal("stable build accepted a new gravity-suppression write")
+		enabled, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !enabled.Available || !enabled.Enabled || !enabled.Owned || enabled.Error != "" {
+			t.Fatalf("gravity suppression did not become active: %+v", enabled)
+		}
+		restored, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !restored.Available || restored.Enabled || restored.Owned || restored.Error != "" {
+			t.Fatalf("gravity suppression did not restore cleanly: %+v", restored)
+		}
+		if err := app.CharaRelease(info.OwnerToken); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("2.0.3 runtime patch 045 and 054 lifecycle", func(t *testing.T) {
+		info, err := app.CharaAcquire(2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = app.CharaRelease(info.OwnerToken) })
+		for _, id := range []string{"runtime-patch-045", "runtime-patch-054"} {
+			active, err := app.RuntimePatchSetEnabledOwned(info.OwnerToken, id, true)
+			if err != nil {
+				t.Fatalf("enable %s: %v", id, err)
+			}
+			if !active.Available || !active.Enabled || active.Error != "" || len(active.RVAs) == 0 {
+				t.Fatalf("enable %s did not verify a live patch: %+v", id, active)
+			}
+			stopped, err := app.RuntimePatchSetEnabledOwned(info.OwnerToken, id, false)
+			if err != nil {
+				t.Fatalf("disable %s: %v", id, err)
+			}
+			if !stopped.Available || stopped.Enabled || stopped.Error != "" {
+				t.Fatalf("disable %s did not restore cleanly: %+v", id, stopped)
+			}
 		}
 		if err := app.CharaRelease(info.OwnerToken); err != nil {
 			t.Fatal(err)

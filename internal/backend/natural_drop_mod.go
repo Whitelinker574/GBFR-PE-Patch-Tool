@@ -20,22 +20,25 @@ import (
 )
 
 const (
-	naturalDropGameVersion                = "2.0.2"
-	naturalDropModID                      = "gbfr.codex.natural-drop-lab"
-	naturalDropForcedWeight        uint32 = 1_000_000
-	naturalDropLowWeight           uint32 = 1
-	summonTableRowSize                    = 36
-	summonLotRowSize                      = 20
-	rewardSummonLotRowSize                = 16
-	rewardTableRowSize                    = 52
-	rewardLotTableRowSize                 = 60
-	endlessPackageTableRowSize            = 108
-	naturalDropItemMaxQuantity            = 999
-	naturalDropItemMaxWeight              = 1_000_000
-	naturalDropDefaultPackageIndex        = 0
-	naturalDropDefaultPackageKey          = 0xDCFBA295
-	naturalDropDefaultRewardKey           = 0xE48A5279
-	naturalDropDefaultItemPool            = 0xDF1DB99C
+	naturalDropGameVersion                  = "2.0.2"
+	naturalDropGame203Version               = "2.0.3"
+	naturalDropGame202ExecutableSize        = int64(123522016)
+	naturalDropGame203ExecutableSize        = int64(123506656)
+	naturalDropModID                        = "gbfr.codex.natural-drop-lab"
+	naturalDropForcedWeight          uint32 = 1_000_000
+	naturalDropLowWeight             uint32 = 1
+	summonTableRowSize                      = 36
+	summonLotRowSize                        = 20
+	rewardSummonLotRowSize                  = 16
+	rewardTableRowSize                      = 52
+	rewardLotTableRowSize                   = 60
+	endlessPackageTableRowSize              = 108
+	naturalDropItemMaxQuantity              = 999
+	naturalDropItemMaxWeight                = 1_000_000
+	naturalDropDefaultPackageIndex          = 0
+	naturalDropDefaultPackageKey            = 0xDCFBA295
+	naturalDropDefaultRewardKey             = 0xE48A5279
+	naturalDropDefaultItemPool              = 0xDF1DB99C
 )
 
 var naturalDropRequiredTables = []struct {
@@ -216,6 +219,11 @@ type naturalDropPrepareJournal struct {
 	AfterBackupPresent     bool                               `json:"afterBackupPresent,omitempty"`
 	AfterBackupSHA         string                             `json:"afterBackupSha256,omitempty"`
 	GeneratedFiles         map[string]naturalDropPreparedFile `json:"generatedFiles"`
+}
+
+type naturalDropGameIdentityRecord struct {
+	Version string
+	SHA256  string
 }
 
 type naturalDropTables struct {
@@ -660,6 +668,28 @@ func naturalDropGamePathHash(path string) uint64 {
 	return xxhash.Sum64String(normalized)
 }
 
+func naturalDropGameIdentity(path string) (version, digest string, err error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", "", fmt.Errorf("读取游戏程序失败: %w", err)
+	}
+	if info.IsDir() {
+		return "", "", errors.New("所选游戏程序不是文件")
+	}
+	digest, err = naturalDropFileSHA256(path)
+	if err != nil {
+		return "", "", fmt.Errorf("校验游戏程序失败: %w", err)
+	}
+	switch {
+	case info.Size() == naturalDropGame202ExecutableSize && strings.EqualFold(digest, runtimePatchCatalogGameSHA256):
+		return naturalDropGameVersion, digest, nil
+	case info.Size() == naturalDropGame203ExecutableSize && strings.EqualFold(digest, game203ExecutableSHA256):
+		return naturalDropGame203Version, digest, nil
+	default:
+		return "", digest, fmt.Errorf("游戏程序版本不匹配（大小 %d，SHA-256 %s）", info.Size(), digest)
+	}
+}
+
 func validateNaturalDropGameExecutable(path string) (string, error) {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "." || path == "" {
@@ -668,19 +698,8 @@ func validateNaturalDropGameExecutable(path string) (string, error) {
 	if !strings.EqualFold(filepath.Base(path), gameExeName) {
 		return "", fmt.Errorf("所选文件不是 %s", gameExeName)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("读取游戏程序失败: %w", err)
-	}
-	if info.IsDir() || info.Size() != 123522016 {
-		return "", errors.New("所选游戏程序不是已验证的 DLC 2.0.2 版本")
-	}
-	digest, err := naturalDropFileSHA256(path)
-	if err != nil {
-		return "", fmt.Errorf("校验游戏程序失败: %w", err)
-	}
-	if !strings.EqualFold(digest, runtimePatchCatalogGameSHA256) {
-		return "", fmt.Errorf("游戏程序版本不匹配（SHA-256 %s）", digest)
+	if _, _, err := naturalDropGameIdentity(path); err != nil {
+		return "", err
 	}
 	_, indexPath, _, _ := naturalDropInstallPaths(path)
 	data, err := os.ReadFile(indexPath)
@@ -691,6 +710,17 @@ func validateNaturalDropGameExecutable(path string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+func naturalDropManifestIdentitySupported(version, digest string) bool {
+	switch {
+	case version == naturalDropGameVersion && strings.EqualFold(digest, runtimePatchCatalogGameSHA256):
+		return true
+	case version == naturalDropGame203Version && strings.EqualFold(digest, game203ExecutableSHA256):
+		return true
+	default:
+		return false
+	}
 }
 
 func naturalDropRelativeTarget(gamePath string) string {
@@ -712,8 +742,7 @@ func naturalDropReadManifest(gameDir string) (*naturalDropManifest, []byte, erro
 		return nil, data, err
 	}
 	if (manifest.SchemaVersion != 2 && manifest.SchemaVersion != 3 && manifest.SchemaVersion != 4) || manifest.Owner != naturalDropModID ||
-		manifest.GameVersion != naturalDropGameVersion ||
-		!strings.EqualFold(manifest.GameExecutableSHA, runtimePatchCatalogGameSHA256) {
+		!naturalDropManifestIdentitySupported(manifest.GameVersion, manifest.GameExecutableSHA) {
 		return nil, data, errors.New("天然掉落清单不属于当前版本的本工具")
 	}
 	for relative := range manifest.GeneratedFiles {
@@ -1361,12 +1390,23 @@ func naturalDropBeginPreparedTransaction(
 	afterFiles map[string][]byte,
 	removeBackupOnRecovery bool,
 	afterManifest []byte,
+	identities ...naturalDropGameIdentityRecord,
 ) (resultErr error) {
 	canonicalGameDir, err := naturalDropCanonicalPath(gameDir)
 	if err != nil {
 		return err
 	}
 	indexPath := filepath.Join(canonicalGameDir, "data.i")
+	identity := naturalDropGameIdentityRecord{Version: naturalDropGameVersion, SHA256: runtimePatchCatalogGameSHA256}
+	if len(identities) > 1 {
+		return errors.New("天然掉落事务收到多个游戏版本身份")
+	}
+	if len(identities) == 1 {
+		identity = identities[0]
+	}
+	if !naturalDropManifestIdentitySupported(identity.Version, identity.SHA256) {
+		return errors.New("天然掉落事务的游戏版本身份无效")
+	}
 	journalPath := filepath.Join(canonicalGameDir, naturalDropPrepareJournalName)
 	prepareDir := filepath.Join(canonicalGameDir, naturalDropPrepareDirectoryName)
 	if _, err := os.Stat(journalPath); err == nil {
@@ -1405,8 +1445,8 @@ func naturalDropBeginPreparedTransaction(
 	journal := naturalDropPrepareJournal{
 		SchemaVersion:          1,
 		Owner:                  naturalDropModID,
-		GameVersion:            naturalDropGameVersion,
-		GameExecutableSHA:      runtimePatchCatalogGameSHA256,
+		GameVersion:            identity.Version,
+		GameExecutableSHA:      identity.SHA256,
 		GameDirectory:          canonicalGameDir,
 		TargetIndexPath:        indexPath,
 		BeforeIndexSHA:         fileSHA256(beforeIndex),
@@ -1490,8 +1530,7 @@ func naturalDropReadPreparedTransaction(gameDir string) (*naturalDropPrepareJour
 		return nil, fmt.Errorf("天然掉落事务日志损坏: %w", err)
 	}
 	if journal.SchemaVersion != 1 || journal.Owner != naturalDropModID ||
-		journal.GameVersion != naturalDropGameVersion ||
-		!strings.EqualFold(journal.GameExecutableSHA, runtimePatchCatalogGameSHA256) {
+		!naturalDropManifestIdentitySupported(journal.GameVersion, journal.GameExecutableSHA) {
 		return nil, errors.New("天然掉落事务日志不属于当前版本的本工具")
 	}
 	if !naturalDropSamePath(journal.GameDirectory, canonicalGameDir) ||
@@ -1945,6 +1984,10 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		return nil, err
 	}
 	a.rememberNaturalDropGameExecutable(gameExePath)
+	gameVersion, gameExecutableSHA, err := naturalDropGameIdentity(gameExePath)
+	if err != nil {
+		return nil, err
+	}
 	gameDir, indexPath, backupPath, manifestPath := naturalDropInstallPaths(gameExePath)
 	releaseLease, err := acquireNaturalDropTransactionLease(gameDir)
 	if err != nil {
@@ -2097,8 +2140,8 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	newManifest := naturalDropManifest{
 		SchemaVersion:       4,
 		Owner:               naturalDropModID,
-		GameVersion:         naturalDropGameVersion,
-		GameExecutableSHA:   runtimePatchCatalogGameSHA256,
+		GameVersion:         gameVersion,
+		GameExecutableSHA:   gameExecutableSHA,
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
 		OriginalIndexSHA:    fileSHA256(baseIndex),
 		DeployedIndexSHA:    fileSHA256(deployedIndex),
@@ -2126,6 +2169,7 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		afterFiles,
 		backupCreated,
 		manifestData,
+		naturalDropGameIdentityRecord{Version: gameVersion, SHA256: gameExecutableSHA},
 	); err != nil {
 		return nil, fmt.Errorf("创建天然掉落部署事务失败: %w", err)
 	}
@@ -2243,6 +2287,7 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 		afterFiles,
 		false,
 		nil,
+		naturalDropGameIdentityRecord{Version: manifest.GameVersion, SHA256: manifest.GameExecutableSHA},
 	); err != nil {
 		return fmt.Errorf("创建天然掉落恢复事务失败: %w", err)
 	}

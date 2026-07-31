@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	// Legacy aliases remain for fixture compatibility; runtime code resolves
+	// the active version through runtimeGameLayout.
 	sigilMemoryHookRVA              = uintptr(0x345157)
 	sigilMemorySaveRVA              = uintptr(0x79D820)
 	sigilMemoryHookSize             = 8
@@ -192,7 +194,11 @@ func (a *App) SigilMemoryScan() (SigilMemoryStatus, error) {
 func (a *App) scanSigilMemoryLocked() (SigilMemoryStatus, error) {
 	// Current game build verified at granblue_fantasy_relink.exe+345157.
 	// Its first 8 bytes are safe to validate and hook; later bytes vary by build.
-	addr := a.moduleBase + sigilMemoryHookRVA
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("定位因子实时编辑入口失败: %w", err)
+	}
+	addr := a.moduleBase + layout.SigilHookRVA
 	first := make([]byte, sigilMemoryHookSize)
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&first[0]), uintptr(len(first))); err != nil {
 		return SigilMemoryStatus{}, fmt.Errorf("读取选中因子指令失败: %w", err)
@@ -336,7 +342,11 @@ func (a *App) sigilMemoryEnableLocked() (SigilMemoryStatus, error) {
 	if status.Hooked {
 		return status, nil
 	}
-	if err := a.validateRemoteFunctionStart(a.moduleBase+sigilMemorySaveRVA, "游戏内因子保存函数"); err != nil {
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return SigilMemoryStatus{}, fmt.Errorf("定位因子保存函数失败: %w", err)
+	}
+	if err := a.validateRemoteFunctionStart(a.moduleBase+layout.SaveFunctionRVA, "游戏内因子保存函数"); err != nil {
 		return SigilMemoryStatus{}, err
 	}
 
@@ -511,7 +521,11 @@ func (a *App) sigilMemoryUpdate(token string, owned bool, update SigilMemoryUpda
 }
 
 func (a *App) saveSigilMemory(base uintptr) error {
-	fn := a.moduleBase + sigilMemorySaveRVA
+	layout, err := runtimeGameLayoutForSigilHook(a.moduleBase, a.sigilMemoryHookAddr)
+	if err != nil {
+		return err
+	}
+	fn := a.moduleBase + layout.SaveFunctionRVA
 	for offset := uintptr(0); offset <= 0x20; offset += 4 {
 		if err := a.callRemoteOneArg(fn, base+offset); err != nil {
 			return fmt.Errorf("保存因子字段 +0x%02X 失败: %w", offset, err)
@@ -532,13 +546,17 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 	if !hooked && !isSigilMemoryOriginal(buf) {
 		return SigilMemoryStatus{}, fmt.Errorf("选中因子指令字节异常: %s", bytesToHex(buf))
 	}
+	layout, err := runtimeGameLayoutForSigilHook(a.moduleBase, a.sigilMemoryHookAddr)
+	if err != nil {
+		return SigilMemoryStatus{}, err
+	}
 
 	status := SigilMemoryStatus{
 		Found:        true,
 		Hooked:       hooked,
 		Address:      uint64(a.sigilMemoryHookAddr),
 		RVA:          uint64(a.sigilMemoryHookAddr - a.moduleBase),
-		SaveRVA:      uint64(sigilMemorySaveRVA),
+		SaveRVA:      uint64(layout.SaveFunctionRVA),
 		CurrentBytes: bytesToHex(buf),
 	}
 	if !hooked {

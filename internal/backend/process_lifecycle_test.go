@@ -194,22 +194,20 @@ func TestGenericRuntimeAttachDoesNotScanLegacyCharacterList(t *testing.T) {
 	}
 }
 
-func TestLegacyRuntimeExecutableErrorExplainsGame203Boundary(t *testing.T) {
-	err := legacyRuntimeExecutableError("实时功能", game203ExecutableSHA256)
-	if err == nil {
-		t.Fatal("game 2.0.3 must remain fail closed for legacy runtime access")
-	}
-	message := err.Error()
-	for _, part := range []string{"2.0.3", "静态目录", "离线存档", "重启回读仍待验收", "不会连接或写入"} {
-		if !strings.Contains(message, part) {
-			t.Fatalf("2.0.3 boundary message %q does not contain %q", message, part)
+func TestKnownRuntimeExecutableDigestsIncludeGame202And203(t *testing.T) {
+	for _, digest := range []string{runtimePatchCatalogGameSHA256, game203ExecutableSHA256} {
+		if !isSupportedRuntimeExecutableDigest(digest) {
+			t.Fatalf("known game executable %s was rejected by the shared runtime attach boundary", digest)
 		}
+	}
+	if isSupportedRuntimeExecutableDigest(strings.Repeat("0", 64)) {
+		t.Fatal("unknown game executable was accepted by the shared runtime attach boundary")
 	}
 }
 
 func TestLegacyRuntimeExecutableErrorRejectsUnknownBuild(t *testing.T) {
 	message := legacyRuntimeExecutableError("实时功能", strings.Repeat("0", 64)).Error()
-	if !strings.Contains(message, "仅支持已验证的游戏 2.0.2") ||
+	if !strings.Contains(message, "仅支持已识别的游戏 2.0.2 / 2.0.3") ||
 		!strings.Contains(message, "不会连接或写入") {
 		t.Fatalf("unknown executable message does not fail closed clearly: %q", message)
 	}

@@ -472,6 +472,10 @@ func (a *App) RuntimePatchGetStatusesOwned(token string) ([]RuntimePatchFeatureS
 }
 
 func prepareRuntimePatchSiteLease(moduleBase, moduleEnd, address uintptr, definition RuntimePatchSite, original []byte) (runtimePatchPatchSiteLease, error) {
+	return prepareRuntimePatchSiteLeaseExpected(moduleBase, moduleEnd, address, definition, original, definition.ExpectedOriginalBytes)
+}
+
+func prepareRuntimePatchSiteLeaseExpected(moduleBase, moduleEnd, address uintptr, definition RuntimePatchSite, original, expectedOriginal []byte) (runtimePatchPatchSiteLease, error) {
 	if moduleBase == 0 || moduleEnd <= moduleBase || address < moduleBase || len(definition.EnableBytes) == 0 {
 		return runtimePatchPatchSiteLease{}, fmt.Errorf("RuntimePatch patch site has invalid module bounds, address, or patch bytes")
 	}
@@ -482,10 +486,10 @@ func prepareRuntimePatchSiteLease(moduleBase, moduleEnd, address uintptr, defini
 	if len(original) != len(definition.EnableBytes) {
 		return runtimePatchPatchSiteLease{}, fmt.Errorf("RuntimePatch captured original length does not match enable patch")
 	}
-	if len(definition.ExpectedOriginalBytes) != len(definition.EnableBytes) {
+	if len(expectedOriginal) != len(definition.EnableBytes) {
 		return runtimePatchPatchSiteLease{}, fmt.Errorf("RuntimePatch expected original length does not match enable patch")
 	}
-	if !bytes.Equal(original, definition.ExpectedOriginalBytes) {
+	if !bytes.Equal(original, expectedOriginal) {
 		return runtimePatchPatchSiteLease{}, fmt.Errorf("RuntimePatch runtime bytes do not match locked expected original bytes")
 	}
 	if len(definition.DisableBytes) != 0 && !bytes.Equal(original, definition.DisableBytes) {
@@ -497,7 +501,7 @@ func prepareRuntimePatchSiteLease(moduleBase, moduleEnd, address uintptr, defini
 	return runtimePatchPatchSiteLease{
 		Address:  address,
 		RVA:      uint64(address - moduleBase),
-		Original: append([]byte(nil), definition.ExpectedOriginalBytes...),
+		Original: append([]byte(nil), expectedOriginal...),
 		Patch:    append([]byte(nil), definition.EnableBytes...),
 	}, nil
 }
@@ -513,7 +517,11 @@ func (a *App) prepareRuntimePatchSitesLocked(feature RuntimePatchFeature, memory
 	}
 	sites := make([]runtimePatchPatchSiteLease, 0, len(feature.Sites))
 	matchBySignature := make(map[string]uintptr, len(feature.Sites))
-	for index, definition := range feature.Sites {
+	for index, catalogDefinition := range feature.Sites {
+		definition, err := runtimePatchSiteForExecutable(catalogDefinition, a.runtimePatchVerifiedDigest)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %s site[%d]: %w", feature.ID, index, err)
+		}
 		signatureKey := definition.Module + "\x00" + definition.Symbol + "\x00" + definition.AOB
 		match, cached := matchBySignature[signatureKey]
 		if !cached {
@@ -540,7 +548,7 @@ func (a *App) prepareRuntimePatchSitesLocked(feature RuntimePatchFeature, memory
 		if err != nil {
 			return nil, fmt.Errorf("read %s site[%d] original bytes: %w", feature.ID, index, err)
 		}
-		lease, err := prepareRuntimePatchSiteLease(a.moduleBase, moduleEnd, address, definition, original)
+		lease, err := prepareRuntimePatchSiteLeaseExpected(a.moduleBase, moduleEnd, address, definition, original, definition.ExpectedOriginalBytes)
 		if err != nil {
 			return nil, fmt.Errorf("prepare %s site[%d]: %w", feature.ID, index, err)
 		}
