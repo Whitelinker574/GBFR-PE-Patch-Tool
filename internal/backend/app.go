@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.3"
+	appVersion  = "v2.0.4"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -866,6 +866,10 @@ func (a *App) charaAttachLocked() (CharaProcessInfo, error) {
 	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
 	if err != nil {
 		return CharaProcessInfo{}, fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+	}
+	if err := verifyLegacyRuntimeExecutableHandle(h, "实时功能"); err != nil {
+		windows.CloseHandle(h)
+		return CharaProcessInfo{}, err
 	}
 
 	modBase, err := getModuleBase(h)
@@ -2575,6 +2579,10 @@ func (a *App) ensureGameProcessLocked() error {
 	h, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, pid)
 	if err != nil {
 		return fmt.Errorf("无法打开进程 (错误 %v)，请以管理员身份运行", err)
+	}
+	if err := verifyLegacyRuntimeExecutableHandle(h, "实时功能"); err != nil {
+		windows.CloseHandle(h)
+		return err
 	}
 	modBase, err := getModuleBase(h)
 	if err != nil {

@@ -3,6 +3,7 @@ package backend
 import (
 	"go/ast"
 	"go/token"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -168,4 +169,66 @@ func TestGenericRuntimeAttachDoesNotScanLegacyCharacterList(t *testing.T) {
 	if firstSelectorCallPosition(body, "a", "charaManager") != token.NoPos {
 		t.Fatal("generic runtime attach must not scan the legacy character list before returning")
 	}
+}
+
+func TestLegacyRuntimeExecutableErrorExplainsGame203Boundary(t *testing.T) {
+	err := legacyRuntimeExecutableError("实时功能", game203ExecutableSHA256)
+	if err == nil {
+		t.Fatal("game 2.0.3 must remain fail closed for legacy runtime access")
+	}
+	message := err.Error()
+	for _, part := range []string{"2.0.3", "离线存档", "不会连接或写入"} {
+		if !strings.Contains(message, part) {
+			t.Fatalf("2.0.3 boundary message %q does not contain %q", message, part)
+		}
+	}
+}
+
+func TestLegacyRuntimeExecutableErrorRejectsUnknownBuild(t *testing.T) {
+	message := legacyRuntimeExecutableError("实时功能", strings.Repeat("0", 64)).Error()
+	if !strings.Contains(message, "仅支持已验证的游戏 2.0.2") ||
+		!strings.Contains(message, "不会连接或写入") {
+		t.Fatalf("unknown executable message does not fail closed clearly: %q", message)
+	}
+}
+
+func TestSharedRuntimeAttachVerifiesExecutableBeforePublishingConnection(t *testing.T) {
+	for _, method := range []string{"charaAttachLocked", "ensureGameProcessLocked"} {
+		body := appMethodBodyInFile(t, "app.go", method)
+		if body == nil {
+			t.Fatalf("%s not found", method)
+		}
+		verifyPosition := firstIdentCallPosition(body, "verifyLegacyRuntimeExecutableHandle")
+		if verifyPosition == token.NoPos {
+			t.Fatalf("%s does not verify the executable at the shared attach boundary", method)
+		}
+		for _, field := range []string{"hProcess", "moduleBase", "charaPID", "charaCreated"} {
+			assignment := firstAppFieldAssignmentPosition(body, field)
+			if assignment == token.NoPos || verifyPosition > assignment {
+				t.Fatalf("%s publishes a.%s before executable verification", method, field)
+			}
+		}
+	}
+}
+
+func firstAppFieldAssignmentPosition(body *ast.BlockStmt, field string) token.Pos {
+	position := token.NoPos
+	ast.Inspect(body, func(node ast.Node) bool {
+		assign, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for _, expression := range assign.Lhs {
+			selector, ok := expression.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != field {
+				continue
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "a" && (position == token.NoPos || selector.Pos() < position) {
+				position = selector.Pos()
+			}
+		}
+		return true
+	})
+	return position
 }

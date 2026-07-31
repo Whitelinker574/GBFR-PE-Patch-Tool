@@ -14,6 +14,7 @@ const (
 	runtimePatchCatalogSchemaVersion   = 3
 	runtimePatchCatalogGameVersion     = "2.0.2"
 	runtimePatchCatalogGameSHA256      = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
+	game203ExecutableSHA256            = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
 	runtimePatchCatalogFeatureCount    = 59
 	runtimePatchDamageCapConflictName  = "damage-cap-display"
 	stableReleaseCandidateWriteEnabled = false

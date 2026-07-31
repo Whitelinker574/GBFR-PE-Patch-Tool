@@ -261,11 +261,15 @@ func hashFileSHA256(path string) (string, error) {
 	return fmt.Sprintf("%X", hasher.Sum(nil)), nil
 }
 
-func (a *App) verifyRuntimePatchExecutableLocked(process processInstanceID, featureName string) error {
-	if sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
-		return nil
+func legacyRuntimeExecutableError(featureName, digest string) error {
+	if strings.EqualFold(digest, game203ExecutableSHA256) {
+		return fmt.Errorf("%s暂未支持游戏 2.0.3：离线存档、配装、分享与 Logs 已适配；实时功能仍在重新定位和实机验收，为保护游戏进程不会连接或写入", featureName)
 	}
-	path, err := queryProcessImagePath(a.hProcess)
+	return fmt.Errorf("%s仅支持已验证的游戏 2.0.2 可执行文件；当前游戏版本不会连接或写入", featureName)
+}
+
+func verifyLegacyRuntimeExecutableHandle(handle windows.Handle, featureName string) error {
+	path, err := queryProcessImagePath(handle)
 	if err != nil {
 		return fmt.Errorf("读取游戏可执行文件路径失败: %w", err)
 	}
@@ -274,7 +278,17 @@ func (a *App) verifyRuntimePatchExecutableLocked(process processInstanceID, feat
 		return fmt.Errorf("校验游戏可执行文件失败: %w", err)
 	}
 	if !strings.EqualFold(digest, runtimePatchCatalogGameSHA256) {
-		return fmt.Errorf("%s仅支持已验证的游戏 2.0.2 可执行文件", featureName)
+		return legacyRuntimeExecutableError(featureName, digest)
+	}
+	return nil
+}
+
+func (a *App) verifyRuntimePatchExecutableLocked(process processInstanceID, featureName string) error {
+	if sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
+		return nil
+	}
+	if err := verifyLegacyRuntimeExecutableHandle(a.hProcess, featureName); err != nil {
+		return err
 	}
 	a.runtimePatchVerifiedProcess = process
 	return nil
