@@ -11,7 +11,7 @@ import (
 
 const (
 	combatTuningHookSize                  = 5
-	stableReleaseCombatTuningWriteEnabled = false
+	stableReleaseCombatTuningWriteEnabled = true
 )
 
 var (

@@ -100,7 +100,7 @@ func runtimeCharacterPanelLayoutDescriptor() RuntimeCharacterPanelLayoutDescript
 }
 
 func readRuntimeCharacterPanelObjectStable(memory runtimeCharacterPanelMemory, object runtimeCharacterPanelObject, directoryHash uint32) (RuntimeCharacterPanelStats, error) {
-	return readStableRuntimeCharacterPanelSnapshots(func() (RuntimeCharacterPanelStats, error) {
+	stats, err := readStableRuntimeCharacterPanelSnapshots(func() (RuntimeCharacterPanelStats, error) {
 		stats, err := readRuntimeCharacterPanelValues(memory, object.Status, directoryHash)
 		if err != nil {
 			return RuntimeCharacterPanelStats{}, err
@@ -114,6 +114,14 @@ func readRuntimeCharacterPanelObjectStable(memory runtimeCharacterPanelMemory, o
 		}
 		return stats, nil
 	})
+	if err != nil {
+		return RuntimeCharacterPanelStats{}, err
+	}
+	if process, ok := memory.(*readOnlyGameProcess); ok && process.version != "" {
+		stats.Source = "game_runtime_" + process.version
+		stats.GameVersion = process.version
+	}
+	return stats, nil
 }
 
 func enumerateRuntimeCharacterPanelDiagnostics(memory runtimeCharacterPanelMemory, moduleBase uintptr) (RuntimeCharacterPanelRuntimeCatalog, error) {
@@ -171,7 +179,7 @@ func enumerateRuntimeCharacterPanelDiagnostics(memory runtimeCharacterPanelMemor
 }
 
 func (a *App) FormulaSamplerRuntimeObjects() (RuntimeCharacterPanelRuntimeCatalog, error) {
-	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 	if err != nil {
 		return RuntimeCharacterPanelRuntimeCatalog{}, err
 	}

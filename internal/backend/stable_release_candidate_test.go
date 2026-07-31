@@ -2,18 +2,18 @@ package backend
 
 import "testing"
 
-func TestStableReleaseKeepsUnverifiedRuntimeCandidatesDisabled(t *testing.T) {
-	if stableReleaseCandidateWriteEnabled {
-		t.Fatal("generic runtime candidates are writable in the stable release")
+func TestRuntimeFeatureEntrypointsRemainAvailable(t *testing.T) {
+	if !stableReleaseCandidateWriteEnabled {
+		t.Fatal("generic runtime candidate entrypoints are locked")
 	}
-	if stableReleaseCombatTuningWriteEnabled {
-		t.Fatal("combat tuning candidates are writable in the stable release")
+	if !stableReleaseCombatTuningWriteEnabled {
+		t.Fatal("combat tuning entrypoints are locked")
 	}
-	if stableReleaseVirtualSigilWriteEnabled {
-		t.Fatal("virtual sigils are writable in the stable release")
+	if !stableReleaseVirtualSigilWriteEnabled {
+		t.Fatal("virtual sigil entrypoint is locked")
 	}
-	if runtimeSpatialGravityStableReleaseEnabled {
-		t.Fatal("gravity suppression is writable before forced-exit restoration is field-proven")
+	if !runtimeSpatialGravityStableReleaseEnabled {
+		t.Fatal("gravity suppression entrypoint is locked")
 	}
 
 	catalog, err := loadRuntimePatchCatalog()
@@ -21,8 +21,8 @@ func TestStableReleaseKeepsUnverifiedRuntimeCandidatesDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := findRuntimePatchCatalogFeature(catalog, "runtime-patch-059")
-	if candidate == nil || runtimePatchFeatureAvailableInStableRelease(*candidate) {
-		t.Fatalf("candidate runtime patch is available in the stable release: %+v", candidate)
+	if candidate == nil || !runtimePatchFeatureAvailableInStableRelease(*candidate) {
+		t.Fatalf("candidate runtime patch entrypoint is locked: %+v", candidate)
 	}
 	verified := findRuntimePatchCatalogFeature(catalog, "runtime-patch-001")
 	if verified == nil || !runtimePatchFeatureAvailableInStableRelease(*verified) {

@@ -623,9 +623,31 @@ func TestRuntimePatchEnableVerifiesExecutableBeforeCatalogPreparationOrWrite(t *
 	prepareAt := strings.Index(block, "prepareRuntimePatchSitesLocked")
 	installAt := strings.Index(block, "installRuntimePatchSites")
 	if verifyAt < 0 || prepareAt < 0 || installAt < 0 || verifyAt > prepareAt || verifyAt > installAt {
-		t.Fatal("RuntimePatch enable must verify the exact 2.0.2 executable before preparing or installing writes")
+		t.Fatal("RuntimePatch enable must verify a recognized executable before preparing or installing writes")
 	}
 	if !strings.Contains(block, "if enabled {") {
 		t.Fatal("RuntimePatch executable verification must remain enable-only so recovery survives game updates")
+	}
+}
+
+func TestPrepareRuntimePatchSiteLeaseExpectedCaptures203BytesForRecovery(t *testing.T) {
+	definition := RuntimePatchSite{
+		Symbol:                "GBFR_PATCH_014_1",
+		EnableBytes:           []byte{0x0F, 0x57, 0xC9, 0x90, 0x90, 0x90, 0x90, 0x90},
+		ExpectedOriginalBytes: []byte{0xC5, 0xFA, 0x59, 0x0D, 0x8E, 0xE6, 0xA7, 0x02},
+	}
+	expected203 := runtimePatchExpectedOriginalBytes(definition, runtimePatchLocalGame203SHA256)
+	lease, err := prepareRuntimePatchSiteLeaseExpected(
+		0x1000, 0x3000, 0x1800, definition,
+		append([]byte(nil), expected203...), expected203,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(lease.Original, runtimePatch203OriginalBytes[definition.Symbol]) {
+		t.Fatalf("recovery original=% X, want 2.0.3 bytes % X", lease.Original, runtimePatch203OriginalBytes[definition.Symbol])
+	}
+	if bytes.Equal(lease.Original, definition.ExpectedOriginalBytes) {
+		t.Fatal("2.0.3 recovery record retained the 2.0.2 RIP displacement")
 	}
 }

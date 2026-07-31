@@ -88,16 +88,33 @@ func TestRuntimeQOLLiveLifecycle(t *testing.T) {
 	}
 }
 
-func TestRuntimeQOLRejectsUnverifiedMutatingFeatures(t *testing.T) {
+func TestRuntimeQOLAcceptsExplicitMutatingFeatureRequests(t *testing.T) {
 	for name, config := range map[string]RuntimeQOLConfig{
 		"normal-quest-level-sync": {NormalQuestLevelSync: true, EnemyHPPrecision: 2, SBAPrecision: 2},
 		"wrightstone-return":      {ReturnWrightstone: true, EnemyHPPrecision: 2, SBAPrecision: 2},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := normalizeRuntimeQOLConfig(config); err == nil {
-				t.Fatal("unverified mutating feature was accepted")
+			if _, err := normalizeRuntimeQOLConfig(config); err != nil {
+				t.Fatalf("explicit mutating feature request was rejected: %v", err)
 			}
 		})
+	}
+}
+
+func TestRuntimeQOLConfigKeepsExplicitExperimentalFeatures(t *testing.T) {
+	config := runtimeQOLConfigFromSection(map[string]string{
+		"damageCapPercentage":  "0",
+		"detailedEnemyHp":      "0",
+		"detailedSba":          "0",
+		"sessionCapture":       "0",
+		"normalQuestLevelSync": "1",
+		"returnWrightstone":    "1",
+		"freeCaptain":          "0",
+		"enemyHpPrecision":     "2",
+		"sbaPrecision":         "2",
+	})
+	if !config.NormalQuestLevelSync || !config.ReturnWrightstone {
+		t.Fatalf("explicit experimental QOL features were cleared after config read: %+v", config)
 	}
 }
 

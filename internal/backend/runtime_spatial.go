@@ -19,7 +19,7 @@ const (
 	// forcibly terminated. Keep the read/recovery path available for sessions
 	// created by earlier test builds, but do not create a new gravity lease in
 	// the stable release until an in-process owner watchdog is field-proven.
-	runtimeSpatialGravityStableReleaseEnabled = false
+	runtimeSpatialGravityStableReleaseEnabled = true
 )
 
 var (
@@ -287,11 +287,15 @@ func (a *App) RuntimeSpatialMoveOwned(leaseID string, delta RuntimePatchVector3)
 	return result, nil
 }
 
-func runtimeSpatialGravityAddress(moduleBase uintptr) (uintptr, error) {
-	if moduleBase == 0 || moduleBase > ^uintptr(0)-runtimeSpatialGravityRVA {
+func runtimeSpatialGravityAddress(moduleBase uintptr, layouts ...runtimeGameLayout) (uintptr, error) {
+	layout := runtimeGameLayouts[0]
+	if len(layouts) > 0 {
+		layout = layouts[0]
+	}
+	if moduleBase == 0 || moduleBase > ^uintptr(0)-layout.SpatialGravityRVA {
 		return 0, fmt.Errorf("%s", runtimePatchMonitorText("重力入口地址无效", "The gravity entry address is invalid"))
 	}
-	return moduleBase + runtimeSpatialGravityRVA, nil
+	return moduleBase + layout.SpatialGravityRVA, nil
 }
 
 func cloneRuntimeSpatialGravityLease(lease runtimePatchPatchLease) *runtimePatchPatchLease {
@@ -299,27 +303,35 @@ func cloneRuntimeSpatialGravityLease(lease runtimePatchPatchLease) *runtimePatch
 	return &cloned
 }
 
-func validateRuntimeSpatialGravityLease(lease runtimePatchPatchLease, owner string, process processInstanceID, moduleBase uintptr) error {
+func validateRuntimeSpatialGravityLease(lease runtimePatchPatchLease, owner string, process processInstanceID, moduleBase uintptr, layouts ...runtimeGameLayout) error {
+	layout := runtimeGameLayouts[0]
+	if len(layouts) > 0 {
+		layout = layouts[0]
+	}
 	if lease.FeatureID != runtimeSpatialGravityFeatureID || len(lease.Sites) != 1 {
 		return errors.Join(fmt.Errorf("invalid spatial gravity recovery lease"), errLiveMemoryRollbackUnproven)
 	}
 	if err := validateRuntimePatchOwnedLease(lease, owner, process); err != nil {
 		return err
 	}
-	address, err := runtimeSpatialGravityAddress(moduleBase)
+	address, err := runtimeSpatialGravityAddress(moduleBase, layout)
 	if err != nil {
 		return err
 	}
 	site := lease.Sites[0]
-	if site.Address != address || site.RVA != uint64(runtimeSpatialGravityRVA) ||
+	if site.Address != address || site.RVA != uint64(layout.SpatialGravityRVA) ||
 		!bytes.Equal(site.Original, runtimeSpatialGravityOriginal) || !bytes.Equal(site.Patch, runtimeSpatialGravityPatch) {
 		return errors.Join(fmt.Errorf("spatial gravity recovery lease does not match the verified site"), errLiveMemoryRollbackUnproven)
 	}
 	return nil
 }
 
-func prepareRuntimeSpatialGravitySite(memory runtimePatchMemory, moduleBase, moduleEnd uintptr) (runtimePatchPatchSiteLease, error) {
-	address, err := runtimeSpatialGravityAddress(moduleBase)
+func prepareRuntimeSpatialGravitySite(memory runtimePatchMemory, moduleBase, moduleEnd uintptr, layouts ...runtimeGameLayout) (runtimePatchPatchSiteLease, error) {
+	layout := runtimeGameLayouts[0]
+	if len(layouts) > 0 {
+		layout = layouts[0]
+	}
+	address, err := runtimeSpatialGravityAddress(moduleBase, layout)
 	if err != nil {
 		return runtimePatchPatchSiteLease{}, err
 	}
@@ -342,21 +354,25 @@ func prepareRuntimeSpatialGravitySite(memory runtimePatchMemory, moduleBase, mod
 		return runtimePatchPatchSiteLease{}, fmt.Errorf("%s: %w", runtimePatchMonitorText("读取重力入口上下文失败", "Read gravity entry context"), err)
 	}
 	if !bytes.Equal(context, runtimeSpatialGravityContext) {
-		return runtimePatchPatchSiteLease{}, fmt.Errorf("%s", runtimePatchMonitorText("重力入口上下文与已验证的 2.0.2 指令不一致", "The gravity entry context does not match the verified 2.0.2 instructions"))
+		return runtimePatchPatchSiteLease{}, fmt.Errorf("%s", runtimePatchMonitorText("重力入口上下文与已识别游戏布局不一致", "The gravity entry context does not match the identified game layout"))
 	}
 	return runtimePatchPatchSiteLease{
-		Address: address, RVA: uint64(runtimeSpatialGravityRVA),
+		Address: address, RVA: uint64(layout.SpatialGravityRVA),
 		Original: append([]byte(nil), runtimeSpatialGravityOriginal...),
 		Patch:    append([]byte(nil), runtimeSpatialGravityPatch...),
 	}, nil
 }
 
-func readRuntimeSpatialGravityStatus(memory runtimePatchMemory, moduleBase uintptr, process processInstanceID, owner string, lease *runtimePatchPatchLease) RuntimeSpatialGravityStatus {
-	status := RuntimeSpatialGravityStatus{
-		OwnerLeaseID: owner, RVA: uint64(runtimeSpatialGravityRVA), PID: process.PID, ProcessCreated: process.Created,
-		GameVersion: "2.0.2", Source: "game_runtime_gravity_patch_2.0.2",
+func readRuntimeSpatialGravityStatus(memory runtimePatchMemory, moduleBase uintptr, process processInstanceID, owner string, lease *runtimePatchPatchLease, layouts ...runtimeGameLayout) RuntimeSpatialGravityStatus {
+	layout := runtimeGameLayouts[0]
+	if len(layouts) > 0 {
+		layout = layouts[0]
 	}
-	address, err := runtimeSpatialGravityAddress(moduleBase)
+	status := RuntimeSpatialGravityStatus{
+		OwnerLeaseID: owner, RVA: uint64(layout.SpatialGravityRVA), PID: process.PID, ProcessCreated: process.Created,
+		GameVersion: layout.Version, Source: "game_runtime_gravity_patch_" + layout.Version,
+	}
+	address, err := runtimeSpatialGravityAddress(moduleBase, layout)
 	if err != nil {
 		status.Error = err.Error()
 		return status
@@ -365,7 +381,7 @@ func readRuntimeSpatialGravityStatus(memory runtimePatchMemory, moduleBase uintp
 	if lease != nil {
 		status.Owned = runtimeOwnerTokenMatches(lease.OwnerToken, owner) && sameProcessInstance(lease.Process, process)
 		status.RecoveryPending = lease.State == runtimePatchPatchRecovery
-		if err := validateRuntimeSpatialGravityLease(*lease, owner, process, moduleBase); err != nil {
+		if err := validateRuntimeSpatialGravityLease(*lease, owner, process, moduleBase, layout); err != nil {
 			status.Error = err.Error()
 			return status
 		}
@@ -418,7 +434,11 @@ func (a *App) RuntimeSpatialGravityStatusOwned(owner string) (RuntimeSpatialGrav
 	}
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
-	status := readRuntimeSpatialGravityStatus(runtimePatchProcessMemory{handle: a.hProcess}, a.moduleBase, process, owner, a.runtimeSpatialGravityLease)
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return RuntimeSpatialGravityStatus{}, err
+	}
+	status := readRuntimeSpatialGravityStatus(runtimePatchProcessMemory{handle: a.hProcess}, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout)
 	if !runtimeSpatialGravityStableReleaseEnabled && a.runtimeSpatialGravityLease == nil {
 		status.Available = false
 		if status.Error == "" {
@@ -456,13 +476,17 @@ func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
 	memory := runtimePatchProcessMemory{handle: a.hProcess}
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return RuntimeSpatialGravityStatus{}, err
+	}
 	if a.runtimeSpatialGravityLease != nil {
 		lease := *a.runtimeSpatialGravityLease
-		if err := validateRuntimeSpatialGravityLease(lease, owner, process, a.moduleBase); err != nil {
-			return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease), err
+		if err := validateRuntimeSpatialGravityLease(lease, owner, process, a.moduleBase, layout); err != nil {
+			return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout), err
 		}
 		if enabled {
-			status := readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease)
+			status := readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout)
 			if lease.State == runtimePatchPatchEnabled && status.Enabled && status.Available {
 				return status, nil
 			}
@@ -472,12 +496,12 @@ func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (
 			if errors.Is(err, errLiveMemoryRollbackUnproven) {
 				a.poisonCurrentLiveMemoryWrites()
 			}
-			return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease), err
+			return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout), err
 		}
-		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil), nil
+		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil, layout), nil
 	}
 	if !enabled {
-		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil), nil
+		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil, layout), nil
 	}
 	moduleSize, err := getRemoteModuleSize(a.hProcess, a.moduleBase)
 	if err != nil {
@@ -487,9 +511,9 @@ func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (
 	if moduleEnd < a.moduleBase {
 		return RuntimeSpatialGravityStatus{}, fmt.Errorf("%s", runtimePatchMonitorText("游戏模块范围溢出", "The game module range overflowed"))
 	}
-	site, err := prepareRuntimeSpatialGravitySite(memory, a.moduleBase, moduleEnd)
+	site, err := prepareRuntimeSpatialGravitySite(memory, a.moduleBase, moduleEnd, layout)
 	if err != nil {
-		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil), err
+		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, nil, layout), err
 	}
 	if overlap := findRuntimePatchActiveAddressOverlap([]runtimePatchPatchSiteLease{site}, a.runtimePatchPatchLeases, runtimeSpatialGravityFeatureID); overlap != "" {
 		return RuntimeSpatialGravityStatus{}, fmt.Errorf("%s %s", runtimePatchMonitorText("重力入口与当前补丁重叠：", "The gravity entry overlaps active patch:"), overlap)
@@ -505,11 +529,11 @@ func (a *App) RuntimeSpatialGravitySetEnabledOwned(owner string, enabled bool) (
 		} else {
 			a.runtimeSpatialGravityLease = nil
 		}
-		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease), err
+		return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout), err
 	}
 	candidate.State = runtimePatchPatchEnabled
 	a.runtimeSpatialGravityLease = cloneRuntimeSpatialGravityLease(candidate)
-	return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease), nil
+	return readRuntimeSpatialGravityStatus(memory, a.moduleBase, process, owner, a.runtimeSpatialGravityLease, layout), nil
 }
 
 func (a *App) restoreRuntimeSpatialGravityOwnedLocked(owner string, force bool) error {
@@ -525,7 +549,11 @@ func (a *App) restoreRuntimeSpatialGravityOwnedLocked(owner string, force bool) 
 	if force {
 		validationOwner = lease.OwnerToken
 	}
-	if err := validateRuntimeSpatialGravityLease(lease, validationOwner, process, a.moduleBase); err != nil {
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return err
+	}
+	if err := validateRuntimeSpatialGravityLease(lease, validationOwner, process, a.moduleBase, layout); err != nil {
 		return err
 	}
 	lease.State = runtimePatchPatchRecovery

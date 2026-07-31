@@ -107,7 +107,7 @@ test('function portrait speakers stay aligned with their assigned character iden
   assert.match(shell, /spatialTools:\s*\{[\s\S]*?speaker:\s*'泽塔'[\s\S]*?note:\s*'先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。'/)
   assert.match(shell, /selectedItemMonitor:\s*\{[\s\S]*?speaker:\s*'齐格飞'[\s\S]*?note:\s*'换了物品要重新选中再读取；这里只看，不会写入。'/)
   assert.match(shell, /camera:\s*\{[\s\S]*?speaker:\s*'索恩'[\s\S]*?note:\s*'先看准距离和高度；顶部显示常驻后，切页也不会停。'/)
-  assert.match(shell, /runtimeQOL:\s*\{[\s\S]*?speaker:\s*'夏洛特'[\s\S]*?note:\s*'只开验证过的选项；没实测的继续锁住，F12 可以恢复。'/)
+  assert.match(shell, /runtimeQOL:\s*\{[\s\S]*?speaker:\s*'夏洛特'[\s\S]*?note:\s*'实验开关可以先试，但记得核对任务和背包；F12 可以恢复。'/)
 })
 
 test('offline summon save owns Sandalphon art instead of repeating the runtime summon guide', () => {

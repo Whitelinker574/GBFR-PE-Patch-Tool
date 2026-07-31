@@ -387,7 +387,7 @@ func (session *runtimeLoadoutDetectorSession) tick() {
 	defer session.mu.Unlock()
 	session.lastPollAt = time.Now()
 	if session.process == nil {
-		process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+		process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 		if err != nil {
 			session.state = "waiting_game"
 			session.lastError = err.Error()

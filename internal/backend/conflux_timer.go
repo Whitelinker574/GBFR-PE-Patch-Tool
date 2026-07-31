@@ -236,10 +236,15 @@ func (a *App) verifyRuntimePatchExecutableLocked(process processInstanceID, feat
 	if sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
 		return nil
 	}
-	if err := verifyLegacyRuntimeExecutableHandle(a.hProcess, featureName); err != nil {
+	digest, err := runtimeExecutableDigestForHandle(a.hProcess)
+	if err != nil {
 		return err
 	}
+	if !isSupportedRuntimeExecutableDigest(digest) {
+		return legacyRuntimeExecutableError(featureName, digest)
+	}
 	a.runtimePatchVerifiedProcess = process
+	a.runtimePatchVerifiedDigest = digest
 	return nil
 }
 

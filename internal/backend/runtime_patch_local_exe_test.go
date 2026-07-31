@@ -14,6 +14,8 @@ import (
 const (
 	runtimePatchLocalGame202SHA256 = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
 	runtimePatchLocalGame202Size   = int64(123522016)
+	runtimePatchLocalGame203SHA256 = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
+	runtimePatchLocalGame203Size   = int64(123506656)
 )
 
 type runtimePatchLocalExecutableSection struct {
@@ -117,6 +119,10 @@ func findRuntimePatchLocalPatternMatches(sections []runtimePatchLocalExecutableS
 }
 
 func verifyRuntimePatchLocalGameIdentity(path string) error {
+	return verifyRuntimePatchLocalGameIdentityExact(path, runtimePatchLocalGame202Size, runtimePatchLocalGame202SHA256)
+}
+
+func verifyRuntimePatchLocalGameIdentityExact(path string, expectedSize int64, expectedSHA256 string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -127,17 +133,85 @@ func verifyRuntimePatchLocalGameIdentity(path string) error {
 	if err != nil {
 		return err
 	}
-	if stat.Size() != runtimePatchLocalGame202Size {
-		return fmt.Errorf("game executable size=%d, want %d", stat.Size(), runtimePatchLocalGame202Size)
+	if stat.Size() != expectedSize {
+		return fmt.Errorf("game executable size=%d, want %d", stat.Size(), expectedSize)
 	}
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
 		return err
 	}
-	if got := fmt.Sprintf("%X", hasher.Sum(nil)); got != runtimePatchLocalGame202SHA256 {
-		return fmt.Errorf("game executable SHA256=%s, want %s", got, runtimePatchLocalGame202SHA256)
+	if got := fmt.Sprintf("%X", hasher.Sum(nil)); !strings.EqualFold(got, expectedSHA256) {
+		return fmt.Errorf("game executable SHA256=%s, want %s", got, expectedSHA256)
 	}
 	return nil
+}
+
+func TestRuntimePatchCatalogMatchesLocalGame203(t *testing.T) {
+	path := os.Getenv("GBFR_GAME_EXE_203_TEST")
+	if path == "" {
+		t.Skip("set GBFR_GAME_EXE_203_TEST to verify the locally supplied game 2.0.3 executable")
+	}
+	if err := verifyRuntimePatchLocalGameIdentityExact(path, runtimePatchLocalGame203Size, runtimePatchLocalGame203SHA256); err != nil {
+		t.Fatalf("verify local game 2.0.3 identity: %v", err)
+	}
+	sections, err := readRuntimePatchLocalExecutableSections(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := decodeRuntimePatchCatalog(runtimePatchCatalogJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unchanged := 0
+	compatibleVariants := 0
+	missing := make([]string, 0, 2)
+	for _, feature := range catalog.Features {
+		for siteIndex, catalogSite := range feature.Sites {
+			site, err := runtimePatchSiteForExecutable(catalogSite, runtimePatchLocalGame203SHA256)
+			if err != nil {
+				t.Fatalf("%s site[%d]: resolve 2.0.3 definition: %v", feature.ID, siteIndex, err)
+			}
+			pattern, err := parseRuntimePatchPattern(site.AOB)
+			if err != nil {
+				t.Fatalf("%s site[%d]: parse AOB: %v", feature.ID, siteIndex, err)
+			}
+			matches := findRuntimePatchLocalPatternMatches(sections, pattern)
+			if len(matches) == 0 {
+				missing = append(missing, fmt.Sprintf("%d/%d", feature.CatalogID, siteIndex))
+				continue
+			}
+			if len(matches) != 1 {
+				t.Errorf("%s site[%d]: matches=%d, want 1", feature.ID, siteIndex, len(matches))
+				continue
+			}
+			match := matches[0]
+			for sectionIndex := range sections {
+				section := &sections[sectionIndex]
+				start := int(match.rva-section.rva) + site.Offset
+				if section.name != match.section || start < 0 || start+len(site.EnableBytes) > len(section.data) {
+					continue
+				}
+				actual := section.data[start : start+len(site.EnableBytes)]
+				expected := site.ExpectedOriginalBytes
+				if !bytes.Equal(actual, expected) {
+					t.Errorf("%s site[%d] 2.0.3 original=% X, expected=% X", feature.ID, siteIndex, actual, expected)
+				} else if bytes.Equal(actual, catalogSite.ExpectedOriginalBytes) {
+					unchanged++
+				} else {
+					t.Logf("%s site[%d] 2.0.3 original=% X", feature.ID, siteIndex, actual)
+					compatibleVariants++
+				}
+				break
+			}
+		}
+	}
+	if unchanged != 79 || compatibleVariants != 3 {
+		t.Errorf("2.0.3 RuntimePatch coverage=%d unchanged/%d variants, want 79/3", unchanged, compatibleVariants)
+	}
+	if got, want := strings.Join(missing, ","), ""; got != want {
+		t.Errorf("2.0.3 missing sites=%q, want %q", got, want)
+	}
 }
 
 func formatRuntimePatchLocalMatchLocations(matches []runtimePatchLocalPatternMatch) string {

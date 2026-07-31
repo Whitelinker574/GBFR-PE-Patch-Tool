@@ -1611,13 +1611,21 @@ struct RuntimeGemData
 #pragma pack(pop)
 
 using GetGemDataFunction = uint8_t(*)(uintptr_t, int, uintptr_t);
-static constexpr lm_address_t kTraitApplyLoopRva = 0x00A25484;
-static constexpr lm_address_t kTraitCategoryLoopRva = 0x00A26096;
-static constexpr lm_address_t kTraitFetchRva = 0x00A260AE;
-static constexpr lm_address_t kTraitFetchCallRva = 0x00A260F0;
-static constexpr lm_address_t kGetGemDataRva = 0x00A2C610;
-static constexpr lm_address_t kSystemDataGlobalRva = 0x07C20940;
-static constexpr lm_address_t kStatusManagerGlobalRva = 0x07C24980;
+struct VirtualSigilRuntimeLayout
+{
+    const wchar_t* version;
+    lm_address_t traitApplyLoopRva;
+    lm_address_t traitCategoryLoopRva;
+    lm_address_t traitFetchRva;
+    lm_address_t traitFetchCallRva;
+    lm_address_t getGemDataRva;
+    lm_address_t systemDataGlobalRva;
+    lm_address_t statusManagerGlobalRva;
+};
+static constexpr VirtualSigilRuntimeLayout kVirtualSigilRuntimeLayouts[] = {
+    { L"2.0.2", 0x00A25484, 0x00A26096, 0x00A260AE, 0x00A260F0, 0x00A2C610, 0x07C20940, 0x07C24980 },
+    { L"2.0.3", 0x00A1EBE4, 0x00A1F7F6, 0x00A1F80E, 0x00A1F850, 0x00A25D70, 0x07C1D900, 0x07C21940 },
+};
 static constexpr int kNativeSigilSlots = 13;
 static constexpr int kMainGemCapacity = 5100;
 static constexpr int kMainGemArrayOffset = 0x25D0;
@@ -1628,6 +1636,7 @@ static const lm_byte_t kGetterOriginal[] = { 0x55, 0x41, 0x57, 0x41, 0x56, 0x56,
 static SRWLOCK g_virtualSigilLock = SRWLOCK_INIT;
 static std::unordered_map<uint32_t, std::array<VirtualSigilConfigEntry, 8>> g_virtualSigils;
 static uint32_t g_virtualSlotCount = 4;
+static const VirtualSigilRuntimeLayout* g_virtualLayout = nullptr;
 static lm_address_t g_virtualModuleBase = 0;
 static GetGemDataFunction g_originalGetGemData = nullptr;
 static lm_size_t g_getGemHookSize = 0;
@@ -1687,7 +1696,8 @@ static bool ReadVirtualSigilConfig(const std::wstring& path, bool requireEnabled
 
 static bool ResolveOwnedStatus(uintptr_t status, uint32_t characterHash, int contextMode)
 {
-    uintptr_t global = g_virtualModuleBase + kStatusManagerGlobalRva;
+    if (!g_virtualLayout) return false;
+    uintptr_t global = g_virtualModuleBase + g_virtualLayout->statusManagerGlobalRva;
     if (!MemoryRegionAllows(global, sizeof(uintptr_t), false)) return false;
     uintptr_t manager = *reinterpret_cast<uintptr_t*>(global);
     if (!manager || !MemoryRegionAllows(manager + 0xA58, 4, false) || !MemoryRegionAllows(manager + 0xA40, sizeof(uintptr_t), false) ||
@@ -1713,7 +1723,8 @@ static bool ResolveOwnedStatus(uintptr_t status, uint32_t characterHash, int con
 
 static bool FindInventoryGem(uint32_t slotId, RuntimeGemData& output)
 {
-    uintptr_t global = g_virtualModuleBase + kSystemDataGlobalRva;
+    if (!g_virtualLayout) return false;
+    uintptr_t global = g_virtualModuleBase + g_virtualLayout->systemDataGlobalRva;
     if (!MemoryRegionAllows(global, sizeof(uintptr_t), false)) return false;
     uintptr_t systemData = *reinterpret_cast<uintptr_t*>(global);
     uintptr_t start = systemData + kMainGemArrayOffset;
@@ -1814,14 +1825,20 @@ static bool InstallVirtualTraitFetchHook(lm_address_t target, lm_address_t callP
 static bool StopVirtualSigilRuntime()
 {
 	g_virtualStopping.store(true);
-	lm_address_t getter = g_virtualModuleBase + kGetGemDataRva;
+	if (!g_virtualLayout || !g_virtualModuleBase)
+	{
+		WriteRuntimeStatus(L"virtual-sigils", L"inactive", L"no virtual sigil layout was installed");
+		ReleaseRuntimeOwnerAfterVerifiedStop(L"virtual-sigils", true);
+		return true;
+	}
+	lm_address_t getter = g_virtualModuleBase + g_virtualLayout->getGemDataRva;
 	bool nativeRestored = true;
-	if (g_traitFetchInstalled) nativeRestored = PatchBytes(g_virtualModuleBase + kTraitFetchRva, kTraitFetchOriginal, sizeof(kTraitFetchOriginal));
+	if (g_traitFetchInstalled) nativeRestored = PatchBytes(g_virtualModuleBase + g_virtualLayout->traitFetchRva, kTraitFetchOriginal, sizeof(kTraitFetchOriginal));
 	bool hookRestored = RestoreLibmemHookAfterDrain(getter, reinterpret_cast<lm_address_t>(g_originalGetGemData),
 		&g_getGemHookSize, g_getGemOriginal, sizeof(g_getGemOriginal), g_virtualCallbacks);
 	uint8_t current = 0;
-    lm_address_t category = g_virtualModuleBase + kTraitCategoryLoopRva;
-    lm_address_t apply = g_virtualModuleBase + kTraitApplyLoopRva;
+    lm_address_t category = g_virtualModuleBase + g_virtualLayout->traitCategoryLoopRva;
+    lm_address_t apply = g_virtualModuleBase + g_virtualLayout->traitApplyLoopRva;
 	lm_size_t categoryRead = LM_ReadMemory(category, &current, 1);
 	if (categoryRead == 1 && current == kNativeSigilSlots + g_virtualSlotCount)
 	{
@@ -1852,7 +1869,7 @@ static DWORD RunVirtualSigilRuntime()
         WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"tool owner identity is missing or no longer alive");
         return 1;
     }
-    constexpr bool kStableReleaseVirtualSigilsEnabled = false;
+    constexpr bool kStableReleaseVirtualSigilsEnabled = true;
     if (!kStableReleaseVirtualSigilsEnabled)
     {
         WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigils are disabled in the stable build pending field acceptance");
@@ -1871,28 +1888,40 @@ static DWORD RunVirtualSigilRuntime()
         return 1;
     }
     g_virtualModuleBase = module.base;
-    lm_byte_t getter[sizeof(kGetterOriginal)]{};
-    lm_byte_t applyPreflight[16]{};
-    lm_byte_t categoryPreflight[13]{};
+	const VirtualSigilRuntimeLayout* layout = nullptr;
+	lm_byte_t getter[sizeof(kGetterOriginal)]{};
+	lm_byte_t applyPreflight[16]{};
+	lm_byte_t categoryPreflight[13]{};
     const lm_byte_t expectedApply[] = { 0xFF, 0xC7, 0x83, 0xFF, 0x0D, 0x0F, 0x84, 0xB7, 0x00, 0x00, 0x00, 0xC5, 0xF8, 0x11, 0x75, 0xF0 };
     const lm_byte_t expectedCategory[] = { 0x49, 0xFF, 0xC5, 0x49, 0x83, 0xFD, 0x0D, 0x0F, 0x84, 0xE4, 0x00, 0x00, 0x00 };
-    if (LM_ReadMemory(module.base + kGetGemDataRva, getter, sizeof(getter)) != sizeof(getter) || !BytesEqual(getter, kGetterOriginal, sizeof(getter)) ||
-        LM_ReadMemory(module.base + kTraitApplyLoopRva - 4, applyPreflight, sizeof(applyPreflight)) != sizeof(applyPreflight) || !BytesEqual(applyPreflight, expectedApply, sizeof(expectedApply)) ||
-        LM_ReadMemory(module.base + kTraitCategoryLoopRva - 6, categoryPreflight, sizeof(categoryPreflight)) != sizeof(categoryPreflight) || !BytesEqual(categoryPreflight, expectedCategory, sizeof(expectedCategory)))
+	for (const auto& candidate : kVirtualSigilRuntimeLayouts)
+	{
+		if (LM_ReadMemory(module.base + candidate.getGemDataRva, getter, sizeof(getter)) != sizeof(getter) || !BytesEqual(getter, kGetterOriginal, sizeof(getter))) continue;
+		if (LM_ReadMemory(module.base + candidate.traitApplyLoopRva - 4, applyPreflight, sizeof(applyPreflight)) != sizeof(applyPreflight) || !BytesEqual(applyPreflight, expectedApply, sizeof(expectedApply))) continue;
+		if (LM_ReadMemory(module.base + candidate.traitCategoryLoopRva - 6, categoryPreflight, sizeof(categoryPreflight)) != sizeof(categoryPreflight) || !BytesEqual(categoryPreflight, expectedCategory, sizeof(expectedCategory))) continue;
+		if (layout) {
+			layout = nullptr;
+			break;
+		}
+		layout = &candidate;
+	}
+	if (!layout)
     {
         WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigil executable preflight failed");
         return 1;
     }
+	g_virtualLayout = layout;
     wchar_t message[256]{};
-    lm_address_t getterTarget = module.base + kGetGemDataRva;
+	lm_address_t getterTarget = module.base + g_virtualLayout->getGemDataRva;
 	if (LM_ReadMemory(getterTarget, g_getGemOriginal, sizeof(g_getGemOriginal)) != sizeof(g_getGemOriginal))
 	{
 		WriteRuntimeInactiveAndReleaseOwner(L"virtual-sigils", L"virtual sigil getter preflight read failed");
 		return 1;
 	}
+	g_virtualStopping.store(false);
 	g_getGemHookSize = LM_HookCode(getterTarget, reinterpret_cast<lm_address_t>(&GetGemDataDetour), reinterpret_cast<lm_address_t*>(&g_originalGetGemData));
     uint8_t expanded = static_cast<uint8_t>(kNativeSigilSlots + g_virtualSlotCount);
-    if (!g_getGemHookSize || !InstallVirtualTraitFetchHook(module.base + kTraitFetchRva, module.base + kTraitFetchCallRva, expanded, message, _countof(message)))
+	if (!g_getGemHookSize || !InstallVirtualTraitFetchHook(module.base + g_virtualLayout->traitFetchRva, module.base + g_virtualLayout->traitFetchCallRva, expanded, message, _countof(message)))
     {
         const bool restored = StopVirtualSigilRuntime();
         WriteStartupFailureAfterStop(L"virtual-sigils", restored, message[0] ? message : L"virtual sigil hook installation failed");
@@ -1900,8 +1929,8 @@ static DWORD RunVirtualSigilRuntime()
     }
     uint8_t native = kNativeSigilSlots;
     uint8_t current = 0;
-    if (LM_ReadMemory(module.base + kTraitApplyLoopRva, &current, 1) != 1 || current != native || !PatchBytes(module.base + kTraitApplyLoopRva, &expanded, 1) ||
-        LM_ReadMemory(module.base + kTraitCategoryLoopRva, &current, 1) != 1 || current != native || !PatchBytes(module.base + kTraitCategoryLoopRva, &expanded, 1))
+    if (LM_ReadMemory(module.base + g_virtualLayout->traitApplyLoopRva, &current, 1) != 1 || current != native || !PatchBytes(module.base + g_virtualLayout->traitApplyLoopRva, &expanded, 1) ||
+        LM_ReadMemory(module.base + g_virtualLayout->traitCategoryLoopRva, &current, 1) != 1 || current != native || !PatchBytes(module.base + g_virtualLayout->traitCategoryLoopRva, &expanded, 1))
     {
         const bool restored = StopVirtualSigilRuntime();
         WriteStartupFailureAfterStop(L"virtual-sigils", restored, L"virtual sigil loop-limit patch failed");
@@ -3327,24 +3356,59 @@ static int QOLValidateReplacementDetour(uintptr_t party, int selected, uintptr_t
 
 static bool InstallQOLFreeCaptain(const lm_module_t& module)
 {
-    struct Entry { lm_address_t rva; const char* signature; lm_address_t* target; lm_address_t detour; lm_address_t* original; lm_size_t* size; lm_byte_t* bytes; };
-    Entry entries[] = {
-        { 0x1CA7870, "56 57 48 83 EC 28 48 89 CE 48 83 79 48 10 72 06 48 8B 76 30 EB 04 48 83 C6 30 48 89 F1 E8 ?? ?? ?? ?? 48 89 F1 48 89 C2 E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 89 01 3D 0B A5 A6 4F", &g_qolApplyFormationTarget, reinterpret_cast<lm_address_t>(&QOLApplyFormationDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalApplyFormation), &g_qolApplyFormationHookSize, g_qolApplyFormationOriginal },
-        { 0x3F105D0, "41 56 56 57 55 53 48 83 EC 30 48 8B 39 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 7E ?? 48 83 C4 30 5B 5D 5F 5E 41 5E C3 C7 87 68 02 00 00 B0 E0 7A 88", &g_qolValidateRemovalTarget, reinterpret_cast<lm_address_t>(&QOLValidateRemovalDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalValidateRemoval), &g_qolValidateRemovalHookSize, g_qolValidateRemovalOriginal },
-        { 0x3F10410, "41 57 41 56 56 57 53 48 83 EC 70 48 8B 19 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 0F 8F ?? ?? ?? ?? 48 8B 35 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 8B 88 58 0D 00 00", &g_qolRemovalResultTarget, reinterpret_cast<lm_address_t>(&QOLRemovalResultDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalRemovalResult), &g_qolRemovalResultHookSize, g_qolRemovalResultOriginal },
-        { 0x3F10240, "56 57 53 48 83 EC 70 48 8B 39 48 83 BF B0 01 00 00 00 74 4B 8B 02 48 63 C8 48 8B 15 ?? ?? ?? ?? 48 C1 E1 04 80 7C 0A 04 00", &g_qolSelectCharacterTarget, reinterpret_cast<lm_address_t>(&QOLSelectCharacterDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalSelectCharacter), &g_qolSelectCharacterHookSize, g_qolSelectCharacterOriginal },
-        { 0x41E3F70, "41 57 41 56 56 57 53 48 83 EC 50 4C 89 C7 85 D2 78 ?? 48 89 CE 41 89 D7 48 8B 81 48 03 00 00 48 8B 89 50 03 00 00 48 29 C1 48 C1 F9 02", &g_qolValidateReplacementTarget, reinterpret_cast<lm_address_t>(&QOLValidateReplacementDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalValidateReplacement), &g_qolValidateReplacementHookSize, g_qolValidateReplacementOriginal },
+    struct Layout
+    {
+        lm_address_t applyFormationRVA;
+        lm_address_t validateRemovalRVA;
+        lm_address_t removalResultRVA;
+        lm_address_t selectCharacterRVA;
+        lm_address_t validateReplacementRVA;
+        lm_address_t formationOutputGlobalRVA;
+        lm_address_t playerDataGlobalRVA;
     };
+    static constexpr Layout layouts[] = {
+        { 0x1CA7870, 0x3F105D0, 0x3F10410, 0x3F10240, 0x41E3F70, 0x7C24980, 0x7C23878 },
+        { 0x1CA16D0, 0x3F0C500, 0x3F0C340, 0x3F0C170, 0x41DFEA0, 0x7C21940, 0x7C20838 },
+    };
+    struct Entry { const char* signature; lm_address_t* target; lm_address_t detour; lm_address_t* original; lm_size_t* size; lm_byte_t* bytes; };
+    Entry entries[] = {
+        { "56 57 48 83 EC 28 48 89 CE 48 83 79 48 10 72 06 48 8B 76 30 EB 04 48 83 C6 30 48 89 F1 E8 ?? ?? ?? ?? 48 89 F1 48 89 C2 E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 89 01 3D 0B A5 A6 4F", &g_qolApplyFormationTarget, reinterpret_cast<lm_address_t>(&QOLApplyFormationDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalApplyFormation), &g_qolApplyFormationHookSize, g_qolApplyFormationOriginal },
+        { "41 56 56 57 55 53 48 83 EC 30 48 8B 39 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 7E ?? 48 83 C4 30 5B 5D 5F 5E 41 5E C3 C7 87 68 02 00 00 B0 E0 7A 88", &g_qolValidateRemovalTarget, reinterpret_cast<lm_address_t>(&QOLValidateRemovalDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalValidateRemoval), &g_qolValidateRemovalHookSize, g_qolValidateRemovalOriginal },
+        { "41 57 41 56 56 57 53 48 83 EC 70 48 8B 19 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 0F 8F ?? ?? ?? ?? 48 8B 35 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 8B 88 58 0D 00 00", &g_qolRemovalResultTarget, reinterpret_cast<lm_address_t>(&QOLRemovalResultDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalRemovalResult), &g_qolRemovalResultHookSize, g_qolRemovalResultOriginal },
+        { "56 57 53 48 83 EC 70 48 8B 39 48 83 BF B0 01 00 00 00 74 4B 8B 02 48 63 C8 48 8B 15 ?? ?? ?? ?? 48 C1 E1 04 80 7C 0A 04 00", &g_qolSelectCharacterTarget, reinterpret_cast<lm_address_t>(&QOLSelectCharacterDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalSelectCharacter), &g_qolSelectCharacterHookSize, g_qolSelectCharacterOriginal },
+        { "41 57 41 56 56 57 53 48 83 EC 50 4C 89 C7 85 D2 78 ?? 48 89 CE 41 89 D7 48 8B 81 48 03 00 00 48 8B 89 50 03 00 00 48 29 C1 48 C1 F9 02", &g_qolValidateReplacementTarget, reinterpret_cast<lm_address_t>(&QOLValidateReplacementDetour), reinterpret_cast<lm_address_t*>(&g_qolOriginalValidateReplacement), &g_qolValidateReplacementHookSize, g_qolValidateReplacementOriginal },
+    };
+    lm_address_t found[std::size(entries)]{};
+    for (size_t index = 0; index < std::size(entries); ++index)
+    {
+        found[index] = FindUniqueSignature(entries[index].signature, module);
+        if (found[index] == LM_ADDRESS_BAD) return false;
+    }
+    const Layout* selected = nullptr;
+    for (const auto& candidate : layouts)
+    {
+        const lm_address_t expected[] = {
+            module.base + candidate.applyFormationRVA,
+            module.base + candidate.validateRemovalRVA,
+            module.base + candidate.removalResultRVA,
+            module.base + candidate.selectCharacterRVA,
+            module.base + candidate.validateReplacementRVA,
+        };
+        bool matches = true;
+        for (size_t index = 0; index < std::size(entries); ++index) matches = matches && found[index] == expected[index];
+        if (!matches) continue;
+        if (selected != nullptr) return false;
+        selected = &candidate;
+    }
+    if (selected == nullptr) return false;
     for (auto& entry : entries)
     {
-        lm_address_t exact = module.base + entry.rva;
-        lm_address_t found = FindUniqueSignature(entry.signature, module);
-        if (found != exact) return false;
-        *entry.target = exact;
-        if (!InstallQOLHook(exact, entry.detour, entry.original, entry.size, entry.bytes, 32)) return false;
+        const size_t index = static_cast<size_t>(&entry - entries);
+        *entry.target = found[index];
+        if (!InstallQOLHook(found[index], entry.detour, entry.original, entry.size, entry.bytes, 32)) return false;
     }
-    g_qolFormationOutputGlobal = module.base + 0x7C24980;
-    g_qolPlayerDataGlobal = module.base + 0x7C23878;
+    g_qolFormationOutputGlobal = module.base + selected->formationOutputGlobalRVA;
+    g_qolPlayerDataGlobal = module.base + selected->playerDataGlobalRVA;
     return QOLFormationHash(nullptr, 0) == 0x887AE0B0;
 }
 
@@ -3359,8 +3423,8 @@ static bool ReadQOLConfig(const wchar_t* path, bool requireEnabled)
     g_qolEnemyHPEnabled.store(GetPrivateProfileIntW(L"qol", L"detailedEnemyHp", 0, path) == 1);
     g_qolSBAEnabled.store(GetPrivateProfileIntW(L"qol", L"detailedSba", 0, path) == 1);
     g_qolSessionEnabled.store(GetPrivateProfileIntW(L"qol", L"sessionCapture", 0, path) == 1);
-    g_qolLevelSyncEnabled.store(false);
-    g_qolReturnWrightstoneEnabled.store(false);
+    g_qolLevelSyncEnabled.store(GetPrivateProfileIntW(L"qol", L"normalQuestLevelSync", 0, path) == 1);
+    g_qolReturnWrightstoneEnabled.store(GetPrivateProfileIntW(L"qol", L"returnWrightstone", 0, path) == 1);
     g_qolFreeCaptainEnabled.store(GetPrivateProfileIntW(L"qol", L"freeCaptain", 0, path) == 1);
     g_qolEnemyPrecision.store(enemyPrecision);
     g_qolSBAPrecision.store(sbaPrecision);
@@ -3732,7 +3796,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
         swprintf_s(message, messageSize, L"batch patch id is unsupported");
         return false;
     }
-    constexpr bool kStableReleaseCandidateMonsterDamageEnabled = false;
+    constexpr bool kStableReleaseCandidateMonsterDamageEnabled = true;
     if (!kStableReleaseCandidateMonsterDamageEnabled && PatchIdEquals(patchId, "monster_damage_new"))
     {
         swprintf_s(message, messageSize, L"candidate monster damage is disabled in the stable build pending field acceptance");

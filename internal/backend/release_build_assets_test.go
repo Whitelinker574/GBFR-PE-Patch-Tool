@@ -241,8 +241,8 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 		`0x1FBDEB4`,
 		`0xB29128`,
 		`0x22CB316`,
-		`kStableReleaseCandidateMonsterDamageEnabled = false`,
-		`kStableReleaseVirtualSigilsEnabled = false`,
+		`kStableReleaseCandidateMonsterDamageEnabled = true`,
+		`kStableReleaseVirtualSigilsEnabled = true`,
 	} {
 		if !strings.Contains(source, required) {
 			t.Errorf("patch_core source missing monster safety guard %q", required)

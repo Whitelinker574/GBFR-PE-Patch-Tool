@@ -121,7 +121,7 @@ func TestWrightstoneMemoryDLCSupplementGuardIsExactAndRejectsPartialMatches(t *t
 }
 
 func TestWrightstoneMemoryStatusIdentifiesDLCSupplementCaptureSource(t *testing.T) {
-	status := newWrightstoneMemoryStatus(true, false, 0x140361CB4, 0x140000000, wrightstoneMemoryOriginalBytes)
+	status := newWrightstoneMemoryStatus(true, false, 0x140361CB4, 0x140000000, wrightstoneMemoryOriginalBytes, runtimeGameLayouts[0])
 	if status.CaptureSource != "dlcSupplement-current-view" || status.SourceVersion != "2.0.2" {
 		t.Fatalf("capture provenance = %q/%q", status.CaptureSource, status.SourceVersion)
 	}

@@ -319,7 +319,7 @@ func (a *App) FormulaSamplerAttach(charaHex, experimentType string) (FormulaSamp
 		_ = a.formulaSamplerSession.close()
 		a.formulaSamplerSession = nil
 	}
-	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
+	process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 	if err != nil {
 		return FormulaSamplerStatus{}, err
 	}

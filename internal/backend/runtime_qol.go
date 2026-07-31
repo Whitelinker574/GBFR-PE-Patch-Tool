@@ -150,12 +150,6 @@ func defaultRuntimeQOLConfig() RuntimeQOLConfig {
 }
 
 func normalizeRuntimeQOLConfig(value RuntimeQOLConfig) (RuntimeQOLConfig, error) {
-	if value.NormalQuestLevelSync {
-		return RuntimeQOLConfig{}, errors.New("普通任务等级同步尚缺任务类型白名单实测，当前构建不允许启用")
-	}
-	if value.ReturnWrightstone {
-		return RuntimeQOLConfig{}, errors.New("重镶返还尚缺完整交易提交与背包增量实测，当前构建不允许启用")
-	}
 	if value.EnemyHPPrecision < 0 || value.EnemyHPPrecision > 4 {
 		return RuntimeQOLConfig{}, errors.New("敌人 HP 小数位必须在 0 到 4 之间")
 	}
@@ -171,15 +165,19 @@ func normalizeRuntimeQOLConfig(value RuntimeQOLConfig) (RuntimeQOLConfig, error)
 func runtimeQOLConfigPath() (string, error) { return runtimeCompanionPath("qol.ini") }
 
 func readRuntimeQOLConfig() RuntimeQOLConfig {
-	value := defaultRuntimeQOLConfig()
 	path, err := runtimeQOLConfigPath()
 	if err != nil {
-		return value
+		return defaultRuntimeQOLConfig()
 	}
 	section := readRuntimeINI(path)["qol"]
 	if section == nil {
-		return value
+		return defaultRuntimeQOLConfig()
 	}
+	return runtimeQOLConfigFromSection(section)
+}
+
+func runtimeQOLConfigFromSection(section map[string]string) RuntimeQOLConfig {
+	value := defaultRuntimeQOLConfig()
 	parseFlag := func(key string, fallback bool) bool {
 		if section[key] == "1" {
 			return true
@@ -195,8 +193,6 @@ func readRuntimeQOLConfig() RuntimeQOLConfig {
 	value.SessionCapture = parseFlag("sessionCapture", value.SessionCapture)
 	value.NormalQuestLevelSync = parseFlag("normalQuestLevelSync", value.NormalQuestLevelSync)
 	value.ReturnWrightstone = parseFlag("returnWrightstone", value.ReturnWrightstone)
-	value.NormalQuestLevelSync = false
-	value.ReturnWrightstone = false
 	value.FreeCaptain = parseFlag("freeCaptain", value.FreeCaptain)
 	_, _ = fmt.Sscanf(section["enemyHpPrecision"], "%d", &value.EnemyHPPrecision)
 	_, _ = fmt.Sscanf(section["sbaPrecision"], "%d", &value.SBAPrecision)

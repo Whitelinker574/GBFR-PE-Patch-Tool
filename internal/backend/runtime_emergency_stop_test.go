@@ -34,6 +34,39 @@ func TestRuntimeEmergencyStopLiveLifecycle(t *testing.T) {
 	}
 }
 
+func TestRuntimeQOLLiveFeatureMatrix(t *testing.T) {
+	if os.Getenv("GBFR_RUNTIME_QOL_MATRIX_QA") != "1" {
+		t.Skip("set GBFR_RUNTIME_QOL_MATRIX_QA=1 with the current game running")
+	}
+	features := []struct {
+		name   string
+		config RuntimeQOLConfig
+	}{
+		{name: "damage-cap", config: RuntimeQOLConfig{DamageCapPercentage: true}},
+		{name: "enemy-hp", config: RuntimeQOLConfig{DetailedEnemyHP: true, EnemyHPPrecision: 2}},
+		{name: "sba", config: RuntimeQOLConfig{DetailedSBA: true, SBAPrecision: 2}},
+		{name: "session", config: RuntimeQOLConfig{SessionCapture: true}},
+		{name: "free-captain", config: RuntimeQOLConfig{FreeCaptain: true}},
+		{name: "level-sync", config: RuntimeQOLConfig{NormalQuestLevelSync: true}},
+		{name: "return-wrightstone", config: RuntimeQOLConfig{ReturnWrightstone: true}},
+	}
+	for _, feature := range features {
+		t.Run(feature.name, func(t *testing.T) {
+			app := NewApp()
+			workspace, err := app.DeployRuntimeQOL(feature.config)
+			if err != nil {
+				t.Fatalf("deploy %s: %v", feature.name, err)
+			}
+			if !workspace.Active {
+				t.Fatalf("deploy %s returned inactive workspace: %+v", feature.name, workspace)
+			}
+			if err := app.RemoveRuntimeQOL(""); err != nil {
+				t.Fatalf("restore %s: %v", feature.name, err)
+			}
+		})
+	}
+}
+
 func TestRunRuntimeEmergencyRestorationReportsEveryFailure(t *testing.T) {
 	firstErr := errors.New("formula sampler restore failed")
 	secondErr := errors.New("loadout detector restore failed")

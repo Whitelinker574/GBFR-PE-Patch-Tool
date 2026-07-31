@@ -10,16 +10,12 @@ import (
 
 // The party monitor resolves the live slot table through this RIP-relative
 // instruction. The full signature and the resolved RVA are
-// independently checked against the supplied 2.0.2 executable by the opt-in
+// independently checked against the supplied executable by the opt-in
 // local-EXE truth test.
 const (
 	runtimePatchPartyPointerAOB         = "488Bxxxxxxxxxx4885xx74xx488BxxFFxxxxxxxxxx4885xx74xx488Bxxxx488Bxxxx488Bxx488DxxxxxxFFxxxxxxxxxxEBxxC5xxxxxxxxxxxxxxC5xxxxxxxxxx488Bxx488D"
-	runtimePatchPartyPointerRVA         = uintptr(0x22CECA0)
-	runtimePatchPartySlotTableRVA       = uintptr(0x7036860)
 	runtimePatchPartySignatureLength    = 69
-	runtimePatchPartyHandleTableRVA     = uintptr(0x70367F0)
 	runtimePatchPartyHandleStride       = uintptr(0x18)
-	runtimePatchPartyEntityTableRVA     = uintptr(0x70214E8)
 	runtimePatchPartyHandleEntityOffset = uintptr(0x08)
 	runtimePatchPartyHandleIDOffset     = uintptr(0x10)
 	runtimePatchPartyEntityArrayOffset  = uintptr(0x20)
@@ -112,10 +108,11 @@ type runtimePatchPartySnapshot struct {
 }
 
 type runtimePatchPartyResolvedHandle struct {
-	EntityTable uintptr
-	Entity      uintptr
-	ID          uint64
-	Specified   uintptr
+	EntityTable  uintptr
+	Entity       uintptr
+	HandleEntity uintptr
+	ID           uint64
+	Specified    uintptr
 }
 
 type runtimePatchPartyMemory interface {
@@ -214,9 +211,10 @@ func readStableRuntimePatchPartySnapshots(readSnapshot func() (runtimePatchParty
 		}
 	}
 	result.RootAddress = uint64(frames[len(frames)-1].Topology.Root)
-	result.Source = "game_runtime_patch_2.0.2"
+	if result.Source == "" {
+		result.Source = "game_runtime_patch"
+	}
 	result.Verification = runtimePatchMonitorText("连续三快照拓扑验证", "three-snapshot topology verification")
-	result.GameVersion = "2.0.2"
 	result.SnapshotCount = runtimePatchPartySnapshotCount
 	result.RuntimeVerified = true
 	return result, nil
@@ -243,7 +241,11 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 	if memory == nil || moduleBase == 0 {
 		return runtimePatchPartySnapshot{}, fmt.Errorf("%s", runtimePatchMonitorText("队伍监测读取参数无效", "Invalid party monitor read parameters"))
 	}
-	root, err := verifyRuntimePatchPartyPointerSignature(memory, moduleBase)
+	layout, err := detectRuntimeGameLayout(memory, moduleBase)
+	if err != nil {
+		return runtimePatchPartySnapshot{}, err
+	}
+	root, err := verifyRuntimePatchPartyPointerSignatureForLayout(memory, moduleBase, layout)
 	if err != nil {
 		return runtimePatchPartySnapshot{}, err
 	}
@@ -268,7 +270,7 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 		if readErr != nil {
 			return runtimePatchPartySnapshot{}, readErr
 		}
-		resolved, resolveErr := resolveRuntimePatchPartyLoadoutHandle(memory, moduleBase, index)
+		resolved, resolveErr := resolveRuntimePatchPartyLoadoutHandleWithLayout(memory, moduleBase, layout, index)
 		if resolveErr == nil && resolved.Entity != entity {
 			resolveErr = fmt.Errorf("party loadout handle does not belong to the current root slot")
 		}
@@ -288,7 +290,7 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 				result.Loadout = unavailableRuntimePatchPartyLoadout(loadoutErr)
 			}
 			snapshot.Topology.EntityTable = resolved.EntityTable
-			snapshot.Topology.LoadoutHandleEntities[index] = resolved.Entity
+			snapshot.Topology.LoadoutHandleEntities[index] = resolved.HandleEntity
 			snapshot.Topology.LoadoutHandleIDs[index] = resolved.ID
 		} else {
 			result.Loadout = unavailableRuntimePatchPartyLoadout(resolveErr)
@@ -327,6 +329,8 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 	snapshot.Topology.Entities[4] = companion
 	snapshot.Topology.TransformNodes[4] = companionNodes
 	snapshot.Result.Entities = append(snapshot.Result.Entities, companionResult)
+	snapshot.Result.GameVersion = layout.Version
+	snapshot.Result.Source = "game_runtime_patch_" + layout.Version
 	return snapshot, nil
 }
 
@@ -342,11 +346,11 @@ func unavailableRuntimePatchPartyLoadout(err error) *RuntimePatchPartyLoadout {
 	}
 }
 
-func resolveRuntimePatchPartyLoadoutHandle(memory runtimePatchPartyMemory, moduleBase uintptr, slot int) (runtimePatchPartyResolvedHandle, error) {
+func resolveRuntimePatchPartyLoadoutHandleWithLayout(memory runtimePatchPartyMemory, moduleBase uintptr, layout runtimeGameLayout, slot int) (runtimePatchPartyResolvedHandle, error) {
 	if memory == nil || moduleBase == 0 || slot < 0 || slot >= 4 {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party loadout handle parameters are invalid")
 	}
-	entityTableSlot, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyEntityTableRVA)
+	entityTableSlot, ok := checkedRuntimePatchMonitorAddress(moduleBase, layout.PartyEntityTableRVA)
 	if !ok {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table address overflow")
 	}
@@ -354,7 +358,7 @@ func resolveRuntimePatchPartyLoadoutHandle(memory runtimePatchPartyMemory, modul
 	if err != nil || !plausibleRuntimePatchPartyPointer(entityTable) {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("entity table pointer is unavailable or invalid")
 	}
-	handleTable, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyHandleTableRVA)
+	handleTable, ok := checkedRuntimePatchMonitorAddress(moduleBase, layout.PartyHandleTableRVA)
 	if !ok || uintptr(slot) > ^uintptr(0)/runtimePatchPartyHandleStride {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle address overflow")
 	}
@@ -391,11 +395,18 @@ func resolveRuntimePatchPartyLoadoutHandle(memory runtimePatchPartyMemory, modul
 	if err != nil || tableID != id {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle ID does not match entity table")
 	}
+	rootEntity := entity
+	if layout.PartyHandleRootOffset != 0 {
+		rootEntity, err = readRuntimePatchPointer(memory, entity+layout.PartyHandleRootOffset)
+		if err != nil || !plausibleRuntimePatchPartyPointer(rootEntity) {
+			return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party handle root entity pointer is unavailable or invalid")
+		}
+	}
 	specified, err := readRuntimePatchPointer(memory, entity+runtimePatchPartySpecifiedInstanceOffset)
 	if err != nil || !plausibleRuntimePatchPartyPointer(specified) {
 		return runtimePatchPartyResolvedHandle{}, fmt.Errorf("party specified instance pointer is unavailable or invalid")
 	}
-	return runtimePatchPartyResolvedHandle{EntityTable: entityTable, Entity: entity, ID: id, Specified: specified}, nil
+	return runtimePatchPartyResolvedHandle{EntityTable: entityTable, Entity: rootEntity, HandleEntity: entity, ID: id, Specified: specified}, nil
 }
 
 func emptyRuntimePatchPartyEntity(role string) RuntimePatchPartyEntity {
@@ -407,7 +418,7 @@ func emptyRuntimePatchPartyEntity(role string) RuntimePatchPartyEntity {
 	}
 }
 
-func verifyRuntimePatchPartyPointerSignature(memory runtimePatchPartyMemory, moduleBase uintptr) (uintptr, error) {
+func verifyRuntimePatchPartyPointerSignatureForLayout(memory runtimePatchPartyMemory, moduleBase uintptr, layout runtimeGameLayout) (uintptr, error) {
 	pattern, err := parseRuntimePatchPattern(runtimePatchPartyPointerAOB)
 	if err != nil {
 		return 0, err
@@ -415,7 +426,7 @@ func verifyRuntimePatchPartyPointerSignature(memory runtimePatchPartyMemory, mod
 	if len(pattern.Values) != runtimePatchPartySignatureLength {
 		return 0, fmt.Errorf("party pointer signature length=%d, want %d", len(pattern.Values), runtimePatchPartySignatureLength)
 	}
-	site, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartyPointerRVA)
+	site, ok := checkedRuntimePatchMonitorAddress(moduleBase, layout.PartyPointerRVA)
 	if !ok {
 		return 0, fmt.Errorf("party pointer signature address overflow")
 	}
@@ -424,7 +435,7 @@ func verifyRuntimePatchPartyPointerSignature(memory runtimePatchPartyMemory, mod
 		return 0, fmt.Errorf("%s: %w", runtimePatchMonitorText("读取队伍指针签名失败", "Read party pointer signature"), err)
 	}
 	if !matchRuntimePatchPattern(actual, pattern) {
-		return 0, fmt.Errorf("%s: RVA 0x%X", runtimePatchMonitorText("队伍指针签名与游戏 2.0.2 不匹配", "Party pointer signature does not match game 2.0.2"), runtimePatchPartyPointerRVA)
+		return 0, fmt.Errorf("%s: %s RVA 0x%X", runtimePatchMonitorText("队伍指针签名与已识别布局不匹配", "Party pointer signature does not match the identified layout"), layout.Version, layout.PartyPointerRVA)
 	}
 	displacement := int64(int32(binary.LittleEndian.Uint32(actual[3:7])))
 	resolvedSigned := int64(site) + 7 + displacement
@@ -432,9 +443,9 @@ func verifyRuntimePatchPartyPointerSignature(memory runtimePatchPartyMemory, mod
 		return 0, fmt.Errorf("party pointer RIP target overflow")
 	}
 	resolved := uintptr(resolvedSigned)
-	expected, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimePatchPartySlotTableRVA)
+	expected, ok := checkedRuntimePatchMonitorAddress(moduleBase, layout.PartySlotTableRVA)
 	if !ok || resolved != expected {
-		return 0, fmt.Errorf("%s: got RVA 0x%X, want 0x%X", runtimePatchMonitorText("队伍根槽解析结果不匹配", "Party root slot resolution mismatch"), resolved-moduleBase, runtimePatchPartySlotTableRVA)
+		return 0, fmt.Errorf("%s: got RVA 0x%X, want 0x%X", runtimePatchMonitorText("队伍根槽解析结果不匹配", "Party root slot resolution mismatch"), resolved-moduleBase, layout.PartySlotTableRVA)
 	}
 	return resolved, nil
 }

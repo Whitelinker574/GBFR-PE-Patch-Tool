@@ -385,7 +385,11 @@ func writeSummonMemoryRecordAtomic(original, desired []byte, writer summonMemory
 
 func (a *App) summonInventoryAddressLocked() (uintptr, error) {
 	var inventory uintptr
-	root := a.moduleBase + summonInventoryPtrRVA
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return 0, fmt.Errorf("定位召唤石库存根失败: %w", err)
+	}
+	root := a.moduleBase + layout.SummonInventoryPtrRVA
 	if err := readProcessMemory(a.hProcess, root, unsafe.Pointer(&inventory), unsafe.Sizeof(inventory)); err != nil {
 		return 0, fmt.Errorf("读取召唤石背包指针失败: %w", err)
 	}
@@ -470,7 +474,11 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
 		return SummonInfo{}, err
 	}
-	saveFn := a.moduleBase + summonSaveFunctionRVA
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return SummonInfo{}, fmt.Errorf("定位召唤石保存函数失败: %w", err)
+	}
+	saveFn := a.moduleBase + layout.SaveFunctionRVA
 	if err := a.validateRemoteFunctionStart(saveFn, "游戏内召唤石保存函数"); err != nil {
 		return SummonInfo{}, err
 	}

@@ -108,7 +108,11 @@ func (a *App) scanWrightstoneMemoryLocked() (WrightstoneMemoryStatus, error) {
 	if a.hProcess == 0 || a.moduleBase == 0 {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("未连接游戏进程")
 	}
-	addr := a.moduleBase + wrightstoneMemoryHookRVA
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return WrightstoneMemoryStatus{}, fmt.Errorf("定位祝福实时编辑入口失败: %w", err)
+	}
+	addr := a.moduleBase + layout.WrightstoneHookRVA
 	guard := make([]byte, len(wrightstoneMemoryGuardBytes))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&guard[0]), uintptr(len(guard))); err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("读取祝福焦点指令失败: %w", err)
@@ -201,7 +205,11 @@ func (a *App) wrightstoneMemoryEnableLocked() (WrightstoneMemoryStatus, error) {
 	if err != nil || status.Hooked {
 		return status, err
 	}
-	if err := a.validateRemoteFunctionStart(a.moduleBase+wrightstoneMemorySaveRVA, "游戏内祝福保存函数"); err != nil {
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return WrightstoneMemoryStatus{}, fmt.Errorf("定位祝福保存函数失败: %w", err)
+	}
+	if err := a.validateRemoteFunctionStart(a.moduleBase+layout.SaveFunctionRVA, "游戏内祝福保存函数"); err != nil {
 		return WrightstoneMemoryStatus{}, err
 	}
 	original := make([]byte, wrightstoneMemoryHookSize)
@@ -430,7 +438,11 @@ func (a *App) WrightstoneMemoryDisable() (WrightstoneMemoryStatus, error) {
 }
 
 func (a *App) saveWrightstoneMemory(base uintptr) error {
-	fn := a.moduleBase + wrightstoneMemorySaveRVA
+	layout, err := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	if err != nil {
+		return err
+	}
+	fn := a.moduleBase + layout.SaveFunctionRVA
 	for offset := uintptr(0); offset < wrightstoneMemoryRecordSize; offset += 4 {
 		if err := a.callRemoteOneArg(fn, base+offset); err != nil {
 			return fmt.Errorf("保存祝福字段 +0x%02X 失败: %w", offset, err)
@@ -451,7 +463,11 @@ func (a *App) readWrightstoneMemoryStatusLocked() (WrightstoneMemoryStatus, erro
 	if !hooked && !isWrightstoneMemoryOriginal(current) {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常: %s", bytesToHex(current))
 	}
-	status := newWrightstoneMemoryStatus(true, hooked, a.wrightstoneMemoryHookAddr, a.moduleBase, current)
+	layout, err := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	if err != nil {
+		return WrightstoneMemoryStatus{}, err
+	}
+	status := newWrightstoneMemoryStatus(true, hooked, a.wrightstoneMemoryHookAddr, a.moduleBase, current, layout)
 	if !hooked {
 		return status, nil
 	}
@@ -549,16 +565,20 @@ func isWrightstoneMemoryJump(buf []byte) bool {
 	return true
 }
 
-func newWrightstoneMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr, current []byte) WrightstoneMemoryStatus {
+func newWrightstoneMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr, current []byte, layouts ...runtimeGameLayout) WrightstoneMemoryStatus {
+	layout := runtimeGameLayouts[0]
+	if len(layouts) != 0 {
+		layout = layouts[0]
+	}
 	return WrightstoneMemoryStatus{
 		Found:         found,
 		Hooked:        hooked,
 		Address:       uint64(hookAddr),
 		RVA:           uint64(hookAddr - moduleBase),
-		SaveRVA:       uint64(wrightstoneMemorySaveRVA),
+		SaveRVA:       uint64(layout.SaveFunctionRVA),
 		CurrentBytes:  bytesToHex(current),
 		CaptureSource: "dlcSupplement-current-view",
-		SourceVersion: "2.0.2",
+		SourceVersion: layout.Version,
 	}
 }
 
