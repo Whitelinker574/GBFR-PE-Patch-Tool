@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
 // The character-panel reader is intentionally independent of charaManager.
@@ -78,11 +75,6 @@ const (
 
 	runtimeCharacterPanelSource       = "game_runtime_2.0.2"
 	runtimeCharacterPanelVerification = "游戏真实回读"
-
-	// The handle has exactly the two rights required by NtQueryInformationProcess
-	// and ReadProcessMemory. It deliberately omits PROCESS_VM_WRITE,
-	// PROCESS_VM_OPERATION and every injection-capable access right.
-	runtimeCharacterPanelProcessAccess = windows.PROCESS_QUERY_INFORMATION | windows.PROCESS_VM_READ
 )
 
 type runtimeWeaponTrait struct {
@@ -547,17 +539,6 @@ type runtimeCharacterPanelObject struct {
 type runtimeCharacterPanelEnumeration struct {
 	VectorIDs []uint32
 	Objects   []runtimeCharacterPanelObject
-}
-
-type remoteRuntimeCharacterPanelMemory struct {
-	handle windows.Handle
-}
-
-func (memory remoteRuntimeCharacterPanelMemory) ReadAt(address uintptr, destination []byte) error {
-	if len(destination) == 0 {
-		return nil
-	}
-	return readProcessMemory(memory.handle, address, unsafe.Pointer(&destination[0]), uintptr(len(destination)))
 }
 
 // LoadoutRuntimePanelStats opens a short-lived, version-verified read-only
