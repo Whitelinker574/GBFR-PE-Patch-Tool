@@ -10,6 +10,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const (
+	runtimeGame203ErrorCode    = "GBFR_RUNTIME_GAME_203"
+	runtimeUnknownExeErrorCode = "GBFR_RUNTIME_UNKNOWN_EXE"
+)
+
 func queryProcessImagePath(handle windows.Handle) (string, error) {
 	buffer := make([]uint16, 32768)
 	size := uint32(len(buffer))
@@ -37,9 +42,9 @@ func hashFileSHA256(path string) (string, error) {
 
 func legacyRuntimeExecutableError(featureName, digest string) error {
 	if strings.EqualFold(digest, game203ExecutableSHA256) {
-		return fmt.Errorf("%s暂未支持游戏 2.0.3：静态目录、配装计算、分享与 Logs 数据已核对；离线存档的 2.0.3 游戏重启回读仍待验收，实时功能不会连接或写入", featureName)
+		return fmt.Errorf("[%s] %s暂未支持游戏 2.0.3：静态目录、配装计算、分享与 Logs 数据已核对；离线存档的 2.0.3 游戏重启回读仍待验收，实时功能不会连接或写入", runtimeGame203ErrorCode, featureName)
 	}
-	return fmt.Errorf("%s仅支持已验证的游戏 2.0.2 可执行文件；当前游戏版本不会连接或写入", featureName)
+	return fmt.Errorf("[%s] %s仅支持已验证的游戏 2.0.2 可执行文件；当前游戏版本不会连接或写入", runtimeUnknownExeErrorCode, featureName)
 }
 
 func verifyLegacyRuntimeExecutableHandle(handle windows.Handle, featureName string) error {

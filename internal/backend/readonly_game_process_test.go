@@ -35,12 +35,19 @@ type fakeReadOnlyProcessHandle struct {
 	created     uint64
 	alive       bool
 	closed      bool
+	verifyCalls int
+	verifyErr   error
 	identityErr error
 	mapped      map[uint64]bool
 }
 
 func (handle *fakeReadOnlyProcessHandle) ReadAt(address uintptr, destination []byte) error {
 	return handle.memory.ReadAt(address, destination)
+}
+
+func (handle *fakeReadOnlyProcessHandle) VerifyExecutable(string) error {
+	handle.verifyCalls++
+	return handle.verifyErr
 }
 
 func (handle *fakeReadOnlyProcessHandle) ModuleBase() (uintptr, error) { return handle.moduleBase, nil }
@@ -118,8 +125,38 @@ func TestOpenReadOnlyGameProcessClosesHandleWhenVersionGuardFails(t *testing.T) 
 	if backend.openAccess != readonlyGameProcessAccess {
 		t.Fatalf("OpenProcess access = 0x%X, want 0x%X", backend.openAccess, readonlyGameProcessAccess)
 	}
+	if handle.verifyCalls != 1 {
+		t.Fatalf("executable verification calls = %d, want 1", handle.verifyCalls)
+	}
 	if got := fmt.Sprint(err); got == "" {
 		t.Fatal("version failure did not return a diagnostic")
+	}
+}
+
+func TestOpenReadOnlyGameProcessClosesHandleWhenExecutableIdentityFails(t *testing.T) {
+	handle := &fakeReadOnlyProcessHandle{
+		memory: newFakeRuntimePanelMemory(), moduleBase: 0x140000000, created: 99, alive: true,
+		verifyErr: legacyRuntimeExecutableError("实时只读采集", game203ExecutableSHA256),
+	}
+	backend := &fakeReadOnlyProcessBackend{pid: 42, handle: handle}
+	guards := []runtimeCharacterPanelVersionGuard{{RVA: 0x100, Bytes: []byte{1, 2, 3}}}
+
+	process, err := openReadOnlyGameProcess(backend, "game.exe", guards)
+	if err == nil {
+		_ = process.Close()
+		t.Fatal("game 2.0.3 executable was accepted by the 2.0.2 read-only reader")
+	}
+	if process != nil {
+		t.Fatalf("failed open returned a process: %+v", process)
+	}
+	if !handle.closed {
+		t.Fatal("handle was not closed after executable identity verification failed")
+	}
+	if handle.verifyCalls != 1 {
+		t.Fatalf("executable verification calls = %d, want 1", handle.verifyCalls)
+	}
+	if !strings.Contains(err.Error(), "2.0.3") || !strings.Contains(err.Error(), "不会连接或写入") {
+		t.Fatalf("game 2.0.3 rejection is not actionable: %v", err)
 	}
 }
 

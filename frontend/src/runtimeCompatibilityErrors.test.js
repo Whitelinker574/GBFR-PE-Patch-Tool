@@ -21,3 +21,11 @@ test('runtime compatibility boundaries are complete and isolated in English mode
   assert.match(translateRuntimeCompatibilityError(game203, 'en'), /restart readback validation/u)
   assert.match(translateRuntimeCompatibilityError(unknown, 'en'), /verified game 2\.0\.2 executable/u)
 })
+
+test('stable compatibility codes do not depend on exact Chinese backend copy', () => {
+  const game203Coded = '[GBFR_RUNTIME_GAME_203] 实时只读采集的后端说明已经调整'
+  const unknownCoded = '[GBFR_RUNTIME_UNKNOWN_EXE] 当前版本无法识别'
+  assert.doesNotMatch(translateRuntimeCompatibilityError(game203Coded, 'zh'), /GBFR_RUNTIME/u)
+  assert.match(translateRuntimeCompatibilityError(game203Coded, 'en'), /game 2\.0\.3/u)
+  assert.match(translateRuntimeCompatibilityError(unknownCoded, 'en'), /verified game 2\.0\.2 executable/u)
+})

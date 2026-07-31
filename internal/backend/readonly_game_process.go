@@ -19,6 +19,7 @@ type readOnlyProcessBackend interface {
 
 type readOnlyProcessHandle interface {
 	runtimeCharacterPanelMemory
+	VerifyExecutable(featureName string) error
 	ModuleBase() (uintptr, error)
 	CreationTime() (uint64, error)
 	IsMappedAddress(uint64) (bool, error)
@@ -58,6 +59,9 @@ func openReadOnlyGameProcess(backend readOnlyProcessBackend, name string, guards
 			_ = handle.Close()
 		}
 	}()
+	if err := handle.VerifyExecutable("实时只读采集"); err != nil {
+		return nil, err
+	}
 	moduleBase, err := handle.ModuleBase()
 	if err != nil || moduleBase == 0 {
 		return nil, fmt.Errorf("read game module base: %w", normalizeRuntimePanelReadError(err))
@@ -170,6 +174,10 @@ func (handle *windowsReadOnlyProcessHandle) ReadAt(address uintptr, destination 
 		return nil
 	}
 	return readProcessMemory(handle.handle, address, unsafe.Pointer(&destination[0]), uintptr(len(destination)))
+}
+
+func (handle *windowsReadOnlyProcessHandle) VerifyExecutable(featureName string) error {
+	return verifyLegacyRuntimeExecutableHandle(handle.handle, featureName)
 }
 
 func (handle *windowsReadOnlyProcessHandle) ModuleBase() (uintptr, error) {

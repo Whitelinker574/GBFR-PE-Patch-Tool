@@ -560,8 +560,9 @@ func (memory remoteRuntimeCharacterPanelMemory) ReadAt(address uintptr, destinat
 	return readProcessMemory(memory.handle, address, unsafe.Pointer(&destination[0]), uintptr(len(destination)))
 }
 
-// LoadoutRuntimePanelStats opens a short-lived, read-only handle to the game,
-// reads one requested character's computed panel values and closes the handle.
+// LoadoutRuntimePanelStats opens a short-lived, version-verified read-only
+// handle to the game, reads one requested character's computed panel values
+// and closes the handle.
 // It does not reuse or mutate App.hProcess/moduleBase and therefore cannot
 // disturb the lifecycle of any memory editor page.
 func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelStats, error) {
@@ -569,23 +570,13 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 	if err != nil || targetHash == 0 {
 		return nil, fmt.Errorf("角色 hash %q 无效", charaHex)
 	}
-	pid, err := findProcessByName(charaProcessName)
+	process, err := openReadOnlyGameProcess(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelVersionGuards)
 	if err != nil {
-		return nil, fmt.Errorf("未找到游戏进程，请先启动游戏")
+		return nil, err
 	}
-	handle, err := windows.OpenProcess(runtimeCharacterPanelProcessAccess, false, pid)
-	if err != nil {
-		return nil, fmt.Errorf("无法以只读方式打开游戏进程: %w", err)
-	}
-	defer windows.CloseHandle(handle)
-
-	moduleBase, err := getModuleBase(handle)
-	if err != nil {
-		return nil, fmt.Errorf("无法读取游戏模块基址: %w", err)
-	}
-	memory := remoteRuntimeCharacterPanelMemory{handle: handle}
+	defer process.Close()
 	stats, err := readStableRuntimeCharacterPanelSnapshots(func() (RuntimeCharacterPanelStats, error) {
-		return readRuntimeCharacterPanel(memory, moduleBase, targetHash)
+		return readRuntimeCharacterPanel(process, process.moduleBase, targetHash)
 	})
 	if err != nil {
 		return nil, err
@@ -593,10 +584,10 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 	// Equipment identity is optional evidence. A character panel can remain
 	// readable while no valid weapon object is loaded, so failure here must not
 	// turn an otherwise valid final-panel read into an error.
-	if object, locateErr := locateRuntimeCharacterPanelObject(memory, moduleBase, targetHash); locateErr == nil {
+	if object, locateErr := locateRuntimeCharacterPanelObject(process, process.moduleBase, targetHash); locateErr == nil {
 		stats.Coverage.Panel = true
 		if snapshot, snapshotErr := readStableRuntimeWeaponWrightstoneSnapshot(func() (runtimeWeaponWrightstoneSnapshot, error) {
-			return readRuntimeWeaponWrightstoneSnapshot(memory, object.Status)
+			return readRuntimeWeaponWrightstoneSnapshot(process, object.Status)
 		}); snapshotErr == nil {
 			stats.CurrentWeaponSlotID = snapshot.WeaponSlotID
 			stats.CurrentWeaponHash = hashText(snapshot.WeaponHash)
@@ -609,7 +600,7 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 			stats.Coverage.Notes = append(stats.Coverage.Notes, "当前武器对象未稳定，未输出武器技能与祝福词条")
 		}
 		if factors, factorErr := readStableRuntimeCharacterFactors(func() ([]RuntimeCharacterFactorReading, error) {
-			return readRuntimeCharacterFactors(memory, object.Status, targetHash)
+			return readRuntimeCharacterFactors(process, object.Status, targetHash)
 		}); factorErr == nil {
 			stats.CurrentFactors = factors
 			stats.CurrentFactorStableReads = 3
@@ -618,7 +609,7 @@ func (a *App) LoadoutRuntimePanelStats(charaHex string) (*RuntimeCharacterPanelS
 			stats.Coverage.Notes = append(stats.Coverage.Notes, "当前因子数组未稳定，未输出因子快照")
 		}
 		if growth, growthErr := readStableRuntimeCharacterGrowthSnapshots(func() (runtimeCharacterGrowthSnapshot, error) {
-			return readRuntimeCharacterGrowthSnapshot(memory, object.Status)
+			return readRuntimeCharacterGrowthSnapshot(process, object.Status)
 		}); growthErr == nil {
 			stats.Growth = &RuntimeCharacterGrowthReading{
 				Level: growth.Level, BaseHP: growth.BaseHP, BaseATK: growth.BaseATK,
