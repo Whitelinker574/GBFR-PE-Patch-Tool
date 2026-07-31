@@ -48,3 +48,23 @@ test('Transmarvel result mode is mutually exclusive and generic items use a veri
   assert.doesNotMatch(source, /genericDropRoute/)
   assert.doesNotMatch(source, /具体任务\/敌人\/宝箱/)
 })
+
+test('verified regular-item rewards expose strict quantity multipliers without implying global drop coverage', () => {
+  assert.match(source, /const itemRewardMultiplier = ref\(1\)/)
+  assert.match(source, /const itemRewardMultipliers = \[1, 2, 4, 8, 16\]/)
+  assert.match(source, /itemMultiplier: itemRewardMultiplier\.value/)
+  assert.match(source, /基础数量.*实际数量/)
+  assert.match(source, /权重保持不变/)
+  assert.match(source, /不作用于因子、召唤石和祝福石/)
+})
+
+test('quest result multiplier is an independent owned runtime switch', () => {
+  assert.match(source, /const taskRewardMultipliers = \[1, 2, 4, 8, 16\]/)
+  assert.match(source, /CharaAcquire\(nextRuntimeAcquireRequestID\(\)\)/)
+  assert.match(source, /TaskRewardMultiplierSetOwned\(taskRewardOwnerToken, multiplier\)/)
+  assert.match(source, /queueRuntimeLeaseRelease\(taskRewardLeaseScope, taskRewardOwnerToken, CharaRelease\)/)
+  assert.match(source, /所有任务的普通物品奖励倍率/)
+  assert.match(source, /商店购买、锻造和手工物品编辑不受影响/)
+  assert.match(source, /因子、祝福石、召唤石和武器属于独立实例奖励/)
+  assert.match(source, /保持连接即可持续生效/)
+})

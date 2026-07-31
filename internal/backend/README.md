@@ -15,7 +15,7 @@
 | Summons | `summon_*.go` | Summon catalogs, advisory natural rules, save editing and live editing |
 | Advisory legality | `legality.go` | Shared warning-level legality results; encodable user choices remain writable subject to structural safety checks |
 | Runtime foundation | `readonly_game_process.go`, `runtime_executable_identity.go`, `code_hook_safety.go` | Process identity, executable version gates, bounded reads/writes, target ownership, address validation and rollback evidence; regression coverage lives in the colocated `process_*_test.go` files |
-| Runtime patches | `runtime_patch_*.go`, `monster_enhance_safety.go`, `overlimit.go`, `runtime_currency.go`, `runtime_inventory_item.go` | Version-guarded patch catalog, conflict handling, persistent sessions and exact restoration |
+| Runtime patches | `runtime_patch_*.go`, `monster_enhance_safety.go`, `overlimit.go`, `runtime_currency.go`, `runtime_inventory_item.go` | Version-guarded patch catalog, task-result quantity multiplier, conflict handling, persistent sessions and exact restoration |
 | Runtime monitoring | `runtime_party_monitor.go`, `runtime_character_panel*.go` | Party snapshots, selected-object reads, and final character panel location |
 | Runtime companions | `runtime_companion.go`, `runtime_qol.go`, `runtime_damage_capture.go`, `runtime_emergency_stop.go` | Application-owned native runtime lifecycle, complete process identity, shared-state ownership and unified emergency restoration |
 | Audio control | `audio_mixer_mod.go` | Character voice and audited UI sound routing, configuration and runtime lifecycle |

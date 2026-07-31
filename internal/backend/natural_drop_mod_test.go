@@ -154,7 +154,7 @@ func TestNaturalDropItemPatchUsesVerifiedDefaultPool(t *testing.T) {
 		ItemHash: chosen.Hash,
 		Quantity: 7,
 		Weight:   23456,
-	}})
+	}}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,8 +177,8 @@ func TestNaturalDropItemPatchUsesVerifiedDefaultPool(t *testing.T) {
 			continue
 		}
 		found = true
-		if got := binary.LittleEndian.Uint32(patched[offset:]); got != 7 {
-			t.Fatalf("item quantity=%d, want 7", got)
+		if got := binary.LittleEndian.Uint32(patched[offset:]); got != 28 {
+			t.Fatalf("item quantity=%d, want 28 after 4x multiplier", got)
 		}
 		if got := binary.LittleEndian.Uint32(patched[offset+48:]); got != 23456 {
 			t.Fatalf("item weight=%d, want 23456", got)
@@ -208,9 +208,19 @@ func TestNaturalDropItemPatchRejectsDuplicateAndInvalidBounds(t *testing.T) {
 		"zero quantity": {{ItemHash: valid.ItemHash, Quantity: 0, Weight: 1}},
 		"zero weight":   {{ItemHash: valid.ItemHash, Quantity: 1, Weight: 0}},
 	} {
-		if _, err := patchNaturalDropItemTable(tables, selections); err == nil {
+		if _, err := patchNaturalDropItemTable(tables, selections, 1); err == nil {
 			t.Fatalf("%s selection was accepted", name)
 		}
+	}
+	for _, multiplier := range []int{0, 3, 6, 32} {
+		if _, err := patchNaturalDropItemTable(tables, []NaturalDropItemSelection{valid}, multiplier); err == nil {
+			t.Fatalf("unsupported reward multiplier %d was accepted", multiplier)
+		}
+	}
+	overflow := valid
+	overflow.Quantity = 999
+	if _, err := patchNaturalDropItemTable(tables, []NaturalDropItemSelection{overflow}, 16); err == nil {
+		t.Fatal("quantity exceeding the table limit after multiplication was accepted")
 	}
 }
 

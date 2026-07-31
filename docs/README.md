@@ -4,6 +4,8 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.8.md`](RELEASE_NOTES_v2.0.8.md) | v2.0.8 全任务普通物品结算倍率 |
+| [`PLAYSTATION_DROP_OPTIONS_RESEARCH.md`](PLAYSTATION_DROP_OPTIONS_RESEARCH.md) | PlayStation 掉落、联机与存档转移的官方能力边界 |
 | [`RELEASE_NOTES_v2.0.7.md`](RELEASE_NOTES_v2.0.7.md) | v2.0.7 因子与祝福自由写入规则统一 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 运行结构、代码域、写入边界与测试布局 |
 | [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) | 当前功能的已实现、现场验证和仍未闭环清单 |

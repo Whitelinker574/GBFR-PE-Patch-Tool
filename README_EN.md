@@ -14,7 +14,7 @@
 
 ## Game 2.0.3 compatibility
 
-v2.0.7 unifies the editing rules for sigils and wrightstones. Catalogued, field-encodable combinations and traits found in the 2.0.3 synthesis table can be selected directly. Non-natural combinations and levels above an effect curve now produce a warning instead of blocking the write. Save generation, live editing, loadout construction/import, and virtual-sigil source creation share the same policy while keeping natural values as defaults.
+v2.0.8 adds an independent live quest-reward multiplier. After connecting to the game, ordinary stackable items in every quest result can be set to 2× / 4× / 8× / 16× without first adding them to a configured drop list. Shops, forging, and manual item edits are unaffected; independent sigil, wrightstone, summon, and weapon instances retain their normal count. The offline Forger's Bounty list keeps its own separate multiplier.
 
 Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
 
@@ -86,7 +86,7 @@ Fate Episodes provide a restricted experimental writer for audited completion va
 
 Summons, Transmarvel sigils, wrightstones, and verified regular-item rewards are selected from exact tables embedded in the application. Users no longer need to find an unpacked table directory. Selections enter a review list before deployment.
 
-Regular items currently target only the verified Endless Mode Forger's Bounty package; this is not a universal quest, enemy, chest, or event drop-rate editor. Real drop and forging outcomes remain a field-acceptance boundary, so the page stays experimental and always provides a `data.i` backup and restore action.
+This page has two independent paths. The live “ordinary item multiplier for all quest results” processes stackable materials after connecting to the game; the deployment list writes only selected items into Endless Mode Forger's Bounty. Both offer `1× / 2× / 4× / 8× / 16×`, but the live path needs no item list while the offline path multiplies only configured base quantities without changing roll weight. Sigils, summons, wrightstones, and weapons remain independent instances and are not duplicated by the ordinary-item multiplier. Actual results across quest sources, natural sigils, summon drops, and wrightstone forging remain field acceptance, and the `data.i` path always provides backup and restoration.
 
 ## Improvements retained from v1.92.0
 
@@ -149,6 +149,7 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
+- [Complete v2.0.8 release notes](docs/RELEASE_NOTES_v2.0.8.md)
 - [Complete v2.0.7 release notes](docs/RELEASE_NOTES_v2.0.7.md)
 - [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)
 - [v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)

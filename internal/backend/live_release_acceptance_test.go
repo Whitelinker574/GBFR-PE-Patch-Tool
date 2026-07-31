@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 func TestLiveReleaseAcceptance(t *testing.T) {
@@ -232,4 +234,47 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestLiveTaskRewardMultiplierAcceptance(t *testing.T) {
+	if os.Getenv("GBFR_LIVE_TASK_REWARD_ACCEPTANCE") != "1" {
+		t.Skip("set GBFR_LIVE_TASK_REWARD_ACCEPTANCE=1 to verify the task reward hook lifecycle")
+	}
+
+	app := NewApp()
+	info, err := app.CharaAcquire(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.CharaRelease(info.OwnerToken) })
+
+	active, err := app.TaskRewardMultiplierSetOwned(info.OwnerToken, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !active.Enabled || active.Multiplier != 2 || active.RVA != 0x1FDA9C0 || active.GameVersion != "2.0.3" {
+		t.Fatalf("task reward multiplier did not reach the audited 2.0.3 entry: %+v", active)
+	}
+	lease := app.taskRewardMultiplierLease
+	if lease == nil || lease.EntryAddr == 0 || len(lease.Original) != taskRewardMultiplierHookSize {
+		t.Fatalf("task reward multiplier lease is incomplete: %+v", lease)
+	}
+
+	stopped, err := app.TaskRewardMultiplierSetOwned(info.OwnerToken, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stopped.Enabled || stopped.Multiplier != 1 || app.taskRewardMultiplierLease != nil {
+		t.Fatalf("task reward multiplier did not stop cleanly: %+v", stopped)
+	}
+	restored := make([]byte, len(lease.Original))
+	if err := readProcessMemory(app.hProcess, lease.EntryAddr, unsafe.Pointer(&restored[0]), uintptr(len(restored))); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, lease.Original) {
+		t.Fatalf("task reward multiplier entry was not restored: % X", restored)
+	}
+	if err := app.CharaRelease(info.OwnerToken); err != nil {
+		t.Fatal(err)
+	}
 }

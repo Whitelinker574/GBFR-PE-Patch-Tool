@@ -1,14 +1,19 @@
 <script setup>
-import { computed, onActivated, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
+  CharaAcquire,
+  CharaRelease,
   DeployNaturalDropMod,
   GetNaturalDropWorkspace,
   RestoreNaturalDropDefaults,
   SelectNaturalDropGameExecutable,
   SelectNaturalDropTableDirectory,
+  TaskRewardMultiplierSetOwned,
+  TaskRewardMultiplierStatusOwned,
 } from '../../wailsjs/go/backend/App'
 import { language } from '../i18n'
 import { itemAssetIcon, summonAssetIcon, traitAssetIcon } from '../gameAssetIcons'
+import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLease } from '../runtimeLeaseManager.js'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
@@ -31,8 +36,18 @@ const wrightstoneDraft = reactive({ familyHash: '', subTrait1: '', subTrait2: ''
 const genericDropItem = ref('')
 const genericDropQuantity = ref(1)
 const genericDropWeight = ref(10000)
+const itemRewardMultiplier = ref(1)
+const itemRewardMultipliers = [1, 2, 4, 8, 16]
+const taskRewardMultipliers = [1, 2, 4, 8, 16]
+const taskRewardConnected = ref(false)
+const taskRewardBusy = ref(false)
+const taskRewardStatus = reactive({ enabled: false, multiplier: 1, matchedItems: 0, rva: 0, gameVersion: '', detail: '' })
 const sigilOnly = ref(false)
 const wrightstoneOnly = ref(false)
+const taskRewardLeaseScope = 'task-reward-multiplier'
+let taskRewardOwnerToken = ''
+let taskRewardDisposed = false
+let taskRewardEpoch = 0
 
 const tx = (zh, en) => language.value === 'en' ? en : zh
 const displayName = item => language.value === 'en' ? item?.nameEn : item?.nameZh
@@ -55,6 +70,8 @@ const selectedSigils = computed(() => Object.entries(sigilSelections)
 const selectedItems = computed(() => Object.entries(itemSelections)
   .filter(([, value]) => value?.enabled)
   .map(([itemHash, value]) => ({ itemHash, quantity: Number(value.quantity), weight: Number(value.weight) })))
+const itemQuantityLimit = computed(() => Math.floor(999 / itemRewardMultiplier.value))
+const itemQuantitiesValid = computed(() => selectedItems.value.every(item => item.quantity * itemRewardMultiplier.value <= 999))
 const activeConflictScopes = computed(() => new Set([
   ...(selectedList.value.length ? ['summon'] : []),
   ...(selectedSigils.value.length ? ['sigil', 'transmarvel'] : []),
@@ -63,7 +80,7 @@ const activeConflictScopes = computed(() => new Set([
 ]))
 const activeConflicts = computed(() => (workspace.value?.conflicts || []).filter(item => activeConflictScopes.value.has(item.scope)))
 const hasConflicts = computed(() => activeConflicts.value.length > 0)
-const canDeploy = computed(() => gameReady.value && !hasConflicts.value && !busy.value &&
+const canDeploy = computed(() => gameReady.value && !hasConflicts.value && !busy.value && itemQuantitiesValid.value &&
   ((selectedList.value.length > 0 && tableReady.value) || (selectedSigils.value.length > 0 && sigilTableReady.value) ||
     (selectedWrightstones.value.length > 0 && wrightstoneTableReady.value) || (selectedItems.value.length > 0 && itemTableReady.value)) &&
   (selectedList.value.length === 0 || tableReady.value) && (selectedSigils.value.length === 0 || sigilTableReady.value) &&
@@ -77,6 +94,71 @@ function pickerOptions(items, key, detail = () => '') {
     detail: detail(item),
     source: item,
   })).filter(item => item.internalId)
+}
+
+function applyTaskRewardStatus(status) {
+  Object.assign(taskRewardStatus, status || { enabled: false, multiplier: 1, matchedItems: 0, rva: 0, gameVersion: '', detail: '' })
+}
+
+async function connectTaskRewardRuntime() {
+  if (taskRewardBusy.value || taskRewardConnected.value) return
+  const epoch = ++taskRewardEpoch
+  taskRewardBusy.value = true
+  let acquiredOwnerToken = ''
+  try {
+    const info = await CharaAcquire(nextRuntimeAcquireRequestID())
+    acquiredOwnerToken = String(info?.ownerToken || '')
+    if (!acquiredOwnerToken) throw new Error(tx('后端未返回运行时连接令牌。', 'The backend did not return a runtime owner token.'))
+    if (taskRewardDisposed || epoch !== taskRewardEpoch) {
+      queueRuntimeLeaseRelease(taskRewardLeaseScope, acquiredOwnerToken, CharaRelease)
+      return
+    }
+    taskRewardOwnerToken = acquiredOwnerToken
+    taskRewardConnected.value = true
+    applyTaskRewardStatus(await TaskRewardMultiplierStatusOwned(taskRewardOwnerToken))
+    setMessage(tx('已连接游戏。选择 2× / 4× / 8× / 16× 后，倍率会持续作用于后续任务结算。', 'Connected to the game. Choose 2× / 4× / 8× / 16× to keep multiplying future quest results.'), 'ok')
+  } catch (error) {
+    if (acquiredOwnerToken) {
+      try { await releaseRuntimeLease(taskRewardLeaseScope, acquiredOwnerToken, CharaRelease) } catch {}
+    }
+    if (!taskRewardDisposed && epoch === taskRewardEpoch) setMessage(String(error), 'danger')
+  } finally {
+    if (!taskRewardDisposed && epoch === taskRewardEpoch) taskRewardBusy.value = false
+  }
+}
+
+async function disconnectTaskRewardRuntime() {
+  if (taskRewardBusy.value || !taskRewardOwnerToken) return
+  const epoch = ++taskRewardEpoch
+  const ownerToken = taskRewardOwnerToken
+  taskRewardBusy.value = true
+  try {
+    await releaseRuntimeLease(taskRewardLeaseScope, ownerToken, CharaRelease)
+    if (taskRewardDisposed || epoch !== taskRewardEpoch) return
+    taskRewardOwnerToken = ''
+    taskRewardConnected.value = false
+    applyTaskRewardStatus(null)
+    setMessage(tx('已断开游戏，任务奖励倍率恢复为 1×。', 'Disconnected from the game and restored quest rewards to 1×.'), 'ok')
+  } catch (error) {
+    if (!taskRewardDisposed && epoch === taskRewardEpoch) setMessage(String(error), 'danger')
+  } finally {
+    if (!taskRewardDisposed && epoch === taskRewardEpoch) taskRewardBusy.value = false
+  }
+}
+
+async function setTaskRewardMultiplier(multiplier) {
+  if (taskRewardBusy.value || !taskRewardOwnerToken) return
+  taskRewardBusy.value = true
+  try {
+    applyTaskRewardStatus(await TaskRewardMultiplierSetOwned(taskRewardOwnerToken, multiplier))
+    setMessage(multiplier === 1
+      ? tx('任务奖励倍率已关闭，后续任务恢复游戏原数量。', 'Quest reward multiplier is off; future quests use normal quantities.')
+      : tx(`任务奖励倍率已设为 ${multiplier}×，保持连接即可持续生效。`, `Quest reward multiplier is set to ${multiplier}× and remains active while connected.`), 'ok')
+  } catch (error) {
+    setMessage(String(error), 'danger')
+  } finally {
+    taskRewardBusy.value = false
+  }
 }
 
 function traitPickerOptions(items) {
@@ -188,7 +270,7 @@ const pendingDropRows = computed(() => {
     rows.push({
       key: `item:${itemHash}`, kind: 'item', target: itemHash,
       kindLabel: tx('物品', 'Item'), name: displayName(item), icon: itemAssetIcon(item),
-      detail: tx(`数量 ${selection.quantity} · 权重 ${selection.weight}`, `Quantity ${selection.quantity} · weight ${selection.weight}`),
+      detail: tx(`基础数量 ${selection.quantity} × ${itemRewardMultiplier.value} = 实际数量 ${selection.quantity * itemRewardMultiplier.value} · 权重 ${selection.weight}`, `Base quantity ${selection.quantity} × ${itemRewardMultiplier.value} = final quantity ${selection.quantity * itemRewardMultiplier.value} · weight ${selection.weight}`),
       sourceLabel: language.value === 'en' ? workspace.value?.itemRewardTargetEn : workspace.value?.itemRewardTargetZh,
     })
   }
@@ -254,8 +336,12 @@ function addItemDraft() {
   const quantity = Math.trunc(Number(genericDropQuantity.value))
   const weight = Math.trunc(Number(genericDropWeight.value))
   if (!item) return
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
-    setMessage(tx('物品数量必须是 1–999 的整数。', 'Item quantity must be an integer from 1 to 999.'), 'danger')
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > itemQuantityLimit.value) {
+    setMessage(tx(`当前 ${itemRewardMultiplier.value}× 倍率下，基础数量必须是 1–${itemQuantityLimit.value} 的整数。`, `At ${itemRewardMultiplier.value}×, base quantity must be an integer from 1 to ${itemQuantityLimit.value}.`), 'danger')
+    return
+  }
+  if (quantity * itemRewardMultiplier.value > 999) {
+    setMessage(tx(`基础数量 ${quantity} × ${itemRewardMultiplier.value} 超过表字段上限 999。请降低基础数量或倍率。`, `Base quantity ${quantity} × ${itemRewardMultiplier.value} exceeds the table limit of 999. Lower the quantity or multiplier.`), 'danger')
     return
   }
   if (!Number.isInteger(weight) || weight < 1 || weight > 1000000) {
@@ -345,8 +431,8 @@ async function deploy() {
   if (!canDeploy.value) return
   const accepted = await confirmDialog.value?.ask({
     title: tx('部署天然掉落模组', 'Deploy natural-drop mod'),
-    message: tx(`将部署 ${selectedList.value.length} 颗召唤石、${selectedSigils.value.length} 个 Transmarvel 因子、${selectedWrightstones.value.length} 个祝福石变体和 ${selectedItems.value.length} 种物品。`, `Deploy ${selectedList.value.length} summons, ${selectedSigils.value.length} Transmarvel sigils, ${selectedWrightstones.value.length} wrightstone variants and ${selectedItems.value.length} items.`),
-    detail: tx('应用会备份原始 data.i，再把所选功能的生成表登记为游戏原生外部文件。游戏必须完全退出；已有外部表会阻止覆盖。', 'The app backs up the original data.i and registers the selected generated tables as native external files. The game must be closed; existing external overrides block deployment.'),
+    message: tx(`将部署 ${selectedList.value.length} 颗召唤石、${selectedSigils.value.length} 个 Transmarvel 因子、${selectedWrightstones.value.length} 个祝福石变体和 ${selectedItems.value.length} 种物品。已配置物品的奖励数量倍率为 ${itemRewardMultiplier.value}×。`, `Deploy ${selectedList.value.length} summons, ${selectedSigils.value.length} Transmarvel sigils, ${selectedWrightstones.value.length} wrightstone variants and ${selectedItems.value.length} items. The configured items use a ${itemRewardMultiplier.value}× reward quantity multiplier.`),
+    detail: tx('倍率只作用于已验证的“无尽模式 · 锻造师奖励”普通物品数量，不改变抽中权重，也不作用于因子、召唤石或祝福石。应用会备份原始 data.i；游戏必须完全退出。', 'The multiplier only changes regular-item quantities in the verified Endless Mode · Forger’s Bounty pool. It does not change weights or affect sigils, summons, or wrightstones. The app backs up data.i; the game must be closed.'),
     confirmLabel: tx('确认部署', 'Deploy'),
     cancelLabel: tx('取消', 'Cancel'),
     tone: 'warning',
@@ -361,6 +447,7 @@ async function deploy() {
       sigils: selectedSigils.value,
       wrightstones: selectedWrightstones.value,
       items: selectedItems.value,
+      itemMultiplier: itemRewardMultiplier.value,
       sigilOnly: sigilOnly.value,
       wrightstoneOnly: wrightstoneOnly.value,
     })
@@ -397,6 +484,12 @@ async function restoreOrRemove() {
 onActivated(() => {
   if (!workspace.value) void refreshWorkspace()
 })
+
+onBeforeUnmount(() => {
+  taskRewardDisposed = true
+  taskRewardEpoch += 1
+  if (taskRewardOwnerToken) queueRuntimeLeaseRelease(taskRewardLeaseScope, taskRewardOwnerToken, CharaRelease)
+})
 </script>
 
 <template>
@@ -410,6 +503,25 @@ onActivated(() => {
       <div class="drop-safety">
         <strong>{{ tx('来源原表只读', 'Source tables are read-only') }}</strong>
         <span>{{ tx('部署前自动备份 data.i；恢复时校验备份与工具清单', 'data.i is backed up before deployment and verified against the tool manifest during restoration') }}</span>
+      </div>
+    </section>
+
+    <section class="task-reward-runtime ui-card ui-panel" aria-labelledby="task-reward-title">
+      <div class="task-reward-copy">
+        <span>{{ tx('实时任务结算 · 2.0.2 / 2.0.3', 'LIVE QUEST RESULTS · 2.0.2 / 2.0.3') }}</span>
+        <h3 id="task-reward-title">{{ tx('所有任务的普通物品奖励倍率', 'Ordinary Item Multiplier for All Quest Results') }}</h3>
+        <p>{{ tx('开启后，普通任务、首领任务、任务宝箱和支线目标汇总到结算页的可堆叠物品都会乘为 2× / 4× / 8× / 16×。商店购买、锻造和手工物品编辑不受影响。', 'When enabled, stackable items reaching the results screen from regular quests, bosses, quest chests, and side objectives are multiplied by 2× / 4× / 8× / 16×. Shops, forging, and manual item editing are excluded.') }}</p>
+        <small>{{ tx('因子、祝福石、召唤石和武器属于独立实例奖励，保持原数量，避免复制同一个实例。单项最终数量封顶 999。', 'Sigils, wrightstones, summons, and weapons are independent instances and keep their normal count to avoid duplicating one instance. Each final stack is capped at 999.') }}</small>
+      </div>
+      <div class="task-reward-controls">
+        <div class="ui-seg task-reward-options" :aria-disabled="!taskRewardConnected">
+          <button v-for="multiplier in taskRewardMultipliers" :key="multiplier" type="button" class="ui-seg-btn" :class="{ 'is-on': taskRewardStatus.multiplier === multiplier }" :disabled="!taskRewardConnected || taskRewardBusy" @click="setTaskRewardMultiplier(multiplier)">{{ multiplier }}×</button>
+        </div>
+        <div class="task-reward-actions">
+          <button v-if="!taskRewardConnected" class="ui-btn is-primary" type="button" :disabled="taskRewardBusy" @click="connectTaskRewardRuntime">{{ taskRewardBusy ? tx('连接中…', 'Connecting…') : tx('连接游戏', 'Connect to game') }}</button>
+          <button v-else class="ui-btn is-secondary" type="button" :disabled="taskRewardBusy" @click="disconnectTaskRewardRuntime">{{ tx('断开并恢复 1×', 'Disconnect and restore 1×') }}</button>
+        </div>
+        <div class="task-reward-state" :class="{ active: taskRewardStatus.enabled }"><b>{{ taskRewardConnected ? (taskRewardStatus.enabled ? tx(`${taskRewardStatus.multiplier}× 持续生效`, `${taskRewardStatus.multiplier}× active`) : tx('已连接 · 当前 1×', 'Connected · currently 1×')) : tx('尚未连接游戏', 'Not connected') }}</b><small v-if="taskRewardStatus.enabled">{{ tx(`当前倍率已处理 ${taskRewardStatus.matchedItems} 条普通物品奖励`, `${taskRewardStatus.matchedItems} ordinary item rewards processed at the current multiplier`) }}</small></div>
       </div>
     </section>
 
@@ -498,13 +610,15 @@ onActivated(() => {
 
       <details class="generic-drop-builder" open>
         <summary><span>{{ tx('其他物品掉落', 'Other item drops') }}</span><small>{{ language === 'en' ? workspace?.itemRewardTargetEn : workspace?.itemRewardTargetZh }}</small></summary>
+        <div class="reward-multiplier-row"><div><b>{{ tx('已配置物品数量倍率', 'Configured-item quantity multiplier') }}</b><small>{{ tx('把下方加入清单的每种物品从基础数量乘为最终数量；原有奖励和抽中权重保持不变。', 'Multiplies each configured item from its base quantity to its final quantity; existing rewards and roll weights stay unchanged.') }}</small></div><div class="ui-seg reward-multiplier-options"><button v-for="multiplier in itemRewardMultipliers" :key="multiplier" type="button" class="ui-seg-btn" :class="{ 'is-on': itemRewardMultiplier === multiplier }" @click="itemRewardMultiplier = multiplier">{{ multiplier }}×</button></div></div>
         <div class="drop-builder-grid">
           <label class="builder-field item-picker"><span>{{ tx('掉落物品', 'Drop item') }}</span><CatalogSelect v-model="genericDropItem" :options="itemPickerOptions" :disabled="!itemTableReady" :icon-resolver="pickerItemIcon" :placeholder="tx('选择物品', 'Choose an item')" :search-placeholder="tx('搜索物品名称或 Hash', 'Search item names or hashes')" detail-key="detail" /></label>
-          <label class="builder-field"><span>{{ tx('每次数量', 'Quantity') }}</span><input v-model.number="genericDropQuantity" class="drop-number-input" type="number" min="1" max="999" step="1"></label>
+          <label class="builder-field"><span>{{ tx('基础数量', 'Base quantity') }}</span><input v-model.number="genericDropQuantity" class="drop-number-input" type="number" min="1" :max="itemQuantityLimit" step="1"><small>{{ tx(`当前最多 ${itemQuantityLimit}，最终为 ${genericDropQuantity * itemRewardMultiplier}。`, `Current maximum ${itemQuantityLimit}; final quantity ${genericDropQuantity * itemRewardMultiplier}.`) }}</small></label>
           <label class="builder-field"><span>{{ tx('掉落权重', 'Drop weight') }}</span><input v-model.number="genericDropWeight" class="drop-number-input" type="number" min="1" max="1000000" step="1"></label>
           <button class="ui-btn is-primary builder-add" type="button" :disabled="!itemTableReady || !selectedItemDraft" @click="addItemDraft">{{ tx('加入待部署', 'Add to list') }}</button>
         </div>
-        <p class="builder-note">{{ tx('不用选择任务或敌人。应用会把这里添加的物品写入已验证的“无尽模式 · 锻造师奖励”物品池；打开该奖励包时按权重结算。部署前可在下方清单逐条核对。', 'No quest or enemy selection is required. Added items are written to the verified “Endless Mode · Forger’s Bounty” item pool and roll by weight when that package is opened. Review every row below before deployment.') }}</p>
+        <p class="builder-note">{{ tx('不用选择任务或敌人。应用会把这里添加的物品写入已验证的“无尽模式 · 锻造师奖励”物品池；打开奖励包时按权重抽取，再按 1× / 2× / 4× / 8× / 16× 写入最终物品数量。这个倍率不作用于因子、召唤石和祝福石。', 'No quest or enemy selection is required. Items are written to the verified Endless Mode · Forger’s Bounty pool, rolled by weight, then awarded at the selected 1× / 2× / 4× / 8× / 16× quantity. This multiplier does not affect sigils, summons, or wrightstones.') }}</p>
+        <p v-if="!itemQuantitiesValid" class="builder-note is-danger">{{ tx(`已有物品的基础数量在 ${itemRewardMultiplier}× 下会超过 999。请删除后按最多 ${itemQuantityLimit} 的基础数量重新添加。`, `An existing item exceeds 999 at ${itemRewardMultiplier}×. Remove it and add it again with a base quantity no higher than ${itemQuantityLimit}.`) }}</p>
       </details>
     </section>
 
@@ -544,6 +658,18 @@ onActivated(() => {
 .drop-safety { padding:var(--space-4); border-left:3px solid var(--success); background:var(--success-bg); color:var(--success-ink); }
 .drop-safety strong,.drop-safety span { display:block; }
 .drop-safety span { margin-top:var(--space-1); font-size:var(--fs-xs); }
+.task-reward-runtime { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--space-5); padding:var(--space-5); border-left:4px solid var(--accent); background:linear-gradient(110deg,var(--surface-card-pop),var(--accent-soft)); }
+.task-reward-copy > span { color:var(--accent); font-family:var(--font-data); font-size:var(--fs-xs); font-weight:var(--fw-bold); letter-spacing:.05em; }
+.task-reward-copy h3 { margin:4px 0 0; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
+.task-reward-copy p,.task-reward-copy small { display:block; margin:var(--space-2) 0 0; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
+.task-reward-copy small { color:var(--text-muted); font-size:var(--fs-xs); }
+.task-reward-controls { display:grid; min-width:310px; gap:var(--space-3); justify-items:end; }
+.task-reward-options { width:100%; }
+.task-reward-options .ui-seg-btn { flex:1 1 0; }
+.task-reward-actions { display:flex; justify-content:flex-end; }
+.task-reward-state { display:grid; justify-items:end; color:var(--text-muted); font-size:var(--fs-xs); }
+.task-reward-state.active { color:var(--success-ink); }
+.task-reward-state small { margin-top:2px; }
 .drop-setup,.drop-configurator,.pending-drops { min-width:0; }
 .section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-5); }
 .section-heading > div { min-width:0; }
@@ -590,8 +716,14 @@ onActivated(() => {
 .generic-drop-builder summary span { font-family:var(--font-display); font-weight:var(--fw-semibold); }
 .generic-drop-builder summary small { color:var(--accent-strong); font-size:var(--fs-xs); }
 .generic-drop-builder[open] summary { border-bottom:1px solid var(--border-default); }
+.reward-multiplier-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); padding:var(--space-4); border-bottom:1px solid var(--border-default); background:var(--accent-soft); }
+.reward-multiplier-row > div:first-child { min-width:0; display:grid; gap:3px; }
+.reward-multiplier-row b { color:var(--text-primary); font-size:var(--fs-sm); }
+.reward-multiplier-row small { color:var(--text-secondary); font-size:var(--fs-xs); }
+.reward-multiplier-options { flex:0 0 auto; }
 .generic-drop-builder > .drop-builder-grid { padding:var(--space-4) var(--space-4) 0; }
 .generic-drop-builder > .builder-note { margin:var(--space-3) var(--space-4) var(--space-4); padding:var(--space-3); border-left:3px solid var(--accent); color:var(--text-secondary); background:var(--accent-soft); }
+.generic-drop-builder > .builder-note.is-danger { border-left-color:var(--danger); color:var(--danger-ink); background:var(--danger-bg); }
 .pending-drop-table { margin-top:var(--space-4); overflow:hidden; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-card); box-shadow:var(--shadow-1); }
 .pending-drop-head,.pending-drop-row { display:grid; grid-template-columns:90px minmax(0,1fr) minmax(120px,.28fr) 74px; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); }
 .pending-drop-head { min-height:34px; color:var(--text-muted); background:var(--surface-field); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
@@ -618,6 +750,10 @@ onActivated(() => {
 
 @container natural-drop (max-width:860px) {
   .drop-intro { grid-template-columns:minmax(0,1fr); align-items:start; }
+  .task-reward-runtime { grid-template-columns:minmax(0,1fr); align-items:start; }
+  .task-reward-controls { width:100%; min-width:0; justify-items:stretch; }
+  .task-reward-actions,.task-reward-actions .ui-btn { width:100%; }
+  .task-reward-state { justify-items:start; }
   .drop-safety { max-width:none; }
   .drop-builder-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .builder-add { width:100%; }
@@ -636,6 +772,8 @@ onActivated(() => {
   .drop-builder-grid { grid-template-columns:minmax(0,1fr); }
   .builder-note { margin-left:0; }
   .generic-drop-builder summary { align-items:flex-start; flex-direction:column; }
+  .reward-multiplier-row { align-items:stretch; flex-direction:column; }
+  .reward-multiplier-options { width:100%; overflow-x:auto; }
   .pending-drop-head { display:none; }
   .pending-drop-row { grid-template-columns:minmax(0,1fr) 70px; }
   .pending-kind { grid-column:1 / -1; }

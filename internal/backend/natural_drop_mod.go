@@ -147,6 +147,7 @@ type NaturalDropDeployRequest struct {
 	Sigils          []NaturalDropSigilSelection       `json:"sigils"`
 	Wrightstones    []NaturalDropWrightstoneSelection `json:"wrightstones"`
 	Items           []NaturalDropItemSelection        `json:"items"`
+	ItemMultiplier  int                               `json:"itemMultiplier"`
 	SigilOnly       bool                              `json:"sigilOnly"`
 	WrightstoneOnly bool                              `json:"wrightstoneOnly"`
 }
@@ -185,6 +186,7 @@ type naturalDropManifest struct {
 	Sigils              []NaturalDropSigilSelection       `json:"sigils,omitempty"`
 	Wrightstones        []NaturalDropWrightstoneSelection `json:"wrightstones,omitempty"`
 	Items               []NaturalDropItemSelection        `json:"items,omitempty"`
+	ItemMultiplier      int                               `json:"itemMultiplier,omitempty"`
 	SigilOnly           bool                              `json:"sigilOnly,omitempty"`
 	WrightstoneOnly     bool                              `json:"wrightstoneOnly,omitempty"`
 	AffectedRewardPools int                               `json:"affectedRewardPools"`
@@ -1029,7 +1031,20 @@ func resolveNaturalDropItemRewardPool(tables *naturalDropItemTables) (uint32, er
 	return 0, fmt.Errorf("内置锻造师奖励池 0x%08X 没有可复制的物品行", pool)
 }
 
-func patchNaturalDropItemTable(tables *naturalDropItemTables, selections []NaturalDropItemSelection) ([]byte, error) {
+func validateNaturalDropItemMultiplier(multiplier int) (int, error) {
+	switch multiplier {
+	case 1, 2, 4, 8, 16:
+		return multiplier, nil
+	default:
+		return 0, errors.New("物品奖励倍率必须是 1、2、4、8 或 16")
+	}
+}
+
+func patchNaturalDropItemTable(tables *naturalDropItemTables, selections []NaturalDropItemSelection, multiplier int) ([]byte, error) {
+	multiplier, err := validateNaturalDropItemMultiplier(multiplier)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := resolveNaturalDropItemRewardPool(tables)
 	if err != nil {
 		return nil, err
@@ -1081,6 +1096,10 @@ func patchNaturalDropItemTable(tables *naturalDropItemTables, selections []Natur
 		if selection.Quantity < 1 || selection.Quantity > naturalDropItemMaxQuantity {
 			return nil, fmt.Errorf("%s 数量必须为 1–%d", progressionItemName(def), naturalDropItemMaxQuantity)
 		}
+		quantity := selection.Quantity * multiplier
+		if quantity > naturalDropItemMaxQuantity {
+			return nil, fmt.Errorf("%s 的数量 %d × %d 超过表字段上限 %d", progressionItemName(def), selection.Quantity, multiplier, naturalDropItemMaxQuantity)
+		}
 		if selection.Weight < 1 || selection.Weight > naturalDropItemMaxWeight {
 			return nil, fmt.Errorf("%s 权重必须为 1–%d", progressionItemName(def), naturalDropItemMaxWeight)
 		}
@@ -1093,7 +1112,7 @@ func patchNaturalDropItemTable(tables *naturalDropItemTables, selections []Natur
 			offset = len(result) - rewardLotTableRowSize
 			existing[itemHash] = offset
 		}
-		binary.LittleEndian.PutUint32(result[offset:offset+4], uint32(selection.Quantity))
+		binary.LittleEndian.PutUint32(result[offset:offset+4], uint32(quantity))
 		binary.LittleEndian.PutUint32(result[offset+48:offset+52], selection.Weight)
 	}
 	binary.LittleEndian.PutUint32(result[:4], uint32((len(result)-8)/rewardLotTableRowSize))
@@ -2050,7 +2069,7 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		patchedLots, patchErr := patchNaturalDropItemTable(itemTables, request.Items)
+		patchedLots, patchErr := patchNaturalDropItemTable(itemTables, request.Items, request.ItemMultiplier)
 		if patchErr != nil {
 			return nil, patchErr
 		}
@@ -2151,6 +2170,7 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		Sigils:              append([]NaturalDropSigilSelection(nil), request.Sigils...),
 		Wrightstones:        append([]NaturalDropWrightstoneSelection(nil), request.Wrightstones...),
 		Items:               itemCopy,
+		ItemMultiplier:      request.ItemMultiplier,
 		SigilOnly:           request.SigilOnly,
 		WrightstoneOnly:     request.WrightstoneOnly,
 		AffectedRewardPools: affectedPools,

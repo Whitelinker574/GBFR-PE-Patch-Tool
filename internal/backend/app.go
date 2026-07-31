@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.7"
+	appVersion  = "v2.0.8"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -130,6 +130,7 @@ type App struct {
 	runtimePatchPatchOrder      []string
 	confluxTimerLease           *confluxTimerLease
 	runtimeSpatialGravityLease  *runtimePatchPatchLease
+	taskRewardMultiplierLease   *taskRewardMultiplierLease
 	runtimePatchVerifiedProcess processInstanceID
 	runtimePatchVerifiedDigest  string
 	// The selected-item monitor uses two independent read-only address-capture
@@ -805,6 +806,9 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	if a.runtimeSpatialGravityLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("重力抑制仍由当前页面持有，请先恢复重力并安全释放")
 	}
+	if a.taskRewardMultiplierLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("任务奖励倍率仍由当前页面持有，请先恢复为 1× 并安全释放")
+	}
 	info, err := a.charaAttachLocked()
 	if err == nil {
 		// Compatibility callers deliberately take an unowned connection. This
@@ -836,6 +840,9 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	}
 	if a.runtimeSpatialGravityLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("重力抑制由另一个运行时页面持有，请先恢复重力并安全释放")
+	}
+	if a.taskRewardMultiplierLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("任务奖励倍率由另一个运行时页面持有，请先恢复为 1× 并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err != nil {
@@ -1191,9 +1198,10 @@ func (a *App) CharaRelease(token string) error {
 		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
 		confluxErr := a.restoreConfluxTimerOwnedLocked(token, false)
 		gravityErr := a.restoreRuntimeSpatialGravityOwnedLocked(token, false)
+		rewardErr := a.restoreTaskRewardMultiplierOwnedLocked(token, false)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(tuningErr, materialErr, selectedErr, ctErr, confluxErr, gravityErr, challengeErr); combined != nil {
+		if combined := errors.Join(tuningErr, materialErr, selectedErr, ctErr, confluxErr, gravityErr, rewardErr, challengeErr); combined != nil {
 			return fmt.Errorf("runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
@@ -1206,6 +1214,7 @@ func (a *App) CharaRelease(token string) error {
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
 		a.dropConfluxTimerOwnerLocked(token)
 		a.dropRuntimeSpatialGravityOwnerLocked(token)
+		a.dropTaskRewardMultiplierOwnerLocked(token)
 		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
 			a.infiniteChallengeOwnerToken = ""
 			a.infiniteChallengeAddr = 0
@@ -1277,6 +1286,9 @@ func (a *App) charaDetachLocked() error {
 		if err := a.restoreRuntimeSpatialGravityOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("spatial gravity: %w", err))
 		}
+		if err := a.restoreTaskRewardMultiplierOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("task reward multiplier: %w", err))
+		}
 		a.runtimePatchMu.Unlock()
 		if err := a.releaseOverLimitHook(); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("OverLimit hook: %w", err))
@@ -1333,6 +1345,7 @@ func (a *App) charaDetachLocked() error {
 	a.runtimePatchPatchLeases = nil
 	a.runtimePatchPatchOrder = nil
 	a.runtimeSpatialGravityLease = nil
+	a.taskRewardMultiplierLease = nil
 	a.runtimePatchSelectedMaterialHook = runtimePatchSelectedCaptureLease{}
 	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
 	a.retiredRuntimeCaves = nil
@@ -2717,6 +2730,7 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.runtimePatchPatchOrder) != 0 ||
 		a.confluxTimerLease != nil ||
 		a.runtimeSpatialGravityLease != nil ||
+		a.taskRewardMultiplierLease != nil ||
 		a.materialConsumeLease != nil ||
 		a.combatTuningCooldownLease != nil ||
 		a.combatTuningChargeLease != nil ||
