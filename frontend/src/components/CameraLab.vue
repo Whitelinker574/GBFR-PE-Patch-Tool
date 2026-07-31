@@ -104,7 +104,7 @@ onActivated(() => { void refresh() })
         <h2>{{ tx('城镇镜头距离与滚轮', 'Town Camera Distance & Zoom') }}</h2>
         <p>{{ tx('让城镇镜头拉得更远、调整看向角色的高度，或改变每格滚轮的缩放幅度；战斗镜头不会改变。', 'Move the town camera farther out, adjust where it looks on the character, or change the zoom amount per wheel notch. Combat camera behavior is unchanged.') }}</p>
       </div>
-      <div class="camera-boundary"><b>{{ tx('只在确认匹配 2.0.2 时开启', 'Enabled Only After a 2.0.2 Match') }}</b><span>{{ tx('无法确认游戏版本时不会写入；停用后恢复开启前的数值', 'Nothing is written if the game version cannot be verified; disabling restores the values from before activation') }}</span></div>
+      <div class="camera-boundary"><b>{{ tx('只在确认匹配 2.0.2 / 2.0.3 时开启', 'Enabled Only After a 2.0.2 / 2.0.3 Match') }}</b><span>{{ tx('无法确认游戏版本时不会写入；停用后恢复开启前的数值', 'Nothing is written if the game version cannot be verified; disabling restores the values from before activation') }}</span></div>
     </section>
 
     <section class="camera-setup">

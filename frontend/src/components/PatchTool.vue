@@ -363,10 +363,10 @@ const toolMeta = {
     speaker: '尤斯提斯', note: '开启一次就够了。你继续游玩，连续一致的队伍配装会按批次归档。',
   },
   spatialTools: {
-    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '稳定版仅预览/恢复', tone: 'calibrate',
-    description: '集中查看坐标、书签、传送、世界轴移动与重力抑制的实验状态；稳定版不会新开启尚未完成跨场景实测的移动会话。',
-    usage: ['仅在离线或单机内容查看状态', '如检测到旧实验会话，先执行停用并恢复', '等待页面明确标为可启用后再进行移动测试'],
-    caution: '重力抑制、noclip 与相机相对飞行均未完成稳定版验收；当前入口不会把候选能力包装成可用功能。',
+    group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '可用 · 实验', tone: 'calibrate',
+    description: '读取坐标、保存书签、传送，并通过页面按钮或游戏内方向键进行世界轴移动；重力抑制可独立开启和恢复。',
+    usage: ['进入离线或单机内容并连接游戏', '按需保存原点或书签，再开启方向键或重力抑制', '切场景后先核对坐标状态；F12、断开或退出会停止本工具管理的会话'],
+    caution: '世界轴移动和重力抑制已提供可用入口，但仍需你在不同场景实测并反馈；当前不包含穿墙或相机相对飞行。',
     speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
   },
   selectedItemMonitor: {
@@ -426,31 +426,31 @@ const toolMeta = {
     speaker: '兰斯洛特', note: '先确认写入哪一侧，再逐条挑选。变更单核对无误后，一次写入就够了。',
   },
   naturalDrop: {
-    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 / 2.0.3 可用 · 实验', tone: 'calibrate',
     description: '修改游戏实际读取的掉落与锻造表：可添加 Transmarvel 因子、召唤石、祝福石和普通物品，不会直接向存档背包添加物品。',
     usage: ['完全退出游戏并选择游戏程序', '从应用内置的 2.0.2 目录搜索内容，填写数量或权重并加入待部署清单', '核对清单后部署；停用时恢复应用创建的游戏文件备份'],
     caution: '十一张 2.0.2 精确表已随应用内嵌并校验，不需要自行解包；普通物品会加入“无尽模式·锻造师奖励池”。发现同表冲突时会停止，避免覆盖其他模组。',
     speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
   },
   audioMixer: {
-    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 / 2.0.3 可用 · 实验', tone: 'calibrate',
     description: '分别调低或静音各角色后续播放的语音，也能调整界面音效；不会替换游戏音频文件。',
     usage: ['启动游戏并在本页确认已连接', '调整角色或界面音量，可先保存为本机预设', '点击“开启音频运行时”；之后保存会立即更新当前游戏'],
     caution: '只处理能够明确归属的语音事件，未知和共享事件保持原音；点击“停用并恢复”会移除本工具的音频 Hook。',
     speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
   },
   camera: {
-    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 / 2.0.3 可用 · 实验', tone: 'calibrate',
     description: '调整城镇镜头能拉多远、看向角色的高度，以及每格滚轮缩放多少；战斗镜头不会改变。',
     usage: ['启动游戏并在本页确认已连接', '选择默认或舒适预设，也可手动调三个参数', '点击“开启镜头运行时”；之后保存会立即更新当前游戏'],
     caution: '只影响城镇镜头；点击“停用并恢复”会还原开启前的镜头值和本工具安装的 Hook。',
     speaker: '索恩', note: '先看准距离和高度；顶部显示常驻后，切页也不会停。',
   },
   virtualSigils: {
-    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '稳定版仅预览/恢复', tone: 'calibrate',
-    description: '预览让运行中角色额外读取 1 至 8 颗真实库存因子的实验配置；它不会扩展存档的 12 个物理槽，稳定版也不会新建运行时会话。',
-    usage: ['选择存档和角色，核对实验配置与真实库存实例', '如检测到旧实验会话，点击停用并恢复所有相关 Hook', '跨角色、场景和多 Hook 长测通过前，不会提供新开启按钮'],
-    caution: '同一实例只能占一个候选槽；稳定版只允许安全恢复，不会因单元测试通过就启用未完成实机验收的能力。',
+    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 / 2.0.3 可用 · 实验', tone: 'calibrate',
+    description: '让运行中角色额外读取 1 至 8 颗真实库存因子；它不会扩展存档的 12 个物理槽，也不会把虚拟槽写进存档。',
+    usage: ['选择存档、角色和真实未装备因子实例', '核对 1 至 8 个虚拟槽后开启内置运行时', '切角色或场景后查看状态与实际效果；需要结束时点击停用并恢复相关 Hook'],
+    caution: '同一真实实例只能占一个虚拟槽。跨角色、切场景、同角色队友和多 Hook 组合请按实际玩法测试并反馈，异常时先 F12 紧急停止。',
     speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
   },
 	runtimeQOL: {
@@ -899,7 +899,7 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.5</span>
+        <span class="build-chip release-build">v2.0.6</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button
