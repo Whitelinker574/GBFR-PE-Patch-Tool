@@ -53,6 +53,21 @@ func TestRuntimeSpatialHotkeyDeltaNormalizesDiagonalSpeed(t *testing.T) {
 	}
 }
 
+func TestRuntimeSpatialHotkeyStatusUsesDetectedGameVersion(t *testing.T) {
+	app := NewApp()
+	app.runtimeSpatialHotkey = runtimeSpatialHotkeyConfig{
+		Enabled:     true,
+		Speed:       8,
+		Owner:       "owner",
+		Process:     processInstanceID{PID: 25660, Created: 99},
+		GameVersion: "2.0.3",
+	}
+	status := app.runtimeSpatialHotkeyStatusLocked()
+	if status.GameVersion != "2.0.3" || status.Source != "game_runtime_spatial_hotkeys_2.0.3" {
+		t.Fatalf("hotkey status retained a legacy version gate: %+v", status)
+	}
+}
+
 func TestRuntimeSpatialHotkeysMoveOnlyWhenGameIsForeground(t *testing.T) {
 	app := NewApp()
 	app.runtimeSpatialHotkey = runtimeSpatialHotkeyConfig{

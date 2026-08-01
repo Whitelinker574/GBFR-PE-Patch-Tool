@@ -166,7 +166,11 @@ func (a *App) RuntimePatchSelectedItemReadOwned(token string, request RuntimePat
 		return RuntimePatchSelectedItemRecord{}, err
 	}
 	memory := remoteRuntimePatchSelectedItemMemory{handle: a.hProcess}
-	record, err := consumeRuntimePatchSelectedItemRecord(memory, lease.CaveAddr, request)
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return RuntimePatchSelectedItemRecord{}, err
+	}
+	record, err := consumeRuntimePatchSelectedItemRecord(memory, lease.CaveAddr, layout, request)
 	if err != nil {
 		return RuntimePatchSelectedItemRecord{}, err
 	}
@@ -451,9 +455,12 @@ func (a *App) runtimePatchSelectedLeaseForRequestLocked(token string, kind Runti
 	return lease, nil
 }
 
-func consumeRuntimePatchSelectedItemRecord(memory runtimePatchSelectedItemMemory, cave uintptr, request RuntimePatchSelectedItemReadRequest) (RuntimePatchSelectedItemRecord, error) {
+func consumeRuntimePatchSelectedItemRecord(memory runtimePatchSelectedItemMemory, cave uintptr, layout runtimeGameLayout, request RuntimePatchSelectedItemReadRequest) (RuntimePatchSelectedItemRecord, error) {
 	if memory == nil || cave == 0 || (request.Kind != RuntimePatchSelectedItemMaterial && request.Kind != RuntimePatchSelectedItemKeyItem) || request.ExpectedSelectedAddr == 0 {
 		return RuntimePatchSelectedItemRecord{}, fmt.Errorf("invalid selected-item read request")
+	}
+	if !isKnownRuntimeGameLayout(layout) {
+		return RuntimePatchSelectedItemRecord{}, fmt.Errorf("selected-item read requires an identified game layout")
 	}
 	expected := uintptr(request.ExpectedSelectedAddr)
 	if uint64(expected) != request.ExpectedSelectedAddr || expected > ^uintptr(0)-(runtimePatchSelectedItemRecordSize-1) {
@@ -490,7 +497,7 @@ func consumeRuntimePatchSelectedItemRecord(memory runtimePatchSelectedItemMemory
 	return RuntimePatchSelectedItemRecord{
 		Kind: request.Kind, DisplayName: runtimePatchSelectedKindName(request.Kind), SelectedAddr: uint64(expected),
 		Hash: binary.LittleEndian.Uint32(confirmed[0:4]), Quantity: binary.LittleEndian.Uint32(confirmed[4:8]), Flags: binary.LittleEndian.Uint32(confirmed[8:12]),
-		ReadOnly: true, GameVersion: "2.0.2",
+		ReadOnly: true, GameVersion: layout.Version,
 	}, nil
 }
 

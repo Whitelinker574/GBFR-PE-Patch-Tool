@@ -37,7 +37,7 @@ import {
 } from '../runtimePatchMonitorView.js'
 import RuntimeLoadoutDetector from './RuntimeLoadoutDetector.vue'
 
-const emit = defineEmits(['status', 'deploy-loadout'])
+const emit = defineEmits(['status', 'deploy-loadout', 'runtime-state'])
 const props = defineProps({
   pageActive: { type: Boolean, default: true },
   mode: {
@@ -93,6 +93,7 @@ const captureChanging = computed(() => ['capture-enable', 'capture-disable'].inc
 const gravityChanging = computed(() => activeOperation.value?.kind === 'gravity-change')
 const gravityRefreshing = computed(() => activeOperation.value?.kind === 'gravity-refresh')
 const hotkeyChanging = computed(() => activeOperation.value?.kind === 'hotkeys-change')
+const detectedGameVersion = computed(() => gravityStatus.value?.gameVersion || hotkeyStatus.value?.gameVersion || selectedStatus.value?.gameVersion || '')
 const hotkeyDetail = computed(() => {
   if (hotkeyStatus.value?.lastError) return t('spatialHotkeysError', { error: hotkeyStatus.value.lastError })
   return t(hotkeyStatus.value?.enabled ? 'spatialHotkeysEnabled' : 'spatialHotkeysReady')
@@ -105,6 +106,22 @@ const gravityDetail = computed(() => {
   if (gravityStatus.value?.available) return t('spatialGravityReady')
   return t('spatialGravityUnavailable')
 })
+const spatialRuntimeActive = computed(() => gravityStatus.value?.enabled === true || hotkeyStatus.value?.enabled === true)
+const spatialRecoveryRequired = computed(() => gravityStatus.value?.recoveryPending === true)
+const selectedItemRuntimeActive = computed(() => selectedStatus.value?.enabled === true)
+
+function publishOwnedRuntimeStates() {
+  emit('runtime-state', {
+    id: 'spatialTools',
+    active: spatialRuntimeActive.value,
+    recoveryRequired: spatialRecoveryRequired.value,
+  })
+  emit('runtime-state', {
+    id: 'selectedItemMonitor',
+    active: selectedItemRuntimeActive.value,
+    recoveryRequired: false,
+  })
+}
 
 function t(key, parameters) {
   return runtimeMonitorText(key, language.value, parameters)
@@ -679,6 +696,7 @@ onMounted(() => {
 watch(activeTab, value => { if (value !== 'spatial') stopFlight() })
 watch(() => props.mode, value => { activeTab.value = value }, { immediate: true })
 watch(() => props.pageActive, value => { if (!value) stopFlight() })
+watch([spatialRuntimeActive, spatialRecoveryRequired, selectedItemRuntimeActive], publishOwnedRuntimeStates, { immediate: true })
 </script>
 
 <template>
@@ -687,7 +705,7 @@ watch(() => props.pageActive, value => { if (!value) stopFlight() })
 
     <template v-if="activeTab !== 'party'">
       <section class="monitor-connection ui-card ui-panel is-compact" :aria-label="`${t('memoryMonitoring')} · ${t('readOnly')}`">
-        <div class="connection-summary"><span class="connection-emblem" :class="{ 'is-on': connected }" aria-hidden="true"><i></i></span><div><strong>{{ connectionStateLabel }}</strong><small v-if="connected">PID {{ formatRuntimeInteger(processInfo.pid, language) }} · {{ t('gameVersion') }} 2.0.2</small><small v-else>{{ t('statusConnect') }}</small></div><span class="ui-tag" :class="connectionStateClass">{{ connectionStateLabel }}</span></div>
+        <div class="connection-summary"><span class="connection-emblem" :class="{ 'is-on': connected }" aria-hidden="true"><i></i></span><div><strong>{{ connectionStateLabel }}</strong><small v-if="connected">PID {{ formatRuntimeInteger(processInfo.pid, language) }}<template v-if="detectedGameVersion"> · {{ t('gameVersion') }} {{ detectedGameVersion }}</template></small><small v-else>{{ t('statusConnect') }}</small></div><span class="ui-tag" :class="connectionStateClass">{{ connectionStateLabel }}</span></div>
         <div class="ui-actions connection-actions"><button v-if="!connected" type="button" class="ui-btn is-primary" :disabled="interactionLocked" @click="connect">{{ activeOperation?.kind === 'connect' ? t('working') : t('connect') }}</button><button v-else type="button" class="ui-btn is-ghost" :disabled="operationBusy" @click="disconnect">{{ releasePending ? t('retryDisconnect') : t('disconnect') }}</button><button type="button" class="ui-btn is-danger" @click="emergencyStop">{{ t('emergencyStop') }}</button></div>
       </section>
       <p class="emergency-hint">{{ t('emergencyStopHint') }}</p>

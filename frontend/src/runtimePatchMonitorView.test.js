@@ -26,7 +26,7 @@ function combatEntity(role, index) {
   }
 }
 
-function validPartySnapshot() {
+function validPartySnapshot(version = '2.0.2') {
   return {
     ownerToken,
     pid: processInfo.pid,
@@ -49,38 +49,41 @@ function validPartySnapshot() {
         capabilities: { dodge: false, sba: false, directPosition: true, loadout: false },
       },
     ],
-    source: 'game_runtime_patch_2.0.2',
+    source: `game_runtime_patch_${version}`,
     verification: 'three-snapshot topology verification',
-    gameVersion: '2.0.2',
+    gameVersion: version,
     snapshotCount: 3,
     runtimeVerified: true,
   }
 }
 
-function capture(kind, selectedAddr = 0) {
+function capture(kind, selectedAddr = 0, version = '2.0.2') {
+  const rvas = version === '2.0.3'
+    ? { material: 0x3F479F3, keyItem: 0x3F1C54C }
+    : { material: 0x3F4BAC3, keyItem: 0x3F2061C }
   return {
     kind,
     displayName: kind,
     found: true,
     hooked: true,
     address: kind === 'material' ? 0x140010000 : 0x140020000,
-    rva: kind === 'material' ? 0x3F4BAC3 : 0x3F2061C,
+    rva: rvas[kind],
     selectedAddr,
     captured: selectedAddr > 0,
   }
 }
 
-function validSelectedStatus() {
+function validSelectedStatus(version = '2.0.2') {
   return {
     ownerToken,
     pid: processInfo.pid,
     processCreated: 1337000,
     enabled: true,
     readOnly: true,
-    gameVersion: '2.0.2',
-    source: 'game_selected_item_read_only_2.0.2',
-    material: capture('material', 0x140030000),
-    keyItem: capture('keyItem'),
+    gameVersion: version,
+    source: `game_selected_item_read_only_${version}`,
+    material: capture('material', 0x140030000, version),
+    keyItem: capture('keyItem', 0, version),
   }
 }
 
@@ -404,6 +407,64 @@ test('consuming one capture clears only its pointer and leaves the peer status i
   assert.equal(consumed.material.selectedAddr, 0)
   assert.deepEqual(consumed.keyItem, status.keyItem)
   assert.equal(status.material.captured, true, 'normalization result must not be mutated')
+})
+
+test('all runtime monitor contracts accept the audited 2.0.3 layouts without weakening unknown-version rejection', () => {
+  assert.equal(view.normalizeRuntimePatchPartySnapshot(validPartySnapshot('2.0.3'), ownerToken, processInfo.pid).gameVersion, '2.0.3')
+
+  const spatial = {
+    ownerToken,
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    before: { x: 1, y: 2, z: 3 },
+    requested: { x: 4, y: 5, z: 6 },
+    observed: { x: 4, y: 5, z: 6 },
+    gameVersion: '2.0.3',
+    source: 'game_runtime_spatial_2.0.3',
+    snapshotCount: 3,
+    runtimeVerified: true,
+  }
+  assert.equal(view.normalizeRuntimeSpatialTeleport(spatial, ownerToken, processInfo.pid).gameVersion, '2.0.3')
+  assert.doesNotThrow(() => view.normalizeRuntimeSpatialTeleport({ ...spatial, source: 'game_runtime_spatial_continuous_2.0.3' }, ownerToken, processInfo.pid))
+
+  const gravity = view.normalizeRuntimeSpatialGravityStatus({
+    ownerToken,
+    enabled: true,
+    available: true,
+    owned: true,
+    recoveryPending: false,
+    address: 0x179D8E24,
+    rva: 0x39D8E24,
+    currentBytes: '90 90 90 90 90 90 90 90',
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    gameVersion: '2.0.3',
+    source: 'game_runtime_gravity_patch_2.0.3',
+    error: '',
+  }, ownerToken, processInfo.pid)
+  assert.equal(gravity.rva, 0x39D8E24)
+
+  const hotkeys = view.normalizeRuntimeSpatialHotkeyStatus({
+    enabled: true,
+    foregroundOnly: true,
+    speed: 8,
+    ownerLeaseId: ownerToken,
+    pid: processInfo.pid,
+    processCreated: 1337000,
+    gameVersion: '2.0.3',
+    source: 'game_runtime_spatial_hotkeys_2.0.3',
+    lastError: '',
+  }, ownerToken, processInfo.pid)
+  assert.equal(hotkeys.gameVersion, '2.0.3')
+
+  const selected = view.normalizeRuntimePatchSelectedStatus(validSelectedStatus('2.0.3'), ownerToken, processInfo.pid)
+  assert.equal(selected.material.rva, 0x3F479F3)
+  assert.equal(selected.keyItem.rva, 0x3F1C54C)
+
+  assert.throws(
+    () => view.normalizeRuntimePatchPartySnapshot({ ...validPartySnapshot('2.0.3'), gameVersion: '2.0.4' }, ownerToken, processInfo.pid),
+    /not supported/i,
+  )
 })
 
 test('monitor copy is complete in both Chinese and English', () => {

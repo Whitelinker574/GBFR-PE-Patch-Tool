@@ -1,10 +1,29 @@
 const PARTY_ROLES = Object.freeze(['player', 'party1', 'party2', 'party3', 'companion'])
 const SELECTED_KINDS = Object.freeze(['material', 'keyItem'])
-const SELECTED_RVAS = Object.freeze({ material: 0x3F4BAC3, keyItem: 0x3F2061C })
+const RUNTIME_LAYOUTS = deepFreeze({
+  '2.0.2': {
+    partySource: 'game_runtime_patch_2.0.2',
+    spatialSources: ['game_runtime_spatial_2.0.2', 'game_runtime_spatial_continuous_2.0.2'],
+    gravitySource: 'game_runtime_gravity_patch_2.0.2',
+    gravityRva: 0x39DD964,
+    hotkeySource: 'game_runtime_spatial_hotkeys_2.0.2',
+    selectedSource: 'game_selected_item_read_only_2.0.2',
+    selectedRvas: { material: 0x3F4BAC3, keyItem: 0x3F2061C },
+  },
+  '2.0.3': {
+    partySource: 'game_runtime_patch_2.0.3',
+    spatialSources: ['game_runtime_spatial_2.0.3', 'game_runtime_spatial_continuous_2.0.3'],
+    gravitySource: 'game_runtime_gravity_patch_2.0.3',
+    gravityRva: 0x39D8E24,
+    hotkeySource: 'game_runtime_spatial_hotkeys_2.0.3',
+    selectedSource: 'game_selected_item_read_only_2.0.3',
+    selectedRvas: { material: 0x3F479F3, keyItem: 0x3F1C54C },
+  },
+})
 
 const COPY = Object.freeze({
   memoryMonitoring: ['内存监测', 'Memory Monitoring'],
-  sourceLabel: ['游戏 2.0.2', 'Game 2.0.2'],
+  sourceLabel: ['当前游戏版本', 'Current Game Version'],
   pageTitle: ['角色配装检测', 'Character Loadout Detection'],
   pageSummary: ['主动开启后，工具会持续整理稳定的队伍配装；关闭前不会因为切换页面而停止。', 'Once started, the detector keeps organizing stable party loadouts and does not stop when you switch pages.'],
   readOnly: ['只读', 'Read Only'],
@@ -63,7 +82,7 @@ const COPY = Object.freeze({
   spatialHotkeysChanging: ['正在切换…', 'Changing…'],
   spatialHotkeysError: ['方向键移动已自动停用：{error}', 'Arrow-key movement stopped automatically: {error}'],
   spatialGravity: ['重力锁定', 'Gravity Lock'],
-  spatialGravityReady: ['2.0.2 原始指令已核对', 'Verified 2.0.2 Instructions'],
+  spatialGravityReady: ['当前版本原始指令已核对', 'Current-Version Instructions Verified'],
   spatialGravityEnabled: ['重力已抑制', 'Gravity Suppressed'],
   spatialGravityEnable: ['抑制重力', 'Suppress Gravity'],
   spatialGravityDisable: ['恢复重力', 'Restore Gravity'],
@@ -71,7 +90,7 @@ const COPY = Object.freeze({
   spatialGravityRecovery: ['等待恢复原始指令，请点击“恢复重力”', 'Recovery Pending — Select Restore Gravity'],
   spatialGravityUnavailable: ['入口不可用', 'Entry Unavailable'],
   spatialNoclip: ['穿墙 / 无碰撞', 'Noclip / No Collision'],
-  spatialNotLocated: ['尚未找到可验证的 2.0.2 碰撞入口', 'No verified 2.0.2 collision entry yet'],
+  spatialNotLocated: ['尚未找到可验证的碰撞入口', 'No verified collision entry yet'],
   spatialUnavailable: ['未开放', 'Unavailable'],
   spatialFlightBoundary: ['坐标移动与重力抑制是两个独立功能；穿墙仍未开放。每一步移动都会重新核对玩家实体与坐标节点。', 'Coordinate movement and gravity suppression are independent. Noclip remains unavailable. Every movement step revalidates the player entity and transform node.'],
   partyTitle: ['读取当前队伍配装', 'Read Current Party Loadouts'],
@@ -475,13 +494,20 @@ function verifyOwnerAndProcess(value, expectedOwnerToken, expectedPID, label) {
   if (value.pid !== expectedProcess) throw new TypeError(`${label} process identity changed`)
 }
 
+function runtimeLayout(gameVersion, label) {
+  const version = stringValue(gameVersion, `${label} game version`)
+  const layout = RUNTIME_LAYOUTS[version]
+  if (!layout) throw new TypeError(`${label} game version is not supported: ${version}`)
+  return layout
+}
+
 export function normalizeRuntimePatchPartySnapshot(value, expectedOwnerToken, expectedPID) {
   const snapshot = objectValue(value, 'party snapshot')
   verifyOwnerAndProcess(snapshot, expectedOwnerToken, expectedPID, 'party snapshot')
   if (snapshot.runtimeVerified !== true) throw new TypeError('party snapshot is not runtime verified')
   if (snapshot.snapshotCount !== 3) throw new TypeError('party snapshot count must be three')
-  stringValue(snapshot.gameVersion, 'party game version', '2.0.2')
-  stringValue(snapshot.source, 'party source', 'game_runtime_patch_2.0.2')
+  const layout = runtimeLayout(snapshot.gameVersion, 'party')
+  stringValue(snapshot.source, 'party source', layout.partySource)
   stringValue(snapshot.verification, 'party verification')
   if (!Array.isArray(snapshot.entities) || snapshot.entities.length !== PARTY_ROLES.length) {
     throw new TypeError('party entities must contain exactly five entries')
@@ -505,9 +531,9 @@ export function normalizeRuntimeSpatialTeleport(value, expectedOwnerToken, expec
   const result = objectValue(value, 'spatial teleport result')
   verifyOwnerAndProcess(result, expectedOwnerToken, expectedPID, 'spatial teleport result')
   if (result.runtimeVerified !== true || result.snapshotCount !== 3) throw new TypeError('spatial teleport result is not runtime verified')
-  stringValue(result.gameVersion, 'spatial game version', '2.0.2')
+  const layout = runtimeLayout(result.gameVersion, 'spatial')
   stringValue(result.source, 'spatial source')
-  if (!['game_runtime_spatial_2.0.2', 'game_runtime_spatial_continuous_2.0.2'].includes(result.source)) {
+  if (!layout.spatialSources.includes(result.source)) {
     throw new TypeError('spatial source is not a verified runtime spatial operation')
   }
   return deepFreeze({
@@ -527,8 +553,8 @@ export function normalizeRuntimeSpatialTeleport(value, expectedOwnerToken, expec
 export function normalizeRuntimeSpatialGravityStatus(value, expectedOwnerToken, expectedPID) {
   const status = objectValue(value, 'spatial gravity status')
   verifyOwnerAndProcess(status, expectedOwnerToken, expectedPID, 'spatial gravity status')
-  stringValue(status.gameVersion, 'spatial gravity game version', '2.0.2')
-  stringValue(status.source, 'spatial gravity source', 'game_runtime_gravity_patch_2.0.2')
+  const layout = runtimeLayout(status.gameVersion, 'spatial gravity')
+  stringValue(status.source, 'spatial gravity source', layout.gravitySource)
   const normalized = {
     ownerToken: expectedOwnerToken,
     pid: expectedPID,
@@ -544,7 +570,7 @@ export function normalizeRuntimeSpatialGravityStatus(value, expectedOwnerToken, 
     source: status.source,
     error: typeof status.error === 'string' ? status.error : '',
   }
-  if (normalized.rva !== 0x39DD964) throw new TypeError('spatial gravity RVA does not match the verified 2.0.2 entry')
+  if (normalized.rva !== layout.gravityRva) throw new TypeError('spatial gravity RVA does not match the verified runtime entry')
   if (normalized.enabled && normalized.currentBytes !== '90 90 90 90 90 90 90 90') {
     throw new TypeError('spatial gravity enabled state does not match its instruction bytes')
   }
@@ -560,8 +586,8 @@ export function normalizeRuntimeSpatialHotkeyStatus(value, expectedOwnerToken, e
   const pid = unsignedInteger(status.pid, 'spatial hotkey process', 0xFFFFFFFF)
   const processCreated = unsignedInteger(status.processCreated, 'spatial hotkey process creation identity', Number.MAX_SAFE_INTEGER)
   const speed = finiteNumber(status.speed, 'spatial hotkey speed')
-  stringValue(status.gameVersion, 'spatial hotkey game version', '2.0.2')
-  stringValue(status.source, 'spatial hotkey source', 'game_runtime_spatial_hotkeys_2.0.2')
+  const layout = runtimeLayout(status.gameVersion, 'spatial hotkey')
+  stringValue(status.source, 'spatial hotkey source', layout.hotkeySource)
   if (!foregroundOnly) throw new TypeError('spatial hotkeys must be guarded by the foreground game window')
   if (speed < 0.1 || speed > 1000) throw new TypeError('spatial hotkey speed is outside the supported range')
   if (enabled || ownerLeaseId || pid || processCreated) {
@@ -582,7 +608,7 @@ export function normalizeRuntimeSpatialHotkeyStatus(value, expectedOwnerToken, e
   })
 }
 
-function normalizeCapture(value, expectedKind) {
+function normalizeCapture(value, expectedKind, layout) {
   const capture = objectValue(value, `selected ${expectedKind} capture`)
   if (capture.kind !== expectedKind) throw new TypeError(`selected capture kind must be ${expectedKind}`)
   const found = booleanValue(capture.found, `${expectedKind} found`)
@@ -591,7 +617,7 @@ function normalizeCapture(value, expectedKind) {
   const address = unsignedInteger(capture.address, `${expectedKind} hook address`, Number.MAX_SAFE_INTEGER, !found)
   const selectedAddr = unsignedInteger(capture.selectedAddr, `${expectedKind} selected address`)
   const rva = unsignedInteger(capture.rva, `${expectedKind} RVA`, 0xFFFFFFFF, false)
-  if (rva !== SELECTED_RVAS[expectedKind]) throw new TypeError(`selected ${expectedKind} RVA does not match the verified runtime layout`)
+  if (rva !== layout.selectedRvas[expectedKind]) throw new TypeError(`selected ${expectedKind} RVA does not match the verified runtime layout`)
   if (hooked && !found) throw new TypeError(`selected ${expectedKind} hook cannot exist without a found signature`)
   if (captured && (!hooked || selectedAddr === 0)) throw new TypeError(`selected ${expectedKind} captured state requires a hooked non-zero address`)
   if (!captured && selectedAddr !== 0) throw new TypeError(`selected ${expectedKind} address must be empty when not captured`)
@@ -611,10 +637,10 @@ export function normalizeRuntimePatchSelectedStatus(value, expectedOwnerToken, e
   const status = objectValue(value, 'selected-item status')
   verifyOwnerAndProcess(status, expectedOwnerToken, expectedPID, 'selected-item status')
   if (status.readOnly !== true) throw new TypeError('selected-item status must be read-only')
-  stringValue(status.gameVersion, 'selected-item game version', '2.0.2')
-  stringValue(status.source, 'selected-item source', 'game_selected_item_read_only_2.0.2')
-  const material = normalizeCapture(status.material, 'material')
-  const keyItem = normalizeCapture(status.keyItem, 'keyItem')
+  const layout = runtimeLayout(status.gameVersion, 'selected-item')
+  stringValue(status.source, 'selected-item source', layout.selectedSource)
+  const material = normalizeCapture(status.material, 'material', layout)
+  const keyItem = normalizeCapture(status.keyItem, 'keyItem', layout)
   if (material.hooked !== keyItem.hooked) throw new TypeError('selected-item hooks must be enabled or disabled as a pair')
   if (booleanValue(status.enabled, 'selected-item enabled') !== (material.hooked && keyItem.hooked)) {
     throw new TypeError('selected-item enabled state does not match its capture pair')
@@ -643,7 +669,7 @@ export function normalizeRuntimePatchSelectedRecord(value, expectedKind, expecte
   if (record.kind !== expectedKind) throw new TypeError(`selected-item record kind must be ${expectedKind}`)
   if (record.selectedAddr !== expectedAddress) throw new TypeError('selected address does not match ExpectedSelectedAddr')
   if (record.readOnly !== true) throw new TypeError('selected-item record must be read-only')
-  stringValue(record.gameVersion, 'selected-item record game version', '2.0.2')
+  runtimeLayout(record.gameVersion, 'selected-item record')
   const hash = unsignedInteger(record.hash, 'selected-item hash', 0xFFFFFFFF)
   const flags = unsignedInteger(record.flags, 'selected-item flags', 0xFFFFFFFF)
   const hashHex = stringValue(record.hashHex, 'selected-item hash hex')

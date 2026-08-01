@@ -145,19 +145,47 @@ func TestConsumeRuntimePatchSelectedItemRequiresExpectedAddressAndFullStableReco
 		memory.recordAddress = selected
 		memory.putPointer(cave+runtimePatchSelectedCaveDataOffset, selected)
 		memory.put(selected, selectedRecordBytes(0xDB1D4F35, 17, 2))
-		result, err := consumeRuntimePatchSelectedItemRecord(memory, cave, request)
+		result, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[0], request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Hash != 0xDB1D4F35 || result.Quantity != 17 || result.Flags != 2 || result.SelectedAddr != uint64(selected) {
+		if result.Hash != 0xDB1D4F35 || result.Quantity != 17 || result.Flags != 2 || result.SelectedAddr != uint64(selected) || result.GameVersion != "2.0.2" {
 			t.Fatalf("record=%+v", result)
 		}
 		pointer, err := readRuntimePatchSelectedPointer(memory, cave+runtimePatchSelectedCaveDataOffset)
 		if err != nil || pointer != 0 {
 			t.Fatalf("successful read retained cave pointer=0x%X err=%v", pointer, err)
 		}
-		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, request); err == nil {
+		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[0], request); err == nil {
 			t.Fatal("second read reused a consumed selection without requiring reselection")
+		}
+	})
+
+	t.Run("2.0.3 result keeps the identified layout", func(t *testing.T) {
+		memory := newFakeRuntimePatchSelectedMemory()
+		memory.recordAddress = selected
+		memory.putPointer(cave+runtimePatchSelectedCaveDataOffset, selected)
+		memory.put(selected, selectedRecordBytes(0xDB1D4F35, 17, 2))
+		result, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[1], request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.GameVersion != "2.0.3" {
+			t.Fatalf("2.0.3 selected-item record retained a legacy version: %+v", result)
+		}
+	})
+
+	t.Run("unknown layout fails before consuming the selection", func(t *testing.T) {
+		memory := newFakeRuntimePatchSelectedMemory()
+		memory.recordAddress = selected
+		memory.putPointer(cave+runtimePatchSelectedCaveDataOffset, selected)
+		memory.put(selected, selectedRecordBytes(1, 2, 3))
+		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayout{Version: "unknown"}, request); err == nil {
+			t.Fatal("unknown selected-item layout was accepted")
+		}
+		pointer, _ := readRuntimePatchSelectedPointer(memory, cave+runtimePatchSelectedCaveDataOffset)
+		if pointer != selected {
+			t.Fatal("unknown layout consumed the selection")
 		}
 	})
 
@@ -168,7 +196,7 @@ func TestConsumeRuntimePatchSelectedItemRequiresExpectedAddressAndFullStableReco
 		memory.put(selected, selectedRecordBytes(1, 2, 3))
 		wrong := request
 		wrong.ExpectedSelectedAddr++
-		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, wrong); err == nil {
+		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[0], wrong); err == nil {
 			t.Fatal("mismatched ExpectedSelectedAddr was accepted")
 		}
 	})
@@ -183,7 +211,7 @@ func TestConsumeRuntimePatchSelectedItemRequiresExpectedAddressAndFullStableReco
 				current.put(selected, selectedRecordBytes(1, 2, 4))
 			}
 		}
-		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, request); err == nil || !strings.Contains(strings.ToLower(err.Error()), "record") {
+		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[0], request); err == nil || !strings.Contains(strings.ToLower(err.Error()), "record") {
 			t.Fatalf("record mutation error=%v", err)
 		}
 		pointer, _ := readRuntimePatchSelectedPointer(memory, cave+runtimePatchSelectedCaveDataOffset)
@@ -202,7 +230,7 @@ func TestConsumeRuntimePatchSelectedItemRequiresExpectedAddressAndFullStableReco
 				current.putPointer(cave+runtimePatchSelectedCaveDataOffset, selected+0x100)
 			}
 		}
-		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, request); err == nil {
+		if _, err := consumeRuntimePatchSelectedItemRecord(memory, cave, runtimeGameLayouts[0], request); err == nil {
 			t.Fatal("capture pointer mutation was accepted")
 		}
 	})

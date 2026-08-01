@@ -152,7 +152,7 @@ func (a *App) enableMaterialConsumeLocked(ownerToken string) (MaterialConsumeSta
 		current = append([]byte(nil), materialConsumeOrig...)
 	}
 	if !bytes.Equal(current, materialConsumeOrig) {
-		return MaterialConsumeStatus{}, fmt.Errorf("素材增减入口不是已验证的 2.0.2 原始指令: %s", bytesToHex(current))
+		return MaterialConsumeStatus{}, fmt.Errorf("素材增减入口不是已验证版本的原始指令: %s", bytesToHex(current))
 	}
 
 	cave, err := virtualAllocRemoteNear(a.hProcess, addr, 0x1000)
@@ -309,24 +309,27 @@ func (a *App) locateMaterialConsumeLocked() (uintptr, error) {
 	if a.materialConsumeAddr != 0 {
 		return a.materialConsumeAddr, nil
 	}
-	fixed := a.moduleBase + materialConsumeRVA
-	if current, err := a.readSharedRuntimePatch(fixed); err == nil {
-		owner := classifySharedRuntimePatch(current)
-		if owner == sharedRuntimePatchOwnerNone || owner == sharedRuntimePatchOwnerMaterialConsume {
-			a.materialConsumeAddr = fixed
-			return fixed, nil
-		}
-		if owner == sharedRuntimePatchOwnerInventoryQuantity {
-			return 0, fmt.Errorf("共享补丁地址正由%s占用，请先恢复", sharedRuntimePatchOwnerLabel(owner))
-		}
-	}
-	mask := make([]bool, len(materialConsumeOrig))
-	for index := range mask {
-		mask[index] = true
-	}
-	addr, err := a.scanPatternUnique(materialConsumeOrig, mask, "升级/强化材料增减指令")
+	addr, err := a.resolveRuntimeItemSite(
+		runtimeInventoryMaterialAOB,
+		"升级/强化材料增减指令",
+		func(layout runtimeGameLayout) uintptr { return layout.InventoryMaterialRVA },
+		materialConsumeOrig,
+		materialConsumeHookSize,
+		func(prefix []byte) bool { return classifySharedRuntimePatch(prefix) != sharedRuntimePatchOwnerUnknown },
+	)
 	if err != nil {
-		return 0, fmt.Errorf("固定 RVA 已变化且特征扫描失败: %w", err)
+		return 0, err
+	}
+	current, err := a.readSharedRuntimePatch(addr)
+	if err != nil {
+		return 0, err
+	}
+	owner := classifySharedRuntimePatch(current)
+	if owner == sharedRuntimePatchOwnerInventoryQuantity {
+		return 0, fmt.Errorf("共享补丁地址正由%s占用，请先恢复", sharedRuntimePatchOwnerLabel(owner))
+	}
+	if owner != sharedRuntimePatchOwnerNone && owner != sharedRuntimePatchOwnerMaterialConsume {
+		return 0, fmt.Errorf("素材增减入口字节异常: %s", bytesToHex(current))
 	}
 	a.materialConsumeAddr = addr
 	return addr, nil

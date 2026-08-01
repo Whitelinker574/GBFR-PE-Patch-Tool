@@ -26,7 +26,7 @@ test('party detection, spatial controls, and selected-item diagnostics share one
   }
   assert.match(shell, /const runtimeMonitorMounted = ref\(false\)/)
   assert.match(shell, /if \(RUNTIME_MONITOR_MODES\[value\]\) runtimeMonitorMounted\.value = true/)
-  assert.match(shell, /<RuntimePatchMonitor\s+v-if="runtimeMonitorMounted"\s+v-show="isRuntimeMonitorTab"\s+:mode="runtimeMonitorMode"\s+:page-active="isRuntimeMonitorTab"\s+@status="showStatus"\s+@deploy-loadout="deployRuntimeLoadout"\s*\/>/)
+  assert.match(shell, /<RuntimePatchMonitor\s+v-if="runtimeMonitorMounted"\s+v-show="isRuntimeMonitorTab"\s+:mode="runtimeMonitorMode"\s+:page-active="isRuntimeMonitorTab"\s+@status="showStatus"\s+@deploy-loadout="deployRuntimeLoadout"\s+@runtime-state="updateRuntimeCompanionState"\s*\/>/)
 })
 
 test('the home journal names party detection and spatial tools as separate user goals', () => {
@@ -43,8 +43,9 @@ test('runtime monitoring reserves unique function-specific portrait and sticker 
   assert.match(assetManifest.assets.runtimeMonitor.art.variants.display.url, /runtime-monitor-official-edge-safe\.display\./)
   assert.match(assetManifest.assets.runtimeMonitor.sticker.variants.display.url, /runtime-monitor\.display\./)
   assert.match(shell, /\.tool-stage\[data-tool="runtimeMonitor"\]\s*\{\s*--art-scale:/)
-  assert.match(shell, /runtimeMonitor:\s*\{[\s\S]*?speaker:\s*'尤斯提斯'/)
-  assert.doesNotMatch(shell, /runtimeMonitor:\s*\{[\s\S]*?speaker:\s*'碧'/)
+  const monitorCopy = shell.match(/runtimeMonitor:\s*\{\s*group:\s*'loadoutFlow'[^}]*\}/s)?.[0] || ''
+  assert.match(monitorCopy, /speaker:\s*'尤斯提斯'/)
+  assert.doesNotMatch(monitorCopy, /speaker:\s*'碧'/)
   for (const path of [
     './assets/gbfr/cutouts/runtime-monitor-official-edge-safe.webp',
     './assets/gbfr/stickers/runtime-monitor.webp',

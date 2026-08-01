@@ -87,7 +87,7 @@ func TestWrightstoneMemoryOriginalSignatureIsExact(t *testing.T) {
 	}
 }
 
-func TestWrightstoneMemoryDLCSupplementGuardIsExactAndRejectsPartialMatches(t *testing.T) {
+func TestWrightstoneMemoryDLCSupplementGuardAllowsRelativeCallRelocationOnly(t *testing.T) {
 	want := []byte{
 		0x48, 0x89, 0xD7, 0x48, 0x89, 0xCE, 0xE8, 0xF1, 0x05, 0xFC, 0xFF,
 		0x48, 0x39, 0xFE, 0x74, 0x4C, 0x48, 0x8D, 0x4E, 0x18, 0x8B, 0x47, 0x18,
@@ -101,7 +101,17 @@ func TestWrightstoneMemoryDLCSupplementGuardIsExactAndRejectsPartialMatches(t *t
 	if !isWrightstoneMemoryGuard(want, false) {
 		t.Fatal("verified DLC 2.0.2 runtime catalog guard should match")
 	}
+	relocated := append([]byte(nil), want...)
+	for i := 7; i <= 10; i++ {
+		relocated[i] ^= 0x5A
+	}
+	if !isWrightstoneMemoryGuard(relocated, false) {
+		t.Fatal("guard should allow the relative CALL displacement to move between game builds")
+	}
 	for i := range want {
+		if i >= 7 && i <= 10 {
+			continue
+		}
 		mutated := append([]byte(nil), want...)
 		mutated[i] ^= 0x01
 		if isWrightstoneMemoryGuard(mutated, false) {

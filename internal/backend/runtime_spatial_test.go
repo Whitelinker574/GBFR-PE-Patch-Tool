@@ -52,6 +52,32 @@ func TestWriteRuntimeSpatialPlayerPositionUsesVerifiedZYXBlock(t *testing.T) {
 	}
 }
 
+func TestWriteRuntimeSpatialPlayerPositionReportsDetected203Layout(t *testing.T) {
+	base, moduleBase := newRuntimePatchPartyFixtureForLayout(t, runtimeGameLayouts[1])
+	memory := &fakeRuntimeSpatialMemory{fakeRuntimePanelMemory: base}
+
+	result, err := writeRuntimeSpatialPlayerPosition(memory, moduleBase, RuntimePatchVector3{X: 101.25, Y: -202.5, Z: 303.75})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.GameVersion != "2.0.3" || result.Source != "game_runtime_spatial_2.0.3" {
+		t.Fatalf("2.0.3 spatial result retained a legacy version gate: %+v", result)
+	}
+}
+
+func TestWriteRuntimeSpatialPlayerDeltaReportsDetected203Layout(t *testing.T) {
+	base, moduleBase := newRuntimePatchPartyFixtureForLayout(t, runtimeGameLayouts[1])
+	memory := &fakeRuntimeSpatialMemory{fakeRuntimePanelMemory: base}
+
+	result, err := writeRuntimeSpatialPlayerDelta(memory, moduleBase, RuntimePatchVector3{X: 2.5, Z: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.GameVersion != "2.0.3" || result.Source != "game_runtime_spatial_2.0.3" {
+		t.Fatalf("2.0.3 spatial delta result retained a legacy version gate: %+v", result)
+	}
+}
+
 func TestWriteRuntimeSpatialPlayerDeltaUsesCurrentStablePosition(t *testing.T) {
 	base, moduleBase := newRuntimePatchPartyFixture(t)
 	memory := &fakeRuntimeSpatialMemory{fakeRuntimePanelMemory: base}
@@ -123,9 +149,13 @@ func TestWriteRuntimeSpatialPlayerPositionPoisonsWhenTopologyChangesAfterWrite(t
 }
 
 func runtimeSpatialGravityFixture(t *testing.T) (uintptr, uintptr, *runtimePatchFakeMemory) {
+	return runtimeSpatialGravityFixtureForLayout(t, runtimeGameLayouts[0])
+}
+
+func runtimeSpatialGravityFixtureForLayout(t *testing.T, layout runtimeGameLayout) (uintptr, uintptr, *runtimePatchFakeMemory) {
 	t.Helper()
 	moduleBase := uintptr(0x140000000)
-	address, err := runtimeSpatialGravityAddress(moduleBase)
+	address, err := runtimeSpatialGravityAddress(moduleBase, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +164,14 @@ func runtimeSpatialGravityFixture(t *testing.T) (uintptr, uintptr, *runtimePatch
 		address - runtimeSpatialGravityContextBack: runtimeSpatialGravityContext,
 	})
 	return moduleBase, address, memory
+}
+
+func TestRuntimeSpatialGravityStatusReportsDetected203Layout(t *testing.T) {
+	moduleBase, _, memory := runtimeSpatialGravityFixtureForLayout(t, runtimeGameLayouts[1])
+	status := readRuntimeSpatialGravityStatus(memory, moduleBase, processInstanceID{PID: 42, Created: 84}, "owner", nil, runtimeGameLayouts[1])
+	if !status.Available || status.Error != "" || status.GameVersion != "2.0.3" || status.Source != "game_runtime_gravity_patch_2.0.3" || status.RVA != uint64(runtimeGameLayouts[1].SpatialGravityRVA) {
+		t.Fatalf("2.0.3 gravity status retained a legacy layout: %+v", status)
+	}
 }
 
 func TestRuntimeSpatialGravityVerifiedSiteEnablesAndRestores(t *testing.T) {

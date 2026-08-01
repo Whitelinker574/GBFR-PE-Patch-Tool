@@ -474,11 +474,10 @@ func (a *App) summonUpdate(token string, owned bool, item SummonUpdate) (SummonI
 	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
 		return SummonInfo{}, err
 	}
-	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	saveFn, err := a.resolveItemSaveFunctionLocked()
 	if err != nil {
 		return SummonInfo{}, fmt.Errorf("定位召唤石保存函数失败: %w", err)
 	}
-	saveFn := a.moduleBase + layout.SaveFunctionRVA
 	if err := a.validateRemoteFunctionStart(saveFn, "游戏内召唤石保存函数"); err != nil {
 		return SummonInfo{}, err
 	}

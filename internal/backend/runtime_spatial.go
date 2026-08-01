@@ -225,7 +225,7 @@ func writeRuntimeSpatialPlayerPositionResolved(memory runtimeSpatialMemory, modu
 	}
 	return RuntimeSpatialTeleportResult{
 		Before: before, Requested: target, Observed: target,
-		GameVersion: "2.0.2", Source: "game_runtime_spatial_2.0.2",
+		GameVersion: frame.Result.GameVersion, Source: "game_runtime_spatial_" + frame.Result.GameVersion,
 		SnapshotCount: runtimePatchPartySnapshotCount, RuntimeVerified: true,
 	}, nil
 }
@@ -281,7 +281,7 @@ func (a *App) RuntimeSpatialMoveOwned(leaseID string, delta RuntimePatchVector3)
 	result.PID = a.charaPID
 	result.ProcessCreated = a.charaCreated
 	result.OwnerLeaseID = leaseID
-	result.Source = "game_runtime_spatial_continuous_2.0.2"
+	result.Source = "game_runtime_spatial_continuous_" + result.GameVersion
 	return result, nil
 }
 
@@ -412,7 +412,7 @@ func readRuntimeSpatialGravityStatus(memory runtimePatchMemory, moduleBase uintp
 		return status
 	}
 	if !bytes.Equal(context, runtimeSpatialGravityContext) {
-		status.Error = runtimePatchMonitorText("重力入口上下文与已验证的 2.0.2 指令不一致", "The gravity entry context does not match the verified 2.0.2 instructions")
+		status.Error = runtimePatchMonitorText("重力入口上下文与已识别游戏布局的指令不一致", "The gravity entry context does not match the identified game-layout instructions")
 		return status
 	}
 	status.Available = true

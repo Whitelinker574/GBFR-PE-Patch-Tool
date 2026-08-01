@@ -61,6 +61,7 @@ type runtimeLoadoutDetectorHistory struct {
 
 type runtimeLoadoutDetectorSession struct {
 	mu      sync.Mutex
+	app     *App
 	process *readOnlyGameProcess
 	cancel  context.CancelFunc
 	done    chan struct{}
@@ -84,6 +85,8 @@ type runtimeLoadoutDetectorSession struct {
 	currentTeamSize     int
 	sessionCaptured     int
 	nextSequence        int
+	networkSequence     uint64
+	networkTracker      *runtimePartyNetworkProfileTracker
 	emitStatus          func(RuntimeLoadoutDetectorStatus)
 }
 
@@ -210,9 +213,13 @@ func (a *App) startRuntimeLoadoutDetector(persistPreference bool) (RuntimeLoadou
 	if err != nil {
 		return RuntimeLoadoutDetectorStatus{}, err
 	}
+	if err := writeRuntimePartyObserverConfig(true); err != nil {
+		return RuntimeLoadoutDetectorStatus{}, err
+	}
 	startedAt := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &runtimeLoadoutDetectorSession{
+		app: a, networkTracker: newRuntimePartyNetworkProfileTracker(),
 		cancel: cancel, done: make(chan struct{}), historyPath: historyPath, history: history,
 		startedAt: startedAt, sessionID: startedAt.Format("20060102-150405"), state: "waiting_game",
 		lastCapture: runtimeLoadoutDetectorLastCapture(history), nextSequence: nextSequence,
@@ -231,6 +238,7 @@ func (a *App) startRuntimeLoadoutDetector(persistPreference bool) (RuntimeLoadou
 		if err := a.setRuntimeLoadoutDetectorPreference(true); err != nil {
 			a.runtimeLoadoutDetector = nil
 			cancel()
+			_ = writeRuntimePartyObserverConfig(false)
 			return RuntimeLoadoutDetectorStatus{}, err
 		}
 	}
@@ -250,6 +258,9 @@ func (a *App) closeRuntimeLoadoutDetector(clearPreference bool) error {
 	var closeErr error
 	if session != nil {
 		closeErr = session.close(clearPreference)
+		closeErr = errors.Join(closeErr, a.stopOwnedRuntimeCompanion("party-observer", func() error {
+			return writeRuntimePartyObserverConfig(false)
+		}))
 	}
 	if clearPreference {
 		return errors.Join(closeErr, a.setRuntimeLoadoutDetectorPreference(false))
@@ -383,40 +394,57 @@ func (session *runtimeLoadoutDetectorSession) records() []RuntimeLoadoutDetector
 }
 
 func (session *runtimeLoadoutDetectorSession) tick() {
+	observerErr := session.ensurePartyObserver()
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	session.lastPollAt = time.Now()
+	var networkMembers []RuntimeLoadoutDetectorMember
+	if observerErr == nil {
+		events, nextSequence, err := readRuntimePartyObserverEvents(session.networkSequence)
+		if err != nil {
+			observerErr = err
+		} else {
+			session.networkSequence = nextSequence
+			networkMembers, observerErr = session.observePartyNetworkEvents(events)
+		}
+	}
+	var memoryMembers []RuntimeLoadoutDetectorMember
+	var memoryErr error
 	if session.process == nil {
 		process, err := openReadOnlyGameProcessForLayouts(windowsReadOnlyProcessBackend{}, charaProcessName, runtimeCharacterPanelRuntimeLayouts)
 		if err != nil {
-			session.state = "waiting_game"
-			session.lastError = err.Error()
-			session.observeAbsent()
-			return
+			memoryErr = err
+		} else {
+			session.process = process
 		}
-		session.process = process
 	}
-	if err := session.process.Validate(); err != nil {
+	if session.process != nil {
+		if err := session.process.Validate(); err != nil {
+			memoryErr = err
+		}
+	}
+	if memoryErr != nil && session.process != nil {
 		_ = session.process.Close()
 		session.process = nil
-		session.state = "waiting_game"
-		session.lastError = err.Error()
-		session.observeAbsent()
-		return
 	}
-	snapshot, err := readStableRuntimePatchPartySnapshots(func() (runtimePatchPartySnapshot, error) {
-		return readRuntimePatchPartySnapshot(session.process, session.process.moduleBase)
-	})
-	if err != nil {
-		session.state = "waiting_task"
-		session.lastError = err.Error()
-		session.observeAbsent()
-		return
+	if session.process != nil {
+		snapshot, err := readStableRuntimePatchPartySnapshots(func() (runtimePatchPartySnapshot, error) {
+			return readRuntimePatchPartySnapshot(session.process, session.process.moduleBase)
+		})
+		if err != nil {
+			memoryErr = err
+		} else {
+			memoryMembers = runtimeLoadoutDetectorMembers(snapshot)
+		}
 	}
-	members := runtimeLoadoutDetectorMembers(snapshot)
+	members := mergeRuntimeLoadoutDetectorMembers(memoryMembers, networkMembers)
 	if len(members) == 0 {
-		session.state = "waiting_task"
-		session.lastError = ""
+		if memoryErr != nil && session.process == nil {
+			session.state = "waiting_game"
+		} else {
+			session.state = "waiting_task"
+		}
+		session.lastError = firstRuntimeLoadoutDetectorError(observerErr, memoryErr)
 		session.observeAbsent()
 		return
 	}
@@ -426,14 +454,120 @@ func (session *runtimeLoadoutDetectorSession) tick() {
 		session.lastError = err.Error()
 		return
 	}
-	session.lastError = ""
+	session.lastError = firstRuntimeLoadoutDetectorError(observerErr, nil)
 	session.observeTeam(fingerprint, members)
+}
+
+func firstRuntimeLoadoutDetectorError(errors ...error) string {
+	for _, err := range errors {
+		if err != nil {
+			return err.Error()
+		}
+	}
+	return ""
+}
+
+func (session *runtimeLoadoutDetectorSession) ensurePartyObserver() error {
+	if session == nil || session.app == nil {
+		return nil
+	}
+	process, err := findRuntimeProcessInstance()
+	if err != nil {
+		return err
+	}
+	if session.app.runtimeCompanionActive("party-observer") && runtimeCompanionMatchesProcess(readRuntimeCompanionStatus("party-observer"), process) {
+		return nil
+	}
+	return session.app.startRuntimeCompanion("party-observer", "runtime_party_observer")
+}
+
+func (session *runtimeLoadoutDetectorSession) observePartyNetworkEvents(events []runtimePartyObserverEvent) ([]RuntimeLoadoutDetectorMember, error) {
+	if session.networkTracker == nil {
+		session.networkTracker = newRuntimePartyNetworkProfileTracker()
+	}
+	for _, event := range events {
+		if event.Kind == runtimePartyObserverResetKind {
+			session.networkTracker.Reset()
+			continue
+		}
+		if _, _, err := session.networkTracker.Observe(event.Direction, event.Payload); err != nil {
+			return nil, err
+		}
+	}
+	return runtimeLoadoutDetectorNetworkMembers(session.networkTracker.StableRemoteProfiles())
+}
+
+func runtimeLoadoutDetectorNetworkMembers(profiles []runtimePartyNetworkProfile) ([]RuntimeLoadoutDetectorMember, error) {
+	members := make([]RuntimeLoadoutDetectorMember, 0, len(profiles))
+	for _, profile := range profiles {
+		loadout, err := runtimePartyNetworkProfileLoadout(profile)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, RuntimeLoadoutDetectorMember{
+			Role: fmt.Sprintf("party%d", profile.PartyIndex), CharacterHash: loadout.CharacterHash,
+			CharacterName: loadout.CharacterName, Loadout: loadout,
+		})
+	}
+	return members, nil
+}
+
+func runtimeLoadoutDetectorCoreMatches(left, right RuntimePatchPartyLoadout) bool {
+	if !strings.EqualFold(left.CharacterHash, right.CharacterHash) || left.Weapon.Hash != right.Weapon.Hash || len(left.Sigils) != len(right.Sigils) {
+		return false
+	}
+	leftByIndex := make(map[int]RuntimePatchPartySigil, len(left.Sigils))
+	for _, sigil := range left.Sigils {
+		leftByIndex[sigil.Index] = sigil
+	}
+	for _, expected := range right.Sigils {
+		actual, ok := leftByIndex[expected.Index]
+		if !ok || actual.Hash != expected.Hash || actual.SecondaryTraitHash != expected.SecondaryTraitHash || actual.Level != expected.Level {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeRuntimeLoadoutDetectorMembers(memoryMembers, networkMembers []RuntimeLoadoutDetectorMember) []RuntimeLoadoutDetectorMember {
+	if len(networkMembers) == 0 {
+		return memoryMembers
+	}
+	result := make([]RuntimeLoadoutDetectorMember, 0, len(memoryMembers)+len(networkMembers))
+	usedMemory := make([]bool, len(memoryMembers))
+	for _, network := range networkMembers {
+		merged := network
+		for index, memory := range memoryMembers {
+			if usedMemory[index] || !runtimeLoadoutDetectorCoreMatches(memory.Loadout, network.Loadout) {
+				continue
+			}
+			usedMemory[index] = true
+			merged = memory
+			merged.Role = network.Role
+			merged.Loadout.PartyIndex = network.Loadout.PartyIndex
+			merged.Loadout.Online = true
+			merged.Loadout.Stable = true
+			merged.Loadout.Verification = "network_profile_core+memory_superset"
+			merged.Loadout.Evidence = runtimePatchMonitorText(
+				"Party 网络资料帧与只读内存配装核心一致；保留内存中更多已记录范围",
+				"Party network profile matched the read-only memory core; additional recorded memory scopes were retained",
+			)
+			break
+		}
+		result = append(result, merged)
+	}
+	for index, member := range memoryMembers {
+		if !usedMemory[index] {
+			result = append(result, member)
+		}
+	}
+	return result
 }
 
 func runtimeLoadoutDetectorMembers(snapshot RuntimePatchPartyMonitor) []RuntimeLoadoutDetectorMember {
 	members := make([]RuntimeLoadoutDetectorMember, 0, 4)
 	for _, entity := range snapshot.Entities {
-		if entity.Role == "player" || entity.Role == "companion" || !entity.Present || entity.Loadout == nil || !entity.Loadout.Available {
+		if entity.Role == "player" || entity.Role == "companion" || !entity.Present || entity.Loadout == nil || !entity.Loadout.Available || !entity.Loadout.Online {
 			continue
 		}
 		candidate := *entity.Loadout

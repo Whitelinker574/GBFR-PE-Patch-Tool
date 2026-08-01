@@ -30,6 +30,15 @@ func TestMaterialConsumeCaveKeepsPositiveGainsAndSkipsOnlyNegativeChanges(t *tes
 	}
 }
 
+func TestMaterialConsumeEntryUsesVersionedGameLayouts(t *testing.T) {
+	if got := runtimeGameLayouts[0].InventoryMaterialRVA; got != materialConsumeRVA {
+		t.Fatalf("2.0.2 inventory/material RVA = 0x%X, want 0x%X", got, materialConsumeRVA)
+	}
+	if got := runtimeGameLayouts[1].InventoryMaterialRVA; got != 0x34F8F1 {
+		t.Fatalf("2.0.3 inventory/material RVA = 0x%X, want 0x34F8F1", got)
+	}
+}
+
 func TestMaterialConsumeEntryIsDistinctFromInventoryQuantityHook(t *testing.T) {
 	entry := uintptr(0x180001000)
 	cave := uintptr(0x180010000)

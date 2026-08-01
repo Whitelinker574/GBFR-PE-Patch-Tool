@@ -14,7 +14,9 @@
 
 ## Game 2.0.3 compatibility
 
-v2.0.8 adds an independent live quest-reward multiplier. After connecting to the game, ordinary stackable items in every quest result can be set to 2× / 4× / 8× / 16× without first adding them to a configured drop list. Shops, forging, and manual item edits are unaffected; independent sigil, wrightstone, summon, and weapon instances retain their normal count. The offline Forger's Bounty list keeps its own separate multiplier.
+v2.0.9 makes every persistent connection explicit and off by default. Loadout capture, virtual sigils, audio, camera, and live patches appear in the title bar only after the user enables them; navigation does not stop them, and each status chip returns to the page that can disable it. Stale status from a previous game PID is no longer presented as active, while F12 and normal disable paths restore app-owned hooks. The virtual-sigil workspace also switches to a single-column layout at common window widths so its stop controls remain reachable.
+
+The v2.0.8 live quest-reward multiplier remains available for ordinary stackable items already aggregated in the local quest result. There is still no evidence that this local multiplier propagates to an unmodified PC or PlayStation teammate.
 
 Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
 
@@ -86,7 +88,7 @@ Fate Episodes provide a restricted experimental writer for audited completion va
 
 Summons, Transmarvel sigils, wrightstones, and verified regular-item rewards are selected from exact tables embedded in the application. Users no longer need to find an unpacked table directory. Selections enter a review list before deployment.
 
-This page has two independent paths. The live “ordinary item multiplier for all quest results” processes stackable materials after connecting to the game; the deployment list writes only selected items into Endless Mode Forger's Bounty. Both offer `1× / 2× / 4× / 8× / 16×`, but the live path needs no item list while the offline path multiplies only configured base quantities without changing roll weight. Sigils, summons, wrightstones, and weapons remain independent instances and are not duplicated by the ordinary-item multiplier. Actual results across quest sources, natural sigils, summon drops, and wrightstone forging remain field acceptance, and the `data.i` path always provides backup and restoration.
+This page has two independent paths. The live “ordinary item multiplier for all quest results” processes stackable materials after connecting to the game and offers `1× / 2× / 4× / 8× / 16×`. The deployment list writes only selected items into Endless Mode Forger's Bounty; each row receives a direct `1–999` base quantity without changing roll weight. The two paths do not stack. Sigils, summons, wrightstones, and weapons remain independent instances and are not duplicated by the ordinary-item multiplier. Actual results across quest sources, natural sigils, summon drops, and wrightstone forging remain field acceptance, and the `data.i` path always provides backup and restoration.
 
 ## Improvements retained from v1.92.0
 
@@ -149,7 +151,7 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
-- [Complete v2.0.8 release notes](docs/RELEASE_NOTES_v2.0.8.md)
+- [Complete v2.0.9 release notes](docs/RELEASE_NOTES_v2.0.9.md)
 - [Complete v2.0.7 release notes](docs/RELEASE_NOTES_v2.0.7.md)
 - [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)
 - [v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)

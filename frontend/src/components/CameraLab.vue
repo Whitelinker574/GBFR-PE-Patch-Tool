@@ -20,6 +20,7 @@ const tone = ref('')
 let refreshRequest = 0
 
 const canSave = computed(() => !busy.value && !refreshing.value && !workspace.value?.recoveryRequired && Boolean(workspace.value?.gameRunning))
+const runtimeActive = computed(() => workspace.value?.installed === true && workspace.value?.owned === true && workspace.value?.state === 'active')
 
 function report(text, nextTone = '') {
   message.value = text
@@ -109,7 +110,7 @@ onActivated(() => { void refresh() })
 
     <section class="camera-setup">
       <div><h3>{{ tx('第一步 · 启动游戏并确认连接', 'Step 1 · Start the Game and Check the Connection') }}</h3><p>{{ tx('无需安装其他程序或选择目录。游戏启动后点“重新检测”，确认页面显示“游戏进程已连接”。', 'No other program or folder selection is required. After starting the game, select Check Again and confirm that the page shows Game Process Connected.') }}</p></div>
-      <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : workspace?.state === 'active' ? tx('镜头运行时正在工作', 'Camera runtime active') : runtimeText(workspace?.detail) || tx('启动游戏后即可开启', 'Start the game to enable') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy || refreshing" @click="refresh">{{ refreshing ? tx('正在检查…', 'Checking…') : tx('重新检测', 'Check again') }}</button></div>
+      <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : runtimeActive ? tx('镜头运行时正在工作', 'Camera runtime active') : tx('当前未开启；调整后在页面底部主动应用', 'Currently off. Adjust settings, then apply them explicitly at the bottom.') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy || refreshing" @click="refresh">{{ refreshing ? tx('正在检查…', 'Checking…') : tx('重新检测', 'Check again') }}</button></div>
     </section>
 
     <section class="camera-controls">
@@ -134,8 +135,8 @@ onActivated(() => { void refresh() })
     </section>
 
     <section class="camera-dock">
-      <div class="runtime-state"><span :class="{ active: workspace?.state === 'active' }"></span><div><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the Current Game') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”，不要再次开启。', 'The previous restoration is incomplete. Select Retry Restoration before enabling again.') : workspace?.state === 'active' ? tx('镜头调整正在运行；保存后数值立即生效', 'Camera adjustments are active; saved values take effect immediately') : tx('首次开启会应用上方三个数值；不修改存档文件', 'The first activation applies the three values above and does not modify save files') }}</small></div></div>
-      <div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy || refreshing" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原镜头', 'Disable and Restore Original Camera') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启城镇镜头调整', 'Enable Town Camera Adjustments') }}</button></div>
+      <div class="runtime-state"><span :class="{ active: runtimeActive }"></span><div><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the Current Game') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”，不要再次开启。', 'The previous restoration is incomplete. Select Retry Restoration before enabling again.') : runtimeActive ? tx('镜头调整正在运行；保存后数值立即生效', 'Camera adjustments are active; saved values take effect immediately') : tx('首次开启会应用上方三个数值；不修改存档文件', 'The first activation applies the three values above and does not modify save files') }}</small></div></div>
+      <div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy || refreshing" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原镜头', 'Disable and Restore Original Camera') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : runtimeActive ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启城镇镜头调整', 'Enable Town Camera Adjustments') }}</button></div>
     </section>
     <div v-if="message" class="ui-notice" :class="{ 'is-danger': tone === 'danger', 'is-ok': tone === 'ok' }" role="status">{{ message }}</div>
     <ConfirmDialog ref="confirmDialog" />

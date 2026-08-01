@@ -33,6 +33,7 @@ const filteredCharacters = computed(() => {
 })
 const changedCount = computed(() => Object.values(volumes).filter(value => value !== 100).length + (uiVolume.value !== 100 ? 1 : 0))
 const canSave = computed(() => Boolean(!busy.value && !workspace.value?.recoveryRequired && workspace.value?.gameRunning))
+const runtimeActive = computed(() => workspace.value?.installed === true && workspace.value?.owned === true && workspace.value?.state === 'active')
 
 function report(value, nextTone = 'info') {
   message.value = value
@@ -165,7 +166,7 @@ onActivated(() => { void refresh() })
 
     <section class="audio-setup">
       <div class="setup-copy"><h3>{{ tx('第一步 · 启动游戏并确认连接', 'Step 1 · Start the Game and Check the Connection') }}</h3><p>{{ tx('不需要安装其他程序。游戏启动后点“重新检测”，本页会确认能否安全开启角色音量控制。', 'No other program is required. After starting the game, select Check Again so this page can confirm that character volume control is ready.') }}</p></div>
-      <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : workspace?.state === 'active' ? tx('音频运行时正在工作', 'Audio runtime active') : runtimeText(workspace?.detail) || tx('启动游戏后即可开启', 'Start the game to enable') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy" @click="refresh">{{ tx('重新检测', 'Check again') }}</button></div>
+      <div class="path-row"><div><b>{{ workspace?.gameRunning ? tx('游戏进程已连接', 'Game process connected') : tx('等待游戏进程', 'Waiting for game process') }}</b><code>{{ workspace?.recoveryRequired ? runtimeText(workspace?.detail) || tx('恢复失败，需要先停用恢复', 'Restoration failed; disable and restore first') : runtimeActive ? tx('音频运行时正在工作', 'Audio runtime active') : tx('当前未开启；调整后在页面底部主动应用', 'Currently off. Adjust settings, then apply them explicitly at the bottom.') }}</code></div><button class="ui-btn is-sm" type="button" :disabled="busy" @click="refresh">{{ tx('重新检测', 'Check again') }}</button></div>
     </section>
 
     <section class="preset-panel">
@@ -193,7 +194,7 @@ onActivated(() => { void refresh() })
       </div>
     </section>
 
-    <section class="audio-dock"><label class="diagnostic-toggle"><input v-model="diagnostic" type="checkbox" /><span><b>{{ tx('第三步 · 应用到当前游戏', 'Step 3 · Apply to the Current Game') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”。', 'The previous restoration is incomplete. Select Retry Restoration first.') : tx('诊断日志默认关闭；普通调整不需要开启', 'Diagnostic logging is off by default and is not needed for normal adjustments') }}</small></span></label><div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原音', 'Disable and Restore Original Audio') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : workspace?.state === 'active' ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启角色音量控制', 'Enable Character Volume Control') }}</button></div></section>
+    <section class="audio-dock"><label class="diagnostic-toggle"><input v-model="diagnostic" type="checkbox" /><span><b>{{ tx('诊断日志', 'Diagnostic Logging') }}</b><small>{{ workspace?.recoveryRequired ? tx('上次恢复尚未完成，请先点“重试恢复”。', 'The previous restoration is incomplete. Select Retry Restoration first.') : tx('默认关闭；只有排查声音识别问题时才需要开启', 'Off by default; enable only while diagnosing sound-identification issues') }}</small></span></label><div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-danger" type="button" :disabled="busy" @click="remove">{{ workspace?.recoveryRequired ? tx('重试恢复', 'Retry Restoration') : tx('停用并恢复原音', 'Disable and Restore Original Audio') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canSave" @click="save">{{ busy ? tx('处理中…', 'Working…') : workspace?.recoveryRequired ? tx('需先恢复', 'Restore First') : runtimeActive ? tx('保存并热更新', 'Save and Hot-Update') : tx('开启角色音量控制', 'Enable Character Volume Control') }}</button></div></section>
     <div v-if="message" class="ui-notice" :class="{ 'is-danger': tone === 'danger', 'is-ok': tone === 'ok' }" role="status">{{ message }}</div>
     <ConfirmDialog ref="confirmDialog" />
   </div>

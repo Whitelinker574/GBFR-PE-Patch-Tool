@@ -128,13 +128,17 @@ const RUNTIME_MONITOR_MODES = Object.freeze({
 })
 const runtimePatchesMounted = ref(false)
 const runtimeMonitorMounted = ref(false)
-const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, recoveryCount: 0, pid: 0 })
+const ctFeatureSession = reactive({ connected: false, releasePending: false, activeCount: 0, activeFeatures: [], recoveryCount: 0, pid: 0, route: 'patchCombat' })
 const runtimeCompanionStates = reactive({
   camera: { id: 'camera', active: false, recoveryRequired: false },
   audioMixer: { id: 'audioMixer', active: false, recoveryRequired: false },
   virtualSigils: { id: 'virtualSigils', active: false, recoveryRequired: false },
   loadoutPresets: { id: 'loadoutPresets', active: false, recoveryRequired: false },
   runtimeQOL: { id: 'runtimeQOL', active: false, recoveryRequired: false },
+  runtimeMonitor: { id: 'runtimeMonitor', active: false, recoveryRequired: false },
+  spatialTools: { id: 'spatialTools', active: false, recoveryRequired: false },
+  selectedItemMonitor: { id: 'selectedItemMonitor', active: false, recoveryRequired: false },
+  taskRewardMultiplier: { id: 'taskRewardMultiplier', active: false, recoveryRequired: false, multiplier: 1 },
 })
 const naturalDropRecovery = reactive({ blocked: false, detail: '' })
 const naturalDropRecoveryCopy = computed(() => language.value === 'en'
@@ -152,13 +156,41 @@ const runtimeCompanionLabels = {
   virtualSigils: ['虚拟因子', 'Virtual sigils'],
   loadoutPresets: ['战斗采集', 'Battle capture'],
   runtimeQOL: ['显示与房间', 'Display and room'],
+  runtimeMonitor: ['配装检测', 'Loadout detector'],
+  spatialTools: ['空间移动', 'Spatial controls'],
+  selectedItemMonitor: ['物品捕获', 'Item capture'],
+  taskRewardMultiplier: ['任务奖励', 'Quest rewards'],
 }
+const runtimeCompanionRoutes = Object.freeze({ taskRewardMultiplier: 'naturalDrop' })
 const activeRuntimeCompanions = computed(() => Object.values(runtimeCompanionStates)
   .filter(item => item.active || item.recoveryRequired)
   .map(item => ({
     ...item,
-    label: runtimeCompanionLabels[item.id]?.[language.value === 'en' ? 1 : 0] || item.id,
+    label: `${runtimeCompanionLabels[item.id]?.[language.value === 'en' ? 1 : 0] || item.id}${item.id === 'taskRewardMultiplier' && item.multiplier > 1 ? ` ${item.multiplier}×` : ''}`,
+    route: runtimeCompanionRoutes[item.id] || item.id,
+    stateLabel: item.recoveryRequired
+      ? (language.value === 'en' ? 'needs recovery' : '待恢复')
+      : (language.value === 'en' ? 'on' : '已开启'),
+    stateTitle: item.recoveryRequired
+      ? (language.value === 'en' ? 'Runtime needs recovery · open its page' : '运行时需要恢复 · 点击返回处理')
+      : (language.value === 'en' ? 'Enabled · open its page to turn it off' : '已开启 · 点击返回对应页面关闭'),
   })))
+const showCTFeatureStatus = computed(() => ctFeatureSession.releasePending || ctFeatureSession.activeCount > 0 || ctFeatureSession.recoveryCount > 0)
+const ctFeatureStatusText = computed(() => {
+  if (ctFeatureSession.releasePending) return language.value === 'en' ? 'Patches restoring' : '实时补丁正在恢复'
+  if (ctFeatureSession.recoveryCount > 0) return language.value === 'en'
+    ? `${ctFeatureSession.activeCount} patches on · ${ctFeatureSession.recoveryCount} need recovery`
+    : `${ctFeatureSession.activeCount} 项补丁已开启 · ${ctFeatureSession.recoveryCount} 项待恢复`
+  const names = ctFeatureSession.activeFeatures
+  if (names.length === 1) return language.value === 'en' ? `${names[0]} on` : `${names[0]}已开启`
+  if (names.length === 2) return language.value === 'en' ? `${names.join(' + ')} on` : `${names.join('、')}已开启`
+  return language.value === 'en' ? `${ctFeatureSession.activeCount} patches on` : `${ctFeatureSession.activeCount} 项实时补丁已开启`
+})
+const ctFeatureStatusTitle = computed(() => {
+  const detail = ctFeatureSession.activeFeatures.length ? ctFeatureSession.activeFeatures.join('、') : ctFeatureStatusText.value
+  const pid = ctFeatureSession.pid ? ` · PID ${ctFeatureSession.pid}` : ''
+  return language.value === 'en' ? `${detail}${pid} · Open patch controls` : `${detail}${pid} · 点击返回补丁页面关闭`
+})
 const lastRuntimePatchTab = ref('patchCombat')
 const isRuntimePatchTab = computed(() => Boolean(RUNTIME_PATCH_MODES[activeTab.value]))
 const runtimePatchMode = computed(() => RUNTIME_PATCH_MODES[activeTab.value] || RUNTIME_PATCH_MODES[lastRuntimePatchTab.value])
@@ -194,8 +226,12 @@ function updateCTFeatureSession(value) {
   ctFeatureSession.connected = value?.connected === true
   ctFeatureSession.releasePending = value?.releasePending === true
   ctFeatureSession.activeCount = Number.isSafeInteger(value?.activeCount) && value.activeCount >= 0 ? value.activeCount : 0
+  ctFeatureSession.activeFeatures = Array.isArray(value?.activeFeatures)
+    ? value.activeFeatures.map(item => String(item || '').trim()).filter(Boolean).slice(0, 64)
+    : []
   ctFeatureSession.recoveryCount = Number.isSafeInteger(value?.recoveryCount) && value.recoveryCount >= 0 ? value.recoveryCount : 0
   ctFeatureSession.pid = Number.isSafeInteger(value?.pid) && value.pid > 0 ? value.pid : 0
+  ctFeatureSession.route = ['patchCombat', 'patchCharacters', 'patchQuest'].includes(value?.route) ? value.route : ctFeatureSession.route
 }
 
 function updateRuntimeCompanionState(value) {
@@ -203,6 +239,7 @@ function updateRuntimeCompanionState(value) {
   if (!target) return
   target.active = value?.active === true
   target.recoveryRequired = value?.recoveryRequired === true
+  if ('multiplier' in target) target.multiplier = Number.isSafeInteger(value?.multiplier) && value.multiplier > 0 ? value.multiplier : 1
 }
 
 function scheduleRuntimeCompanionSummary(delay = 2000) {
@@ -219,7 +256,18 @@ async function refreshRuntimeCompanionSummary() {
   ])
   if (request !== runtimeCompanionSummaryRequest) return
   if (summariesResult.status === 'fulfilled') {
-    for (const summary of summariesResult.value || []) updateRuntimeCompanionState(summary)
+    for (const summary of summariesResult.value || []) {
+      if (summary?.id === 'runtimePatches') {
+        const activeCount = Number.isSafeInteger(summary?.activeCount) ? summary.activeCount : 0
+        const recoveryCount = Number.isSafeInteger(summary?.recoveryCount) ? summary.recoveryCount : 0
+        ctFeatureSession.activeCount = activeCount
+        ctFeatureSession.recoveryCount = recoveryCount
+        if (activeCount === 0) ctFeatureSession.activeFeatures = []
+        if (Number.isSafeInteger(summary?.pid) && summary.pid > 0) ctFeatureSession.pid = summary.pid
+        continue
+      }
+      updateRuntimeCompanionState(summary)
+    }
   }
   if (naturalDropResult.status === 'fulfilled') {
     const naturalDropStatus = naturalDropResult.value
@@ -899,9 +947,9 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.8</span>
+        <span class="build-chip release-build">v2.0.9</span>
       </div>
-      <div v-if="naturalDropRecovery.blocked || ctFeatureSession.connected || ctFeatureSession.releasePending || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
+      <div v-if="naturalDropRecovery.blocked || showCTFeatureStatus || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button
           v-if="naturalDropRecovery.blocked"
           type="button"
@@ -915,15 +963,15 @@ function showStatus(message, type) {
           {{ naturalDropRecoveryCopy.label }}
         </button>
         <button
-          v-if="ctFeatureSession.connected || ctFeatureSession.releasePending"
+          v-if="showCTFeatureStatus"
           type="button"
           class="titlebar-patch-session"
           :class="{ 'is-releasing': ctFeatureSession.releasePending }"
-          :title="ctFeatureSession.pid ? `游戏进程 PID ${ctFeatureSession.pid} · 点击返回实时补丁会话` : '返回实时补丁会话'"
-          @click="selectTool(lastRuntimePatchTab)"
+          :title="ctFeatureStatusTitle"
+          @click="selectTool(ctFeatureSession.route)"
         >
           <span aria-hidden="true"></span>
-          {{ ctFeatureSession.releasePending ? '实时补丁正在安全恢复' : ctFeatureSession.recoveryCount ? `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启 · ${ctFeatureSession.recoveryCount} 项待恢复` : `实时补丁常驻 · ${ctFeatureSession.activeCount} 项开启` }}
+          {{ ctFeatureStatusText }}
         </button>
         <button
           v-for="companion in activeRuntimeCompanions"
@@ -931,11 +979,11 @@ function showStatus(message, type) {
           type="button"
           class="titlebar-companion-session"
           :class="{ 'needs-recovery': companion.recoveryRequired }"
-          :title="companion.recoveryRequired ? `${companion.label}运行时需要恢复 · 点击返回处理` : `${companion.label}运行时仍在后台工作 · 点击返回`"
-          @click="selectTool(companion.id)"
+          :title="`${companion.label} · ${companion.stateTitle}`"
+          @click="selectTool(companion.route)"
         >
           <span aria-hidden="true"></span>
-          {{ companion.label }}{{ companion.recoveryRequired ? '待恢复' : '常驻' }}
+          {{ companion.label }}{{ language === 'en' ? ' ' : '' }}{{ companion.stateLabel }}
         </button>
       </div>
       <transition name="toast">
@@ -1063,6 +1111,7 @@ function showStatus(message, type) {
               :page-active="isRuntimeMonitorTab"
               @status="showStatus"
               @deploy-loadout="deployRuntimeLoadout"
+              @runtime-state="updateRuntimeCompanionState"
             />
             <KeepAlive>
               <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" :key="activeTab" @status="showStatus" />
@@ -1253,8 +1302,12 @@ button,input,select { font:inherit; }
   align-items:center;
   gap:var(--space-2);
   margin-left:var(--space-4);
-  overflow:hidden;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-width:none;
+  overscroll-behavior-x:contain;
 }
+.titlebar-runtime-sessions::-webkit-scrollbar { display:none; }
 .titlebar-patch-session,
 .titlebar-companion-session {
   flex:0 0 auto;

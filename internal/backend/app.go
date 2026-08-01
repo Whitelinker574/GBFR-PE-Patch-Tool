@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.8"
+	appVersion  = "v2.0.9"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -116,6 +116,7 @@ type App struct {
 	wrightstoneMemoryHookAddr      uintptr
 	wrightstoneMemoryCaveAddr      uintptr
 	wrightstoneMemoryOriginal      []byte
+	itemSaveFunctionAddr           uintptr
 	currencyHookAddr               uintptr
 	currencyCaveAddr               uintptr
 	currencyOriginal               []byte
@@ -151,7 +152,8 @@ type App struct {
 	combatTuningChargeLease     *combatTuningLease
 	infiniteChallengeAddr       uintptr
 	infiniteChallengeOwnerToken string
-	// runtimePatchMu serializes the two features sharing RVA 0x356621. Their
+	// runtimePatchMu serializes the two features sharing the versioned inventory
+	// material entry (2.0.2 RVA 0x356621; 2.0.3 RVA 0x34F8F1). Their
 	// read/validate/write sequence must be atomic or concurrent Wails calls can
 	// both observe the original bytes and then overwrite each other.
 	runtimePatchMu sync.Mutex
@@ -193,6 +195,9 @@ type App struct {
 	runtimeCompanionOwnerIDValue string
 	runtimeCompanionLeaseMu      sync.Mutex
 	runtimeCompanionLeases       map[string]runtimeCompanionLease
+	runtimeCompanionSupervisorMu sync.Mutex
+	runtimeCompanionSupervisor   context.CancelFunc
+	runtimeCompanionSupervisorWG sync.WaitGroup
 	naturalDropRecoveryStatusMu  sync.Mutex
 	naturalDropRecoveryStatus    NaturalDropStartupRecoveryStatus
 	configMu                     sync.Mutex
@@ -224,6 +229,7 @@ func (a *App) startup(ctx context.Context) {
 		a.clearNaturalDropStartupRecoveryError()
 	}
 	a.startRuntimeEmergencyWatcher()
+	a.startPersistentRuntimeCompanionSupervisor()
 	if config.RuntimeLoadoutDetectorActive {
 		_, _ = a.startRuntimeLoadoutDetector(false)
 	}
@@ -235,6 +241,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	a.stopRuntimeEmergencyWatcher()
+	a.stopPersistentRuntimeCompanionSupervisor()
 	a.stopRuntimeQOLSessionWatcher()
 	_ = a.closeFormulaSampler()
 	a.CloseLogsBattleArchive()
@@ -245,6 +252,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	restoreErr := errors.Join(a.closeRuntimeCompanions(), a.CharaDetach())
 	if handleDetachBeforeClose(ctx, restoreErr) {
 		a.startRuntimeEmergencyWatcher()
+		a.startPersistentRuntimeCompanionSupervisor()
 		a.startRuntimeQOLSessionWatcherForCurrent()
 		if detectorWasRunning {
 			_, _ = a.startRuntimeLoadoutDetector(false)
@@ -257,6 +265,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.stopRuntimeEmergencyWatcher()
+	a.stopPersistentRuntimeCompanionSupervisor()
 	a.stopRuntimeQOLSessionWatcher()
 	a.saveWindowSize(ctx)
 	_ = a.closeFormulaSampler()
@@ -1338,6 +1347,7 @@ func (a *App) charaDetachLocked() error {
 	a.wrightstoneMemoryHookAddr = 0
 	a.wrightstoneMemoryCaveAddr = 0
 	a.wrightstoneMemoryOriginal = nil
+	a.itemSaveFunctionAddr = 0
 	a.currencyHookAddr = 0
 	a.currencyCaveAddr = 0
 	a.currencyOriginal = nil
@@ -3158,6 +3168,10 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		applyOnce = true
 	}
 	point := findMonsterPatchPoint(pointID)
+	if point != nil {
+		resolved := *point
+		point = &resolved
+	}
 	if pointID != "all" && point == nil {
 		return MonsterEnhanceResult{}, fmt.Errorf("未知怪物增强项目: %s", id)
 	}
@@ -3174,7 +3188,13 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	if pointID == "all" || (point != nil && point.ID == "inventory_set_45") {
 		a.runtimePatchMu.Lock()
 		defer a.runtimePatchMu.Unlock()
-		addr := a.moduleBase + materialConsumeRVA
+		addr, err := a.locateMaterialConsumeLocked()
+		if err != nil {
+			return MonsterEnhanceResult{}, err
+		}
+		if point != nil && point.ID == "inventory_set_45" {
+			point.RVA = addr - a.moduleBase
+		}
 		current, err := a.readSharedRuntimePatch(addr)
 		if err != nil {
 			return MonsterEnhanceResult{}, err
@@ -3320,7 +3340,15 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 	available := 0
 	var parts []string
 	items := make([]MonsterEnhanceItem, 0, len(monsterPatchPoints))
-	for _, point := range monsterPatchPoints {
+	for _, catalogPoint := range monsterPatchPoints {
+		point := catalogPoint
+		if point.ID == "inventory_set_45" {
+			addr, err := a.locateMaterialConsumeLocked()
+			if err != nil {
+				return MonsterEnhanceResult{}, err
+			}
+			point.RVA = addr - a.moduleBase
+		}
 		current := make([]byte, len(point.Original))
 		addr := a.moduleBase + point.RVA
 		if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&current[0]), uintptr(len(current))); err != nil {

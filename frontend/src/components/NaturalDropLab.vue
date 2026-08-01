@@ -34,16 +34,11 @@ const summonDraft = reactive({ typeHash: '', mainTrait: '', subParam: '' })
 const sigilDraft = reactive({ sigilHash: '', secondaryTrait: '' })
 const wrightstoneDraft = reactive({ familyHash: '', subTrait1: '', subTrait2: '' })
 const genericDropItem = ref('')
-const genericDropQuantity = ref(1)
 const genericDropWeight = ref(10000)
-const itemRewardMultiplier = ref(1)
-const itemRewardMultipliers = [1, 2, 4, 8, 16]
 const taskRewardMultipliers = [1, 2, 4, 8, 16]
 const taskRewardConnected = ref(false)
 const taskRewardBusy = ref(false)
 const taskRewardStatus = reactive({ enabled: false, multiplier: 1, matchedItems: 0, rva: 0, gameVersion: '', detail: '' })
-const sigilOnly = ref(false)
-const wrightstoneOnly = ref(false)
 const taskRewardLeaseScope = 'task-reward-multiplier'
 let taskRewardOwnerToken = ''
 let taskRewardDisposed = false
@@ -70,8 +65,7 @@ const selectedSigils = computed(() => Object.entries(sigilSelections)
 const selectedItems = computed(() => Object.entries(itemSelections)
   .filter(([, value]) => value?.enabled)
   .map(([itemHash, value]) => ({ itemHash, quantity: Number(value.quantity), weight: Number(value.weight) })))
-const itemQuantityLimit = computed(() => Math.floor(999 / itemRewardMultiplier.value))
-const itemQuantitiesValid = computed(() => selectedItems.value.every(item => item.quantity * itemRewardMultiplier.value <= 999))
+const itemQuantitiesValid = computed(() => selectedItems.value.every(item => Number.isInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 999))
 const activeConflictScopes = computed(() => new Set([
   ...(selectedList.value.length ? ['summon'] : []),
   ...(selectedSigils.value.length ? ['sigil', 'transmarvel'] : []),
@@ -237,6 +231,7 @@ const pendingDropRows = computed(() => {
       kindLabel: tx('因子', 'Sigil'), name: displayName(item), icon: sigilIcon(item),
       detail: `${displayName(item.primaryTrait)} · ${secondary ? displayName(secondary) : tx('副技能随机', 'Random secondary')}`,
       sourceLabel: item.nativeTransmarvel ? tx('原生池', 'Native pool') : tx('加入池', 'Added to pool'),
+      quantityLabel: tx('1 条规则', '1 rule'),
     })
   }
   for (const [typeHash, selection] of Object.entries(selections)) {
@@ -248,6 +243,7 @@ const pendingDropRows = computed(() => {
       kindLabel: tx('召唤石', 'Summon'), name: displayName(item), icon: summonIcon(item),
       detail: `${displayName(selectedOption(item.mainTraits, selection.mainTrait))} · ${displayName(selectedOption(item.subParams, selection.subParam))}`,
       sourceLabel: tx('天然掉落', 'Natural drop'),
+      quantityLabel: tx('1 条规则', '1 rule'),
     })
   }
   for (const [familyHash, value] of Object.entries(wrightstoneSelections)) {
@@ -260,6 +256,7 @@ const pendingDropRows = computed(() => {
         kindLabel: tx('祝福石', 'Wrightstone'), name: displayName(family), icon: traitIcon(family.mainTrait),
         detail: `${displayName(family.mainTrait)} Lv20 · ${displayName(selectedOption(family.subTraits, variant.subTrait1))} Lv15 · ${displayName(selectedOption(family.subTraits, variant.subTrait2))} Lv10`,
         sourceLabel: tx('Transmarvel 锻造', 'Transmarvel forging'),
+        quantityLabel: tx('1 个变体', '1 variant'),
       })
     }
   }
@@ -270,7 +267,7 @@ const pendingDropRows = computed(() => {
     rows.push({
       key: `item:${itemHash}`, kind: 'item', target: itemHash,
       kindLabel: tx('物品', 'Item'), name: displayName(item), icon: itemAssetIcon(item),
-      detail: tx(`基础数量 ${selection.quantity} × ${itemRewardMultiplier.value} = 实际数量 ${selection.quantity * itemRewardMultiplier.value} · 权重 ${selection.weight}`, `Base quantity ${selection.quantity} × ${itemRewardMultiplier.value} = final quantity ${selection.quantity * itemRewardMultiplier.value} · weight ${selection.weight}`),
+      detail: tx(`每次抽中直接掉落 ${selection.quantity} 个 · 抽取权重 ${selection.weight}`, `Drops ${selection.quantity} each time it is rolled · weight ${selection.weight}`),
       sourceLabel: language.value === 'en' ? workspace.value?.itemRewardTargetEn : workspace.value?.itemRewardTargetZh,
     })
   }
@@ -333,23 +330,15 @@ function addWrightstoneDraft() {
 
 function addItemDraft() {
   const item = selectedItemDraft.value
-  const quantity = Math.trunc(Number(genericDropQuantity.value))
   const weight = Math.trunc(Number(genericDropWeight.value))
   if (!item) return
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > itemQuantityLimit.value) {
-    setMessage(tx(`当前 ${itemRewardMultiplier.value}× 倍率下，基础数量必须是 1–${itemQuantityLimit.value} 的整数。`, `At ${itemRewardMultiplier.value}×, base quantity must be an integer from 1 to ${itemQuantityLimit.value}.`), 'danger')
-    return
-  }
-  if (quantity * itemRewardMultiplier.value > 999) {
-    setMessage(tx(`基础数量 ${quantity} × ${itemRewardMultiplier.value} 超过表字段上限 999。请降低基础数量或倍率。`, `Base quantity ${quantity} × ${itemRewardMultiplier.value} exceeds the table limit of 999. Lower the quantity or multiplier.`), 'danger')
-    return
-  }
   if (!Number.isInteger(weight) || weight < 1 || weight > 1000000) {
     setMessage(tx('掉落权重必须是 1–1,000,000 的整数。', 'Drop weight must be an integer from 1 to 1,000,000.'), 'danger')
     return
   }
-  itemSelections[item.hash] = { enabled: true, quantity, weight }
-  setMessage(tx(`已把 ${displayName(item)} 加入待部署清单。`, `${displayName(item)} was added to the deployment list.`))
+  const existing = itemSelections[item.hash]
+  itemSelections[item.hash] = { enabled: true, quantity: existing?.quantity || 1, weight }
+  setMessage(tx(`已把 ${displayName(item)} 加入待部署清单；可在清单里直接调整掉落数量。`, `${displayName(item)} was added to the deployment list. Adjust its quantity directly in the list.`))
 }
 
 function removePendingDrop(row) {
@@ -368,6 +357,7 @@ function clearPendingDrops() {
   for (const key of Object.keys(sigilSelections)) delete sigilSelections[key]
   for (const key of Object.keys(wrightstoneSelections)) delete wrightstoneSelections[key]
   for (const key of Object.keys(itemSelections)) delete itemSelections[key]
+  setMessage(tx('已清空待部署清单。', 'The pending deployment list was cleared.'))
 }
 
 function setMessage(message, tone = 'info') {
@@ -406,12 +396,6 @@ async function chooseGame() {
   await refreshWorkspace()
 }
 
-watch(sigilOnly, enabled => {
-  if (enabled) wrightstoneOnly.value = false
-})
-watch(wrightstoneOnly, enabled => {
-  if (enabled) sigilOnly.value = false
-})
 watch(() => summonDraft.typeHash, typeHash => {
   const item = (workspace.value?.summons || []).find(candidate => candidate.typeHash === typeHash)
   summonDraft.mainTrait = item?.mainTraits?.[0]?.hash || ''
@@ -431,8 +415,8 @@ async function deploy() {
   if (!canDeploy.value) return
   const accepted = await confirmDialog.value?.ask({
     title: tx('部署天然掉落模组', 'Deploy natural-drop mod'),
-    message: tx(`将部署 ${selectedList.value.length} 颗召唤石、${selectedSigils.value.length} 个 Transmarvel 因子、${selectedWrightstones.value.length} 个祝福石变体和 ${selectedItems.value.length} 种物品。已配置物品的奖励数量倍率为 ${itemRewardMultiplier.value}×。`, `Deploy ${selectedList.value.length} summons, ${selectedSigils.value.length} Transmarvel sigils, ${selectedWrightstones.value.length} wrightstone variants and ${selectedItems.value.length} items. The configured items use a ${itemRewardMultiplier.value}× reward quantity multiplier.`),
-    detail: tx('倍率只作用于已验证的“无尽模式 · 锻造师奖励”普通物品数量，不改变抽中权重，也不作用于因子、召唤石或祝福石。应用会备份原始 data.i；游戏必须完全退出。', 'The multiplier only changes regular-item quantities in the verified Endless Mode · Forger’s Bounty pool. It does not change weights or affect sigils, summons, or wrightstones. The app backs up data.i; the game must be closed.'),
+    message: tx(`将部署 ${selectedList.value.length} 颗召唤石、${selectedSigils.value.length} 个 Transmarvel 因子、${selectedWrightstones.value.length} 个祝福石变体和 ${selectedItems.value.length} 种物品。`, `Deploy ${selectedList.value.length} summons, ${selectedSigils.value.length} Transmarvel sigils, ${selectedWrightstones.value.length} wrightstone variants and ${selectedItems.value.length} items.`),
+    detail: tx('每种物品按待部署清单里的数量写入，不与实时全任务倍率相乘。应用会备份原始 data.i；游戏必须完全退出。', 'Each item uses the exact quantity shown in the pending list and does not stack with the live all-quest multiplier. The app backs up data.i; the game must be closed.'),
     confirmLabel: tx('确认部署', 'Deploy'),
     cancelLabel: tx('取消', 'Cancel'),
     tone: 'warning',
@@ -447,9 +431,9 @@ async function deploy() {
       sigils: selectedSigils.value,
       wrightstones: selectedWrightstones.value,
       items: selectedItems.value,
-      itemMultiplier: itemRewardMultiplier.value,
-      sigilOnly: sigilOnly.value,
-      wrightstoneOnly: wrightstoneOnly.value,
+      itemMultiplier: 1,
+      sigilOnly: false,
+      wrightstoneOnly: false,
     })
     setMessage(tx(`已部署 ${result.selectedSummons} 颗召唤石、${result.selectedSigils} 个因子、${result.selectedWrightstones} 个祝福石变体与 ${result.selectedItems} 种物品。现在可正常启动游戏。`, `Deployed ${result.selectedSummons} summons, ${result.selectedSigils} sigils, ${result.selectedWrightstones} wrightstone variants and ${result.selectedItems} items. The game can now be launched normally.`), 'ok')
     await refreshWorkspace()
@@ -496,22 +480,22 @@ onBeforeUnmount(() => {
   <div class="natural-drop-lab ui-page-stack">
     <section class="drop-intro">
       <div>
-        <p class="drop-kicker">{{ tx('应用内直连 · DLC 2.0.2', 'NATIVE DEPLOYMENT · DLC 2.0.2') }}</p>
-        <h2>{{ tx('掉落与锻造规则（游戏文件）', 'Drop & Forging Rules (Game Files)') }}</h2>
-        <p>{{ tx('应用已内置并逐张锁定十一张 2.0.2 原表，打开即可配置 Transmarvel 因子、召唤石、祝福石和普通物品的掉落规则；这里改的是游戏掉落表，不会直接改存档背包。', 'The app includes eleven individually locked 2.0.2 source tables for Transmarvel sigils, summons, wrightstones, and regular item drops. This changes game drop tables, not save inventory directly.') }}</p>
+        <p class="drop-kicker">{{ tx('常用倍率 + 高级指定掉落', 'COMMON MULTIPLIER + ADVANCED CUSTOM DROPS') }}</p>
+        <h2>{{ tx('任务奖励与指定掉落', 'Quest rewards and custom drops') }}</h2>
+        <p>{{ tx('平时只需连接游戏并选择任务奖励倍率。需要指定因子、祝福石、召唤石或物品时，再展开下方高级功能，把想要的内容加入清单后统一部署。', 'For everyday use, connect to the game and choose a quest reward multiplier. Open Advanced only when you want specific sigils, wrightstones, summons, or items, then add them to one list and deploy together.') }}</p>
       </div>
       <div class="drop-safety">
-        <strong>{{ tx('来源原表只读', 'Source tables are read-only') }}</strong>
-        <span>{{ tx('部署前自动备份 data.i；恢复时校验备份与工具清单', 'data.i is backed up before deployment and verified against the tool manifest during restoration') }}</span>
+        <strong>{{ tx('两种修改互相独立', 'The two paths are independent') }}</strong>
+        <span>{{ tx('实时倍率不写游戏文件；只有高级清单部署会备份并修改 data.i', 'The live multiplier does not edit game files. Only an advanced-list deployment backs up and changes data.i') }}</span>
       </div>
     </section>
 
     <section class="task-reward-runtime ui-card ui-panel" aria-labelledby="task-reward-title">
       <div class="task-reward-copy">
-        <span>{{ tx('实时任务结算 · 2.0.2 / 2.0.3', 'LIVE QUEST RESULTS · 2.0.2 / 2.0.3') }}</span>
-        <h3 id="task-reward-title">{{ tx('所有任务的普通物品奖励倍率', 'Ordinary Item Multiplier for All Quest Results') }}</h3>
-        <p>{{ tx('开启后，普通任务、首领任务、任务宝箱和支线目标汇总到结算页的可堆叠物品都会乘为 2× / 4× / 8× / 16×。商店购买、锻造和手工物品编辑不受影响。', 'When enabled, stackable items reaching the results screen from regular quests, bosses, quest chests, and side objectives are multiplied by 2× / 4× / 8× / 16×. Shops, forging, and manual item editing are excluded.') }}</p>
-        <small>{{ tx('因子、祝福石、召唤石和武器属于独立实例奖励，保持原数量，避免复制同一个实例。单项最终数量封顶 999。', 'Sigils, wrightstones, summons, and weapons are independent instances and keep their normal count to avoid duplicating one instance. Each final stack is capped at 999.') }}</small>
+        <span>{{ tx('常用功能 · 游戏运行时', 'COMMON · WHILE THE GAME IS RUNNING') }}</span>
+        <h3 id="task-reward-title">{{ tx('全任务普通物品倍率', 'All-quest regular-item multiplier') }}</h3>
+        <p>{{ tx('先连接游戏，再点 2× / 4× / 8× / 16×。保持连接后，普通任务、首领任务、任务宝箱和支线目标进入结算页的可堆叠物品会持续按所选倍率结算。', 'Connect to the game, then choose 2× / 4× / 8× / 16×. While connected, stackable items reaching the results screen from regular quests, bosses, quest chests, and side objectives keep using that multiplier.') }}</p>
+        <small>{{ tx('因子、祝福石、召唤石和武器属于独立实例奖励，保持原数量，避免复制同一个实例；商店购买、锻造和手工物品编辑不受影响。单项最终数量封顶 999。这里改的是 PC 本地任务结果；跨平台队友是否收到同样倍率，仍需双方实机验收。', 'Sigils, wrightstones, summons, and weapons are independent instances and keep their normal count to avoid duplicating one instance. Shops, forging, and manual item editing are unaffected. Each final stack is capped at 999. This changes the local PC result records; whether cross-platform teammates receive the same multiplier still requires paired in-game verification.') }}</small>
       </div>
       <div class="task-reward-controls">
         <div class="ui-seg task-reward-options" :aria-disabled="!taskRewardConnected">
@@ -525,15 +509,27 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
+    <details class="advanced-drop-panel">
+      <summary>
+        <span class="advanced-toggle" aria-hidden="true">＋</span>
+        <div class="advanced-summary-copy">
+          <span>{{ tx('高级功能 · 需要时再展开', 'ADVANCED · OPEN WHEN NEEDED') }}</span>
+          <b>{{ tx('指定掉落与锻造内容', 'Custom drops and forging results') }}</b>
+          <small>{{ tx('把想要的因子、祝福石、召唤石或物品逐条加入同一份待部署清单，再统一核对和写入游戏文件。', 'Add the sigils, wrightstones, summons, or items you want to one pending list, review it, then write the game files once.') }}</small>
+        </div>
+        <strong>{{ pendingDropRows.length ? tx(`${pendingDropRows.length} 项待部署`, `${pendingDropRows.length} pending`) : tx('当前未配置', 'Not configured') }}</strong>
+      </summary>
+
+      <div class="advanced-drop-content">
     <section class="drop-setup" aria-labelledby="drop-setup-title">
       <div class="section-heading">
-        <div><h3 id="drop-setup-title">{{ tx('一、确认内置数据与游戏目录', '1. Verify built-in data and the game folder') }}</h3><p>{{ tx('十一张内置表会自动完成大小和 SHA-256 校验；正常使用只需选择游戏程序。维护者仍可切换到本机表做严格对照。', 'All eleven built-in tables are checked automatically by size and SHA-256. Normal use only requires the game executable; maintainers can still select local tables for strict comparison.') }}</p></div>
+        <div><h3 id="drop-setup-title">{{ tx('第一步 · 确认游戏目录', 'Step 1 · Verify the game folder') }}</h3><p>{{ tx('十一张内置表会自动完成大小和 SHA-256 校验；正常使用只需选择游戏程序。维护者仍可切换到本机表做严格对照。', 'All eleven built-in tables are checked automatically by size and SHA-256. Normal use only requires the game executable; maintainers can still select local tables for strict comparison.') }}</p></div>
         <span v-if="workspace?.owned" class="install-state owned">{{ workspace.installed ? tx('天然掉落已启用', 'Natural drops enabled') : tx('部署状态需恢复', 'Deployment needs recovery') }}</span>
       </div>
       <div class="path-rows">
         <div class="path-row">
           <span class="path-index">01</span>
-          <div><b>{{ tx('2.0.2 原表模板', '2.0.2 source templates') }}</b><code :title="sourceDir">{{ usingBundledTables ? tx('程序内置 · 8/8 逐张 SHA-256 校验', 'Built in · 8/8 files SHA-256 verified') : sourceDir }}</code></div>
+          <div><b>{{ tx('2.0.2 原表模板', '2.0.2 source templates') }}</b><code :title="sourceDir">{{ usingBundledTables ? tx('程序内置 · 11/11 逐张 SHA-256 校验', 'Built in · 11/11 files SHA-256 verified') : sourceDir }}</code></div>
           <button class="ui-btn is-sm is-ghost" type="button" :disabled="busy" @click="chooseSource">{{ tx('维护者对照', 'Maintainer override') }}</button>
         </div>
         <div class="path-row">
@@ -561,8 +557,8 @@ onBeforeUnmount(() => {
     <section class="drop-configurator" aria-labelledby="drop-configurator-title">
       <div class="section-heading">
         <div>
-          <h3 id="drop-configurator-title">{{ tx('二、添加掉落项目', '2. Add drop entries') }}</h3>
-          <p>{{ tx('每次配置一条并加入清单；可连续添加多条，最后统一核对和部署。所有下拉框都可直接搜索名称或内部编号。', 'Configure one row at a time and add it to the list. Add multiple rows, review them together, then deploy. Every picker can search by name or internal id.') }}</p>
+          <h3 id="drop-configurator-title">{{ tx('第二步 · 添加指定掉落', 'Step 2 · Add custom drops') }}</h3>
+          <p>{{ tx('四类内容可以同时添加，不需要先选模式。选中的内容才会进入待部署清单；没加入的内容保持游戏原样。所有下拉框都可搜索名称或内部编号。', 'All four content types can be added together without choosing a mode. Only entries added to the pending list are changed; everything else stays untouched. Every picker supports names and internal ids.') }}</p>
         </div>
       </div>
 
@@ -570,7 +566,6 @@ onBeforeUnmount(() => {
         <article class="drop-builder" :class="{ unavailable: !sigilTableReady }">
           <header>
             <div><span class="builder-index">A</span><div><h4>{{ tx('Transmarvel 因子', 'Transmarvel sigil') }}</h4><p>{{ tx('因子 → 固定主技能 → 随机或指定副技能', 'Sigil → fixed primary → random or pinned secondary') }}</p></div></div>
-            <label class="builder-mode"><input v-model="sigilOnly" type="checkbox" :disabled="!sigilTableReady"><span>{{ tx('只出因子', 'Sigils only') }}</span></label>
           </header>
           <div class="drop-builder-grid">
             <label class="builder-field"><span>{{ tx('因子', 'Sigil') }}</span><CatalogSelect v-model="sigilDraft.sigilHash" :options="sigilPickerOptions" :disabled="!sigilTableReady" :icon-resolver="pickerSigilIcon" :placeholder="tx('选择因子', 'Choose a sigil')" :search-placeholder="tx('搜索因子或哈希', 'Search sigils or hashes')" detail-key="detail" /></label>
@@ -578,25 +573,12 @@ onBeforeUnmount(() => {
             <label class="builder-field"><span>{{ tx('副技能', 'Secondary trait') }}</span><CatalogSelect v-model="sigilDraft.secondaryTrait" :options="sigilSecondaryOptions" :disabled="!selectedSigilDraft" :icon-resolver="pickerTraitIcon" optional :placeholder="tx('按游戏原池随机', 'Random from game pool')" :search-placeholder="tx('搜索合法副技能', 'Search compatible traits')" /></label>
             <button class="ui-btn is-primary builder-add" type="button" :disabled="!selectedSigilDraft" @click="addSigilDraft">{{ tx('加入待部署', 'Add to list') }}</button>
           </div>
-          <p class="builder-note">{{ tx('“原生池”是游戏原本可抽到的记录；“加入池”是 gem.tbl 中真实存在、由本工具加入 Transmarvel 的记录。', 'Native entries already roll in the game; added entries are real gem.tbl records inserted into Transmarvel by this tool.') }}</p>
-        </article>
-
-        <article class="drop-builder" :class="{ unavailable: !tableReady }">
-          <header>
-            <div><span class="builder-index">B</span><div><h4>{{ tx('召唤石天然掉落', 'Natural summon drop') }}</h4><p>{{ tx('召唤石种类 → 主加护 → 附加词条', 'Summon type → main trait → bonus trait') }}</p></div></div>
-          </header>
-          <div class="drop-builder-grid">
-            <label class="builder-field"><span>{{ tx('召唤石种类', 'Summon type') }}</span><CatalogSelect v-model="summonDraft.typeHash" :options="summonPickerOptions" :disabled="!tableReady" :icon-resolver="pickerSummonIcon" :placeholder="tx('选择召唤石', 'Choose a summon')" :search-placeholder="tx('搜索召唤石或哈希', 'Search summons or hashes')" detail-key="detail" /></label>
-            <label class="builder-field"><span>{{ tx('主加护', 'Main trait') }}</span><CatalogSelect v-model="summonDraft.mainTrait" :options="summonMainOptions" :disabled="!selectedSummonDraft" :icon-resolver="pickerTraitIcon" :placeholder="tx('选择主加护', 'Choose main trait')" :search-placeholder="tx('搜索主加护', 'Search main traits')" /></label>
-            <label class="builder-field"><span>{{ tx('附加词条', 'Bonus trait') }}</span><CatalogSelect v-model="summonDraft.subParam" :options="summonSubOptions" :disabled="!selectedSummonDraft" :icon-resolver="pickerTraitIcon" :placeholder="tx('选择附加词条', 'Choose bonus trait')" :search-placeholder="tx('搜索附加词条', 'Search bonus traits')" /></label>
-            <button class="ui-btn is-primary builder-add" type="button" :disabled="!selectedSummonDraft || !summonDraft.mainTrait || !summonDraft.subParam" @click="addSummonDraft">{{ tx('加入待部署', 'Add to list') }}</button>
-          </div>
+          <p class="builder-note">{{ tx('主技能由因子本体决定；副技能可留空按原池随机，也可指定。加入后不会排斥下方的祝福石或召唤石。', 'The sigil determines its primary trait. Leave the secondary blank for the original pool or pin one. Adding it does not exclude wrightstones or summons below.') }}</p>
         </article>
 
         <article class="drop-builder" :class="{ unavailable: !wrightstoneTableReady }">
           <header>
-            <div><span class="builder-index">C</span><div><h4>{{ tx('Transmarvel 祝福石', 'Transmarvel wrightstone') }}</h4><p>{{ tx('祝福种类/主词条 → 副词条 Lv15 → 副词条 Lv10', 'Family / primary → Lv15 sub trait → Lv10 sub trait') }}</p></div></div>
-            <label class="builder-mode"><input v-model="wrightstoneOnly" type="checkbox" :disabled="!wrightstoneTableReady"><span>{{ tx('只出祝福石', 'Wrightstones only') }}</span></label>
+            <div><span class="builder-index">B</span><div><h4>{{ tx('Transmarvel 祝福石', 'Transmarvel wrightstone') }}</h4><p>{{ tx('祝福种类/主词条 → 副词条 Lv15 → 副词条 Lv10', 'Family / primary → Lv15 sub trait → Lv10 sub trait') }}</p></div></div>
           </header>
           <div class="drop-builder-grid">
             <label class="builder-field"><span>{{ tx('祝福种类（主词条 Lv20）', 'Family (primary Lv20)') }}</span><CatalogSelect v-model="wrightstoneDraft.familyHash" :options="wrightstonePickerOptions" :disabled="!wrightstoneTableReady" :icon-resolver="pickerWrightstoneIcon" :placeholder="tx('选择祝福石', 'Choose a wrightstone')" :search-placeholder="tx('搜索祝福或主词条', 'Search families or primary traits')" detail-key="detail" /></label>
@@ -604,35 +586,48 @@ onBeforeUnmount(() => {
             <label class="builder-field"><span>{{ tx('副词条 Lv10', 'Sub trait Lv10') }}</span><CatalogSelect v-model="wrightstoneDraft.subTrait2" :options="wrightstoneSubOptions" :disabled="!selectedWrightstoneDraft" :icon-resolver="pickerTraitIcon" :placeholder="tx('选择副词条', 'Choose sub trait')" :search-placeholder="tx('搜索副词条', 'Search sub traits')" /></label>
             <button class="ui-btn is-primary builder-add" type="button" :disabled="!selectedWrightstoneDraft || !wrightstoneDraft.subTrait1 || !wrightstoneDraft.subTrait2" @click="addWrightstoneDraft">{{ tx('加入待部署', 'Add to list') }}</button>
           </div>
-          <p class="builder-note">{{ tx('每种祝福最多添加三个变体；“只出因子”和“只出祝福石”不能同时开启。', 'Each family supports up to three variants. Sigils-only and wrightstones-only modes cannot be enabled together.') }}</p>
+          <p class="builder-note">{{ tx('每种祝福最多添加三个不同变体；加入哪一种，就只把哪一种写进清单。', 'Each family supports up to three distinct variants. Only the variants you add are written to the pending list.') }}</p>
+        </article>
+
+        <article class="drop-builder" :class="{ unavailable: !tableReady }">
+          <header>
+            <div><span class="builder-index">C</span><div><h4>{{ tx('召唤石天然掉落', 'Natural summon drop') }}</h4><p>{{ tx('召唤石种类 → 主加护 → 附加词条', 'Summon type → main trait → bonus trait') }}</p></div></div>
+          </header>
+          <div class="drop-builder-grid">
+            <label class="builder-field"><span>{{ tx('召唤石种类', 'Summon type') }}</span><CatalogSelect v-model="summonDraft.typeHash" :options="summonPickerOptions" :disabled="!tableReady" :icon-resolver="pickerSummonIcon" :placeholder="tx('选择召唤石', 'Choose a summon')" :search-placeholder="tx('搜索召唤石或哈希', 'Search summons or hashes')" detail-key="detail" /></label>
+            <label class="builder-field"><span>{{ tx('主加护', 'Main trait') }}</span><CatalogSelect v-model="summonDraft.mainTrait" :options="summonMainOptions" :disabled="!selectedSummonDraft" :icon-resolver="pickerTraitIcon" :placeholder="tx('选择主加护', 'Choose main trait')" :search-placeholder="tx('搜索主加护', 'Search main traits')" /></label>
+            <label class="builder-field"><span>{{ tx('附加词条', 'Bonus trait') }}</span><CatalogSelect v-model="summonDraft.subParam" :options="summonSubOptions" :disabled="!selectedSummonDraft" :icon-resolver="pickerTraitIcon" :placeholder="tx('选择附加词条', 'Choose bonus trait')" :search-placeholder="tx('搜索附加词条', 'Search bonus traits')" /></label>
+            <button class="ui-btn is-primary builder-add" type="button" :disabled="!selectedSummonDraft || !summonDraft.mainTrait || !summonDraft.subParam" @click="addSummonDraft">{{ tx('加入待部署', 'Add to list') }}</button>
+          </div>
+          <p class="builder-note">{{ tx('选择种类、主加护和附加词条后加入清单；没有加入的召唤石掉落保持不变。', 'Choose a summon, its main trait, and bonus trait, then add it. Summons not added here stay unchanged.') }}</p>
+        </article>
+        <article class="drop-builder" :class="{ unavailable: !itemTableReady }">
+          <header>
+            <div><span class="builder-index">D</span><div><h4>{{ tx('普通物品掉落', 'Regular item drop') }}</h4><p>{{ tx('物品 → 抽取权重；加入后在清单里填写每次掉落数量', 'Item → roll weight; set its per-roll quantity in the pending list') }}</p></div></div>
+          </header>
+          <div class="drop-builder-grid item-builder-grid">
+            <label class="builder-field item-picker"><span>{{ tx('掉落物品', 'Drop item') }}</span><CatalogSelect v-model="genericDropItem" :options="itemPickerOptions" :disabled="!itemTableReady" :icon-resolver="pickerItemIcon" :placeholder="tx('选择物品', 'Choose an item')" :search-placeholder="tx('搜索物品名称或 Hash', 'Search item names or hashes')" detail-key="detail" /></label>
+            <label class="builder-field"><span>{{ tx('抽取权重', 'Roll weight') }}</span><input v-model.number="genericDropWeight" class="drop-number-input" type="number" min="1" max="1000000" step="1"></label>
+            <button class="ui-btn is-primary builder-add" type="button" :disabled="!itemTableReady || !selectedItemDraft" @click="addItemDraft">{{ tx('加入待部署', 'Add to list') }}</button>
+          </div>
+          <p class="builder-note">{{ tx('加入后默认每次掉落 1 个，可在下方清单直接改为 1–999。它只写入无尽模式锻造师奖励池，不与上方实时倍率相乘。', 'New entries default to 1 item per roll; edit the quantity to 1–999 in the list below. This only writes the Endless Mode forger reward pool and does not stack with the live multiplier above.') }}</p>
         </article>
       </div>
-
-      <details class="generic-drop-builder" open>
-        <summary><span>{{ tx('其他物品掉落', 'Other item drops') }}</span><small>{{ language === 'en' ? workspace?.itemRewardTargetEn : workspace?.itemRewardTargetZh }}</small></summary>
-        <div class="reward-multiplier-row"><div><b>{{ tx('已配置物品数量倍率', 'Configured-item quantity multiplier') }}</b><small>{{ tx('把下方加入清单的每种物品从基础数量乘为最终数量；原有奖励和抽中权重保持不变。', 'Multiplies each configured item from its base quantity to its final quantity; existing rewards and roll weights stay unchanged.') }}</small></div><div class="ui-seg reward-multiplier-options"><button v-for="multiplier in itemRewardMultipliers" :key="multiplier" type="button" class="ui-seg-btn" :class="{ 'is-on': itemRewardMultiplier === multiplier }" @click="itemRewardMultiplier = multiplier">{{ multiplier }}×</button></div></div>
-        <div class="drop-builder-grid">
-          <label class="builder-field item-picker"><span>{{ tx('掉落物品', 'Drop item') }}</span><CatalogSelect v-model="genericDropItem" :options="itemPickerOptions" :disabled="!itemTableReady" :icon-resolver="pickerItemIcon" :placeholder="tx('选择物品', 'Choose an item')" :search-placeholder="tx('搜索物品名称或 Hash', 'Search item names or hashes')" detail-key="detail" /></label>
-          <label class="builder-field"><span>{{ tx('基础数量', 'Base quantity') }}</span><input v-model.number="genericDropQuantity" class="drop-number-input" type="number" min="1" :max="itemQuantityLimit" step="1"><small>{{ tx(`当前最多 ${itemQuantityLimit}，最终为 ${genericDropQuantity * itemRewardMultiplier}。`, `Current maximum ${itemQuantityLimit}; final quantity ${genericDropQuantity * itemRewardMultiplier}.`) }}</small></label>
-          <label class="builder-field"><span>{{ tx('掉落权重', 'Drop weight') }}</span><input v-model.number="genericDropWeight" class="drop-number-input" type="number" min="1" max="1000000" step="1"></label>
-          <button class="ui-btn is-primary builder-add" type="button" :disabled="!itemTableReady || !selectedItemDraft" @click="addItemDraft">{{ tx('加入待部署', 'Add to list') }}</button>
-        </div>
-        <p class="builder-note">{{ tx('不用选择任务或敌人。应用会把这里添加的物品写入已验证的“无尽模式 · 锻造师奖励”物品池；打开奖励包时按权重抽取，再按 1× / 2× / 4× / 8× / 16× 写入最终物品数量。这个倍率不作用于因子、召唤石和祝福石。', 'No quest or enemy selection is required. Items are written to the verified Endless Mode · Forger’s Bounty pool, rolled by weight, then awarded at the selected 1× / 2× / 4× / 8× / 16× quantity. This multiplier does not affect sigils, summons, or wrightstones.') }}</p>
-        <p v-if="!itemQuantitiesValid" class="builder-note is-danger">{{ tx(`已有物品的基础数量在 ${itemRewardMultiplier}× 下会超过 999。请删除后按最多 ${itemQuantityLimit} 的基础数量重新添加。`, `An existing item exceeds 999 at ${itemRewardMultiplier}×. Remove it and add it again with a base quantity no higher than ${itemQuantityLimit}.`) }}</p>
-      </details>
     </section>
 
     <section class="pending-drops" aria-labelledby="pending-drops-title">
       <div class="section-heading">
-        <div><h3 id="pending-drops-title">{{ tx('三、待部署掉落清单', '3. Pending deployment list') }}</h3><p>{{ tx('这里只列出最终会写入游戏表的项目。可逐条删除，确认无误后再统一部署。', 'Only entries that will be written to game tables appear here. Remove rows individually, then deploy after review.') }}</p></div>
+        <div><h3 id="pending-drops-title">{{ tx('第三步 · 核对待部署清单', 'Step 3 · Review the pending list') }}</h3><p>{{ tx('清单逐条写明类型、词条、目标位置和数量。普通物品的数量可直接修改；删除一行就不会部署那一项。', 'The list shows each type, trait setup, destination, and quantity. Regular-item quantities are editable; removing a row excludes it from deployment.') }}</p></div>
         <button v-if="pendingDropRows.length" class="ui-btn is-sm is-ghost" type="button" @click="clearPendingDrops">{{ tx('清空清单', 'Clear list') }}</button>
       </div>
       <div v-if="pendingDropRows.length" class="pending-drop-table">
-        <div class="pending-drop-head" aria-hidden="true"><span>{{ tx('类型', 'Type') }}</span><span>{{ tx('掉落项目与配置', 'Drop entry and configuration') }}</span><span>{{ tx('来源', 'Source') }}</span><span>{{ tx('操作', 'Action') }}</span></div>
+        <div class="pending-drop-head" aria-hidden="true"><span>{{ tx('类型', 'Type') }}</span><span>{{ tx('掉落项目与完整配置', 'Drop entry and full configuration') }}</span><span>{{ tx('写入位置', 'Destination') }}</span><span>{{ tx('数量', 'Quantity') }}</span><span>{{ tx('操作', 'Action') }}</span></div>
         <article v-for="row in pendingDropRows" :key="row.key" class="pending-drop-row">
           <span class="pending-kind">{{ row.kindLabel }}</span>
           <div class="pending-main"><img v-if="row.icon" class="drop-item-icon" :src="row.icon" alt=""><div><b>{{ row.name }}</b><small>{{ row.detail }}</small></div></div>
           <span class="pending-source">{{ row.sourceLabel }}</span>
+          <label v-if="row.kind === 'item'" class="pending-quantity"><span class="sr-only">{{ tx(`${row.name} 数量`, `${row.name} quantity`) }}</span><input v-model.number="itemSelections[row.target].quantity" class="drop-number-input" type="number" min="1" max="999" step="1"></label>
+          <span v-else class="pending-quantity-label">{{ row.quantityLabel }}</span>
           <button class="ui-btn is-sm is-ghost pending-remove" type="button" @click="removePendingDrop(row)">{{ tx('移除', 'Remove') }}</button>
         </article>
       </div>
@@ -640,9 +635,11 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="deploy-dock" :class="{ ready: canDeploy }">
-      <div><b>{{ tx('四、生成并部署', '4. Build and deploy') }}</b><span v-if="!tableReady && !sigilTableReady && !wrightstoneTableReady && !itemTableReady">{{ tx('内置表校验未通过', 'Built-in table verification failed') }}</span><span v-else-if="hasConflicts">{{ tx('先处理冲突模组', 'Resolve conflicting mods first') }}</span><span v-else>{{ tx(`${selectedSigils.length} 个因子 · ${selectedList.length} 颗召唤石 · ${selectedWrightstones.length} 个祝福石变体 · ${selectedItems.length} 种物品`, `${selectedSigils.length} sigils · ${selectedList.length} summons · ${selectedWrightstones.length} wrightstone variants · ${selectedItems.length} items`) }}</span></div>
+      <div><b>{{ tx('第四步 · 生成并部署', 'Step 4 · Build and deploy') }}</b><span v-if="!tableReady && !sigilTableReady && !wrightstoneTableReady && !itemTableReady">{{ tx('内置表校验未通过', 'Built-in table verification failed') }}</span><span v-else-if="hasConflicts">{{ tx('先处理冲突模组', 'Resolve conflicting mods first') }}</span><span v-else-if="!itemQuantitiesValid">{{ tx('普通物品数量必须是 1–999 的整数', 'Regular-item quantities must be integers from 1–999') }}</span><span v-else>{{ tx(`${selectedSigils.length} 个因子 · ${selectedList.length} 颗召唤石 · ${selectedWrightstones.length} 个祝福石变体 · ${selectedItems.length} 种物品`, `${selectedSigils.length} sigils · ${selectedList.length} summons · ${selectedWrightstones.length} wrightstone variants · ${selectedItems.length} items`) }}</span></div>
       <div class="dock-actions"><button v-if="workspace?.owned" class="ui-btn is-secondary" type="button" :disabled="!canRestore" @click="restoreOrRemove">{{ tx('恢复原始掉落', 'Restore original drops') }}</button><button class="ui-btn is-primary" type="button" :disabled="!canDeploy" @click="deploy">{{ busy ? tx('处理中…', 'Working…') : workspace?.installed ? tx('更新部署', 'Update deployment') : tx('生成并部署', 'Build and deploy') }}</button></div>
     </section>
+      </div>
+    </details>
     <div v-if="actionMessage" class="ui-notice" :class="{ 'is-danger': actionTone === 'danger', 'is-ok': actionTone === 'ok', 'is-info': actionTone === 'info' }" role="status">{{ actionMessage }}</div>
     <ConfirmDialog ref="confirmDialog" />
   </div>
@@ -658,7 +655,7 @@ onBeforeUnmount(() => {
 .drop-safety { padding:var(--space-4); border-left:3px solid var(--success); background:var(--success-bg); color:var(--success-ink); }
 .drop-safety strong,.drop-safety span { display:block; }
 .drop-safety span { margin-top:var(--space-1); font-size:var(--fs-xs); }
-.task-reward-runtime { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--space-5); padding:var(--space-5); border-left:4px solid var(--accent); background:linear-gradient(110deg,var(--surface-card-pop),var(--accent-soft)); }
+.task-reward-runtime { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--space-5); padding:var(--space-5); border-left:4px solid var(--accent); background:var(--surface-card-pop); }
 .task-reward-copy > span { color:var(--accent); font-family:var(--font-data); font-size:var(--fs-xs); font-weight:var(--fw-bold); letter-spacing:.05em; }
 .task-reward-copy h3 { margin:4px 0 0; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); }
 .task-reward-copy p,.task-reward-copy small { display:block; margin:var(--space-2) 0 0; color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
@@ -670,6 +667,18 @@ onBeforeUnmount(() => {
 .task-reward-state { display:grid; justify-items:end; color:var(--text-muted); font-size:var(--fs-xs); }
 .task-reward-state.active { color:var(--success-ink); }
 .task-reward-state small { margin-top:2px; }
+.advanced-drop-panel { min-width:0; overflow:hidden; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-card); box-shadow:var(--shadow-1); }
+.advanced-drop-panel > summary { display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:var(--space-3); min-height:78px; padding:var(--space-4); color:var(--text-primary); cursor:pointer; list-style:none; background:linear-gradient(90deg,var(--surface-card-pop),var(--surface-card)); }
+.advanced-drop-panel > summary::-webkit-details-marker { display:none; }
+.advanced-drop-panel > summary:hover { background:var(--accent-soft); }
+.advanced-toggle { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--accent-border); border-radius:50%; color:var(--accent); background:var(--surface-field); font-size:var(--fs-lg); transition:transform .18s ease; }
+.advanced-drop-panel[open] .advanced-toggle { transform:rotate(45deg); }
+.advanced-summary-copy { display:grid; gap:2px; min-width:0; }
+.advanced-summary-copy > span { color:var(--accent); font-family:var(--font-data); font-size:var(--fs-xs); font-weight:var(--fw-bold); letter-spacing:.04em; }
+.advanced-summary-copy > b { font-family:var(--font-display); font-size:var(--fs-md); }
+.advanced-summary-copy > small { color:var(--text-secondary); font-size:var(--fs-xs); line-height:var(--lh-normal); }
+.advanced-drop-panel > summary > strong { padding:5px 9px; border:1px solid var(--border-default); border-radius:999px; color:var(--accent-strong); background:var(--surface-field); font-size:var(--fs-xs); white-space:nowrap; }
+.advanced-drop-content { display:grid; gap:var(--space-6); padding:var(--space-5); border-top:1px solid var(--border-default); }
 .drop-setup,.drop-configurator,.pending-drops { min-width:0; }
 .section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-5); }
 .section-heading > div { min-width:0; }
@@ -700,9 +709,8 @@ onBeforeUnmount(() => {
 .builder-index { display:grid; width:28px; height:28px; flex:0 0 28px; place-items:center; border:1px solid var(--accent-border); border-radius:50%; color:var(--accent); font-family:var(--font-data); font-size:var(--fs-xs); font-weight:var(--fw-bold); }
 .drop-builder h4 { margin:0; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-md); }
 .drop-builder header p { margin:2px 0 0; color:var(--text-muted); font-size:var(--fs-xs); }
-.builder-mode { display:flex; align-items:center; gap:var(--space-2); flex:0 0 auto; min-height:28px; color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-semibold); cursor:pointer; }
-.builder-mode input { accent-color:var(--accent); }
 .drop-builder-grid { display:grid; grid-template-columns:minmax(180px,1.2fr) minmax(160px,1fr) minmax(160px,1fr) auto; align-items:end; gap:var(--space-3); }
+.item-builder-grid { grid-template-columns:minmax(220px,1fr) minmax(160px,.45fr) auto; }
 .builder-field { display:block; min-width:0; }
 .builder-field > span { display:block; min-height:18px; margin-bottom:5px; color:var(--text-secondary); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
 .drop-number-input { width:100%; min-height:var(--control-height); padding:0 var(--space-3); border:1px solid var(--border-default); border-radius:var(--radius-sm); color:var(--text-primary); background:var(--surface-field); font:inherit; font-size:var(--fs-sm); }
@@ -711,21 +719,8 @@ onBeforeUnmount(() => {
 .drop-readonly > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .builder-add { min-width:112px; min-height:var(--control-height); }
 .builder-note { margin:var(--space-2) 0 0 41px; color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
-.generic-drop-builder { margin-top:var(--space-3); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-card); }
-.generic-drop-builder summary { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); color:var(--text-primary); cursor:pointer; }
-.generic-drop-builder summary span { font-family:var(--font-display); font-weight:var(--fw-semibold); }
-.generic-drop-builder summary small { color:var(--accent-strong); font-size:var(--fs-xs); }
-.generic-drop-builder[open] summary { border-bottom:1px solid var(--border-default); }
-.reward-multiplier-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); padding:var(--space-4); border-bottom:1px solid var(--border-default); background:var(--accent-soft); }
-.reward-multiplier-row > div:first-child { min-width:0; display:grid; gap:3px; }
-.reward-multiplier-row b { color:var(--text-primary); font-size:var(--fs-sm); }
-.reward-multiplier-row small { color:var(--text-secondary); font-size:var(--fs-xs); }
-.reward-multiplier-options { flex:0 0 auto; }
-.generic-drop-builder > .drop-builder-grid { padding:var(--space-4) var(--space-4) 0; }
-.generic-drop-builder > .builder-note { margin:var(--space-3) var(--space-4) var(--space-4); padding:var(--space-3); border-left:3px solid var(--accent); color:var(--text-secondary); background:var(--accent-soft); }
-.generic-drop-builder > .builder-note.is-danger { border-left-color:var(--danger); color:var(--danger-ink); background:var(--danger-bg); }
 .pending-drop-table { margin-top:var(--space-4); overflow:hidden; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-card); box-shadow:var(--shadow-1); }
-.pending-drop-head,.pending-drop-row { display:grid; grid-template-columns:90px minmax(0,1fr) minmax(120px,.28fr) 74px; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); }
+.pending-drop-head,.pending-drop-row { display:grid; grid-template-columns:80px minmax(220px,1fr) minmax(120px,.28fr) 104px 74px; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); }
 .pending-drop-head { min-height:34px; color:var(--text-muted); background:var(--surface-field); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
 .pending-drop-row { min-height:62px; border-top:1px solid var(--border-default); }
 .pending-kind { width:max-content; padding:3px 8px; border:1px solid var(--accent-border); border-radius:999px; color:var(--accent-strong); background:var(--accent-soft); font-size:var(--fs-xs); font-weight:var(--fw-semibold); }
@@ -735,6 +730,9 @@ onBeforeUnmount(() => {
 .pending-main b { overflow:hidden; color:var(--text-primary); text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-sm); }
 .pending-main small { margin-top:3px; overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--fs-xs); }
 .pending-source { color:var(--text-secondary); font-size:var(--fs-xs); }
+.pending-quantity { display:block; min-width:0; }
+.pending-quantity .drop-number-input { min-height:34px; padding:0 var(--space-2); text-align:center; }
+.pending-quantity-label { color:var(--text-secondary); font-size:var(--fs-xs); }
 .pending-remove { width:100%; }
 .pending-empty { display:flex; align-items:center; justify-content:center; gap:var(--space-3); min-height:92px; margin-top:var(--space-4); border:1px dashed var(--border-strong); border-radius:var(--radius-md); color:var(--text-muted); background:var(--surface-field); }
 .pending-empty > span { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--accent-border); border-radius:50%; color:var(--accent); font-size:var(--fs-lg); }
@@ -747,6 +745,7 @@ onBeforeUnmount(() => {
 .deploy-dock b { color:var(--text-primary); font-family:var(--font-display); }
 .deploy-dock span { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); }
 .dock-actions { display:flex; gap:var(--space-2); flex:0 0 auto; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 @container natural-drop (max-width:860px) {
   .drop-intro { grid-template-columns:minmax(0,1fr); align-items:start; }
@@ -756,11 +755,16 @@ onBeforeUnmount(() => {
   .task-reward-state { justify-items:start; }
   .drop-safety { max-width:none; }
   .drop-builder-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .item-builder-grid { grid-template-columns:minmax(0,1fr) minmax(160px,.45fr); }
+  .item-builder-grid .builder-add { grid-column:1 / -1; }
   .builder-add { width:100%; }
-  .pending-drop-head,.pending-drop-row { grid-template-columns:76px minmax(0,1fr) 70px; }
+  .pending-drop-head,.pending-drop-row { grid-template-columns:70px minmax(0,1fr) 90px 70px; }
   .pending-drop-head span:nth-child(3),.pending-source { display:none; }
 }
 @container natural-drop (max-width:620px) {
+  .advanced-drop-panel > summary { grid-template-columns:36px minmax(0,1fr); }
+  .advanced-drop-panel > summary > strong { grid-column:2; width:max-content; }
+  .advanced-drop-content { padding:var(--space-4); }
   .section-heading { flex-direction:column; }
   .path-row { grid-template-columns:32px minmax(0,1fr); }
   .path-row .ui-btn { grid-column:1 / -1; width:100%; }
@@ -768,15 +772,14 @@ onBeforeUnmount(() => {
   .table-line { grid-template-columns:22px minmax(0,1fr) auto; }
   .table-line code { display:none; }
   .drop-builder > header { align-items:stretch; flex-direction:column; }
-  .builder-mode { padding-left:41px; }
   .drop-builder-grid { grid-template-columns:minmax(0,1fr); }
   .builder-note { margin-left:0; }
-  .generic-drop-builder summary { align-items:flex-start; flex-direction:column; }
-  .reward-multiplier-row { align-items:stretch; flex-direction:column; }
-  .reward-multiplier-options { width:100%; overflow-x:auto; }
   .pending-drop-head { display:none; }
   .pending-drop-row { grid-template-columns:minmax(0,1fr) 70px; }
   .pending-kind { grid-column:1 / -1; }
+  .pending-main { grid-column:1 / -1; }
+  .pending-quantity,.pending-quantity-label { grid-column:1; max-width:112px; }
+  .pending-remove { grid-column:2; }
   .pending-main .drop-item-icon { width:36px; height:36px; flex-basis:36px; }
   .deploy-dock { position:static; align-items:stretch; flex-direction:column; }
   .dock-actions,.dock-actions .ui-btn { width:100%; }

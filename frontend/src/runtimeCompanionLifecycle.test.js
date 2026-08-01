@@ -38,6 +38,21 @@ test('camera signatures scan only committed readable regions', () => {
   assert.doesNotMatch(scanner, /LM_SigScan|LM_PatternScan/)
 })
 
+test('camera applies to the already-created town camera and follows scene replacements', () => {
+  const camera = source.slice(source.indexOf('// Camera runtime.'), source.indexOf('#pragma pack(push, 1)'))
+  assert.match(camera, /g_cameraSettingsGlobal/)
+  assert.match(camera, /settingsGlobalSignature/)
+  assert.match(camera, /ResolveRIPGlobal\([^,]+, 3, 7\)/)
+  assert.match(camera, /static void RefreshCameraSettingsFromGlobal\(\)/)
+
+  const startup = camera.slice(camera.indexOf('static DWORD RunCameraRuntime()'))
+  const installed = startup.indexOf('WriteRuntimeStatus(L"camera", L"active"')
+  assert.ok(startup.indexOf('RefreshCameraSettingsFromGlobal()') < installed,
+    'the current camera must be updated before startup reports active')
+  assert.ok(startup.lastIndexOf('RefreshCameraSettingsFromGlobal()') > installed,
+    'the runtime loop must follow camera objects replaced on a scene change')
+})
+
 test('callback runtimes use the shared drain-before-free restoration path', () => {
   const audio = source.slice(source.indexOf('static bool StopAudioRuntime()'), source.indexOf('static DWORD RunAudioRuntime()'))
   assert.ok(audio.indexOf('g_audioStopping.store(true)') < audio.indexOf('RestoreLibmemHookAfterDrain'))
@@ -68,4 +83,24 @@ test('the pages do not expose external-loader or mod-directory selection', () =>
     assert.doesNotMatch(value, /Mods directory|Mods 目录|Select\w+ModsDirectory/)
     assert.match(value, /BUILT-IN|内置运行时/)
   }
+})
+
+test('virtual sigil page cannot report a stale previous-process status as active', () => {
+  const page = readFileSync(new URL('./components/VirtualSigilLab.vue', import.meta.url), 'utf8')
+  assert.match(page, /workspace\.value\?\.installed\s*&&\s*workspace\.value\?\.owned\s*&&\s*workspace\.value\?\.state\s*===\s*'active'/)
+})
+
+test('audio mixer cannot report a stale previous-process status as active', () => {
+  const page = readFileSync(new URL('./components/AudioMixerLab.vue', import.meta.url), 'utf8')
+  assert.match(page, /const runtimeActive = computed\(\(\) => workspace\.value\?\.installed === true && workspace\.value\?\.owned === true && workspace\.value\?\.state === 'active'\)/)
+  assert.match(page, /runtimeActive \? tx\('音频运行时正在工作'/)
+  assert.doesNotMatch(page, /workspace\?\.state === 'active' \? tx\('音频运行时正在工作'/)
+})
+
+test('independent runtime DLL copies serialize executable-byte restoration', () => {
+  const patching = source.slice(source.indexOf('static bool PatchBytes('), source.indexOf('static const lm_byte_t kMonsterCaveMarker'))
+  assert.match(patching, /CreateMutexW/)
+  assert.match(patching, /GetCurrentProcessId/)
+  assert.match(patching, /WaitForSingleObject/)
+  assert.match(patching, /ReleaseMutex/)
 })

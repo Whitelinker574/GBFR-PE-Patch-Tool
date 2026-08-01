@@ -37,11 +37,12 @@ type RuntimeSpatialHotkeyStatus struct {
 }
 
 type runtimeSpatialHotkeyConfig struct {
-	Enabled   bool
-	Speed     float64
-	Owner     string
-	Process   processInstanceID
-	LastError string
+	Enabled     bool
+	Speed       float64
+	Owner       string
+	Process     processInstanceID
+	GameVersion string
+	LastError   string
 }
 
 func foregroundProcessID() uint32 {
@@ -103,6 +104,11 @@ func (a *App) runtimeSpatialHotkeyStatusLocked() RuntimeSpatialHotkeyStatus {
 	if !isFiniteFloat64(speed) || speed < 0.1 || speed > 1000 {
 		speed = 8
 	}
+	gameVersion := strings.TrimSpace(config.GameVersion)
+	source := ""
+	if gameVersion != "" {
+		source = "game_runtime_spatial_hotkeys_" + gameVersion
+	}
 	return RuntimeSpatialHotkeyStatus{
 		Enabled:        config.Enabled,
 		ForegroundOnly: true,
@@ -110,8 +116,8 @@ func (a *App) runtimeSpatialHotkeyStatusLocked() RuntimeSpatialHotkeyStatus {
 		OwnerLeaseID:   config.Owner,
 		PID:            config.Process.PID,
 		ProcessCreated: config.Process.Created,
-		GameVersion:    "2.0.2",
-		Source:         "game_runtime_spatial_hotkeys_2.0.2",
+		GameVersion:    gameVersion,
+		Source:         source,
 		LastError:      config.LastError,
 	}
 }
@@ -171,13 +177,21 @@ func (a *App) RuntimeSpatialHotkeysSetEnabledOwned(owner string, enabled bool, s
 		a.runtimeSpatialHotkeyMu.Unlock()
 		return status, err
 	}
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		a.procMu.Unlock()
+		status := a.runtimeSpatialHotkeyStatusLocked()
+		a.runtimeSpatialHotkeyMu.Unlock()
+		return status, err
+	}
 	a.procMu.Unlock()
 
 	a.runtimeSpatialHotkey = runtimeSpatialHotkeyConfig{
-		Enabled: true,
-		Speed:   speed,
-		Owner:   owner,
-		Process: process,
+		Enabled:     true,
+		Speed:       speed,
+		Owner:       owner,
+		Process:     process,
+		GameVersion: layout.Version,
 	}
 	status := a.runtimeSpatialHotkeyStatusLocked()
 	a.runtimeSpatialHotkeyMu.Unlock()

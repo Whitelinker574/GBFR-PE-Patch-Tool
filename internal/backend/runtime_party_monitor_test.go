@@ -17,15 +17,15 @@ func (m *fakeRuntimePanelMemory) putU64(address uintptr, value uint64) {
 	m.put(address, encoded)
 }
 
-func putRuntimePatchPartySignature(t *testing.T, memory *fakeRuntimePanelMemory, moduleBase uintptr) {
+func putRuntimePatchPartySignatureForLayout(t *testing.T, memory *fakeRuntimePanelMemory, moduleBase uintptr, layout runtimeGameLayout) {
 	t.Helper()
 	pattern, err := parseRuntimePatchPattern(runtimePatchPartyPointerAOB)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bytes := append([]byte(nil), pattern.Values...)
-	site := moduleBase + runtimeGameLayouts[0].PartyPointerRVA
-	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
+	site := moduleBase + layout.PartyPointerRVA
+	root := moduleBase + layout.PartySlotTableRVA
 	displacement := int64(root) - int64(site+7)
 	if displacement < math.MinInt32 || displacement > math.MaxInt32 {
 		t.Fatalf("party RIP displacement out of range: %d", displacement)
@@ -158,12 +158,16 @@ func putRuntimePatchPartyMap(memory *fakeRuntimePanelMemory, manager uintptr, la
 }
 
 func newRuntimePatchPartyFixture(t *testing.T) (*fakeRuntimePanelMemory, uintptr) {
+	return newRuntimePatchPartyFixtureForLayout(t, runtimeGameLayouts[0])
+}
+
+func newRuntimePatchPartyFixtureForLayout(t *testing.T, layout runtimeGameLayout) (*fakeRuntimePanelMemory, uintptr) {
 	t.Helper()
 	memory := newFakeRuntimePanelMemory()
 	moduleBase := uintptr(0x10000000)
-	putRuntimePatchPartySignature(t, memory, moduleBase)
+	putRuntimePatchPartySignatureForLayout(t, memory, moduleBase, layout)
 
-	root := moduleBase + runtimeGameLayouts[0].PartySlotTableRVA
+	root := moduleBase + layout.PartySlotTableRVA
 	entities := [...]uintptr{0x21000000, 0x22000000, 0x23000000, 0x24000000}
 	for index, entity := range entities {
 		specified := entity + 0x10000
@@ -178,7 +182,7 @@ func newRuntimePatchPartyFixture(t *testing.T) (*fakeRuntimePanelMemory, uintptr
 		memory.putF32(entity+0x7000+runtimePatchPartyPositionXOffset, float32(10+index))
 		memory.putF32(entity+0x7000+runtimePatchPartyPositionYOffset, float32(20+index))
 		memory.putF32(entity+0x7000+runtimePatchPartyPositionZOffset, float32(30+index))
-		putRuntimePatchPartyValidatedHandle(memory, moduleBase, index, uint32(index+1), entity, uint64(0xA000+index), specified)
+		putRuntimePatchPartyValidatedHandleForLayout(memory, moduleBase, layout, index, uint32(index+1), entity, uint64(0xA000+index), specified)
 		putRuntimePatchPartyLoadout(memory, specified, specified+0x30000, uint32(index))
 		putRuntimePatchPartyExpansionLoadout(memory, moduleBase, specified)
 	}
@@ -243,6 +247,20 @@ func TestReadRuntimePatchPartySnapshotUsesVerified202LayoutAndOptionalCompanionF
 	}
 	if companion.DirectPosition.X != 51 || companion.DirectPosition.Y != 52 || companion.DirectPosition.Z != 53 {
 		t.Fatalf("companion direct position=%+v", companion.DirectPosition)
+	}
+}
+
+func TestReadRuntimePatchPartySnapshotKeeps203VersionWithoutCompanion(t *testing.T) {
+	memory, moduleBase := newRuntimePatchPartyFixtureForLayout(t, runtimeGameLayouts[1])
+	root := moduleBase + runtimeGameLayouts[1].PartySlotTableRVA
+	memory.putPtr(root+runtimePatchPartyCompanionSlotOffset, 0)
+
+	snapshot, err := readRuntimePatchPartySnapshot(memory, moduleBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Result.GameVersion != "2.0.3" || snapshot.Result.Source != "game_runtime_patch_2.0.3" {
+		t.Fatalf("companion-free 2.0.3 snapshot lost its detected layout: %+v", snapshot.Result)
 	}
 }
 
@@ -538,19 +556,26 @@ func TestRuntimePatchPartyLoadoutRejectsUnverifiedRuntimeSigilHash(t *testing.T)
 }
 
 func putRuntimePatchPartyValidatedHandle(memory *fakeRuntimePanelMemory, moduleBase uintptr, slot int, indexPlusOne uint32, entity uintptr, id uint64, specified uintptr) {
+	putRuntimePatchPartyValidatedHandleForLayout(memory, moduleBase, runtimeGameLayouts[0], slot, indexPlusOne, entity, id, specified)
+}
+
+func putRuntimePatchPartyValidatedHandleForLayout(memory *fakeRuntimePanelMemory, moduleBase uintptr, layout runtimeGameLayout, slot int, indexPlusOne uint32, entity uintptr, id uint64, specified uintptr) {
 	entityTable := uintptr(0x41000000)
 	entityArray := uintptr(0x42000000)
 	idArray := uintptr(0x43000000)
-	memory.putPtr(moduleBase+runtimeGameLayouts[0].PartyEntityTableRVA, entityTable)
+	memory.putPtr(moduleBase+layout.PartyEntityTableRVA, entityTable)
 	memory.putPtr(entityTable+runtimePatchPartyEntityArrayOffset, entityArray)
 	memory.putPtr(entityTable+runtimePatchPartyIDArrayOffset, idArray)
-	handle := moduleBase + runtimeGameLayouts[0].PartyHandleTableRVA + uintptr(slot)*runtimePatchPartyHandleStride
+	handle := moduleBase + layout.PartyHandleTableRVA + uintptr(slot)*runtimePatchPartyHandleStride
 	memory.putU32(handle, indexPlusOne)
 	memory.putPtr(handle+runtimePatchPartyHandleEntityOffset, entity)
 	memory.putU64(handle+runtimePatchPartyHandleIDOffset, id)
 	index := uintptr(indexPlusOne - 1)
 	memory.putPtr(entityArray+index*8, entity)
 	memory.putU64(idArray+index*8, id)
+	if layout.PartyHandleRootOffset != 0 {
+		memory.putPtr(entity+layout.PartyHandleRootOffset, entity)
+	}
 	memory.putPtr(entity+runtimePatchPartySpecifiedInstanceOffset, specified)
 }
 

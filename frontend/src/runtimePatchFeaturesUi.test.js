@@ -96,7 +96,9 @@ test('the three live-patch routes share one persistent categorized session and u
   assert.match(patchTool, /<RuntimePatchFeatures[\s\S]*?v-if="runtimePatchesMounted"[\s\S]*?v-show="isRuntimePatchTab"[\s\S]*?:mode="runtimePatchMode"/)
   assert.match(patchTool, /watch\(activeTab,[\s\S]*?runtimePatchesMounted\.value = true/)
   assert.match(patchTool, /@session-change="updateCTFeatureSession"/)
-  assert.match(patchTool, /ctFeatureSession\.connected[\s\S]*?实时补丁常驻/)
+  assert.match(patchTool, /showCTFeatureStatus[\s\S]*?实时补丁已开启/)
+  assert.match(patchPage, /const activeFeatureRoute = computed/)
+  assert.match(patchPage, /route: activeFeatureRoute\.value/)
 
   assert.match(patchTool, /id:\s*'runtimeTools'[\s\S]*?items:\s*\[[^\]]*'patchCombat'[^\]]*'patchCharacters'[^\]]*'patchQuest'[^\]]*\]/)
   assert.match(home, /id:\s*'patchCombat'/)
@@ -115,6 +117,8 @@ test('page navigation hides the persistent patch session without unmounting or r
   assert.doesNotMatch(patchTool, /<section v-else :key="activeTab" class="tool-stage"/)
   assert.match(patchPage, /const emit = defineEmits\(\['status', 'session-change'\]\)/)
   assert.match(patchPage, /emit\('session-change',[\s\S]*?connected:/)
+  assert.match(patchPage, /const activeFeatureNames = computed\(/)
+  assert.match(patchPage, /activeFeatures:\s*\[\.\.\.activeFeatureNames\.value\]/)
   assert.match(patchPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseRuntimePatchPageOwner/)
 })
 

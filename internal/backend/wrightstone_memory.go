@@ -108,11 +108,10 @@ func (a *App) scanWrightstoneMemoryLocked() (WrightstoneMemoryStatus, error) {
 	if a.hProcess == 0 || a.moduleBase == 0 {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("未连接游戏进程")
 	}
-	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	addr, err := a.resolveWrightstoneMemoryHookLocked()
 	if err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("定位祝福实时编辑入口失败: %w", err)
 	}
-	addr := a.moduleBase + layout.WrightstoneHookRVA
 	guard := make([]byte, len(wrightstoneMemoryGuardBytes))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&guard[0]), uintptr(len(guard))); err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("读取祝福焦点指令失败: %w", err)
@@ -205,11 +204,10 @@ func (a *App) wrightstoneMemoryEnableLocked() (WrightstoneMemoryStatus, error) {
 	if err != nil || status.Hooked {
 		return status, err
 	}
-	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
-	if err != nil {
+	if _, err := a.resolveItemSaveFunctionLocked(); err != nil {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("定位祝福保存函数失败: %w", err)
 	}
-	if err := a.validateRemoteFunctionStart(a.moduleBase+layout.SaveFunctionRVA, "游戏内祝福保存函数"); err != nil {
+	if err := a.validateRemoteFunctionStart(a.itemSaveFunctionAddr, "游戏内祝福保存函数"); err != nil {
 		return WrightstoneMemoryStatus{}, err
 	}
 	original := make([]byte, wrightstoneMemoryHookSize)
@@ -438,11 +436,10 @@ func (a *App) WrightstoneMemoryDisable() (WrightstoneMemoryStatus, error) {
 }
 
 func (a *App) saveWrightstoneMemory(base uintptr) error {
-	layout, err := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	fn, err := a.resolveItemSaveFunctionLocked()
 	if err != nil {
 		return err
 	}
-	fn := a.moduleBase + layout.SaveFunctionRVA
 	for offset := uintptr(0); offset < wrightstoneMemoryRecordSize; offset += 4 {
 		if err := a.callRemoteOneArg(fn, base+offset); err != nil {
 			return fmt.Errorf("保存祝福字段 +0x%02X 失败: %w", offset, err)
@@ -463,9 +460,23 @@ func (a *App) readWrightstoneMemoryStatusLocked() (WrightstoneMemoryStatus, erro
 	if !hooked && !isWrightstoneMemoryOriginal(current) {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常: %s", bytesToHex(current))
 	}
-	layout, err := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	layout, layoutErr := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	knownSaveRVA := uintptr(0)
+	if layoutErr == nil {
+		knownSaveRVA = layout.SaveFunctionRVA
+	}
+	saveRVA, err := a.itemSaveRVAForStatusLocked(knownSaveRVA)
 	if err != nil {
 		return WrightstoneMemoryStatus{}, err
+	}
+	if layoutErr != nil {
+		layout = runtimeGameLayout{
+			Version:            "AOB",
+			WrightstoneHookRVA: a.wrightstoneMemoryHookAddr - a.moduleBase,
+			SaveFunctionRVA:    saveRVA,
+		}
+	} else {
+		layout.SaveFunctionRVA = saveRVA
 	}
 	status := newWrightstoneMemoryStatus(true, hooked, a.wrightstoneMemoryHookAddr, a.moduleBase, current, layout)
 	if !hooked {
@@ -546,11 +557,22 @@ func isWrightstoneMemoryGuard(buf []byte, hooked bool) bool {
 	if len(buf) < len(wrightstoneMemoryGuardBytes) {
 		return false
 	}
-	if !hooked {
-		return bytes.Equal(buf[:len(wrightstoneMemoryGuardBytes)], wrightstoneMemoryGuardBytes)
+	pattern, err := parseRuntimePatchPattern(runtimeWrightstoneHookAOB)
+	if err != nil || len(pattern.Values) < len(wrightstoneMemoryGuardBytes) {
+		return false
 	}
-	return isWrightstoneMemoryJump(buf[:wrightstoneMemoryHookSize]) &&
-		bytes.Equal(buf[wrightstoneMemoryHookSize:len(wrightstoneMemoryGuardBytes)], wrightstoneMemoryGuardBytes[wrightstoneMemoryHookSize:])
+	guardPattern := runtimePatchPattern{
+		Values: pattern.Values[:len(wrightstoneMemoryGuardBytes)],
+		Mask:   pattern.Mask[:len(wrightstoneMemoryGuardBytes)],
+	}
+	if !hooked {
+		return matchRuntimePatchPattern(buf, guardPattern)
+	}
+	suffix := runtimePatchPattern{
+		Values: guardPattern.Values[wrightstoneMemoryHookSize:],
+		Mask:   guardPattern.Mask[wrightstoneMemoryHookSize:],
+	}
+	return isWrightstoneMemoryJump(buf[:wrightstoneMemoryHookSize]) && matchRuntimePatchPattern(buf[wrightstoneMemoryHookSize:], suffix)
 }
 
 func isWrightstoneMemoryJump(buf []byte) bool {

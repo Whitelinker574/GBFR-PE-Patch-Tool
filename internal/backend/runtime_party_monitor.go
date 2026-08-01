@@ -205,8 +205,8 @@ func readStableRuntimePatchPartySnapshots(readSnapshot func() (runtimePatchParty
 			loadout.Stable = true
 			loadout.SnapshotCount = runtimePatchPartySnapshotCount
 			loadout.Evidence = runtimePatchMonitorText(
-				"连续三快照内容一致；2.0.2 候选布局，仍需现场逐项对照",
-				"Content matched across three snapshots; candidate 2.0.2 layout pending live field-by-field comparison",
+				fmt.Sprintf("连续三快照内容一致；%s 候选布局，仍需现场逐项对照", result.GameVersion),
+				fmt.Sprintf("Content matched across three snapshots; candidate %s layout pending live field-by-field comparison", result.GameVersion),
 			)
 		}
 	}
@@ -252,6 +252,8 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 
 	var snapshot runtimePatchPartySnapshot
 	snapshot.Topology.Root = root
+	snapshot.Result.GameVersion = layout.Version
+	snapshot.Result.Source = "game_runtime_patch_" + layout.Version
 	snapshot.Result.Entities = make([]RuntimePatchPartyEntity, 0, 5)
 	roles := [...]string{"player", "party1", "party2", "party3"}
 	for index, role := range roles {
@@ -277,7 +279,7 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 		var loadoutBase uintptr
 		var loadoutFingerprint [32]byte
 		if resolveErr == nil {
-			loadout, fingerprint, loadoutErr := readRuntimePatchPartyLoadoutAtWithModule(memory, moduleBase, resolved.Specified, "validated party handle -> entity+0x70 -> instance+2.0.2 player record")
+			loadout, fingerprint, loadoutErr := readRuntimePatchPartyLoadoutAtWithModule(memory, moduleBase, resolved.Specified, "validated party handle -> entity+0x70 -> instance+"+layout.Version+" player record")
 			if loadoutErr == nil {
 				loadoutErr = validateRuntimePatchPartyLoadoutSlot(loadout, index)
 			}
@@ -329,8 +331,6 @@ func readRuntimePatchPartySnapshot(memory runtimePatchPartyMemory, moduleBase ui
 	snapshot.Topology.Entities[4] = companion
 	snapshot.Topology.TransformNodes[4] = companionNodes
 	snapshot.Result.Entities = append(snapshot.Result.Entities, companionResult)
-	snapshot.Result.GameVersion = layout.Version
-	snapshot.Result.Source = "game_runtime_patch_" + layout.Version
 	return snapshot, nil
 }
 

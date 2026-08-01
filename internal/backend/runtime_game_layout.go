@@ -20,6 +20,7 @@ type runtimeGameLayout struct {
 	PartyCharaPowerRVA    uintptr
 	SummonInventoryPtrRVA uintptr
 	SpatialGravityRVA     uintptr
+	InventoryMaterialRVA  uintptr
 }
 
 var runtimeGameLayouts = [...]runtimeGameLayout{
@@ -31,7 +32,7 @@ var runtimeGameLayouts = [...]runtimeGameLayout{
 		SelectedMaterialRVA:   0x3F4BAC3, SelectedKeyItemRVA: 0x3F2061C,
 		SigilHookRVA: 0x345157, WrightstoneHookRVA: 0x361CB4,
 		SaveFunctionRVA: 0x79D820, PartyCharaPowerRVA: 0x7C24A78, SummonInventoryPtrRVA: 0x7C23F48,
-		SpatialGravityRVA: 0x39DD964,
+		SpatialGravityRVA: 0x39DD964, InventoryMaterialRVA: 0x356621,
 	},
 	{
 		Version:         "2.0.3",
@@ -41,8 +42,17 @@ var runtimeGameLayouts = [...]runtimeGameLayout{
 		SelectedMaterialRVA:   0x3F479F3, SelectedKeyItemRVA: 0x3F1C54C,
 		SigilHookRVA: 0x33E427, WrightstoneHookRVA: 0x35AF84,
 		SaveFunctionRVA: 0x796E60, PartyCharaPowerRVA: 0x7C21A38, SummonInventoryPtrRVA: 0x7C20F08,
-		SpatialGravityRVA: 0x39D8E24,
+		SpatialGravityRVA: 0x39D8E24, InventoryMaterialRVA: 0x34F8F1,
 	},
+}
+
+func isKnownRuntimeGameLayout(candidate runtimeGameLayout) bool {
+	for _, layout := range runtimeGameLayouts {
+		if candidate == layout {
+			return true
+		}
+	}
+	return false
 }
 
 func detectRuntimeGameLayout(memory runtimePatchPartyMemory, moduleBase uintptr) (runtimeGameLayout, error) {

@@ -29,7 +29,16 @@ test('managed runtime companions stay visible from every page and refresh withou
   assert.match(shell, /document\.hidden/)
   assert.match(shell, /visibilitychange/)
   assert.match(shell, /v-for="companion in activeRuntimeCompanions"/)
-  assert.match(shell, /@click="selectTool\(companion\.id\)"/)
+  assert.match(shell, /@click="selectTool\(companion\.route\)"/)
+  assert.match(shell, /runtimeMonitor:\s*\{ id: 'runtimeMonitor'/, 'background loadout detection must have a shell status entry')
+  assert.match(shell, /runtimeMonitor:\s*\['配装检测', 'Loadout detector'\]/)
+  assert.match(shell, /spatialTools:\s*\['空间移动', 'Spatial controls'\]/)
+  assert.match(shell, /selectedItemMonitor:\s*\['物品捕获', 'Item capture'\]/)
+  assert.match(shell, /taskRewardMultiplier:\s*\['任务奖励', 'Quest rewards'\]/)
+  assert.match(shell, /taskRewardMultiplier:\s*'naturalDrop'/)
+  assert.match(shell, /@runtime-state="updateRuntimeCompanionState"/)
+  assert.match(shell, /companion\.stateLabel/)
+  assert.match(shell, /已开启 · 点击返回对应页面关闭/)
   for (const component of ['AudioMixerLab', 'CameraLab', 'VirtualSigilLab']) {
     assert.match(shell, new RegExp(`<${component} v-if="activeTab === '[^"]+'"[^>]*@runtime-state="updateRuntimeCompanionState"`))
     const source = read(`./components/${component}.vue`)
@@ -39,6 +48,25 @@ test('managed runtime companions stay visible from every page and refresh withou
   }
   assert.match(read('./components/AudioMixerLab.vue'), /onActivated\(\(\) => \{ void refresh\(\) \}\)/)
   assert.match(read('./components/CameraLab.vue'), /onActivated\(\(\) => \{ void refresh\(\) \}\)/)
+  for (const component of ['AudioMixerLab', 'CameraLab']) {
+    const source = read(`./components/${component}.vue`)
+    assert.match(source, /const runtimeActive = computed\(\(\) => workspace\.value\?\.installed === true && workspace\.value\?\.owned === true && workspace\.value\?\.state === 'active'\)/)
+  }
+  assert.match(read('./components/VirtualSigilLab.vue'), /\.virtual-workspace\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/s, 'virtual-sigil workspace must stay single-column at desktop widths so its actions remain reachable')
+  assert.match(read('./components/VirtualSigilLab.vue'), /\.virtual-lab\s*\{[^}]*max-width:1600px[^}]*margin-inline:0 auto/s)
+  assert.match(read('./components/VirtualSigilLab.vue'), /\.virtual-dock\s*\{[^}]*flex-direction:column/s)
+})
+
+test('CT status appears only for enabled or recovering features and names small active sets', () => {
+  assert.match(shell, /activeFeatures:\s*\[\]/)
+  assert.match(shell, /const showCTFeatureStatus = computed\(\(\) => ctFeatureSession\.releasePending \|\| ctFeatureSession\.activeCount > 0 \|\| ctFeatureSession\.recoveryCount > 0\)/)
+  assert.match(shell, /names\.length === 1/)
+  assert.match(shell, /names\.length === 2/)
+  assert.match(shell, /v-if="showCTFeatureStatus"/)
+  assert.doesNotMatch(shell, /v-if="ctFeatureSession\.connected \|\| ctFeatureSession\.releasePending"/)
+  assert.match(shell, /@click="selectTool\(ctFeatureSession\.route\)"/)
+  assert.match(shell, /summary\?\.id === 'runtimePatches'/)
+  assert.match(shell, /\.titlebar-runtime-sessions\s*\{[^}]*overflow-x:auto;/s)
 })
 
 test('cached polling pages pause UI clocks while hidden and resume the same session', () => {

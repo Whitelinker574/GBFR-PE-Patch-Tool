@@ -56,6 +56,10 @@ type RuntimeCompanionSummary struct {
 	Active           bool   `json:"active"`
 	Owned            bool   `json:"owned"`
 	RecoveryRequired bool   `json:"recoveryRequired"`
+	ActiveCount      int    `json:"activeCount,omitempty"`
+	RecoveryCount    int    `json:"recoveryCount,omitempty"`
+	Multiplier       int    `json:"multiplier,omitempty"`
+	PID              uint32 `json:"pid,omitempty"`
 }
 
 func runtimeCompanionMatchesProcess(status runtimeCompanionStatus, process processInstanceID) bool {
@@ -706,7 +710,94 @@ func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 		}
 		result = append(result, summary)
 	}
+	a.runtimeLoadoutDetectorMu.Lock()
+	detector := a.runtimeLoadoutDetector
+	a.runtimeLoadoutDetectorMu.Unlock()
+	if detector != nil {
+		status := detector.status()
+		result = append(result, RuntimeCompanionSummary{ID: "runtimeMonitor", State: status.State, Active: status.Enabled})
+	} else {
+		result = append(result, RuntimeCompanionSummary{ID: "runtimeMonitor", State: "stopped"})
+	}
+	result = append(result, a.runtimePatchCompanionSummary(), a.taskRewardMultiplierCompanionSummary())
 	return result
+}
+
+func (a *App) taskRewardMultiplierCompanionSummary() RuntimeCompanionSummary {
+	summary := RuntimeCompanionSummary{ID: "taskRewardMultiplier", State: "inactive", Multiplier: 1}
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	process := a.currentProcessInstance()
+	if a.hProcess == 0 || process.PID == 0 || process.Created == 0 || !processHandleAlive(a.hProcess) {
+		return summary
+	}
+	live, err := findRuntimeProcessInstance()
+	if err != nil || !sameProcessInstance(live, process) {
+		return summary
+	}
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	lease := a.taskRewardMultiplierLease
+	if lease == nil || lease.OwnerToken == "" || lease.OwnerToken != a.charaOwnerToken || !sameProcessInstance(lease.Process, process) {
+		return summary
+	}
+	summary.PID = process.PID
+	summary.Multiplier = lease.Multiplier
+	summary.Active = lease.Multiplier > 1
+	summary.Owned = true
+	if summary.Active {
+		summary.State = "active"
+	}
+	return summary
+}
+
+func (a *App) runtimePatchCompanionSummary() RuntimeCompanionSummary {
+	summary := RuntimeCompanionSummary{ID: "runtimePatches", State: "inactive"}
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	process := a.currentProcessInstance()
+	if a.hProcess == 0 || process.PID == 0 || process.Created == 0 || !processHandleAlive(a.hProcess) {
+		return summary
+	}
+	live, err := findRuntimeProcessInstance()
+	if err != nil || !sameProcessInstance(live, process) {
+		return summary
+	}
+	summary.PID = process.PID
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	owner := a.charaOwnerToken
+	for _, lease := range a.runtimePatchPatchLeases {
+		if owner == "" || lease.OwnerToken != owner || !sameProcessInstance(lease.Process, process) {
+			continue
+		}
+		if lease.State == runtimePatchPatchEnabled {
+			summary.ActiveCount++
+		} else {
+			summary.RecoveryCount++
+		}
+	}
+	if lease := a.confluxTimerLease; lease != nil && owner != "" && lease.OwnerToken == owner && sameProcessInstance(lease.Process, process) {
+		if lease.State == confluxTimerLeaseEnabled {
+			summary.ActiveCount++
+		} else {
+			summary.RecoveryCount++
+		}
+	}
+	for _, lease := range []*combatTuningLease{a.combatTuningCooldownLease, a.combatTuningChargeLease} {
+		if lease != nil && lease.active() && owner != "" && lease.OwnerToken == owner && sameProcessInstance(lease.Process, process) {
+			summary.ActiveCount++
+		}
+	}
+	summary.Active = summary.ActiveCount > 0
+	summary.Owned = owner != "" && (summary.ActiveCount > 0 || summary.RecoveryCount > 0)
+	summary.RecoveryRequired = summary.RecoveryCount > 0
+	if summary.RecoveryRequired {
+		summary.State = "recovery_required"
+	} else if summary.Active {
+		summary.State = "active"
+	}
+	return summary
 }
 
 func extractAndInjectPatchCore(hProcess windows.Handle, command string) (string, error) {
@@ -772,7 +863,7 @@ func cleanupRuntimeCompanionDLL(feature string) {
 }
 
 func (a *App) startRuntimeCompanion(feature, command string) error {
-	if feature != "camera" && feature != "audio" && feature != "virtual-sigils" && feature != "damage" && feature != "qol" {
+	if feature != "camera" && feature != "audio" && feature != "virtual-sigils" && feature != "damage" && feature != "qol" && feature != "party-observer" {
 		return errors.New("未知运行时组件")
 	}
 	if err := a.acquireGameProcessLease(); err != nil {

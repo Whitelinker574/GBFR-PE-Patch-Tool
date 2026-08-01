@@ -121,6 +121,28 @@ const activeFeatureCount = computed(() => statuses.value.filter(status => status
   + (confluxStatus.value.enabled && confluxStatus.value.owned ? 1 : 0)
   + Number(combatTuningStatus.value.cooldown.enabled)
   + Number(combatTuningStatus.value.charge.enabled))
+const activeFeatureNames = computed(() => {
+  const names = statuses.value
+    .filter(status => status.enabled)
+    .map(status => catalog.value.find(feature => feature.id === status.id))
+    .filter(Boolean)
+    .map(feature => translateRuntimePatchFeatureName(feature, language.value))
+  if (confluxStatus.value.enabled && confluxStatus.value.owned) names.push(tr(CONFLUX_FEATURE.name))
+  if (combatTuningStatus.value.cooldown.enabled) names.push(tr(COOLDOWN_FEATURE.name))
+  if (combatTuningStatus.value.charge.enabled) names.push(tr(CHARGE_FEATURE.name))
+  return names
+})
+const activeFeatureRoute = computed(() => {
+  const activeFeature = statuses.value
+    .filter(status => status.enabled)
+    .map(status => catalog.value.find(feature => feature.id === status.id))
+    .find(Boolean)
+  const mode = activeFeature?.mode
+    || (confluxStatus.value.enabled && confluxStatus.value.owned ? 'quest' : '')
+    || (combatTuningStatus.value.cooldown.enabled ? 'combat' : '')
+    || (combatTuningStatus.value.charge.enabled ? 'characters' : '')
+  return ({ combat: 'patchCombat', characters: 'patchCharacters', quest: 'patchQuest' })[mode] || 'patchCombat'
+})
 const recoveryFeatureCount = computed(() => statuses.value.filter(status => !status.enabled && status.rvas.length > 0).length + (confluxStatus.value.owned && !confluxStatus.value.enabled ? 1 : 0))
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value)
@@ -148,6 +170,8 @@ function publishSession() {
     connected: connected.value,
     releasePending: releasePending.value,
     activeCount: activeFeatureCount.value,
+    activeFeatures: [...activeFeatureNames.value],
+    route: activeFeatureRoute.value,
     recoveryCount: recoveryFeatureCount.value,
     pid: connected.value ? processInfo.value.pid : 0,
   }))
@@ -156,7 +180,7 @@ function publishSession() {
 watch(groups, (nextGroups) => {
   if (!nextGroups.some(group => group.key === activeGroupKey.value)) activeGroupKey.value = nextGroups[0]?.key || ''
 }, { immediate: true })
-watch([connected, releasePending, activeFeatureCount, recoveryFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
+watch([connected, releasePending, activeFeatureCount, activeFeatureNames, activeFeatureRoute, recoveryFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
 watch(pendingConfirmationFeature, async (feature) => {
   if (!feature) return
   await nextTick()

@@ -512,8 +512,25 @@ static bool PatchBytesWhileSuspended(lm_address_t target, const lm_byte_t* patch
 
 static bool PatchBytes(lm_address_t target, const lm_byte_t* patch, lm_size_t size)
 {
+    // Camera, audio, virtual-sigil and other companions are loaded as separate
+    // DLL copies. Their process-watchdog threads can all restore at once when
+    // the desktop owner exits. Serialize that cross-module critical section so
+    // one copy cannot suspend another halfway through its own restoration.
+    wchar_t mutexName[96]{};
+    swprintf_s(mutexName, L"Local\\GBFRPatchCoreBytes-%lu", GetCurrentProcessId());
+    HANDLE patchMutex = CreateMutexW(nullptr, FALSE, mutexName);
+    if (!patchMutex) return false;
+    const DWORD wait = WaitForSingleObject(patchMutex, 10000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED)
+    {
+        CloseHandle(patchMutex);
+        return false;
+    }
     ScopedOtherThreadSuspension suspension;
-    return suspension.Active() && PatchBytesWhileSuspended(target, patch, size);
+    const bool restored = suspension.Active() && PatchBytesWhileSuspended(target, patch, size);
+    ReleaseMutex(patchMutex);
+    CloseHandle(patchMutex);
+    return restored;
 }
 
 static const lm_byte_t kMonsterCaveMarker[] = { 'G', 'B', 'F', 'R', 'M', 'H', '0', '3' };
@@ -1312,6 +1329,8 @@ static bool PatchStunHook(lm_address_t target, wchar_t* message, size_t messageS
     return true;
 }
 
+static lm_address_t ResolveRIPGlobal(lm_address_t instruction, size_t displacementOffset, size_t instructionSize);
+
 // Camera runtime. This is deliberately independent from any external mod loader:
 // the desktop app injects this DLL and owns the configuration/status channel.
 using CameraInitFunction = uintptr_t(*)();
@@ -1323,6 +1342,7 @@ static lm_address_t g_cameraDecreaseTarget = LM_ADDRESS_BAD;
 static lm_address_t g_cameraIncreaseTarget = LM_ADDRESS_BAD;
 static lm_address_t g_cameraDecreaseCave = LM_ADDRESS_BAD;
 static lm_address_t g_cameraIncreaseCave = LM_ADDRESS_BAD;
+static lm_address_t g_cameraSettingsGlobal = LM_ADDRESS_BAD;
 static lm_byte_t g_cameraDecreaseOriginal[8]{};
 static lm_byte_t g_cameraIncreaseOriginal[8]{};
 static std::atomic<LONG> g_cameraCallbacks{ 0 };
@@ -1407,6 +1427,16 @@ static void ApplyCameraValuesLocked(uintptr_t settings)
     g_cameraAppliedDistance = g_cameraDistance;
     g_cameraAppliedHeight = g_cameraHeight;
     g_cameraHasApplied = true;
+}
+
+static void RefreshCameraSettingsFromGlobal()
+{
+    if (g_cameraSettingsGlobal == LM_ADDRESS_BAD || g_cameraStopping.load() ||
+        !MemoryRegionAllows(g_cameraSettingsGlobal, sizeof(uintptr_t), false)) return;
+    const uintptr_t settings = *reinterpret_cast<const uintptr_t*>(g_cameraSettingsGlobal);
+    AcquireSRWLockExclusive(&g_cameraLock);
+    ApplyCameraValuesLocked(settings);
+    ReleaseSRWLockExclusive(&g_cameraLock);
 }
 
 static uintptr_t CameraInitDetour()
@@ -1532,12 +1562,16 @@ static DWORD RunCameraRuntime()
         return 1;
     }
     const char* initSignature = "56 48 83 EC ?? 8B 05 ?? ?? ?? ?? 65 48 8B 0C 25 ?? ?? ?? ?? 48 8B 04 C1 48 8B 88 ?? ?? ?? ?? 48 8B 81 ?? ?? ?? ?? 48 8B 70 ?? 48 85 F6 0F 84 ?? ?? ?? ?? 89 F2 83 E2 ?? 0F 85 ?? ?? ?? ?? FF 40 ?? 48 8B 0E 48 89 48 ?? C5 F8 57 C0 C5 F8 29 46 ?? C5 F8 29 46";
+    const char* settingsGlobalSignature = "48 89 35 ?? ?? ?? ?? C5 F8 29 06 48 C7 46 10 00 00 00 00 48 8D 05";
     const char* decreaseSignature = "C5 FA 10 05 ?? ?? ?? ?? EB ?? C5 FA 10 05 ?? ?? ?? ?? C5 FA 58 05";
     const char* increaseSignature = "C5 FA 10 05 ?? ?? ?? ?? C5 FA 58 05 ?? ?? ?? ?? C5 FA 5D 05";
     g_cameraInitTarget = FindUniqueSignature(initSignature, module);
+    const lm_address_t settingsGlobalInstruction = FindUniqueSignature(settingsGlobalSignature, module);
+    g_cameraSettingsGlobal = ResolveRIPGlobal(settingsGlobalInstruction, 3, 7);
     g_cameraDecreaseTarget = FindUniqueSignature(decreaseSignature, module);
     g_cameraIncreaseTarget = FindUniqueSignature(increaseSignature, module);
-    if (g_cameraInitTarget == LM_ADDRESS_BAD || g_cameraDecreaseTarget == LM_ADDRESS_BAD || g_cameraIncreaseTarget == LM_ADDRESS_BAD)
+    if (g_cameraInitTarget == LM_ADDRESS_BAD || g_cameraSettingsGlobal == LM_ADDRESS_BAD ||
+        g_cameraDecreaseTarget == LM_ADDRESS_BAD || g_cameraIncreaseTarget == LM_ADDRESS_BAD)
     {
         WriteRuntimeInactiveAndReleaseOwner(L"camera", L"camera signature preflight failed or was ambiguous");
         return 1;
@@ -1556,6 +1590,7 @@ static DWORD RunCameraRuntime()
         WriteStartupFailureAfterStop(L"camera", restored, message[0] ? message : L"camera hook installation failed");
         return 1;
     }
+    RefreshCameraSettingsFromGlobal();
     WriteRuntimeStatus(L"camera", L"active", L"native camera runtime is active");
     FILETIME previous{};
     while (owner.Alive())
@@ -1567,6 +1602,7 @@ static DWORD RunCameraRuntime()
             previous = data.ftLastWriteTime;
             LoadCameraConfig(configPath.c_str(), false);
         }
+        RefreshCameraSettingsFromGlobal();
         Sleep(250);
     }
     StopCameraRuntime();
@@ -1694,7 +1730,7 @@ static bool ReadVirtualSigilConfig(const std::wstring& path, bool requireEnabled
     return header.enabled == 1;
 }
 
-static bool ResolveOwnedStatus(uintptr_t status, uint32_t characterHash, int contextMode)
+static bool ResolveOwnedStatusUnsafe(uintptr_t status, uint32_t characterHash, int contextMode)
 {
     if (!g_virtualLayout) return false;
     uintptr_t global = g_virtualModuleBase + g_virtualLayout->statusManagerGlobalRva;
@@ -1721,7 +1757,19 @@ static bool ResolveOwnedStatus(uintptr_t status, uint32_t characterHash, int con
     return false;
 }
 
-static bool FindInventoryGem(uint32_t slotId, RuntimeGemData& output)
+static bool ResolveOwnedStatus(uintptr_t status, uint32_t characterHash, int contextMode)
+{
+    __try
+    {
+        return ResolveOwnedStatusUnsafe(status, characterHash, contextMode);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+static bool FindInventoryGemUnsafe(uint32_t slotId, RuntimeGemData& output)
 {
     if (!g_virtualLayout) return false;
     uintptr_t global = g_virtualModuleBase + g_virtualLayout->systemDataGlobalRva;
@@ -1742,6 +1790,47 @@ static bool FindInventoryGem(uint32_t slotId, RuntimeGemData& output)
     return false;
 }
 
+static bool FindInventoryGem(uint32_t slotId, RuntimeGemData& output)
+{
+    __try
+    {
+        return FindInventoryGemUnsafe(slotId, output);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+static bool ReadVirtualSigilStatusFields(uintptr_t status, uint32_t& characterHash, int& contextMode)
+{
+    __try
+    {
+        if (!status || !MemoryRegionAllows(status + 0x5EA8, 8, false)) return false;
+        characterHash = *reinterpret_cast<uint32_t*>(status + 0x5EA8);
+        contextMode = *reinterpret_cast<int*>(status + 0x5EAC);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+static bool WriteVirtualSigilOutput(uintptr_t output, const RuntimeGemData& gem)
+{
+    __try
+    {
+        if (!output || !MemoryRegionAllows(output, sizeof(RuntimeGemData), true)) return false;
+        memcpy(reinterpret_cast<void*>(output), &gem, sizeof(gem));
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
 static uint8_t GetGemDataDetour(uintptr_t status, int slotIndex, uintptr_t output)
 {
     g_virtualCallbacks.fetch_add(1);
@@ -1749,9 +1838,9 @@ static uint8_t GetGemDataDetour(uintptr_t status, int slotIndex, uintptr_t outpu
     uint32_t slotCount = g_virtualSlotCount;
     if (slotIndex < kNativeSigilSlots || slotIndex >= kNativeSigilSlots + static_cast<int>(slotCount) || g_virtualStopping.load())
         return finish(g_originalGetGemData ? g_originalGetGemData(status, slotIndex, output) : 0);
-    if (!status || !output || !MemoryRegionAllows(status + 0x5EA8, 8, false) || !MemoryRegionAllows(output, sizeof(RuntimeGemData), true)) return finish(0);
-    uint32_t characterHash = *reinterpret_cast<uint32_t*>(status + 0x5EA8);
-    int contextMode = *reinterpret_cast<int*>(status + 0x5EAC);
+    uint32_t characterHash = 0;
+    int contextMode = -1;
+    if (!ReadVirtualSigilStatusFields(status, characterHash, contextMode) || !output) return finish(0);
     if (!characterHash || contextMode < 0 || contextMode > 2 || !ResolveOwnedStatus(status, characterHash, contextMode)) return finish(0);
     VirtualSigilConfigEntry selection{};
     AcquireSRWLockShared(&g_virtualSigilLock);
@@ -1763,8 +1852,7 @@ static uint8_t GetGemDataDetour(uintptr_t status, int slotIndex, uintptr_t outpu
     if (!FindInventoryGem(selection.slotId, gem) || gem.slotId != selection.slotId || gem.gemId != selection.gemId || gem.trait1 != selection.trait1 ||
         gem.trait1Level != selection.trait1Level || gem.trait2 != selection.trait2 || gem.trait2Level != selection.trait2Level || gem.sigilLevel != selection.sigilLevel ||
         gem.wornBy != kUnwornCharacterHash || (gem.flags & 0x10) != 0) return finish(0);
-    memcpy(reinterpret_cast<void*>(output), &gem, sizeof(gem));
-    return finish(1);
+    return finish(WriteVirtualSigilOutput(output, gem) ? 1 : 0);
 }
 
 static bool InstallVirtualTraitFetchHook(lm_address_t target, lm_address_t callPath, uint8_t expandedSlots, wchar_t* message, size_t messageSize)
@@ -1790,19 +1878,31 @@ static bool InstallVirtualTraitFetchHook(lm_address_t target, lm_address_t callP
     code[i++] = 0x48; code[i++] = 0xB8;
     memcpy(code + i, &callPath, sizeof(callPath)); i += sizeof(callPath);
     code[i++] = 0xFF; code[i++] = 0xE0;
-    size_t originalOffset = i;
-    memcpy(code + i, kTraitFetchOriginal, sizeof(kTraitFetchOriginal)); i += sizeof(kTraitFetchOriginal);
-    code[i++] = 0xE9;
-    int64_t backDelta = static_cast<int64_t>(target + sizeof(kTraitFetchOriginal)) - static_cast<int64_t>(g_traitFetchCave + i + 4);
-    if (backDelta < INT32_MIN || backDelta > INT32_MAX || originalOffset - (jbOriginal + 1) > 127 || originalOffset - (jaeOriginal + 1) > 127)
+    // Relocate the original control flow, not its bytes. kTraitFetchOriginal
+    // contains `je +0x3e`; copying that short relative branch into this cave
+    // makes it jump into the zero-filled tail and crash when bl == 0.
+    size_t nativeOffset = i;
+    code[i++] = 0x84; code[i++] = 0xDB; // test bl, bl
+    code[i++] = 0x75; size_t jneNativeNonzero = i++; // jne native-nonzero
+    code[i++] = 0x48; code[i++] = 0xB8;
+    memcpy(code + i, &callPath, sizeof(callPath)); i += sizeof(callPath);
+    code[i++] = 0xFF; code[i++] = 0xE0; // jmp callPath for native bl == 0
+    size_t nativeNonzeroOffset = i;
+    code[i++] = 0x49; code[i++] = 0x8B; code[i++] = 0x87;
+    code[i++] = 0x80; code[i++] = 0x5E; code[i++] = 0x00; code[i++] = 0x00; // mov rax,[r15+0x5e80]
+    const lm_address_t returnPath = target + sizeof(kTraitFetchOriginal);
+    code[i++] = 0x49; code[i++] = 0xBB;
+    memcpy(code + i, &returnPath, sizeof(returnPath)); i += sizeof(returnPath);
+    code[i++] = 0x41; code[i++] = 0xFF; code[i++] = 0xE3; // jmp r11
+    if (nativeOffset - (jbOriginal + 1) > 127 || nativeOffset - (jaeOriginal + 1) > 127 ||
+        nativeNonzeroOffset - (jneNativeNonzero + 1) > 127)
     {
         swprintf_s(message, messageSize, L"virtual sigil trait-fetch jump is out of range");
         return false;
     }
-    code[jbOriginal] = static_cast<lm_byte_t>(originalOffset - (jbOriginal + 1));
-    code[jaeOriginal] = static_cast<lm_byte_t>(originalOffset - (jaeOriginal + 1));
-    int32_t back = static_cast<int32_t>(backDelta);
-    memcpy(code + i, &back, sizeof(back)); i += sizeof(back);
+    code[jbOriginal] = static_cast<lm_byte_t>(nativeOffset - (jbOriginal + 1));
+    code[jaeOriginal] = static_cast<lm_byte_t>(nativeOffset - (jaeOriginal + 1));
+    code[jneNativeNonzero] = static_cast<lm_byte_t>(nativeNonzeroOffset - (jneNativeNonzero + 1));
     if (LM_WriteMemory(g_traitFetchCave, code, i) != i)
     {
         swprintf_s(message, messageSize, L"virtual sigil trait-fetch cave write failed");
@@ -2221,6 +2321,371 @@ static DWORD RunAudioRuntime()
         Sleep(250);
     }
     StopAudioRuntime();
+    return 0;
+}
+
+#pragma pack(push, 1)
+struct RuntimePartyObserverHeader
+{
+    uint64_t magic;
+    uint32_t version;
+    uint32_t capacity;
+    volatile LONG64 writeSequence;
+    volatile LONG64 droppedEvents;
+};
+
+struct RuntimePartyObserverSigil
+{
+    uint32_t hash;
+    uint32_t secondaryHash;
+    uint32_t level;
+};
+
+struct RuntimePartyObserverEvent
+{
+    volatile LONG64 sequence;
+    uint64_t tickMillis;
+    uint32_t kind;
+    uint32_t direction;
+    uint32_t partyIndex;
+    uint32_t characterHash;
+    uint32_t weaponHash;
+    uint32_t profileSize;
+    RuntimePartyObserverSigil sigils[12];
+};
+#pragma pack(pop)
+
+static_assert(sizeof(RuntimePartyObserverHeader) == 32, "runtime Party observer header layout changed");
+static_assert(sizeof(RuntimePartyObserverEvent) == 184, "runtime Party observer event layout changed");
+
+static constexpr uint64_t kRuntimePartyObserverMagic = 0x31564F5052464247ULL;
+static constexpr uint32_t kRuntimePartyObserverVersion = 1;
+static constexpr uint32_t kRuntimePartyObserverCapacity = 128;
+static constexpr uint32_t kRuntimePartyObserverProfileKind = 1;
+static constexpr uint32_t kRuntimePartyObserverResetKind = 2;
+static constexpr uint32_t kRuntimePartyObserverLocal = 1;
+static constexpr uint32_t kRuntimePartyObserverRemote = 2;
+static const wchar_t* kRuntimePartyObserverMappingName = L"Local\\GBFRPlayerInfoEditPartyProfilesV1";
+
+struct PartyObserverDataBuffer
+{
+    const void* buffer;
+    uint32_t bufferByteCount;
+    uint32_t padding;
+};
+
+struct PartyObserverStateChange
+{
+    uint32_t stateChangeType;
+};
+
+struct PartyObserverEndpointMessageReceived
+{
+    PartyObserverStateChange stateChange;
+    uint32_t padding0;
+    const void* network;
+    const void* senderEndpoint;
+    uint32_t receiverEndpointCount;
+    uint32_t padding1;
+    const void* const* receiverEndpoints;
+    uint32_t options;
+    uint32_t messageSize;
+    const void* messageBuffer;
+};
+
+using PartyObserverSendMessageFunction = int32_t(__stdcall*)(const void*, uint32_t, const void* const*, uint32_t,
+    const void*, uint32_t, const PartyObserverDataBuffer*, void*);
+using PartyObserverStartChangesFunction = int32_t(__stdcall*)(const void*, uint32_t*, const PartyObserverStateChange* const**);
+
+static PartyObserverSendMessageFunction g_originalPartySendMessage = nullptr;
+static PartyObserverStartChangesFunction g_originalPartyStartChanges = nullptr;
+static lm_address_t g_partySendTarget = LM_ADDRESS_BAD;
+static lm_address_t g_partyStartTarget = LM_ADDRESS_BAD;
+static lm_size_t g_partySendHookSize = 0;
+static lm_size_t g_partyStartHookSize = 0;
+static lm_byte_t g_partySendOriginal[32]{};
+static lm_byte_t g_partyStartOriginal[32]{};
+static std::atomic<LONG> g_partySendCallbacks{ 0 };
+static std::atomic<LONG> g_partyStartCallbacks{ 0 };
+static std::atomic<bool> g_partyObserverStopping{ false };
+static SRWLOCK g_partyObserverPublishLock = SRWLOCK_INIT;
+static HANDLE g_partyObserverMapping = nullptr;
+static RuntimePartyObserverHeader* g_partyObserverHeader = nullptr;
+
+static bool InitializePartyObserverMapping()
+{
+    const DWORD size = static_cast<DWORD>(sizeof(RuntimePartyObserverHeader) + sizeof(RuntimePartyObserverEvent) * kRuntimePartyObserverCapacity);
+    g_partyObserverMapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, size, kRuntimePartyObserverMappingName);
+    if (!g_partyObserverMapping) return false;
+    auto* view = reinterpret_cast<uint8_t*>(MapViewOfFile(g_partyObserverMapping, FILE_MAP_ALL_ACCESS, 0, 0, size));
+    if (!view)
+    {
+        CloseHandle(g_partyObserverMapping);
+        g_partyObserverMapping = nullptr;
+        return false;
+    }
+    SecureZeroMemory(view, size);
+    g_partyObserverHeader = reinterpret_cast<RuntimePartyObserverHeader*>(view);
+    g_partyObserverHeader->magic = kRuntimePartyObserverMagic;
+    g_partyObserverHeader->version = kRuntimePartyObserverVersion;
+    g_partyObserverHeader->capacity = kRuntimePartyObserverCapacity;
+    return true;
+}
+
+static void ClosePartyObserverMapping()
+{
+    if (g_partyObserverHeader)
+    {
+        UnmapViewOfFile(g_partyObserverHeader);
+        g_partyObserverHeader = nullptr;
+    }
+    if (g_partyObserverMapping)
+    {
+        CloseHandle(g_partyObserverMapping);
+        g_partyObserverMapping = nullptr;
+    }
+}
+
+static uint32_t PartyObserverReadU32(const uint8_t* payload, size_t offset)
+{
+    uint32_t value = 0;
+    memcpy(&value, payload + offset, sizeof(value));
+    return value;
+}
+
+static void PublishPartyObserverEvent(const RuntimePartyObserverEvent& value)
+{
+    AcquireSRWLockExclusive(&g_partyObserverPublishLock);
+    RuntimePartyObserverHeader* header = g_partyObserverHeader;
+    if (!header || g_partyObserverStopping.load())
+    {
+        ReleaseSRWLockExclusive(&g_partyObserverPublishLock);
+        return;
+    }
+    const LONG64 sequence = header->writeSequence + 1;
+    if (sequence > static_cast<LONG64>(header->capacity)) InterlockedIncrement64(&header->droppedEvents);
+    auto* events = reinterpret_cast<RuntimePartyObserverEvent*>(reinterpret_cast<uint8_t*>(header) + sizeof(RuntimePartyObserverHeader));
+    RuntimePartyObserverEvent* event = &events[(sequence - 1) % header->capacity];
+    InterlockedExchange64(&event->sequence, 0);
+    memcpy(reinterpret_cast<uint8_t*>(event) + sizeof(event->sequence),
+        reinterpret_cast<const uint8_t*>(&value) + sizeof(value.sequence), sizeof(*event) - sizeof(event->sequence));
+    MemoryBarrier();
+    InterlockedExchange64(&event->sequence, sequence);
+    MemoryBarrier();
+    InterlockedExchange64(&header->writeSequence, sequence);
+    ReleaseSRWLockExclusive(&g_partyObserverPublishLock);
+}
+
+static void PublishPartyObserverReset()
+{
+    RuntimePartyObserverEvent event{};
+    event.tickMillis = GetTickCount64();
+    event.kind = kRuntimePartyObserverResetKind;
+    PublishPartyObserverEvent(event);
+}
+
+static void CapturePartyObserverProfile(uint32_t direction, const void* rawPayload, uint32_t payloadSize)
+{
+    RuntimePartyObserverHeader* header = g_partyObserverHeader;
+    if (!header || !rawPayload || g_partyObserverStopping.load()) return;
+    if (direction != kRuntimePartyObserverLocal && direction != kRuntimePartyObserverRemote) return;
+    if (payloadSize != 780 && payloadSize != 784) return;
+    __try
+    {
+        const auto* payload = reinterpret_cast<const uint8_t*>(rawPayload);
+        const uint32_t group = PartyObserverReadU32(payload, 0);
+        const uint32_t type = PartyObserverReadU32(payload, 4);
+        const uint32_t declared = PartyObserverReadU32(payload, 8);
+        const uint32_t version = PartyObserverReadU32(payload, 12);
+        const bool verifiedHeader = declared == payloadSize && version == 1 &&
+            ((payloadSize == 784 && group == 3 && type == 14) || (payloadSize == 780 && group == 2 && type == 63));
+        if (!verifiedHeader) return;
+        const uint32_t partyIndex = PartyObserverReadU32(payload, 0x2B4);
+        if (partyIndex >= 4) return;
+
+        RuntimePartyObserverEvent event{};
+        event.tickMillis = GetTickCount64();
+        event.kind = kRuntimePartyObserverProfileKind;
+        event.direction = direction;
+        event.partyIndex = partyIndex;
+        event.characterHash = PartyObserverReadU32(payload, 0x2B8);
+        event.weaponHash = PartyObserverReadU32(payload, 0x1BC);
+        event.profileSize = payloadSize;
+        for (size_t index = 0; index < _countof(event.sigils); ++index)
+        {
+            event.sigils[index].hash = PartyObserverReadU32(payload, 0x1F4 + index * 4);
+            event.sigils[index].secondaryHash = PartyObserverReadU32(payload, 0x224 + index * 4);
+            event.sigils[index].level = payload[0x25C + index];
+        }
+        PublishPartyObserverEvent(event);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+static void CapturePartyObserverSendBuffers(uint32_t dataBufferCount, const PartyObserverDataBuffer* dataBuffers)
+{
+    if (!dataBuffers || dataBufferCount == 0 || dataBufferCount > 16) return;
+    __try
+    {
+        std::array<uint8_t, 784> payload{};
+        size_t total = 0;
+        for (uint32_t index = 0; index < dataBufferCount; ++index)
+        {
+            const PartyObserverDataBuffer& source = dataBuffers[index];
+            if (!source.buffer || source.bufferByteCount > payload.size() - total) return;
+            memcpy(payload.data() + total, source.buffer, source.bufferByteCount);
+            total += source.bufferByteCount;
+        }
+        if (total == 780 || total == 784) CapturePartyObserverProfile(kRuntimePartyObserverLocal, payload.data(), static_cast<uint32_t>(total));
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+static int32_t __stdcall PartyObserverSendMessageDetour(const void* endpoint, uint32_t targetEndpointCount,
+    const void* const* targetEndpoints, uint32_t options, const void* queuingConfiguration,
+    uint32_t dataBufferCount, const PartyObserverDataBuffer* dataBuffers, void* messageIdentifier)
+{
+    g_partySendCallbacks.fetch_add(1);
+    if (!g_partyObserverStopping.load()) CapturePartyObserverSendBuffers(dataBufferCount, dataBuffers);
+    const int32_t result = g_originalPartySendMessage ? g_originalPartySendMessage(endpoint, targetEndpointCount, targetEndpoints,
+        options, queuingConfiguration, dataBufferCount, dataBuffers, messageIdentifier) : -1;
+    g_partySendCallbacks.fetch_sub(1);
+    return result;
+}
+
+static void CapturePartyObserverStateChanges(uint32_t count, const PartyObserverStateChange* const* changes)
+{
+    if (!changes || count > 4096) return;
+    __try
+    {
+        for (uint32_t index = 0; index < count; ++index)
+        {
+            const PartyObserverStateChange* change = changes[index];
+            if (!change) continue;
+            const uint32_t type = change->stateChangeType;
+            if (type == 21)
+            {
+                const auto* message = reinterpret_cast<const PartyObserverEndpointMessageReceived*>(change);
+                CapturePartyObserverProfile(kRuntimePartyObserverRemote, message->messageBuffer, message->messageSize);
+            }
+            else if (type == 12 || type == 13 || type == 17 || type == 20)
+            {
+                PublishPartyObserverReset();
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+static int32_t __stdcall PartyObserverStartChangesDetour(const void* handle, uint32_t* stateChangeCount,
+    const PartyObserverStateChange* const** stateChanges)
+{
+    g_partyStartCallbacks.fetch_add(1);
+    const int32_t result = g_originalPartyStartChanges ? g_originalPartyStartChanges(handle, stateChangeCount, stateChanges) : -1;
+    if (!g_partyObserverStopping.load() && result == 0 && stateChangeCount && stateChanges)
+    {
+        __try
+        {
+            CapturePartyObserverStateChanges(*stateChangeCount, *stateChanges);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+    }
+    g_partyStartCallbacks.fetch_sub(1);
+    return result;
+}
+
+static bool StopPartyObserverRuntime()
+{
+    g_partyObserverStopping.store(true);
+    bool restored = true;
+    if (g_partyStartTarget != LM_ADDRESS_BAD)
+    {
+        restored = RestoreLibmemHookAfterDrain(g_partyStartTarget, reinterpret_cast<lm_address_t>(g_originalPartyStartChanges),
+            &g_partyStartHookSize, g_partyStartOriginal, sizeof(g_partyStartOriginal), g_partyStartCallbacks) && restored;
+    }
+    if (g_partySendTarget != LM_ADDRESS_BAD)
+    {
+        restored = RestoreLibmemHookAfterDrain(g_partySendTarget, reinterpret_cast<lm_address_t>(g_originalPartySendMessage),
+            &g_partySendHookSize, g_partySendOriginal, sizeof(g_partySendOriginal), g_partySendCallbacks) && restored;
+    }
+    if (restored) ClosePartyObserverMapping();
+    WriteRuntimeStatus(L"party-observer", restored ? L"inactive" : L"restore_failed",
+        restored ? L"Party lifecycle observer hooks restored after active callbacks drained" : L"Party lifecycle observer restoration could not be proven; module kept loaded");
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"party-observer", restored);
+    return restored;
+}
+
+static DWORD RunPartyObserverRuntime()
+{
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"party-observer"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
+    const std::wstring configPath = RuntimePath(L"party-observer.ini");
+    if (configPath.empty() || GetPrivateProfileIntW(L"party-observer", L"enabled", 0, configPath.c_str()) != 1)
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"Party lifecycle observer is disabled");
+        return 1;
+    }
+    lm_module_t partyModule{};
+    DWORD waitDeadline = GetTickCount() + 30000;
+    while (owner.Alive() && GetPrivateProfileIntW(L"party-observer", L"enabled", 0, configPath.c_str()) == 1 &&
+        !LM_FindModule("PartyWin.dll", &partyModule) && static_cast<LONG>(GetTickCount() - waitDeadline) < 0)
+    {
+        Sleep(100);
+    }
+    HMODULE party = GetModuleHandleW(L"PartyWin.dll");
+    g_partySendTarget = reinterpret_cast<lm_address_t>(party ? GetProcAddress(party, "PartyEndpointSendMessage") : nullptr);
+    g_partyStartTarget = reinterpret_cast<lm_address_t>(party ? GetProcAddress(party, "PartyStartProcessingStateChanges") : nullptr);
+    const auto inPartyModule = [&partyModule](lm_address_t address) {
+        return partyModule.base != LM_ADDRESS_BAD && address >= partyModule.base && address < partyModule.base + partyModule.size;
+    };
+    if (!party || !inPartyModule(g_partySendTarget) || !inPartyModule(g_partyStartTarget))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"PartyWin lifecycle exports are unavailable");
+        return 1;
+    }
+    if (!InitializePartyObserverMapping())
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"Party profile shared memory could not be created");
+        return 1;
+    }
+    if (LM_ReadMemory(g_partySendTarget, g_partySendOriginal, sizeof(g_partySendOriginal)) != sizeof(g_partySendOriginal) ||
+        LM_ReadMemory(g_partyStartTarget, g_partyStartOriginal, sizeof(g_partyStartOriginal)) != sizeof(g_partyStartOriginal))
+    {
+        ClosePartyObserverMapping();
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"Party lifecycle export preflight read failed");
+        return 1;
+    }
+    g_partyObserverStopping.store(false);
+    g_partySendHookSize = LM_HookCode(g_partySendTarget, reinterpret_cast<lm_address_t>(&PartyObserverSendMessageDetour),
+        reinterpret_cast<lm_address_t*>(&g_originalPartySendMessage));
+    if (!g_partySendHookSize)
+    {
+        ClosePartyObserverMapping();
+        WriteRuntimeInactiveAndReleaseOwner(L"party-observer", L"Party send observer hook installation failed");
+        return 1;
+    }
+    g_partyStartHookSize = LM_HookCode(g_partyStartTarget, reinterpret_cast<lm_address_t>(&PartyObserverStartChangesDetour),
+        reinterpret_cast<lm_address_t*>(&g_originalPartyStartChanges));
+    if (!g_partyStartHookSize)
+    {
+        StopPartyObserverRuntime();
+        return 1;
+    }
+    WriteRuntimeStatus(L"party-observer", L"active", L"read-only Party lifecycle profile observer is active");
+    while (owner.Alive() && GetPrivateProfileIntW(L"party-observer", L"enabled", 0, configPath.c_str()) == 1) Sleep(100);
+    StopPartyObserverRuntime();
     return 0;
 }
 
@@ -3825,11 +4290,54 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
         if (!ShouldApply(patchId, point)) continue;
         ++selected;
 
-        lm_address_t target = module.base + point.rva;
+		lm_address_t resolvedRva = point.rva;
+		if (strcmp(point.id, "inventory_set_45") == 0)
+		{
+			// This shared inventory/material instruction moved in 2.0.3. Resolve
+			// only between the two audited RVAs and still require the complete
+			// seven original bytes before any write.
+			const lm_address_t candidates[] = { 0x356621, 0x34F8F1 };
+			bool found = false;
+			for (const lm_address_t candidate : candidates)
+			{
+				lm_byte_t original[sizeof(kInventorySet45Expected)]{};
+				const lm_address_t candidateTarget = module.base + candidate;
+				if (LM_ReadMemory(candidateTarget, original, sizeof(original)) == sizeof(original) &&
+					BytesEqual(original, kInventorySet45Expected, sizeof(original)))
+				{
+					resolvedRva = candidate;
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+			{
+				const lm_address_t signature = FindUniqueSignature(
+					"41 01 76 04 4C 89 E1 E8 ?? ?? ?? ?? 41 8B 0C 24 31 C0 85 C9 0F 4F C1",
+					module);
+				if (signature != LM_ADDRESS_BAD)
+				{
+					lm_byte_t original[sizeof(kInventorySet45Expected)]{};
+					if (LM_ReadMemory(signature, original, sizeof(original)) == sizeof(original) &&
+						BytesEqual(original, kInventorySet45Expected, sizeof(original)))
+					{
+						resolvedRva = signature - module.base;
+						found = true;
+					}
+				}
+			}
+			if (!found)
+			{
+				swprintf_s(message, messageSize, L"inventory/material entry did not match known RVAs or unique AOB");
+				return false;
+			}
+		}
+
+		lm_address_t target = module.base + resolvedRva;
         lm_byte_t current[16]{};
         if (point.size > sizeof(current) || LM_ReadMemory(target, current, point.size) != point.size)
         {
-            swprintf_s(message, messageSize, L"read failed: %s at +%llX", point.name, static_cast<unsigned long long>(point.rva));
+            swprintf_s(message, messageSize, L"read failed: %s at +%llX", point.name, static_cast<unsigned long long>(resolvedRva));
             return false;
         }
 
@@ -3846,7 +4354,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 
         if (!BytesEqual(current, point.expected, point.size))
         {
-            swprintf_s(message, messageSize, L"unexpected bytes: %s at +%llX", point.name, static_cast<unsigned long long>(point.rva));
+            swprintf_s(message, messageSize, L"unexpected bytes: %s at +%llX", point.name, static_cast<unsigned long long>(resolvedRva));
             return false;
         }
 
@@ -3876,7 +4384,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
         }
         else if (!PatchBytes(target, point.patch, point.size))
         {
-            swprintf_s(message, messageSize, L"write failed: %s at +%llX", point.name, static_cast<unsigned long long>(point.rva));
+            swprintf_s(message, messageSize, L"write failed: %s at +%llX", point.name, static_cast<unsigned long long>(resolvedRva));
             return false;
         }
         ++patched;
@@ -3899,6 +4407,7 @@ static DWORD WINAPI InitThread(LPVOID)
     {
         if (PatchIdEquals(command, "runtime_camera")) return RunCameraRuntime();
         if (PatchIdEquals(command, "runtime_audio")) return RunAudioRuntime();
+        if (PatchIdEquals(command, "runtime_party_observer")) return RunPartyObserverRuntime();
         if (PatchIdEquals(command, "runtime_virtual_sigils")) return RunVirtualSigilRuntime();
         if (PatchIdEquals(command, "runtime_damage")) return RunDamageRuntime();
         if (PatchIdEquals(command, "runtime_qol")) return RunQOLRuntime();

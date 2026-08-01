@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -8,6 +9,81 @@ import (
 	"testing"
 	"time"
 )
+
+func runtimeLoadoutDetectorNetworkProfileFixture(t *testing.T, slot uint32) []byte {
+	t.Helper()
+	payload := runtimePartyNetworkProfileFixture(t, false)
+	binary.LittleEndian.PutUint32(payload[runtimePartyNetworkPartyIndexOffset:], slot)
+	itemHashes := [...]uint32{
+		0x5BF84FD1, 0x035A4DDD, 0x791DA8ED, 0x332E9B30,
+		0x9300FADB, 0x00612B10, 0x54D8EA04, 0x54D8EA04,
+		0xD29CD8E0, 0x54D8EA04, 0xE2B380E5, 0x43F26A91,
+	}
+	secondaryHashes := [...]uint32{
+		0x887AE0B0, 0x73220725, 0x84078CB0, 0x57AB5B10,
+		0x24883AF3, 0x3D8153A1, 0x7C2E4D64, 0x7CCFF74F,
+		0x95F3FA86, 0xA7726190, 0xDC584F60, 0x11AAE5F5,
+	}
+	for index := range itemHashes {
+		binary.LittleEndian.PutUint32(payload[runtimePartyNetworkSigilHashOffset+index*4:], itemHashes[index])
+		binary.LittleEndian.PutUint32(payload[runtimePartyNetworkSecondaryHashOffset+index*4:], secondaryHashes[index])
+		payload[runtimePartyNetworkSigilLevelOffset+index] = 15
+	}
+	return payload
+}
+
+func TestRuntimeLoadoutDetectorConsumesStableNetworkCandidatesWithoutMemoryLoadout(t *testing.T) {
+	session := &runtimeLoadoutDetectorSession{
+		historyPath: filepath.Join(t.TempDir(), "history.json"), sessionID: "network-session", nextSequence: 1,
+		networkTracker: newRuntimePartyNetworkProfileTracker(),
+	}
+	payload := runtimeLoadoutDetectorNetworkProfileFixture(t, 2)
+	events := make([]runtimePartyObserverEvent, 0, runtimePartyNetworkProfileStableReads)
+	for sequence := uint64(1); sequence <= runtimePartyNetworkProfileStableReads; sequence++ {
+		events = append(events, runtimePartyObserverEvent{Sequence: sequence, Direction: runtimePartyNetworkProfileRemote, Payload: payload})
+	}
+	members, err := session.observePartyNetworkEvents(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := runtimeLoadoutDetectorFingerprint(members)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.observeTeam(fingerprint, members)
+	if session.state != "stabilizing" || len(session.history) != 0 {
+		t.Fatalf("first stable network candidate was not held for detector stability: state=%s history=%d", session.state, len(session.history))
+	}
+	members, err = session.observePartyNetworkEvents(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err = runtimeLoadoutDetectorFingerprint(members)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.observeTeam(fingerprint, members)
+	if len(session.history) != 1 || len(session.history[0].Members) != 1 {
+		t.Fatalf("stable network candidate did not reach detector history: %+v", session.history)
+	}
+	member := session.history[0].Members[0]
+	if member.Role != "party2" || member.Loadout.Verification != "network_profile_core" || len(member.Loadout.Sigils) != 12 {
+		t.Fatalf("network candidate was not preserved for the UI: %+v", member)
+	}
+}
+
+func TestRuntimeLoadoutDetectorDoesNotMergeMemorySupersetWhenNetworkSlotsDiffer(t *testing.T) {
+	network := runtimeLoadoutDetectorTestMembers()[0]
+	network.Role = "party1"
+	memory := network
+	memory.Loadout.Sigils = append([]RuntimePatchPartySigil(nil), network.Loadout.Sigils...)
+	memory.Loadout.Sigils = append(memory.Loadout.Sigils, RuntimePatchPartySigil{Index: 1, Hash: 0x22222222, HashHex: "22222222", Level: 15})
+
+	merged := mergeRuntimeLoadoutDetectorMembers([]RuntimeLoadoutDetectorMember{memory}, []RuntimeLoadoutDetectorMember{network})
+	if len(merged) != 2 || len(merged[0].Loadout.Sigils) != 1 || merged[0].Loadout.Verification == "network_profile_core+memory_superset" {
+		t.Fatalf("a memory snapshot with a different slot count was treated as the same network loadout: %+v", merged)
+	}
+}
 
 func runtimeLoadoutDetectorTestMembers() []RuntimeLoadoutDetectorMember {
 	loadout := RuntimePatchPartyLoadout{
@@ -346,10 +422,14 @@ func TestRuntimeLoadoutDetectorMembersDropsAddressesAndUnavailableSlots(t *testi
 	teammate.CharacterCode = "PL1600"
 	teammate.CharacterHash = "0D21B430"
 	teammate.CharacterName = "泽塔"
+	teammate.Online = true
+	offlineTeammate := teammate
+	offlineTeammate.Online = false
 	snapshot := RuntimePatchPartyMonitor{Entities: []RuntimePatchPartyEntity{
 		{Role: "player", Present: true, Address: 0x12345678, Loadout: &loadout},
 		{Role: "party1", Present: true, Address: 0x87654321, Loadout: &teammate},
-		{Role: "party2", Present: true, Address: 0x99999999, Loadout: unavailableRuntimePatchPartyLoadout(nil)},
+		{Role: "party2", Present: true, Address: 0x99999999, Loadout: &offlineTeammate},
+		{Role: "party3", Present: true, Address: 0xAAAAAAAA, Loadout: unavailableRuntimePatchPartyLoadout(nil)},
 		{Role: "companion", Present: true, Address: 0x22222222},
 	}}
 	members := runtimeLoadoutDetectorMembers(snapshot)
