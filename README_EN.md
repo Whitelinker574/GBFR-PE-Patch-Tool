@@ -1,141 +1,121 @@
-<p align="center">
-  <img src="docs/screenshots/v2.0.10-home.png" alt="GBFR PE Patch Tool v2.0.10 full home screen" width="960">
-</p>
+# Relink Skyfarer Workshop (Granblue Fantasy: Relink)
 
-<h1 align="center">GBFR PE Patch Tool</h1>
+[简体中文](README.md) · [Download the latest stable release](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [Open the community loadout catalog](https://share.whitelinker.top/?lang=en)
 
-<p align="center">A Windows save, loadout, and sharing utility for Granblue Fantasy: Relink 2.0.3, with legacy live features guarded to the verified 2.0.2 executable.</p>
-
-<p align="center">
-  <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest"><strong>Download the latest stable release</strong></a> ·
-  <a href="https://share.whitelinker.top/?lang=en"><strong>Open the community loadout catalog</strong></a> ·
-  <a href="README.md"><strong>简体中文</strong></a>
-</p>
-
-## Game 2.0.3 compatibility
-
-v2.0.11 fixes the misleading “cannot determine character weapon owner” error on imported, migrated, or incomplete saves. The application now recovers each of the 29 playable characters' canonical `PLxxxx` owner from the selected character hash. A missing mastery record or dangling equipped-weapon reference no longer blocks that character's valid weapon, while weapons owned by another character are still rejected.
-
-v2.0.10 adds a live editor for the currently highlighted weapon. It can back up, edit, and read back the five persistent skill slots, while skill six and beyond use the game's native skill-aggregation path as an explicitly enabled runtime feature. The camera workshop now provides five presets. Spatial tools put the verified virtual-ground workflow first, with native WASD movement and PageUp/PageDown elevation, while continuous jump and the less reliable aerial-action experiment remain separate. New 2.0.3 quest conveniences cover summon duration, quest score, side objectives, and free crafting/trading/upgrades. Every live feature remains off by default and retains page, F12, disconnect, and shutdown restoration.
-
-v2.0.9 makes every persistent connection explicit and off by default. Loadout capture, virtual sigils, audio, camera, and live patches appear in the title bar only after the user enables them; navigation does not stop them, and each status chip returns to the page that can disable it. Stale status from a previous game PID is no longer presented as active, while F12 and normal disable paths restore app-owned hooks. The virtual-sigil workspace also switches to a single-column layout at common window widths so its stop controls remain reachable.
-
-The v2.0.8 live quest-reward multiplier remains available for ordinary stackable items already aggregated in the local quest result. There is still no evidence that this local multiplier propagates to an unmodified PC or PlayStation teammate.
-
-Embedded catalogs, loadout computation, short codes, QR import, share images, and Logs can continue to use those verified structures. Parsing, atomic writes, and readback also pass on existing real-save copies, but those saves have not yet been resaved and restart-checked by game 2.0.3. Live entry points now select the 2.0.2 or 2.0.3 layout after executable, signature, and original-byte checks; verified install, read-back, and restoration paths are available. Quest results, inventory deltas, and cross-scene effects that still need field evidence remain explicitly experimental instead of being hidden by a blanket legacy-version lock.
-
-See [the primary game 2.0.3 research report](docs/GAME_UPDATE_2.0.3_OFFICIAL_RESEARCH.md) for evidence and remaining field checks.
-
-## What the application is for
-
-v2.0.3 organizes the application around five normal user workflows:
-
-| Workspace | Typical use | Data boundary |
-| --- | --- | --- |
-| Saves & Loadouts | Edit characters, weapons, sigils, wrightstones, summons, and loadouts; compare two saves | Offline writes with backup, atomic replacement, reopen, and readback |
-| Live Editors | Edit the currently selected sigil, wrightstone, summon, weapon skills, or Over Mastery value | Requires the game; every write is bound to the current process and captured object |
-| Loadout Capture & Restore | Persistently capture party loadouts, import Logs JSON/databases, and browse battle archives | Capture is off by default and runs continuously only after the user enables it |
-| Offline Runtime Tools | Display helpers, room ID, party leader, position, audio, camera, and combat rules | Intended for offline/host use; candidates without field evidence retain an experimental or restoration boundary |
-| Game Files, Diagnostics & Settings | Natural-drop rules, read-only sampling, compatibility diagnostics, language, and settings | `data.i` deployment creates a backup and restore path; diagnostics do not write |
-
-The Offline, Live, Read-only, Experimental, and Unavailable labels are functional promises. They describe where data is written, whether a game process is required, and how far the evidence currently reaches.
-
-## Highlights in v2.0.3
-
-### Build a twelve-sigil loadout from skill targets
-
-Smart loadout tools now live directly above the sigil grid in the normal character loadout editor.
-
-<p align="center">
-  <img src="docs/screenshots/v2.0.10-smart-loadout.png" alt="Build a twelve-sigil loadout from skill targets in v2.0.10" width="960">
-</p>
-
-Switch between manual editing and skill-target mode, add any number of skills, and enter the exact target level for each one. Goals are processed from top to bottom. The solver first uses distinct real inventory instances from the selected save, then reports the first target it cannot complete and every missing sigil. Missing instances are never created silently.
-
-A selected result is loaded into the normal draft first. The save changes only after the final write confirmation. The automatic routes cover all 29 playable characters and offer offense, defense, stun, sustain, potion/revive, and dodge-oriented variants. They combine current inventory, character traits, damage-cap references, and recorded 2.0.2 evidence, but they are not advertised as a mathematically proven optimum for every move and battle condition.
-
-### Enable party capture once and keep it running
-
-<p align="center">
-  <img src="docs/screenshots/v2.0.10-party-capture.png" alt="Persistent party loadout capture and local history in v2.0.10" width="960">
-</p>
-
-Party capture never starts on its own. After you enable it, the service stays active across page changes and waits for three stable snapshots before recording the 2–3 party members it can identify. It stops only when you explicitly turn it off.
-
-The same workspace can parse Relink Logs character JSON, open `logs.db`, browse battle sessions and skill details, preview loadout snapshots, and deploy or publish confirmed candidates. Fields that were not captured remain Not Recorded.
-
-Current-session damage is still labelled a global unattributed observation. Local player, remote player, pet, and summon ownership is not field-complete, so the application does not present the stream as personal DPS.
-
-### Short codes, the public catalog, and share images
-
-Identical immutable loadout frames receive a stable code and are deduplicated by the service. Turning public upload off prevents the loadout from being added to the public directory.
-
-The catalog searches visible character, weapon, sigil, wrightstone, summon, mastery, and skill data. It sorts by newest, name, or likes, and a catalog card can be liked or unliked directly.
-
-The share-image workshop uses a luminous sky-card backdrop with a larger character portrait, weapon, twelve sigils, skill summary, and QR code. It switches between `1920×1080` landscape, `1440×1920` portrait, and `1600×1600` square output. The in-app preview scales to the window while PNG downloads retain their real pixel size. Offline long codes and JSON files remain available when the service cannot be reached.
-
-### Compare and copy between two saves without leaving the page
-
-<p align="center">
-  <img src="docs/screenshots/v2.0.10-save-diff.png" alt="Two-save comparison and in-place copy in v2.0.10" width="960">
-</p>
-
-The save laboratory explains known differences by category, copyability, and confidence. Equal-shape records with audited semantics can be staged in either direction on the same page. Additions, removals, length changes, and unknown structures remain visible but cannot be copied as raw bytes.
-
-Fate Episodes provide a restricted experimental writer for audited completion values. Reward claiming, dependency flags, and visible in-game results are not claimed as complete. Endless rules remain a bilingual read-only atlas until a safe deployment and gameplay-readback route exists.
-
-### Configure natural drops from embedded 2.0.2 tables
-
-<p align="center">
-  <img src="docs/screenshots/v2.0.10-natural-drop.png" alt="Natural-drop and forging rule builder in v2.0.10" width="960">
-</p>
-
-Summons, Transmarvel sigils, wrightstones, and verified regular-item rewards are selected from exact tables embedded in the application. Users no longer need to find an unpacked table directory. Selections enter a review list before deployment.
-
-This page has two independent paths. The live “ordinary item multiplier for all quest results” processes stackable materials after connecting to the game and offers `1× / 2× / 4× / 8× / 16×`. The deployment list writes only selected items into Endless Mode Forger's Bounty; each row receives a direct `1–999` base quantity without changing roll weight. The two paths do not stack. Sigils, summons, wrightstones, and weapons remain independent instances and are not duplicated by the ordinary-item multiplier. Actual results across quest sources, natural sigils, summon drops, and wrightstone forging remain field acceptance, and the `data.i` path always provides backup and restoration.
-
-## Improvements retained from v1.92.0
-
-- One-step parsing, preview, scoped deployment, and sharing for Relink Logs single-player, multiplayer, and `playerData` JSON.
-- Direct like/unlike actions on catalog cards, with newest, name, and like sorting.
-- Page and character artwork loaded on demand, with prefetch and old-frame retention to reduce blank transitions.
-- A GitHub download entry and favicon on the public catalog.
-- Shared names, icons, skill levels, summons, mastery, and Over Mastery semantics across the app and website.
-
-## Write and recovery rules
-
-Every offline save transaction creates a recoverable backup, edits a temporary file, repairs the checksum, atomically replaces the target, reopens it, and reads the changed fields back.
-
-Live features bind the complete `{PID, creation time}` identity. Before writing, they verify the supported 2.0.2 executable, signature, and original bytes; after writing, they read the target back. Game 2.0.3 is identified and rejected at the shared attach boundary before any legacy runtime write. Stop, disconnect, and application exit restore owned state. F12 provides a central stop and recovery action.
-
-Keep your own copy of important saves. After a game update, do not use live writes until the repository explicitly confirms compatibility.
-
-## Experimental features and current capabilities
-
-Natural-drop and forging deployment, virtual sigils, audio, town camera, world-axis movement, and gravity suppression are implemented and retain usable entry points. The maintainers cannot exercise every character, quest, scene transition, and multi-hook combination, so these features remain marked Experimental. Keep the relevant save or game-file backup, follow the in-app steps, and report the exact gameplay scenario and observed result.
-
-Current-session damage capture records raw source instances, action IDs, damage caps, and pre-cap damage, while the combat catalog exposes character cap tables. Stable identity mapping for the local player, teammates, pets, and summons, plus exact final caps for every move of every character, are not covered by the current implementation. The app therefore does not label global events as personal DPS or present table baselines as final per-action values.
-
-Noclip and camera-relative flight currently have no executable entry point. The implemented spatial features are world-axis movement, in-game arrow-key control, and separately owned gravity suppression. Cooldown tuning, shared charge tuning, candidate party-wide monster damage, and candidate catalog patches continue to follow the availability shown on their own pages. Missing maintainer-side coverage does not lock features that are already implemented.
-
-## Performance and compatibility
-
-- Windows 10/11 x64. Game 2.0.3 static catalogs, loadouts, sharing, and Logs data are verified, and existing real-save-copy transactions pass; a game 2.0.3 save/restart readback is still pending. Live features remain guarded to verified 2.0.2.
-- Minimum 960×640 window, with common widescreen layouts and 100%/125%/150% scaling covered.
-- Initial code is split by page; loadout solving runs in a cancellable Web Worker.
-- Each save-diff input is capped at 64 MiB. Logs files, records, and decompression all have explicit bounds.
-- On the reference machine, 50 warm transitions at 960×640 and 1280×800 both measured below 300 ms P95.
-- 1,176 browser-shell cases covered 28 destinations, two languages, seven viewport sizes, and three scale factors.
-
-See [the performance baseline](docs/PERFORMANCE_BASELINE.md) for the exact methodology.
+A Windows save, loadout, and sharing utility for *Granblue Fantasy: Relink* DLC 2.0.3, with the verified 2.0.2 offline runtime capabilities retained. Formerly known as GBFR PE Patch Tool; renamed to "Relink Skyfarer Workshop" in v2.0.12.
 
 ## Quick start
 
-1. Download the versioned EXE or ZIP from [GitHub Releases](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest).
-2. Open Saves & Loadouts first and verify the detected `SaveData` slot.
-3. Exit the game before an offline edit, review the draft, and then confirm the write.
-4. For a live feature, start the game, connect from that feature's page, and use Stop/Restore when finished.
-5. If the application cannot start, inspect `%LOCALAPPDATA%\GBFR-PE-Patch-Tool\startup.log`.
+1. Download the `windows-amd64` EXE or ZIP from [GitHub Releases](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest), extract, and run it.
+2. Open **Saves & Loadouts** first and verify the detected `SaveData` slot.
+3. Exit the game before an offline edit, review the draft, then confirm the write.
+4. For a live feature, start the game, connect from that feature's page, and use **Stop/Restore** when finished.
+5. If the application fails to start, inspect `%LOCALAPPDATA%\GBFR-PE-Patch-Tool\startup.log`.
+
+Default save directory:
+
+```text
+C:\Users\<username>\AppData\Local\GBFR\Saved\SaveGames\
+```
+
+## Feature overview (five workspaces)
+
+### 1. Saves & Loadouts (offline writes)
+
+Exit the game completely before using these pages. Every write follows the same pipeline: automatic backup → edit in a temporary file → checksum repair → atomic replacement → reopen and read the changed fields back.
+
+| Page | What it does |
+| --- | --- |
+| Loadout presets | View, edit, and import complete loadouts (characters, weapons and skills, 12 sigils, wrightstones, summons, mastery, Over Mastery, character growth). Smart loadout builds a twelve-sigil set from skill targets: goals are processed top to bottom, real non-duplicate inventory sigils are preferred, gaps are reported explicitly, and missing sigils are only created after confirmation |
+| Sigil editor | Create, batch-manage, and delete save sigils; configure level and primary/secondary traits. Combination checks warn but never override your choice |
+| Wrightstone editor | Create wrightstones and set three traits, with queue-based batch generation |
+| Summons (save) | Add or modify summon type, boon, traits, level, and status; changing type migrates equipped references automatically |
+| Items & weapons | Edit items, materials, growth resources, and weapon levels; supports weapon awakening/transcendence stage sync |
+| Character usage | View and batch-modify usage counts for selected characters |
+| Quests & titles | Edit quest clear counts, title unlocks, and viewed status; title reward claim records stay untouched |
+| Save compare & copy | Side-by-side diff of two saves, categorized by character growth / loadout / items / quest state / unknown structures. Records with audited semantics can be copied in either direction; one-sided additions and unknown structures cannot |
+
+### 2. In-game live editors (live writes)
+
+Start the game and enter a save first, then connect from the page. Every write is bound to the current process and the selected target, with a read-back after writing. Re-enter the save, restart the game, or refresh the target list, and re-connect or re-select.
+
+| Page | What it does |
+| --- | --- |
+| Live sigil editor | Edit the currently highlighted sigil (level, primary/secondary traits) |
+| Live wrightstone editor | Write the current wrightstone's three traits in one transaction |
+| Weapon skill editor | Back up, edit, and read back the five permanent skill slots; skill six and beyond append through the game's native skill-aggregation path |
+| Live summon editor | Edit the summoned stone's main sigil, sub-parameters, and tier; persists by calling the game's save function |
+| Over Mastery | Read and edit the four capability slots on the Over Mastery result screen |
+| Currency, materials & drops | Edit gil, potions, material consumption, and quest drops at runtime |
+
+### 3. Loadout capture & restore (read-only monitoring + live recording)
+
+| Page | What it does |
+| --- | --- |
+| Persistent party capture | Continuously connects after you enable it, waits for three stable snapshots, then archives each quest's party loadout locally; imports Relink Logs JSON / `logs.db`; browse battle archives, party damage, skill details, and loadout snapshots. Missing fields display "Not Recorded" and are never padded with another character's data |
+| Twelve-sigil live record/restore | Records the current 12 sigils and exports JSON, or restores them item-by-item onto backup sigils; sharing generates short codes, QR codes, and share images |
+
+### 4. Offline runtime tools (single-player / host only)
+
+Intended for offline or host environments only. Once enabled, status appears in the title bar, survives page switches, and is fully restored by F12 or by disabling on the page.
+
+| Page | What it does |
+| --- | --- |
+| Display & room | Screen, room ID, party leader, position, and other runtime info |
+| Virtual sigil slots | Persistent extra virtual sigils that survive page switches |
+| Character voice mixer | Adjust character voice |
+| Town camera workshop | Five camera presets (detail / default / comfort / combat wide / far view) |
+| Spatial movement | Virtual-ground movement: WASD horizontal, PageUp/PageDown elevation; gravity suppression |
+| Combat / character / quest patches | Dodge, guard, Link, summon limit, part-break, quest countdown, quest score, side objectives, summon duration, free craft/trade/upgrade, cooldown & charge tuning — 60 runtime patches; live quest-reward multiplier 1×–16× |
+| Monster tuning | Monster HP, damage, stagger bar, and Overdrive state (experimental) |
+| Endless mode | Endless-mode timer and rules (read-only reference) |
+
+### 5. Game files, diagnostics & settings
+
+| Page | What it does |
+| --- | --- |
+| Natural drops & forging | Two independent paths: a live "ordinary-item multiplier for all quest results" (1×–16×) and a deployment list that writes selected items into Endless Mode Forger's Bounty (1–999 base quantity). The paths do not stack; `data.i` deployment always provides backup and restoration |
+| Selected-item read-only | Inspect the currently highlighted item without writing |
+| Formula sampler | Read-only sampling of final HP, attack, crit, and stagger values with strict A/B/A/B experiments and sanitized evidence export; never writes the process or save |
+| Compatibility | Per-feature 2.0.3 compatibility status; unverified features are marked explicitly |
+| Game file maintenance | Steam path auto-detection, game EXE `.bak` backup and restore |
+| Language & settings | Chinese/English UI switch, saved locally |
+
+## Safety and data boundaries
+
+- **Backup before write, read back after write** is the uniform rule: offline writes create a recoverable backup and re-read every changed field; live writes bind `{PID, creation time}`, verify the executable identity and original bytes before enabling, and restore on stop/disconnect/exit
+- **Legality grading**: every edit is labeled Legal / Forced / Unknown / Non-writable. Combinations beyond verified game rules are rejected outright; forced writes warn first and never silently overwrite your requested values
+- **No fake data**: the UI never presents global events as personal DPS or table baselines as final per-action values; values without field evidence stay marked estimated, candidate, or under verification
+- **Experimental boundaries**: natural drops, virtual sigils, camera, spatial movement, and gravity suppression keep an Experimental badge; current-session damage ownership mapping and exact final per-action caps are not covered yet; noclip and camera-relative flight have no entry point
+- **Offline / live / read-only** workflows are strictly separated: offline writes save files, live writes process memory, read-only changes nothing
+
+## Online loadout sharing
+
+- Identical immutable loadout frames receive a stable short code (16–24 digits), deduplicated server-side; QR share images can be imported from local recognition (images are never uploaded)
+- The public catalog searches characters, weapons, sigils, wrightstones, summons, mastery, and skills; sorts by newest / name / likes; supports like/unlike and comments
+- Share-image workshop: `1920×1080` landscape, `1440×1920` portrait, `1600×1600` square; PNG downloads keep real pixel size
+- Public upload can be disabled; offline long codes and JSON files remain available as fallback
+
+## Performance and compatibility
+
+| Item | Details |
+| --- | --- |
+| System | Windows 10/11 x64 |
+| Game version | 2.0.3 (offline/static verified; live works with 2.0.2/2.0.3; game 2.0.3 save/restart readback remains a field acceptance item) |
+| Minimum window | 960×640, covering 100%/125%/150% scaling |
+| Performance | Loadout solving runs in a cancellable Web Worker; 50 warm transitions P95 < 300 ms |
+| Scenario coverage | 28 pages × 2 languages × 7 viewports × 3 scale factors = 1,176 cases |
+
+## Troubleshooting
+
+| Symptom | First step |
+| --- | --- |
+| Save not found | Check the default directory, or use Browse… to pick `SaveData*.dat` manually |
+| Multiple saves, unsure which one | Do not guess by order; select each and confirm by the character/loadout/records shown |
+| Live page says disconnected | Confirm the game is running and in a save, then re-connect on the current page |
+| Target stale / pointer null | Re-select the target in the game, refresh in the tool, then write |
+| Version or EXE unrecognized | Stop file patches; check per-feature status in Compatibility, or use Steam file verification |
+| Result wrong after a write | Stop writing and fully exit the game; restore from the backup point created before the write |
 
 ## Development and verification
 
@@ -151,19 +131,18 @@ go vet -unsafeptr=false ./...
 build-windows.bat
 ```
 
-CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/actions/workflows/ci.yml). Formal Windows packages are created with `tools/package_windows_release.ps1`, which emits the versioned EXE, a ZIP containing the required license files, and a SHA-256 manifest.
+- Build environment: Windows amd64, Go 1.25+, Node.js/npm, Wails CLI v2.13, WebView2 Runtime
+- Release packages: `tools/package_windows_release.ps1` produces the versioned EXE, a ZIP with license files, and a SHA-256 manifest
+- Online sharing service: `services/loadout-share` (Cloudflare Worker + R2/D1)
 
-## Documentation and notice
+## Acknowledgements
 
-- [Complete v2.0.10 release notes](docs/RELEASE_NOTES_v2.0.10.md)
-- [Complete v2.0.9 release notes](docs/RELEASE_NOTES_v2.0.9.md)
-- [Complete v2.0.7 release notes](docs/RELEASE_NOTES_v2.0.7.md)
-- [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)
-- [v2.0.5 release notes](docs/RELEASE_NOTES_v2.0.5.md)
-- [v2.0.4 historical release notes](docs/RELEASE_NOTES_v2.0.4.md)
-- [Historical v2.0.3 release notes](docs/RELEASE_NOTES_v2.0.3.md)
-- [DLC 2.0.2 implementation status](docs/IMPLEMENTATION_STATUS.md)
-- [Formula and evidence boundaries](docs/FORMULAS_2.0.2.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+This project is forked from [BitterG/GBFR-PE-Patch-Tool](https://github.com/BitterG/GBFR-PE-Patch-Tool). The early implementation of save parsing and sigil/wrightstone generation follows its public work; that repository's README also credits Xzire91x and Nenkai as the upstream method sources. The current repository has been rewritten and extended on top of it. This note only preserves the source chain and does not imply endorsement, authorization, or participation by the original authors.
 
-This is an unofficial community project. It is not affiliated with, sponsored by, or authorized by Cygames, SEGA, the game's publishers, or the community authors referenced by the project. Use it only with local files and offline environments you are entitled to control. Do not use it to affect other players or repackage it as a paid modification service.
+Other public resources are used for cross-checking only: loadout interaction was cross-referenced against a community loadout simulator; Chinese terminology against LKong621's public content; data extraction used Nenkai's public tools; summon hints were cross-checked against SinnohDawn's public notes and Relink Summon. None of these links imply cooperation, authorization, code porting, or endorsement.
+
+## Disclaimer
+
+This is an unofficial community tool for learning and personal local use only. It is not affiliated with, sponsored by, or authorized by Cygames, SEGA, the game's publishers, or the community authors referenced by the project. Modifying save files, game files, or runtime memory may cause data corruption, progress loss, or trigger the game's own checks. Work only with files you are entitled to use, keep recoverable backups, and accept the consequences yourself. Do not use this project for paid modification services or to affect other players in online environments.
+
+This repository does not declare a project-level license covering all inherited code; except for third-party components with their own explicit licenses, public availability of the repository alone does not grant rights to copy, redistribute, or sell. The repository does not include, mirror, crack, or resell any third-party paid tables, member content, or restricted downloads.
