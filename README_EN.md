@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/v2.0.12-home.jpg" alt="Relink Skyfarer Workshop v2.0.12 full home screen" width="960">
+  <img src="docs/screenshots/v2.0.12-home-en.jpg" alt="Relink Skyfarer Workshop v2.0.12 full home screen, English UI" width="960">
 </p>
 
 # Relink Skyfarer Workshop (Granblue Fantasy: Relink)
