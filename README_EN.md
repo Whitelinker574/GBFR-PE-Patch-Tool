@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-home.png" alt="GBFR PE Patch Tool v2.0.3 home screen" width="960">
+  <img src="docs/screenshots/v2.0.10-home.png" alt="GBFR PE Patch Tool v2.0.10 full home screen" width="960">
 </p>
 
 <h1 align="center">GBFR PE Patch Tool</h1>
@@ -45,7 +45,7 @@ The Offline, Live, Read-only, Experimental, and Unavailable labels are functiona
 Smart loadout tools now live directly above the sigil grid in the normal character loadout editor.
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-smart-loadout.png" alt="Build a twelve-sigil loadout from skill targets" width="960">
+  <img src="docs/screenshots/v2.0.10-smart-loadout.png" alt="Build a twelve-sigil loadout from skill targets in v2.0.10" width="960">
 </p>
 
 Switch between manual editing and skill-target mode, add any number of skills, and enter the exact target level for each one. Goals are processed from top to bottom. The solver first uses distinct real inventory instances from the selected save, then reports the first target it cannot complete and every missing sigil. Missing instances are never created silently.
@@ -55,7 +55,7 @@ A selected result is loaded into the normal draft first. The save changes only a
 ### Enable party capture once and keep it running
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-party-capture.png" alt="Persistent party loadout capture and local history" width="960">
+  <img src="docs/screenshots/v2.0.10-party-capture.png" alt="Persistent party loadout capture and local history in v2.0.10" width="960">
 </p>
 
 Party capture never starts on its own. After you enable it, the service stays active across page changes and waits for three stable snapshots before recording the 2–3 party members it can identify. It stops only when you explicitly turn it off.
@@ -75,7 +75,7 @@ The share-image workshop uses a luminous sky-card backdrop with a larger charact
 ### Compare and copy between two saves without leaving the page
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-save-diff.png" alt="Two-save comparison and in-place copy" width="960">
+  <img src="docs/screenshots/v2.0.10-save-diff.png" alt="Two-save comparison and in-place copy in v2.0.10" width="960">
 </p>
 
 The save laboratory explains known differences by category, copyability, and confidence. Equal-shape records with audited semantics can be staged in either direction on the same page. Additions, removals, length changes, and unknown structures remain visible but cannot be copied as raw bytes.
@@ -85,7 +85,7 @@ Fate Episodes provide a restricted experimental writer for audited completion va
 ### Configure natural drops from embedded 2.0.2 tables
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-natural-drop.png" alt="Natural-drop and forging rule builder" width="960">
+  <img src="docs/screenshots/v2.0.10-natural-drop.png" alt="Natural-drop and forging rule builder in v2.0.10" width="960">
 </p>
 
 Summons, Transmarvel sigils, wrightstones, and verified regular-item rewards are selected from exact tables embedded in the application. Users no longer need to find an unpacked table directory. Selections enter a review list before deployment.

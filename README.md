@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-home.png" alt="GBFR PE Patch Tool v2.0.3 首页" width="960">
+  <img src="docs/screenshots/v2.0.10-home.png" alt="GBFR PE Patch Tool v2.0.10 完整首页" width="960">
 </p>
 
 <h1 align="center">GBFR PE Patch Tool</h1>
@@ -45,7 +45,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 智能配装已经放回角色配装详情的因子区域，不需要再去找独立工具页。
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-smart-loadout.png" alt="按技能目标配装入口与目标设置" width="960">
+  <img src="docs/screenshots/v2.0.10-smart-loadout.png" alt="v2.0.10 按技能目标配装入口与目标设置" width="960">
 </p>
 
 你可以在“手动配装”和“按技能配装”之间切换：
@@ -61,7 +61,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 ### 点击一次，持续采集每场队友配装
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-party-capture.png" alt="队友配装持续检测与历史" width="960">
+  <img src="docs/screenshots/v2.0.10-party-capture.png" alt="v2.0.10 队友配装持续检测与历史" width="960">
 </p>
 
 队友配装检测默认不会自行启动。点击开启后，它会作为后台服务保持连接，等待连续三次稳定快照，再把每场可确认的 2–3 名队友配装存入本地历史。切换页面不会停止采集，直到你主动关闭。
@@ -86,7 +86,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 ### 在同一页比较并复制两份存档
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-save-diff.png" alt="双存档差异与同页复制" width="960">
+  <img src="docs/screenshots/v2.0.10-save-diff.png" alt="v2.0.10 双存档差异与同页复制" width="960">
 </p>
 
 存档实验室会并排显示两份存档的差异，并按角色成长、配装、物品、任务状态和未知结构分类。已确认语义、结构一致的记录可以直接选择左右写入方向；单侧新增、删除、长度变化和未知结构保持不可复制。
@@ -96,7 +96,7 @@ v2.0.3 把原来的存档编辑器扩展成五个按实际使用流程排列的�
 ### 使用内置 2.0.2 表配置天然掉落
 
 <p align="center">
-  <img src="docs/screenshots/v2.0.3-natural-drop.png" alt="天然掉落与锻造规则" width="960">
+  <img src="docs/screenshots/v2.0.10-natural-drop.png" alt="v2.0.10 天然掉落与锻造规则" width="960">
 </p>
 
 召唤石、因子、祝福石和已验证普通物品奖励都从应用内置的精确表中选择，不再要求用户自己寻找解包目录。先选择种类和词条，再加入“待部署清单”，部署前可以逐条核对。
