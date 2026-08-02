@@ -15,7 +15,7 @@ const (
 	runtimePatchCatalogGameVersion     = "2.0.2"
 	runtimePatchCatalogGameSHA256      = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
 	game203ExecutableSHA256            = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
-	runtimePatchCatalogFeatureCount    = 59
+	runtimePatchCatalogFeatureCount    = 60
 	runtimePatchDamageCapConflictName  = "damage-cap-display"
 	stableReleaseCandidateWriteEnabled = true
 )
@@ -80,6 +80,7 @@ var (
 )
 
 var runtimePatch203OriginalBytes = map[string][]byte{
+	"GBFR_PATCH_060_1": {0xC5, 0xFA, 0x59, 0x05, 0x44, 0xC4, 0x30, 0x05},
 	"GBFR_PATCH_014_1": {0xC5, 0xFA, 0x59, 0x0D, 0x2E, 0xFD, 0xA7, 0x02},
 	"GBFR_PATCH_028_1": {0xC5, 0xFA, 0x59, 0x0D, 0x2A, 0x51, 0x31, 0x05},
 	"GBFR_PATCH_035_1": {0xC5, 0xFA, 0x59, 0x0D, 0xE4, 0xFA, 0x03, 0x02},

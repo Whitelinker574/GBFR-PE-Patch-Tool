@@ -82,12 +82,28 @@ test('frameless titlebar keeps only minimise, maximise or restore, and close on 
   assert.match(patchTool, /\.titlebar-status\s*\{[^}]*position\s*:\s*absolute[^}]*left\s*:\s*50%/is)
 })
 
-test('home scene owns a definite full-height chain and top-aligns before its heading can be clipped', () => {
+test('home scene expands with its catalog and leaves the outer workspace responsible for scrolling', () => {
   assert.match(patchTool, /\.home-mode \.workspace-scroll\s*\{[^}]*padding\s*:\s*0[^}]*overflow\s*:\s*auto[^}]*scrollbar-gutter\s*:\s*auto/is)
-  assert.match(patchTool, /\.home-mode \.workspace-scene\s*\{[^}]*height\s*:\s*100%[^}]*min-height\s*:\s*100%/is)
-  assert.match(homeJournal, /\.journal-home\s*\{[^}]*display:flex;[^}]*flex-direction:column;/is)
-  assert.match(homeJournal, /\.illustrated-journal\s*\{[^}]*flex:1 0 auto;/is)
-  assert.match(homeJournal, /@media \(max-height:920px\) and \(min-width:761px\)\s*\{[\s\S]*?\.journal-home\s*\{[^}]*height:auto;[^}]*min-height:100%;[^}]*\}[\s\S]*?\.illustrated-journal\s*\{[^}]*height:auto;[^}]*min-height:500px;[^}]*\}[\s\S]*?\.page-menu\s*\{[^}]*height:auto;[^}]*justify-content:flex-start;/is)
+  assert.match(patchTool, /\.home-mode \.workspace-scene\s*\{[^}]*min-height\s*:\s*100%/is)
+  assert.match(homeJournal, /\.journal-home\s*\{[^}]*height:auto;[^}]*min-height:100%;[^}]*display:flex;[^}]*flex-direction:column;/is)
+  assert.match(homeJournal, /\.illustrated-journal\s*\{[^}]*height:auto;[^}]*min-height:100%;[^}]*flex:1 0 auto;/is)
+  assert.match(homeJournal, /\.page-menu\s*\{[^}]*height:auto;[^}]*min-height:100%;[^}]*justify-content:flex-start;/is)
+  assert.doesNotMatch(homeJournal, /justify-content:center/)
+})
+
+test('home journal uses the wide viewport for a catalog grid while preserving a secondary illustration rail', () => {
+  assert.match(homeJournal, /@media \(min-width:1180px\)\s*\{[\s\S]*?\.page-menu\s*\{[^}]*width:min\(68%,1240px\)/is)
+  assert.match(homeJournal, /@media \(min-width:1180px\)\s*\{[\s\S]*?\.home-groups\s*\{[^}]*display:grid;[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/is)
+  assert.match(homeJournal, /\.home-group\[data-group="runtimeTools"\]\s*\{[^}]*grid-column:1\s*\/\s*-1/is)
+  assert.match(homeJournal, /\.home-group\[data-group="runtimeTools"\]\s+\.home-group-items\s*\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/is)
+  assert.match(homeJournal, /@media \(max-width:760px\)\s*\{[\s\S]*?\.page-menu\s*\{[^}]*width:100%/is)
+  assert.doesNotMatch(homeJournal, /width:clamp\(500px,44vw,680px\)/)
+})
+
+test('tall fullscreen home keeps every chapter in one continuous catalog flow', () => {
+  assert.doesNotMatch(homeJournal, /@media \(min-width:1180px\) and \(min-height:780px\)/i)
+  assert.doesNotMatch(homeJournal, /align-content\s*:\s*space-between/i)
+  assert.doesNotMatch(homeJournal, /\.home-groups\s*\{[^}]*flex\s*:\s*1\s+1\s+auto/is)
 })
 
 test('remembered directory collapse never narrows the hidden home or loadout shell', () => {
@@ -118,7 +134,7 @@ test('top tool tabs use the bold label weight requested for quick scanning', () 
 
 test('sidebar and top-tab groups put common functions first in an exact stable order', () => {
   assert.deepEqual(navigationIds(patchTool, 'save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'])
-  assert.deepEqual(navigationIds(patchTool, 'memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
+  assert.deepEqual(navigationIds(patchTool, 'memory'), ['sigilMemory', 'wrightstoneMemory', 'weaponMemory', 'summon', 'overlimit', 'runtime'])
   assert.deepEqual(navigationIds(patchTool, 'loadoutFlow'), ['runtimeMonitor', 'loadout'])
   assert.deepEqual(navigationIds(patchTool, 'runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
   assert.deepEqual(navigationIds(patchTool, 'tools'), ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'])
@@ -160,7 +176,7 @@ test('every top tab has one explicit work-mode badge independent from maturity s
 
 test('home journal mirrors the common-first entry order and exposes live blessing and loadout editors', () => {
   assert.deepEqual(homeEntryIds('save'), ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'saveDiff'])
-  assert.deepEqual(homeEntryIds('memory'), ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'])
+  assert.deepEqual(homeEntryIds('memory'), ['sigilMemory', 'wrightstoneMemory', 'weaponMemory', 'summon', 'overlimit', 'runtime'])
   assert.deepEqual(homeEntryIds('loadoutFlow'), ['runtimeMonitor', 'loadout'])
   assert.deepEqual(homeEntryIds('runtimeTools'), ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'])
   assert.doesNotMatch(homeJournal, /id: 'monitor'/)
@@ -174,7 +190,7 @@ test('user-facing page titles omit historical source-version suffixes', () => {
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'游戏 2\.0\.3（静态与离线）'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v2\.0\.9"/)
+  assert.match(appGo, /appVersion\s*=\s*"v2\.0\.10"/)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 

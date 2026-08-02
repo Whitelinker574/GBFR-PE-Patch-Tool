@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const runtimePatchCatalogSHA256 = "4D396A66E0658E92EDC5233047FE4C863DB592068F801C5569DC0BB5E0E79388"
+const runtimePatchCatalogSHA256 = "FAD8E9D5515C74C6326D98AD0DEE42E39259A1CE76EEAA6AC70467E24142581D"
 
 func readRuntimePatchCatalogFile(t *testing.T) RuntimePatchCatalog {
 	t.Helper()
@@ -55,8 +55,8 @@ func TestRuntimePatchCatalogFileIdentityAndCoverage(t *testing.T) {
 	if catalog.SchemaVersion != 3 || catalog.GameVersion != "2.0.2" || catalog.GameExecutableSHA256 != runtimePatchCatalogGameSHA256 {
 		t.Fatalf("catalog identity=%+v", catalog)
 	}
-	if len(catalog.Features) != 59 {
-		t.Fatalf("features=%d, want 59", len(catalog.Features))
+	if len(catalog.Features) != 60 {
+		t.Fatalf("features=%d, want 60", len(catalog.Features))
 	}
 	sites := 0
 	aobs := make(map[string]struct{})
@@ -86,8 +86,8 @@ func TestRuntimePatchCatalogFileIdentityAndCoverage(t *testing.T) {
 			}
 		}
 	}
-	if sites != 82 || len(aobs) != 80 {
-		t.Fatalf("coverage=%d sites/%d AOBs, want 82/80", sites, len(aobs))
+	if sites != 83 || len(aobs) != 81 {
+		t.Fatalf("coverage=%d sites/%d AOBs, want 83/81", sites, len(aobs))
 	}
 }
 
@@ -162,8 +162,32 @@ func TestRuntimePatchExpectedOriginalBytesSelectsKnown203RIPDisplacements(t *tes
 			}
 		}
 	}
-	if seen != 3 {
-		t.Fatalf("2.0.3 RuntimePatch original-byte variants=%d, want 3", seen)
+	if seen != 4 {
+		t.Fatalf("2.0.3 RuntimePatch original-byte variants=%d, want 4", seen)
+	}
+}
+
+func TestRuntimePatchCatalogContainsInfiniteLinkTime(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	var feature *RuntimePatchFeature
+	for index := range catalog.Features {
+		if catalog.Features[index].CatalogID == 60 {
+			feature = &catalog.Features[index]
+			break
+		}
+	}
+	if feature == nil {
+		t.Fatal("catalog entry 60 is missing")
+	}
+	if feature.ID != "runtime-patch-060" || feature.Name != "Link time 持续不减" ||
+		feature.Mode != "combat" || feature.Group != "战斗功能" || len(feature.Sites) != 1 {
+		t.Fatalf("catalog entry 60 is malformed: %+v", feature)
+	}
+	site := feature.Sites[0]
+	if site.Symbol != "GBFR_PATCH_060_1" || site.Offset != 0 ||
+		!bytes.Equal(site.ExpectedOriginalBytes, []byte{0xC5, 0xFA, 0x59, 0x05, 0xB4, 0x95, 0x30, 0x05}) ||
+		!bytes.Equal(site.EnableBytes, []byte{0x0F, 0x57, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90}) {
+		t.Fatalf("catalog entry 60 site is malformed: %+v", site)
 	}
 }
 

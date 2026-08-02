@@ -16,6 +16,7 @@ type runtimeGameLayout struct {
 	SelectedKeyItemRVA    uintptr
 	SigilHookRVA          uintptr
 	WrightstoneHookRVA    uintptr
+	WeaponHookRVA         uintptr
 	SaveFunctionRVA       uintptr
 	PartyCharaPowerRVA    uintptr
 	SummonInventoryPtrRVA uintptr
@@ -41,6 +42,7 @@ var runtimeGameLayouts = [...]runtimeGameLayout{
 		PartyHandleRootOffset: 0x58,
 		SelectedMaterialRVA:   0x3F479F3, SelectedKeyItemRVA: 0x3F1C54C,
 		SigilHookRVA: 0x33E427, WrightstoneHookRVA: 0x35AF84,
+		WeaponHookRVA:   0x415118C,
 		SaveFunctionRVA: 0x796E60, PartyCharaPowerRVA: 0x7C21A38, SummonInventoryPtrRVA: 0x7C20F08,
 		SpatialGravityRVA: 0x39D8E24, InventoryMaterialRVA: 0x34F8F1,
 	},

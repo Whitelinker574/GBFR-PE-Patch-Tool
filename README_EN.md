@@ -14,6 +14,8 @@
 
 ## Game 2.0.3 compatibility
 
+v2.0.10 adds a live editor for the currently highlighted weapon. It can back up, edit, and read back the five persistent skill slots, while skill six and beyond use the game's native skill-aggregation path as an explicitly enabled runtime feature. The camera workshop now provides five presets. Spatial tools put the verified virtual-ground workflow first, with native WASD movement and PageUp/PageDown elevation, while continuous jump and the less reliable aerial-action experiment remain separate. New 2.0.3 quest conveniences cover summon duration, quest score, side objectives, and free crafting/trading/upgrades. Every live feature remains off by default and retains page, F12, disconnect, and shutdown restoration.
+
 v2.0.9 makes every persistent connection explicit and off by default. Loadout capture, virtual sigils, audio, camera, and live patches appear in the title bar only after the user enables them; navigation does not stop them, and each status chip returns to the page that can disable it. Stale status from a previous game PID is no longer presented as active, while F12 and normal disable paths restore app-owned hooks. The virtual-sigil workspace also switches to a single-column layout at common window widths so its stop controls remain reachable.
 
 The v2.0.8 live quest-reward multiplier remains available for ordinary stackable items already aggregated in the local quest result. There is still no evidence that this local multiplier propagates to an unmodified PC or PlayStation teammate.
@@ -29,7 +31,7 @@ v2.0.3 organizes the application around five normal user workflows:
 | Workspace | Typical use | Data boundary |
 | --- | --- | --- |
 | Saves & Loadouts | Edit characters, weapons, sigils, wrightstones, summons, and loadouts; compare two saves | Offline writes with backup, atomic replacement, reopen, and readback |
-| Live Editors | Edit the currently selected sigil, wrightstone, summon, or Over Mastery value | Requires the game; every write is bound to the current process and captured object |
+| Live Editors | Edit the currently selected sigil, wrightstone, summon, weapon skills, or Over Mastery value | Requires the game; every write is bound to the current process and captured object |
 | Loadout Capture & Restore | Persistently capture party loadouts, import Logs JSON/databases, and browse battle archives | Capture is off by default and runs continuously only after the user enables it |
 | Offline Runtime Tools | Display helpers, room ID, party leader, position, audio, camera, and combat rules | Intended for offline/host use; candidates without field evidence retain an experimental or restoration boundary |
 | Game Files, Diagnostics & Settings | Natural-drop rules, read-only sampling, compatibility diagnostics, language, and settings | `data.i` deployment creates a backup and restore path; diagnostics do not write |
@@ -151,6 +153,7 @@ CI status is available in [GitHub Actions](https://github.com/Whitelinker574/GBF
 
 ## Documentation and notice
 
+- [Complete v2.0.10 release notes](docs/RELEASE_NOTES_v2.0.10.md)
 - [Complete v2.0.9 release notes](docs/RELEASE_NOTES_v2.0.9.md)
 - [Complete v2.0.7 release notes](docs/RELEASE_NOTES_v2.0.7.md)
 - [Complete v2.0.6 release notes](docs/RELEASE_NOTES_v2.0.6.md)

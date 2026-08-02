@@ -24,7 +24,7 @@ test('tool entry copy tells users what changes, how to apply it, and how to reco
   assert.match(shell, /wrightstone:\s*\{[\s\S]*?新增祝福石实例[\s\S]*?技能曲线[\s\S]*?存档保护/)
   assert.match(shell, /runtime:\s*\{[\s\S]*?title:\s*'货币、素材与任务掉落'[\s\S]*?当前游戏会话/)
   assert.match(shell, /saveDiff:\s*\{[\s\S]*?不需要跳转到其他编辑页[\s\S]*?自动备份、原子写入并逐条回读/)
-  assert.match(shell, /spatialTools:\s*\{[\s\S]*?status:\s*'可用 · 实验'[\s\S]*?游戏内方向键[\s\S]*?重力抑制/)
+  assert.match(shell, /spatialTools:\s*\{[\s\S]*?status:\s*'可用 · 实验'[\s\S]*?方向键[\s\S]*?连续跳跃/)
   assert.match(shell, /virtualSigils:\s*\{[\s\S]*?status:\s*'2\.0\.2 \/ 2\.0\.3 可用 · 实验'[\s\S]*?开启内置运行时/)
   assert.doesNotMatch(shell, /virtualSigils:\s*\{[\s\S]*?稳定版仅预览\/恢复/)
 })
@@ -63,7 +63,8 @@ test('save comparison and runtime pages state their write boundary and recovery 
   assert.match(saveDiff, /把需要的差异从一侧拖到另一侧/)
   assert.match(saveDiff, /默认存档写入要求游戏完全退出/)
   assert.match(saveDiff, /脱敏差分已导出到：\$\{path\}/)
-  assert.match(runtimeCopy, /坐标移动与重力抑制是两个独立功能；穿墙仍未开放/)
+  assert.match(runtimeCopy, /连续跳跃补丁/)
+  assert.match(runtimeCopy, /关闭、断开、F12 与退出都会恢复/)
   assert.match(runtimeCopy, /这里.*没有修改数量、Hash 或 Flags 的入口/)
   assert.match(audio, /停用并恢复原音/)
   assert.match(camera, /停用并恢复原镜头/)
@@ -84,7 +85,7 @@ test('new shell copy has exact English translations instead of mixed-language fa
     '第三步 · 写入当前因子',
     '2.0.2 / 2.0.3 可用 · 实验',
     '可用 · 实验',
-    '读取坐标、保存书签、传送，并通过页面按钮或游戏内方向键进行世界轴移动；重力抑制可独立开启和恢复。',
+    '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W\/A\/S\/D；连续跳跃使用 2.0.3 双站点补丁与原生跳跃输入。',
     '让运行中角色额外读取 1 至 8 颗真实库存因子；它不会扩展存档的 12 个物理槽，也不会把虚拟槽写进存档。',
   ]) {
     assert.ok(uiTranslations[chinese], `missing exact translation for: ${chinese}`)

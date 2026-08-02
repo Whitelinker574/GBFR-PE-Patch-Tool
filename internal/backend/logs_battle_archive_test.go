@@ -161,6 +161,80 @@ func TestLogsBattleArchiveDetailAggregatesStoredDamageAndLoadout(t *testing.T) {
 	}
 }
 
+func TestLogsBattleArchiveReadsStoredLegalityFindingsWithoutRejudgingPlayers(t *testing.T) {
+	path := createLogsArchiveFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE legality_findings (
+		log_id INTEGER NOT NULL, player_index INTEGER NOT NULL, display_name TEXT NOT NULL,
+		character_type TEXT NOT NULL, severity TEXT NOT NULL, rule TEXT NOT NULL, payload TEXT NOT NULL
+	)`)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	hard := `{"rule":"sigilSingleTraitOnly","subject":{"kind":"sigil","index":0},"observed":{"kind":"count","value":2},"allowed":{"kind":"count","value":1},"odds":null}`
+	odds := `{"rule":"overmasteryAllMaxed","subject":{"kind":"overmasteries"},"observed":{"kind":"count","value":4},"allowed":{"kind":"count","value":4},"odds":0.0001}`
+	if _, err = db.Exec(`INSERT INTO legality_findings VALUES
+		(3,0,'Pilot','PL0400','finding','sigilSingleTraitOnly',?),
+		(3,0,'Pilot','PL0400','finding','overmasteryAllMaxed',?)`, hard, odds); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	page, err := readLogsBattleArchivePage(path, LogsBattleArchiveRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Items[0].ID != 3 || page.Items[0].LegalityFindingCount != 2 {
+		t.Fatalf("stored finding count missing from archive row: %+v", page.Items[0])
+	}
+	app := &App{logsArchivePath: path}
+	t.Cleanup(app.CloseLogsBattleArchive)
+	detail, err := app.LogsBattleArchiveDetail(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Players) != 1 || len(detail.Players[0].LegalityFindings) != 2 {
+		t.Fatalf("stored findings were not attached to their player slot: %+v", detail.Players)
+	}
+	if !detail.Players[0].LegalityFindings[0].HardBreach || detail.Players[0].LegalityFindings[1].HardBreach || detail.Players[0].LegalityFindings[1].Odds == nil {
+		t.Fatalf("hard breach and low-odds report were conflated: %+v", detail.Players[0].LegalityFindings)
+	}
+}
+
+func TestLogsBattleArchiveKeepsMalformedStoredFindingVisibleAsUnreadable(t *testing.T) {
+	path := createLogsArchiveFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE legality_findings (
+		log_id INTEGER NOT NULL, player_index INTEGER NOT NULL, display_name TEXT NOT NULL,
+		character_type TEXT NOT NULL, severity TEXT NOT NULL, rule TEXT NOT NULL, payload TEXT NOT NULL
+	)`)
+	if err == nil {
+		_, err = db.Exec(`INSERT INTO legality_findings VALUES (3,0,'Pilot','PL0400','finding','sigilTraitLevel','not-json')`)
+	}
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &App{logsArchivePath: path}
+	t.Cleanup(app.CloseLogsBattleArchive)
+	detail, err := app.LogsBattleArchiveDetail(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings := detail.Players[0].LegalityFindings
+	if len(findings) != 1 || (!strings.Contains(findings[0].Detail, "损坏") && !strings.Contains(findings[0].Detail, "malformed")) {
+		t.Fatalf("malformed stored finding silently disappeared: %+v", findings)
+	}
+}
+
 func TestLogsBattleArchiveDetailRejectsOversizedBlobBeforeDecode(t *testing.T) {
 	path := createLogsArchiveFixture(t)
 	db, err := sql.Open("sqlite", path)

@@ -68,7 +68,11 @@ func runtimeCompanionMatchesProcess(status runtimeCompanionStatus, process proce
 }
 
 func runtimeCompanionNeedsStop(status runtimeCompanionStatus, process processInstanceID) bool {
-	return runtimeCompanionMatchesProcess(status, process) && !strings.EqualFold(status.State, "inactive")
+	if !runtimeCompanionMatchesProcess(status, process) {
+		return false
+	}
+	state := strings.ToLower(strings.TrimSpace(status.State))
+	return state != "inactive" && state != "inactive_pending_refresh"
 }
 
 func runtimeCompanionInstalled(status runtimeCompanionStatus, process processInstanceID) bool {
@@ -80,7 +84,7 @@ func runtimeCompanionRecoveryRequired(status runtimeCompanionStatus, process pro
 		return false
 	}
 	state := strings.ToLower(strings.TrimSpace(status.State))
-	return state == "restore_failed" || state == "error"
+	return state == "restore_failed" || state == "error" || state == "inactive_pending_refresh"
 }
 
 // runtimeCompanionStartDecision is evaluated before claiming/injecting. An
@@ -101,7 +105,7 @@ func runtimeCompanionStartDecision(status runtimeCompanionStatus, process proces
 			return false, errors.New("该游戏进程的运行时组件由另一个工具实例管理")
 		case "error", "restore_failed":
 			return false, fmt.Errorf("内置运行时处于不可恢复状态，请先重启游戏: %s", status.Detail)
-		case "inactive":
+		case "inactive", "inactive_pending_refresh":
 			return false, nil
 		}
 	}
@@ -176,7 +180,8 @@ func runtimeCompanionPath(name string) (string, error) {
 }
 
 func clearStaleInactiveRuntimeCompanionStatus(feature string, status runtimeCompanionStatus, process processInstanceID) error {
-	if !runtimeCompanionMatchesProcess(status, process) || !strings.EqualFold(strings.TrimSpace(status.State), "inactive") {
+	state := strings.ToLower(strings.TrimSpace(status.State))
+	if !runtimeCompanionMatchesProcess(status, process) || (state != "inactive" && state != "inactive_pending_refresh") {
 		return nil
 	}
 	path, err := runtimeCompanionPath(feature + ".status")
@@ -632,8 +637,10 @@ func (a *App) stopOwnedRuntimeCompanion(feature string, disable func() error) er
 			}
 		}
 	}
-	if err := disable(); err != nil {
-		return err
+	if disable != nil {
+		if err := disable(); err != nil {
+			return err
+		}
 	}
 	if processErr != nil {
 		a.releaseRuntimeCompanionOwnership(feature)
@@ -681,7 +688,7 @@ func runtimeCompanionPresent(feature string) bool {
 }
 
 // GetRuntimeCompanionSummary is the shell-level authority for persistent
-// camera, audio, virtual-sigil, damage-capture, and QOL status. It intentionally avoids loading the
+// camera, audio, virtual-sigil, weapon-skill, damage-capture, and QOL status. It intentionally avoids loading the
 // large per-page catalogs or save inventories.
 func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 	features := []struct {
@@ -691,6 +698,7 @@ func (a *App) GetRuntimeCompanionSummary() []RuntimeCompanionSummary {
 		{ID: "camera", Runtime: "camera"},
 		{ID: "audioMixer", Runtime: "audio"},
 		{ID: "virtualSigils", Runtime: "virtual-sigils"},
+		{ID: "weaponMemory", Runtime: "weapon-skills"},
 		{ID: "loadoutPresets", Runtime: "damage"},
 		{ID: "runtimeQOL", Runtime: "qol"},
 	}
@@ -863,7 +871,19 @@ func cleanupRuntimeCompanionDLL(feature string) {
 }
 
 func (a *App) startRuntimeCompanion(feature, command string) error {
-	if feature != "camera" && feature != "audio" && feature != "virtual-sigils" && feature != "damage" && feature != "qol" && feature != "party-observer" {
+	return a.startRuntimeCompanionInternal(feature, command, "", false)
+}
+
+func (a *App) startRuntimeCompanionForDigest(feature, command, requiredDigest string) error {
+	return a.startRuntimeCompanionInternal(feature, command, requiredDigest, false)
+}
+
+func (a *App) startPreparedRuntimeCompanionForDigest(feature, command, requiredDigest string) error {
+	return a.startRuntimeCompanionInternal(feature, command, requiredDigest, true)
+}
+
+func (a *App) startRuntimeCompanionInternal(feature, command, requiredDigest string, preparedOwnership bool) error {
+	if feature != "camera" && feature != "audio" && feature != "virtual-sigils" && feature != "weapon-skills" && feature != "damage" && feature != "qol" && feature != "party-observer" {
 		return errors.New("未知运行时组件")
 	}
 	if err := a.acquireGameProcessLease(); err != nil {
@@ -874,6 +894,10 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 		a.procMu.Unlock()
 		return err
 	}
+	if requiredDigest != "" && !strings.EqualFold(a.runtimePatchVerifiedDigest, requiredDigest) {
+		a.procMu.Unlock()
+		return fmt.Errorf("此运行时组件只支持已核对的 GAME 2.0.3 可执行文件")
+	}
 	handle := a.hProcess
 	status := readRuntimeCompanionStatus(feature)
 	ownedGeneration := ""
@@ -882,7 +906,12 @@ func (a *App) startRuntimeCompanion(feature, command string) error {
 			ownedGeneration = lease.Generation
 		}
 	}
-	if alreadyActive, decisionErr := runtimeCompanionStartDecision(status, process, ownedGeneration); decisionErr != nil {
+	alreadyActive := false
+	var decisionErr error
+	if !(preparedOwnership && ownedGeneration != "" && !runtimeCompanionMatchesProcess(status, process)) {
+		alreadyActive, decisionErr = runtimeCompanionStartDecision(status, process, ownedGeneration)
+	}
+	if decisionErr != nil {
 		a.procMu.Unlock()
 		return decisionErr
 	} else if alreadyActive {
@@ -962,7 +991,7 @@ func waitRuntimeCompanionStopped(feature string, process processInstanceID, gene
 		if status.Generation != generation {
 			return errors.New("运行时状态已切换到其他所有权代次，拒绝把它视为当前 Hook 已恢复")
 		}
-		if status.State == "inactive" {
+		if status.State == "inactive" || status.State == "inactive_pending_refresh" {
 			return nil
 		}
 		if status.State == "error" || status.State == "restore_failed" {
@@ -999,6 +1028,10 @@ func restoreRuntimeCompanions(removers ...struct {
 
 func (a *App) closeRuntimeCompanions() error {
 	return restoreRuntimeCompanions(
+		struct {
+			name   string
+			remove func(string) error
+		}{"weapon runtime skills", func(string) error { return a.WeaponRuntimeSkillsRemove() }},
 		struct {
 			name   string
 			remove func(string) error

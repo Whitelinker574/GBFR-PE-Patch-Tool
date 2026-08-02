@@ -32,6 +32,28 @@ func TestWindowSizePreservesRealDesktopPreferences(t *testing.T) {
 	}
 }
 
+func TestWindowSizeForScreenKeepsRestoredWindowInsideScaledMonitor(t *testing.T) {
+	tests := []struct {
+		name                  string
+		config                AppConfig
+		screenWidth           int
+		screenHeight          int
+		wantWidth, wantHeight int
+	}{
+		{name: "125 percent maximised capture", config: AppConfig{WindowWidth: 2062, WindowHeight: 1118}, screenWidth: 2048, screenHeight: 1152, wantWidth: 1945, wantHeight: 1036},
+		{name: "normal preference remains unchanged", config: AppConfig{WindowWidth: 1280, WindowHeight: 800}, screenWidth: 2048, screenHeight: 1152, wantWidth: 1280, wantHeight: 800},
+		{name: "missing screen evidence keeps persisted size", config: AppConfig{WindowWidth: 1080, WindowHeight: 700}, wantWidth: 1080, wantHeight: 700},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			width, height := test.config.windowSizeForScreen(test.screenWidth, test.screenHeight)
+			if width != test.wantWidth || height != test.wantHeight {
+				t.Fatalf("windowSizeForScreen() = %dx%d, want %dx%d", width, height, test.wantWidth, test.wantHeight)
+			}
+		})
+	}
+}
+
 func TestAppConfigConcurrentUpdatesPreserveIndependentFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	app := &App{configPathOverride: path}

@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const runtimePatchOriginalEvidenceSHA256 = "C02CE865020DA591E9BB4D9705C634E7D51E857818D73B11E80660E6F6718E70"
+const runtimePatchOriginalEvidenceSHA256 = "C77E08B2C71C787572CC1425490CF89AB4903D2DAE48BA1CDC77789CA19B5446"
 
 type runtimePatchOriginalEvidence struct {
 	SchemaVersion    int                                `json:"schemaVersion"`
@@ -63,8 +63,8 @@ func TestRuntimePatchOriginalEvidenceIsLockedAndCoversCatalog(t *testing.T) {
 	if evidence.SchemaVersion != 1 || evidence.GameVersion != "2.0.2" || evidence.ExecutableSHA256 != runtimePatchLocalGame202SHA256 || evidence.ExecutableSize != runtimePatchLocalGame202Size {
 		t.Fatalf("original evidence identity=%+v", evidence)
 	}
-	if len(evidence.Sites) != 82 {
-		t.Fatalf("original evidence sites=%d, want 82", len(evidence.Sites))
+	if len(evidence.Sites) != 83 {
+		t.Fatalf("original evidence sites=%d, want 83", len(evidence.Sites))
 	}
 
 	byKey := make(map[[2]int]runtimePatchOriginalEvidenceSite, len(evidence.Sites))

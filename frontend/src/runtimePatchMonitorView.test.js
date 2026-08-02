@@ -294,16 +294,41 @@ test('spatial arrow-key status stays bound to the owner, process, foreground gua
     speed: 8,
     ownerLeaseId: ownerToken,
     pid: processInfo.pid,
-    processCreated: 1337000,
+    processCreated: '134147703140663100',
     gameVersion: '2.0.2',
     source: 'game_runtime_spatial_hotkeys_2.0.2',
+    inputMode: 'native_wasd',
+    flightEnabled: false,
+    flightMode: 'virtual_ground',
+    verticalInputMode: 'same_frame_height_hook',
+    flightDiagnostics: {
+      actionId: 1,
+      currentHeight: 12.5,
+      targetHeight: 12.5,
+      grounded: true,
+      anchored: true,
+      lastFloorQueryHit: false,
+      contactTemplateReady: true,
+      floorQueries: '4500',
+      acceptedContacts: '1200',
+      snapshotSequence: '4500',
+    },
     lastError: '',
   }, ownerToken, processInfo.pid)
   assert.equal(status.enabled, true)
   assert.equal(status.foregroundOnly, true)
+  assert.equal(status.flightEnabled, false)
+  assert.equal(status.flightMode, 'virtual_ground')
+  assert.equal(status.verticalInputMode, 'same_frame_height_hook')
+  assert.equal(status.flightDiagnostics.actionId, 1)
+  assert.equal(status.flightDiagnostics.contactTemplateReady, true)
+  assert.equal(status.flightDiagnostics.floorQueries, '4500')
+  assert.equal(status.flightDiagnostics.acceptedContacts, '1200')
+  assert.equal(status.processCreated, '134147703140663100')
   assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, foregroundOnly: false }, ownerToken, processInfo.pid), /foreground/i)
-  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, speed: 1001 }, ownerToken, processInfo.pid), /speed/i)
+  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, speed: 20.1 }, ownerToken, processInfo.pid), /speed/i)
   assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, ownerLeaseId: 'stale' }, ownerToken, processInfo.pid), /owner/i)
+  assert.throws(() => view.normalizeRuntimeSpatialHotkeyStatus({ ...status, flightMode: 'unknown' }, ownerToken, processInfo.pid), /flight mode/i)
 })
 
 test('unavailable party capabilities cannot masquerade as real zero values', () => {
@@ -444,15 +469,35 @@ test('all runtime monitor contracts accept the audited 2.0.3 layouts without wea
   }, ownerToken, processInfo.pid)
   assert.equal(gravity.rva, 0x39D8E24)
 
+  const jump = view.normalizeRuntimeSpatialJumpStatus({
+    ownerToken,
+    enabled: true,
+    available: true,
+    owned: true,
+    recoveryPending: false,
+    rvas: [0x1FA00AA, 0x1FA00DC],
+    currentBytes: ['EB', '0C 01'],
+    pid: processInfo.pid,
+    processCreated: '134147703140663100',
+    gameVersion: '2.0.3',
+    source: 'game_runtime_continuous_jump_2.0.3',
+    error: '',
+  }, ownerToken, processInfo.pid)
+  assert.equal(jump.processCreated, '134147703140663100')
+
   const hotkeys = view.normalizeRuntimeSpatialHotkeyStatus({
     enabled: true,
     foregroundOnly: true,
     speed: 8,
     ownerLeaseId: ownerToken,
     pid: processInfo.pid,
-    processCreated: 1337000,
+    processCreated: '134147703140663100',
     gameVersion: '2.0.3',
     source: 'game_runtime_spatial_hotkeys_2.0.3',
+    inputMode: 'native_wasd',
+    flightEnabled: false,
+    flightMode: 'virtual_ground',
+    verticalInputMode: 'same_frame_height_hook',
     lastError: '',
   }, ownerToken, processInfo.pid)
   assert.equal(hotkeys.gameVersion, '2.0.3')

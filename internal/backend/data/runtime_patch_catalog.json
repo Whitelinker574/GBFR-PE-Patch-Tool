@@ -6986,6 +6986,55 @@
           "requiresRuntimeCapture": false
         }
       ]
+    },
+    {
+      "id": "runtime-patch-060",
+      "catalogId": 60,
+      "name": "Link time 持续不减",
+      "displayName": "Link time 持续不减",
+      "mode": "combat",
+      "category": "combat",
+      "group": "战斗功能",
+      "groupPath": [
+        "战斗功能"
+      ],
+      "character": "",
+      "conflicts": [],
+      "conflictGroup": "",
+      "evidenceLevel": "verified_executable_game_2.0.2_2.0.3",
+      "evidenceNote": "已锁定 2.0.2 与 2.0.3 EXE 身份，并分别确认唯一命中、启用回读与完整原字节恢复；功能只在用户主动开启后生效，实际战斗表现仍需在 Link time 中验收。",
+      "sites": [
+        {
+          "symbol": "GBFR_PATCH_060_1",
+          "module": "$process",
+          "aob": "C5 ?? ?? ?? ?? ?? ?? ?? C4 ?? ?? ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? ?? ?? ?? ?? C5 ?? ?? ?? C5 ?? ?? ?? 0F 86",
+          "offset": 0,
+          "patternValues": [
+            197, 0, 0, 0, 0, 0, 0, 0,
+            196, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            197, 0, 0, 0, 0, 0, 0, 0,
+            197, 0, 0, 0,
+            197, 0, 0, 0,
+            15, 134
+          ],
+          "patternMasks": [
+            255, 0, 0, 0, 0, 0, 0, 0,
+            255, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            255, 0, 0, 0, 0, 0, 0, 0,
+            255, 0, 0, 0,
+            255, 0, 0, 0,
+            255, 255
+          ],
+          "enableBytes": [
+            15, 87, 192, 144, 144, 144, 144, 144
+          ],
+          "expectedOriginalBytes": [
+            197, 250, 89, 5, 180, 149, 48, 5
+          ],
+          "disableBytes": [],
+          "requiresRuntimeCapture": true
+        }
+      ]
     }
   ],
   "gameVersion": "2.0.2",

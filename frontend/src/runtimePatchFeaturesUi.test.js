@@ -12,6 +12,8 @@ const patchCatalogBackend = read('../../internal/backend/runtime_patch_catalog.g
 const patchRuntimeBackend = read('../../internal/backend/runtime_patch_runtime.go')
 const confluxTimerBackend = read('../../internal/backend/conflux_timer.go')
 const combatTuningBackend = read('../../internal/backend/combat_tuning.go')
+const taskRulesBackend = read('../../internal/backend/runtime_task_rules.go')
+const summonDurationBackend = read('../../internal/backend/summon_duration.go')
 const wailsBindings = read('../wailsjs/go/backend/App.js')
 const productionCatalog = JSON.parse(read('../../internal/backend/data/runtime_patch_catalog.json'))
 const assetManifest = JSON.parse(read('../public/generated/function-assets/manifest.json'))
@@ -127,6 +129,7 @@ test('priority cooldown and shared charge controls use the owned persistent sess
     'CombatTuningGetStatusOwned',
     'CombatTuningSetCooldownOwned',
     'CombatTuningSetChargeOwned',
+    'CombatTuningSetActionSpeedOwned',
   ]) {
     assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} component binding`)
     assert.match(wailsBindings, new RegExp(`export function ${api}\\b`), `${api} generated binding`)
@@ -158,12 +161,58 @@ test('priority cooldown and shared charge controls use the owned persistent sess
   assert.match(patchPage, /onBeforeUnmount\(\(\) => \{[\s\S]*?queueRuntimeLeaseRelease\([^;]*?releaseRuntimePatchPageOwner/)
 })
 
+test('quest rules separate score, side-objective progress, reward quantity, and drop multipliers', () => {
+  for (const api of ['TaskRulesGetStatusOwned', 'TaskRulesSetScoreMultiplierOwned', 'TaskRulesSetSideQuestAutoCompleteOwned']) {
+    assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} component binding`)
+    assert.match(taskRulesBackend, new RegExp(`func \\(a \\*App\\) ${api}\\b`), `${api} backend contract`)
+  }
+  assert.match(patchPage, /任务分数倍率/)
+  assert.match(patchPage, /只放大任务结算分数，不改变奖励物品数量，也不与掉落倍率叠加/)
+  assert.match(patchPage, /自动补齐支线目标进度/)
+  assert.match(patchPage, /奖励仍由任务结算流程处理/)
+  assert.match(patchPage, /type="number"[^>]*min="0\.1"[^>]*max="16"/)
+  assert.match(patchPage, /TaskRulesGetStatusOwned\(ownerToken\)/)
+  assert.match(patchPage, /taskRulesStatus\.value\.scoreMultiplier\.enabled/)
+  assert.match(patchPage, /taskRulesStatus\.value\.sideQuestAutoComplete\.enabled/)
+  assert.match(patchPage, /\.task-rule-grid\s*\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s)
+  assert.match(uiI18n, /'任务分数倍率': 'Quest Score Multiplier'/)
+  assert.match(uiI18n, /'自动补齐支线目标进度': 'Auto-Complete Side-Objective Progress'/)
+})
+
+test('summon duration is a visible persistent combat control with multiplier and infinite modes', () => {
+  for (const api of ['SummonDurationGetStatusOwned', 'SummonDurationSetOwned']) {
+    assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} component binding`)
+    assert.match(wailsBindings, new RegExp(`export function ${api}\\b`), `${api} generated binding`)
+    assert.match(summonDurationBackend, new RegExp(`func \\(a \\*App\\) ${api}\\b`), `${api} backend contract`)
+  }
+  assert.match(patchPage, /召唤持续时间/)
+  assert.match(patchPage, /持续时间倍率/)
+  assert.match(patchPage, /无限持续/)
+  assert.match(patchPage, /SummonDurationGetStatusOwned\(ownerToken\)/)
+  assert.match(patchPage, /SummonDurationSetOwned\(ownerToken, request\)/)
+  assert.match(patchPage, /type="number"[^>]*min="0\.1"[^>]*max="16"/)
+  assert.match(patchPage, /默认关闭；切换页面后继续生效/)
+})
+
 test('unverified runtime extensions remain visibly labelled as candidates', () => {
   assert.match(patchPage, /v-if="feature\.evidenceNote"/)
   assert.match(patchPage, /startsWith\('candidate_'\)/)
   assert.match(patchPage, /class="feature-evidence"/)
   assert.match(patchPage, /\{\{ tr\(feature\.evidenceNote\) \}\}/)
   assert.match(patchPage, /\.feature-evidence\.is-candidate\s*\{[^}]*color\s*:\s*var\(--warning-ink\)/is)
+})
+
+test('common patch cards explain user-visible behavior instead of exposing only technical evidence', async () => {
+  const { translateRuntimePatchFeatureSummary } = await import(`./runtimePatchTranslations.js?summary=${Date.now()}`)
+  for (const [id, expectedZH, expectedEN] of [
+    ['runtime-patch-052', /钥匙/, /key/i],
+    ['runtime-patch-055', /游戏内合成因子/, /synthesizing sigils/i],
+    ['runtime-patch-060', /Link time/, /Link Time/i],
+  ]) {
+    assert.match(translateRuntimePatchFeatureSummary({ id }, 'zh'), expectedZH)
+    assert.match(translateRuntimePatchFeatureSummary({ id }, 'en'), expectedEN)
+  }
+  assert.match(patchPage, /class="feature-description"[^>]*>\{\{ displayFeatureSummary\(feature\) \}\}/)
 })
 
 test('catalog presentation filters by mode and search while naming the active conflict', async () => {
@@ -195,6 +244,32 @@ test('catalog presentation filters by mode and search while naming the active co
     { id: 'runtime-patch-2', enabled: false, available: true, rvas: [123], currentBytes: ['90'], error: 'recovery is required' },
   ])
   assert.equal(findActiveRuntimePatchConflict(features[0], statuses, features)?.name, '无限打击层数')
+})
+
+test('runtime patch browsing exposes CT-facing aliases and sorts common features before niche entries', async () => {
+  const { buildRuntimePatchGroups, filterRuntimePatchGroups, buildRuntimePatchStatusIndex } = await import(`./runtimePatchFeatureView.js?discoverability=${Date.now()}`)
+  const features = [
+    { id: 'runtime-patch-047', catalogId: 47, mode: 'quest', name: '无限挑战时间', group: '任务修改' },
+    { id: 'runtime-patch-051', catalogId: 51, mode: 'quest', name: '无视限制启用战斗辅助', group: '体验优化' },
+    { id: 'runtime-patch-052', catalogId: 52, mode: 'quest', name: '无视钥匙直接开箱', group: '体验优化' },
+    { id: 'runtime-patch-054', catalogId: 54, mode: 'quest', name: 'MSP,境界点数不减', group: '体验优化' },
+    { id: 'runtime-patch-055', catalogId: 55, mode: 'quest', name: '因子合成：强制最高等级', group: '体验优化' },
+  ]
+  const all = buildRuntimePatchGroups(features, 'quest')
+  assert.deepEqual(all.map(group => group.key), ['体验优化', '任务修改'])
+  assert.deepEqual(all[0].features.map(feature => feature.id), [
+    'runtime-patch-052', 'runtime-patch-051', 'runtime-patch-055', 'runtime-patch-054',
+  ])
+  assert.equal(buildRuntimePatchGroups(features, 'quest', '直接开箱')[0].features[0].id, 'runtime-patch-052')
+  assert.equal(buildRuntimePatchGroups(features, 'quest', '炼成')[0].features[0].id, 'runtime-patch-055')
+
+  const statuses = buildRuntimePatchStatusIndex([
+    { id: 'runtime-patch-052', enabled: true, rvas: [1] },
+    { id: 'runtime-patch-054', enabled: false, rvas: [2] },
+  ])
+  assert.deepEqual(filterRuntimePatchGroups(all, 'active', statuses)[0].features.map(feature => feature.id), [
+    'runtime-patch-052', 'runtime-patch-054',
+  ])
 })
 
 test('verified runtime patch statuses form an exact one-to-one set with the catalog', async () => {
@@ -264,6 +339,7 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
     'CombatTuningGetStatusOwned',
     'CombatTuningSetCooldownOwned',
     'CombatTuningSetChargeOwned',
+    'CombatTuningSetActionSpeedOwned',
   ]) assert.match(patchPage, new RegExp(`\\b${api}\\b`), `${api} binding`)
 
   assert.match(patchPage, /CharaAcquire\(nextRuntimeAcquireRequestID\(\)\)/)
@@ -283,7 +359,9 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
   assert.match(patchPage, /role="dialog"[^>]*aria-modal="true"/)
   assert.match(patchPage, /仅离线\/单机使用/)
   assert.match(patchPage, /aria-live="polite"/)
-  assert.doesNotMatch(patchPage, /任务得分倍率|动作速度|队伍监测|选中素材/, 'unimplemented Task 7 controls must not be advertised')
+  assert.doesNotMatch(patchPage, /任务得分倍率|队伍监测|选中素材/, 'unimplemented Task 7 controls must not be advertised')
+  assert.match(patchPage, /人物动作速度[\s\S]*?requestCombatTuningApply\('actionSpeed'\)/)
+  assert.match(patchPage, /actionSpeedScope === 'party'/)
   assert.match(patchPage, /v-if="mode === 'quest'"[\s\S]*?极沌空域快速等待/)
   assert.match(patchPage, /!confluxStatus\.value\.verified[\s\S]*?verifyConfluxStatus\(\)/)
   assert.match(patchPage, /!confluxStatus\.verified \? '验证并读取'/)
@@ -299,14 +377,19 @@ test('the shared page owns the full runtime patch lifecycle and changes switches
 test('feature browsing remains keyboard-readable and reflows from its actual tool-panel width', () => {
   assert.match(patchPage, /type="search"[^>]*:placeholder="tr\('输入关键词筛选'\)"/)
   assert.match(patchPage, /class="patch-group-disclosure"[^>]*:aria-label/)
-  assert.match(patchPage, /:aria-expanded="currentGroup\?\.key === group\.key"/)
+  assert.match(patchPage, /:aria-expanded="browserScope === group\.key"/)
+  assert.match(patchPage, /v-for="group in displayedGroups"/)
+  assert.match(patchPage, /selectBrowserScope\('all'\)/)
+  assert.match(patchPage, /selectBrowserScope\('active'\)/)
   assert.match(patchPage, /role="switch"/)
   assert.match(patchPage, /:aria-checked="statusFor\(feature\)\.enabled"/)
   assert.match(patchPage, /:aria-busy="busyFeatureID === feature\.id"/)
   assert.match(patchPage, /tr\('与「'\)[\s\S]*?displayFeatureName\(activeConflictFor\(feature\)\)[\s\S]*?tr\('」互斥；先恢复该功能后才能启用。'\)/)
   assert.match(patchPage, /<details class="patch-technical ui-disclosure">/)
 
-  assert.match(patchPage, /@container\s+tool-panel\s*\(min-width\s*:\s*680px\)[\s\S]*?\.patch-feature-workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(146px,30fr\)\s+minmax\(0,70fr\)/i)
+  assert.match(patchPage, /@container\s+tool-panel\s*\(min-width\s*:\s*680px\)[\s\S]*?\.patch-feature-workspace\s*\{[^}]*grid-template-columns\s*:\s*minmax\(178px,224px\)\s+minmax\(0,1fr\)/i)
+  assert.match(patchPage, /@container\s+tool-panel\s*\(min-width\s*:\s*1180px\)/)
+  assert.match(patchPage, /\.patch-feature-list\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,minmax\(min\(100%,330px\),1fr\)\)/i)
   assert.match(patchPage, /@container\s+tool-panel\s*\(max-width\s*:\s*679px\)[\s\S]*?\.patch-browser-head\s*\{[^}]*flex-direction\s*:\s*column/i)
   assert.match(patchPage, /@container\s+tool-panel\s*\(max-width\s*:\s*520px\)/)
   assert.match(patchPage, /@container\s+tool-panel\s*\(max-width\s*:\s*340px\)[\s\S]*?\.patch-browser-head \.ui-section-copy\s*\{[^}]*display\s*:\s*none/i)
@@ -357,7 +440,7 @@ test('new navigation, safety, state and recovery copy is covered by the UI trans
   }
 })
 
-test('all 59 production runtime patch features, groups and dynamic page messages render without Chinese in English mode', async () => {
+test('all 60 production runtime patch features, groups and dynamic page messages render without Chinese in English mode', async () => {
   const {
     runtimePatchEnglishFeatureNames,
     translateRuntimePatchFeatureName,
@@ -366,7 +449,7 @@ test('all 59 production runtime patch features, groups and dynamic page messages
   } = await import(`./runtimePatchTranslations.js?complete=${Date.now()}`)
   const cjk = /[\u3400-\u9fff]/u
 
-  assert.equal(productionCatalog.features.length, 59, 'the production fixture must remain the audited live-feature catalog')
+  assert.equal(productionCatalog.features.length, 60, 'the production fixture must remain the audited live-feature catalog')
   assert.equal(Object.keys(runtimePatchEnglishFeatureNames).length, productionCatalog.features.length)
   for (const feature of productionCatalog.features) {
     const englishName = translateRuntimePatchFeatureName(feature, 'en')

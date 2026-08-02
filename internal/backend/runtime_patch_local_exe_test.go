@@ -206,8 +206,8 @@ func TestRuntimePatchCatalogMatchesLocalGame203(t *testing.T) {
 			}
 		}
 	}
-	if unchanged != 79 || compatibleVariants != 3 {
-		t.Errorf("2.0.3 RuntimePatch coverage=%d unchanged/%d variants, want 79/3", unchanged, compatibleVariants)
+	if unchanged != 79 || compatibleVariants != 4 {
+		t.Errorf("2.0.3 RuntimePatch coverage=%d unchanged/%d variants, want 79/4", unchanged, compatibleVariants)
 	}
 	if got, want := strings.Join(missing, ","), ""; got != want {
 		t.Errorf("2.0.3 missing sites=%q, want %q", got, want)

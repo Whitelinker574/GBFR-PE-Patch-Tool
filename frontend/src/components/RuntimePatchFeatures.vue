@@ -4,6 +4,7 @@ import {
   CharaAcquire,
   CharaRelease,
   CombatTuningGetStatusOwned,
+  CombatTuningSetActionSpeedOwned,
   CombatTuningSetChargeOwned,
   CombatTuningSetCooldownOwned,
   ConfluxTimerGetStatusOwned,
@@ -13,13 +14,20 @@ import {
   RuntimePatchGetStatusesOwned,
   RuntimePatchReleaseOwned,
   RuntimePatchSetEnabledOwned,
+  SummonDurationGetStatusOwned,
+  SummonDurationSetOwned,
+  TaskRulesGetStatusOwned,
+  TaskRulesSetScoreMultiplierOwned,
+  TaskRulesSetSideQuestAutoCompleteOwned,
 } from '../../wailsjs/go/backend/App'
 import {
+  buildActionSpeedRequest,
   buildChargeRequest,
   buildCooldownRequest,
   combatTuningStatusMatchesRequest,
   COMBAT_TUNING_CHARGE_ID,
   COMBAT_TUNING_COOLDOWN_ID,
+  COMBAT_TUNING_ACTION_SPEED_ID,
   emptyCombatTuningStatus,
   normalizeCombatTuningStatus,
   parseCombatTuningMultiplier,
@@ -29,6 +37,7 @@ import { language } from '../i18n.js'
 import {
   buildRuntimePatchGroups,
   buildRuntimePatchStatusIndex,
+  filterRuntimePatchGroups,
   findActiveRuntimePatchConflict,
   replaceRuntimePatchFeatureIDs,
   validateRuntimePatchStatusSet,
@@ -36,6 +45,7 @@ import {
 import { createRuntimePatchOperationGate } from '../runtimePatchOperationGate.js'
 import {
   translateRuntimePatchFeatureName,
+  translateRuntimePatchFeatureSummary,
   translateRuntimePatchGroupName,
   translateRuntimePatchText,
 } from '../runtimePatchTranslations.js'
@@ -56,19 +66,33 @@ const EMPTY_CONFLUX_STATUS = Object.freeze({ verified: false, available: false, 
 const CONFLUX_FEATURE = Object.freeze({ id: 'conflux-fast-wait', name: '极沌空域快速等待' })
 const COOLDOWN_FEATURE = Object.freeze({ id: COMBAT_TUNING_COOLDOWN_ID, name: '能力冷却调整', kind: 'cooldown' })
 const CHARGE_FEATURE = Object.freeze({ id: COMBAT_TUNING_CHARGE_ID, name: '三角色共享蓄力调整', kind: 'charge' })
+const ACTION_SPEED_FEATURE = Object.freeze({ id: COMBAT_TUNING_ACTION_SPEED_ID, name: '人物动作速度', kind: 'actionSpeed' })
+const TASK_SCORE_FEATURE = Object.freeze({ id: 'task-score-multiplier', name: '任务分数倍率' })
+const TASK_SIDE_QUEST_FEATURE = Object.freeze({ id: 'task-side-quest-auto-complete', name: '自动补齐支线目标进度' })
+const SUMMON_DURATION_FEATURE = Object.freeze({ id: 'summon-duration', name: '召唤持续时间' })
 const CHARGE_CONFLICT_PATCH_ID = 'runtime-patch-017'
+const EMPTY_TASK_RULE_FEATURE = Object.freeze({ available: false, enabled: false, multiplier: 0, rvas: [], currentBytes: [], evidenceNote: '', error: '' })
+const EMPTY_TASK_RULES = Object.freeze({ scoreMultiplier: { ...EMPTY_TASK_RULE_FEATURE, multiplier: 2 }, sideQuestAutoComplete: { ...EMPTY_TASK_RULE_FEATURE } })
+const EMPTY_SUMMON_DURATION = Object.freeze({ available: false, enabled: false, infinite: false, durationMultiplier: 2, rva: 0, currentBytes: '', evidenceNote: '', error: '' })
 
 const catalog = ref([])
 const statuses = ref([])
 const confluxStatus = ref({ ...EMPTY_CONFLUX_STATUS })
 const combatTuningStatus = ref(emptyCombatTuningStatus())
+const taskRulesStatus = ref({ scoreMultiplier: { ...EMPTY_TASK_RULES.scoreMultiplier }, sideQuestAutoComplete: { ...EMPTY_TASK_RULES.sideQuestAutoComplete } })
+const summonDurationStatus = ref({ ...EMPTY_SUMMON_DURATION })
+const summonDurationMode = ref('multiplier')
+const summonDurationMultiplier = ref('2')
+const taskScoreMultiplier = ref('2')
 const cooldownMode = ref('multiplier')
 const cooldownMultiplier = ref('2')
 const cooldownScope = ref('self')
 const chargeMode = ref('multiplier')
 const chargeMultiplier = ref('2')
+const actionSpeedMultiplier = ref('1.5')
+const actionSpeedScope = ref('self')
 const searchQuery = ref('')
-const activeGroupKey = ref('')
+const browserScope = ref('all')
 const catalogLoading = ref(true)
 const activeOperation = ref(null)
 const releasePending = ref(false)
@@ -114,13 +138,21 @@ const groups = computed(() => buildRuntimePatchGroups(catalog.value, props.mode,
   featureLabel: feature => translateRuntimePatchFeatureName(feature, language.value),
   groupLabel: group => translateRuntimePatchGroupName(group, language.value),
 }))
-const currentGroup = computed(() => groups.value.find(group => group.key === activeGroupKey.value) || groups.value[0] || null)
-const visibleFeatureCount = computed(() => groups.value.reduce((total, group) => total + group.features.length, 0)
-  + (['combat', 'characters', 'quest'].includes(props.mode) ? 1 : 0))
+const displayedGroups = computed(() => filterRuntimePatchGroups(
+  groups.value,
+  searchQuery.value ? 'all' : browserScope.value,
+  statusIndex.value,
+))
+const modeExtraFeatureCount = computed(() => ({ combat: 2, characters: 2, quest: 3 })[props.mode] || 0)
+const visibleFeatureCount = computed(() => displayedGroups.value.reduce((total, group) => total + group.features.length, 0) + modeExtraFeatureCount.value)
 const activeFeatureCount = computed(() => statuses.value.filter(status => status.enabled).length
   + (confluxStatus.value.enabled && confluxStatus.value.owned ? 1 : 0)
   + Number(combatTuningStatus.value.cooldown.enabled)
-  + Number(combatTuningStatus.value.charge.enabled))
+  + Number(combatTuningStatus.value.charge.enabled)
+  + Number(combatTuningStatus.value.actionSpeed.enabled)
+  + Number(summonDurationStatus.value.enabled)
+  + Number(taskRulesStatus.value.scoreMultiplier.enabled)
+  + Number(taskRulesStatus.value.sideQuestAutoComplete.enabled))
 const activeFeatureNames = computed(() => {
   const names = statuses.value
     .filter(status => status.enabled)
@@ -130,6 +162,10 @@ const activeFeatureNames = computed(() => {
   if (confluxStatus.value.enabled && confluxStatus.value.owned) names.push(tr(CONFLUX_FEATURE.name))
   if (combatTuningStatus.value.cooldown.enabled) names.push(tr(COOLDOWN_FEATURE.name))
   if (combatTuningStatus.value.charge.enabled) names.push(tr(CHARGE_FEATURE.name))
+  if (combatTuningStatus.value.actionSpeed.enabled) names.push(tr(ACTION_SPEED_FEATURE.name))
+  if (summonDurationStatus.value.enabled) names.push(tr(SUMMON_DURATION_FEATURE.name))
+  if (taskRulesStatus.value.scoreMultiplier.enabled) names.push(tr(TASK_SCORE_FEATURE.name))
+  if (taskRulesStatus.value.sideQuestAutoComplete.enabled) names.push(tr(TASK_SIDE_QUEST_FEATURE.name))
   return names
 })
 const activeFeatureRoute = computed(() => {
@@ -140,10 +176,20 @@ const activeFeatureRoute = computed(() => {
   const mode = activeFeature?.mode
     || (confluxStatus.value.enabled && confluxStatus.value.owned ? 'quest' : '')
     || (combatTuningStatus.value.cooldown.enabled ? 'combat' : '')
+    || (summonDurationStatus.value.enabled ? 'combat' : '')
     || (combatTuningStatus.value.charge.enabled ? 'characters' : '')
+    || (combatTuningStatus.value.actionSpeed.enabled ? 'characters' : '')
+    || (taskRulesStatus.value.scoreMultiplier.enabled || taskRulesStatus.value.sideQuestAutoComplete.enabled ? 'quest' : '')
   return ({ combat: 'patchCombat', characters: 'patchCharacters', quest: 'patchQuest' })[mode] || 'patchCombat'
 })
-const recoveryFeatureCount = computed(() => statuses.value.filter(status => !status.enabled && status.rvas.length > 0).length + (confluxStatus.value.owned && !confluxStatus.value.enabled ? 1 : 0))
+const recoveryFeatureCount = computed(() => statuses.value.filter(status => !status.enabled && status.rvas.length > 0).length
+  + (confluxStatus.value.owned && !confluxStatus.value.enabled ? 1 : 0)
+  + Number(!taskRulesStatus.value.scoreMultiplier.enabled && taskRulesStatus.value.scoreMultiplier.rvas.length > 0)
+  + Number(!taskRulesStatus.value.sideQuestAutoComplete.enabled && taskRulesStatus.value.sideQuestAutoComplete.rvas.length > 0)
+  + Number(!summonDurationStatus.value.enabled && Boolean(summonDurationStatus.value.currentBytes)))
+const browserOwnedFeatureCount = computed(() => catalog.value
+  .filter(feature => feature.mode === props.mode)
+  .reduce((total, feature) => total + Number(ownsFeature(feature)), 0))
 const operationBusy = computed(() => activeOperation.value !== null)
 const interactionLocked = computed(() => operationBusy.value || releasePending.value)
 const connectionLoading = computed(() => ['connect', 'disconnect'].includes(activeOperation.value?.kind))
@@ -151,6 +197,18 @@ const statusLoading = computed(() => activeOperation.value?.kind === 'refresh')
 const busyFeatureID = computed(() => activeOperation.value?.kind === 'feature' ? activeOperation.value.featureID : '')
 const cooldownMultiplierInvalid = computed(() => cooldownMode.value === 'multiplier' && !validMultiplier(cooldownMultiplier.value))
 const chargeMultiplierInvalid = computed(() => chargeMode.value === 'multiplier' && !validMultiplier(chargeMultiplier.value))
+const actionSpeedMultiplierInvalid = computed(() => {
+  const numeric = Number(String(actionSpeedMultiplier.value).trim())
+  return !Number.isFinite(numeric) || numeric < 0.1 || numeric > 5
+})
+const taskScoreMultiplierInvalid = computed(() => {
+  const numeric = Number(String(taskScoreMultiplier.value).trim())
+  return !Number.isFinite(numeric) || numeric < 0.1 || numeric > 16
+})
+const summonDurationMultiplierInvalid = computed(() => {
+  const numeric = Number(String(summonDurationMultiplier.value).trim())
+  return summonDurationMode.value === 'multiplier' && (!Number.isFinite(numeric) || numeric < 0.1 || numeric > 16)
+})
 const chargeCatalogConflict = computed(() => {
   const status = statusIndex.value.get(CHARGE_CONFLICT_PATCH_ID)
   return !!status && (status.enabled || status.rvas.length > 0)
@@ -177,9 +235,10 @@ function publishSession() {
   }))
 }
 
-watch(groups, (nextGroups) => {
-  if (!nextGroups.some(group => group.key === activeGroupKey.value)) activeGroupKey.value = nextGroups[0]?.key || ''
-}, { immediate: true })
+watch(() => props.mode, () => {
+  browserScope.value = 'all'
+  searchQuery.value = ''
+})
 watch([connected, releasePending, activeFeatureCount, activeFeatureNames, activeFeatureRoute, recoveryFeatureCount, () => processInfo.value.pid], publishSession, { immediate: true })
 watch(pendingConfirmationFeature, async (feature) => {
   if (!feature) return
@@ -226,19 +285,64 @@ function normalizeConfluxStatus(value) {
   }
 }
 
+function normalizeTaskRuleFeature(value, fallbackMultiplier = 0) {
+  return {
+    available: value?.available === true,
+    enabled: value?.enabled === true,
+    multiplier: Number.isFinite(Number(value?.multiplier)) ? Number(value.multiplier) : fallbackMultiplier,
+    rvas: Array.isArray(value?.rvas) ? value.rvas.map(Number).filter(Number.isFinite) : [],
+    currentBytes: Array.isArray(value?.currentBytes) ? value.currentBytes.map(String) : [],
+    evidenceNote: String(value?.evidenceNote || ''),
+    error: String(value?.error || ''),
+  }
+}
+
+function normalizeTaskRulesStatus(value) {
+  return {
+    scoreMultiplier: normalizeTaskRuleFeature(value?.scoreMultiplier, 2),
+    sideQuestAutoComplete: normalizeTaskRuleFeature(value?.sideQuestAutoComplete),
+  }
+}
+
+function normalizeSummonDurationStatus(value) {
+  const multiplier = Number(value?.durationMultiplier ?? 2)
+  const rva = Number(value?.rva ?? 0)
+  if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 16) throw new Error(tr('召唤持续时间倍率回读超出 0.1 到 16.0'))
+  if (!Number.isSafeInteger(rva) || rva < 0) throw new Error(tr('召唤持续时间入口回读无效'))
+  return Object.freeze({
+    available: value?.available === true,
+    enabled: value?.enabled === true,
+    infinite: value?.infinite === true,
+    durationMultiplier: multiplier,
+    rva,
+    currentBytes: String(value?.currentBytes || ''),
+    evidenceNote: String(value?.evidenceNote || ''),
+    error: String(value?.error || ''),
+  })
+}
+
 function syncCombatTuningDrafts(status) {
   cooldownMode.value = status.cooldown.noCooldown ? 'instant' : 'multiplier'
   cooldownMultiplier.value = String(status.cooldown.speedMultiplier)
   cooldownScope.value = status.cooldown.applyWholeParty ? 'party' : 'self'
   chargeMode.value = status.charge.instant ? 'instant' : 'multiplier'
   chargeMultiplier.value = String(status.charge.speedMultiplier)
+  actionSpeedMultiplier.value = String(status.actionSpeed.speedMultiplier)
+  actionSpeedScope.value = status.actionSpeed.applyWholeParty ? 'party' : 'self'
 }
 
 function applyVerifiedSession(session, syncTuningDraft = false) {
   applyStatuses(session.statuses)
   confluxStatus.value = session.conflux
   combatTuningStatus.value = session.combatTuning
+  if (session.taskRules) taskRulesStatus.value = session.taskRules
+  if (session.summonDuration) summonDurationStatus.value = session.summonDuration
   if (syncTuningDraft) syncCombatTuningDrafts(session.combatTuning)
+  if (syncTuningDraft && session.taskRules?.scoreMultiplier.enabled) taskScoreMultiplier.value = String(session.taskRules.scoreMultiplier.multiplier)
+  if (syncTuningDraft && session.summonDuration?.enabled) {
+    summonDurationMode.value = session.summonDuration.infinite ? 'infinite' : 'multiplier'
+    summonDurationMultiplier.value = String(session.summonDuration.durationMultiplier)
+  }
 }
 
 function beginOperation(kind, featureID = '') {
@@ -284,6 +388,8 @@ function clearConnectionState() {
   statuses.value = []
   confluxStatus.value = { ...EMPTY_CONFLUX_STATUS }
   combatTuningStatus.value = emptyCombatTuningStatus()
+  taskRulesStatus.value = normalizeTaskRulesStatus(EMPTY_TASK_RULES)
+  summonDurationStatus.value = normalizeSummonDurationStatus(EMPTY_SUMMON_DURATION)
 }
 
 function completeRuntimeRelease(expectedOwnerToken, expectedEpoch, notification) {
@@ -371,15 +477,19 @@ async function fetchVerifiedStatuses(ownerToken) {
 }
 
 async function fetchVerifiedSession(ownerToken) {
-  const [nextStatuses, nextConfluxStatus, nextCombatTuningStatus] = await Promise.all([
+  const [nextStatuses, nextConfluxStatus, nextCombatTuningStatus, nextTaskRulesStatus, nextSummonDurationStatus] = await Promise.all([
     fetchVerifiedStatuses(ownerToken),
     ConfluxTimerGetStatusOwned(ownerToken),
     CombatTuningGetStatusOwned(ownerToken),
+    TaskRulesGetStatusOwned(ownerToken),
+    SummonDurationGetStatusOwned(ownerToken),
   ])
   return {
     statuses: nextStatuses,
     conflux: normalizeConfluxStatus(nextConfluxStatus),
     combatTuning: normalizeCombatTuningStatus(nextCombatTuningStatus),
+    taskRules: normalizeTaskRulesStatus(nextTaskRulesStatus),
+    summonDuration: normalizeSummonDurationStatus(nextSummonDurationStatus),
   }
 }
 
@@ -464,7 +574,9 @@ async function setConfluxEnabled(enabled) {
 }
 
 function tuningFeature(kind) {
-  return kind === 'cooldown' ? COOLDOWN_FEATURE : CHARGE_FEATURE
+  if (kind === 'cooldown') return COOLDOWN_FEATURE
+  if (kind === 'actionSpeed') return ACTION_SPEED_FEATURE
+  return CHARGE_FEATURE
 }
 
 function tuningRequest(kind, enabled) {
@@ -474,6 +586,13 @@ function tuningRequest(kind, enabled) {
       mode: cooldownMode.value,
       multiplier: cooldownMultiplier.value,
       scope: cooldownScope.value,
+    })
+  }
+  if (kind === 'actionSpeed') {
+    return buildActionSpeedRequest({
+      enabled,
+      multiplier: actionSpeedMultiplier.value,
+      scope: actionSpeedScope.value,
     })
   }
   return buildChargeRequest({
@@ -503,6 +622,7 @@ async function setCombatTuningEnabled(kind, enabled) {
   try {
     if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
     if (kind === 'cooldown') await CombatTuningSetCooldownOwned(ownerToken, request)
+    else if (kind === 'actionSpeed') await CombatTuningSetActionSpeedOwned(ownerToken, request)
     else await CombatTuningSetChargeOwned(ownerToken, request)
     const verifiedSession = await fetchVerifiedSession(ownerToken)
     if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
@@ -528,6 +648,120 @@ async function setCombatTuningEnabled(kind, enabled) {
   } finally {
     finishOperation(operationToken)
   }
+}
+
+function taskRuleFeature(kind) {
+  return kind === 'score' ? TASK_SCORE_FEATURE : TASK_SIDE_QUEST_FEATURE
+}
+
+function taskRuleStatus(kind) {
+  return kind === 'score' ? taskRulesStatus.value.scoreMultiplier : taskRulesStatus.value.sideQuestAutoComplete
+}
+
+async function setTaskRuleEnabled(kind, enabled) {
+  if (releasePending.value) return
+  const feature = taskRuleFeature(kind)
+  const operationToken = beginOperation('feature', feature.id)
+  if (!operationToken) return
+  const ownerToken = connectionOwnerToken
+  const epoch = lifecycleEpoch
+  try {
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
+    if (kind === 'score') {
+      const multiplier = Number(String(taskScoreMultiplier.value).trim())
+      if (enabled && taskScoreMultiplierInvalid.value) throw new Error('任务分数倍率请输入 0.1 到 16.0')
+      await TaskRulesSetScoreMultiplierOwned(ownerToken, { enabled, multiplier: enabled ? multiplier : 2 })
+    } else {
+      await TaskRulesSetSideQuestAutoCompleteOwned(ownerToken, enabled)
+    }
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
+    const verified = kind === 'score' ? verifiedSession.taskRules.scoreMultiplier : verifiedSession.taskRules.sideQuestAutoComplete
+    if (verified.enabled !== enabled || (enabled && kind === 'score' && verified.multiplier !== Number(taskScoreMultiplier.value))) {
+      throw new Error(`${feature.name}写后回读状态不一致`)
+    }
+    applyVerifiedSession(verifiedSession, true)
+    announce(`${feature.name}已${enabled ? '应用并回读' : '恢复默认'}`, 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+      try {
+        const recoveredSession = await fetchVerifiedSession(ownerToken)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyVerifiedSession(recoveredSession, true)
+      } catch {
+        // Retain the last verified state so disconnect can retry restoration.
+      }
+      announce(`${feature.name}操作失败：${errorMessage(error)}`, 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
+function requestTaskRuleApply(kind) {
+  if (interactionLocked.value) return
+  const feature = taskRuleFeature(kind)
+  if (!offlineUseConfirmed()) {
+    confirmationReturnTarget = document.activeElement
+    pendingConfirmationFeature.value = feature
+    return
+  }
+  void setTaskRuleEnabled(kind, true)
+}
+
+function requestTaskRuleRestore(kind) {
+  if (!interactionLocked.value) void setTaskRuleEnabled(kind, false)
+}
+
+async function setSummonDurationEnabled(enabled) {
+  if (releasePending.value) return
+  const operationToken = beginOperation('feature', SUMMON_DURATION_FEATURE.id)
+  if (!operationToken) return
+  const ownerToken = connectionOwnerToken
+  const epoch = lifecycleEpoch
+  try {
+    if (!ownerToken) throw new Error('当前页面不再持有连接所有权')
+    if (enabled && summonDurationMultiplierInvalid.value) throw new Error(tr('召唤持续时间倍率请输入 0.1 到 16.0'))
+    const request = {
+      enabled,
+      infinite: enabled && summonDurationMode.value === 'infinite',
+      durationMultiplier: enabled ? Number(summonDurationMultiplier.value) : 2,
+    }
+    await SummonDurationSetOwned(ownerToken, request)
+    const verifiedSession = await fetchVerifiedSession(ownerToken)
+    if (!operationIsCurrent(operationToken, epoch) || ownerToken !== connectionOwnerToken) return
+    const verified = verifiedSession.summonDuration
+    if (verified.enabled !== enabled || (enabled && (verified.infinite !== request.infinite || verified.durationMultiplier !== request.durationMultiplier))) {
+      throw new Error(tr('召唤持续时间写后回读状态不一致'))
+    }
+    applyVerifiedSession(verifiedSession, true)
+    announce(tr(enabled ? '召唤持续时间已应用并回读' : '召唤持续时间已恢复默认'), 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) {
+      try {
+        const recoveredSession = await fetchVerifiedSession(ownerToken)
+        if (operationIsCurrent(operationToken, epoch) && ownerToken === connectionOwnerToken) applyVerifiedSession(recoveredSession, true)
+      } catch {
+        // Keep the last verified state so safe disconnect can retry restoration.
+      }
+      announce(tr(`召唤持续时间操作失败：${errorMessage(error)}`), 'danger')
+    }
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
+function requestSummonDurationApply() {
+  if (interactionLocked.value) return
+  if (!offlineUseConfirmed()) {
+    confirmationReturnTarget = document.activeElement
+    pendingConfirmationFeature.value = SUMMON_DURATION_FEATURE
+    return
+  }
+  void setSummonDurationEnabled(true)
+}
+
+function requestSummonDurationRestore() {
+  if (!interactionLocked.value) void setSummonDurationEnabled(false)
 }
 
 async function verifyConfluxStatus() {
@@ -629,6 +863,10 @@ async function confirmOfflineUse() {
   if (feature.id === CONFLUX_FEATURE.id) await setConfluxEnabled(true)
   else if (feature.id === COOLDOWN_FEATURE.id) await setCombatTuningEnabled('cooldown', true)
   else if (feature.id === CHARGE_FEATURE.id) await setCombatTuningEnabled('charge', true)
+  else if (feature.id === ACTION_SPEED_FEATURE.id) await setCombatTuningEnabled('actionSpeed', true)
+  else if (feature.id === TASK_SCORE_FEATURE.id) await setTaskRuleEnabled('score', true)
+  else if (feature.id === TASK_SIDE_QUEST_FEATURE.id) await setTaskRuleEnabled('sideQuest', true)
+  else if (feature.id === SUMMON_DURATION_FEATURE.id) await setSummonDurationEnabled(true)
   else await setFeatureEnabled(feature, true)
   await nextTick()
   returnTarget?.focus?.()
@@ -648,7 +886,11 @@ function trapConfirmationFocus(event) {
 }
 
 function selectGroup(key) {
-  activeGroupKey.value = key
+  browserScope.value = key
+}
+
+function selectBrowserScope(scope) {
+  browserScope.value = scope
 }
 
 function statusFor(feature) {
@@ -666,8 +908,12 @@ function activeConflictFor(feature) {
 }
 
 function displayFeatureName(feature) {
-  if ([COOLDOWN_FEATURE.id, CHARGE_FEATURE.id].includes(feature?.id)) return tr(feature.name)
+  if ([COOLDOWN_FEATURE.id, CHARGE_FEATURE.id, ACTION_SPEED_FEATURE.id, TASK_SCORE_FEATURE.id, TASK_SIDE_QUEST_FEATURE.id, SUMMON_DURATION_FEATURE.id].includes(feature?.id)) return tr(feature.name)
   return translateRuntimePatchFeatureName(feature, language.value)
+}
+
+function displayFeatureSummary(feature) {
+  return translateRuntimePatchFeatureSummary(feature, language.value)
 }
 
 function displayGroupName(group) {
@@ -706,6 +952,7 @@ function tuningDisabled(kind, action = 'apply') {
   if (action === 'restore') return !status.enabled
   if (!status.available) return true
   if (kind === 'cooldown') return cooldownMultiplierInvalid.value
+  if (kind === 'actionSpeed') return actionSpeedMultiplierInvalid.value
   return chargeMultiplierInvalid.value || chargeCatalogConflict.value
 }
 
@@ -724,7 +971,52 @@ function tuningCurrentSetting(kind) {
     const scope = status.applyWholeParty ? tr('全队实验范围') : tr('仅自己')
     return `${mode} · ${scope}`
   }
+  if (kind === 'actionSpeed') {
+    const scope = status.applyWholeParty ? tr('全队实验范围') : tr('仅自己')
+    return `${status.speedMultiplier}× · ${scope}`
+  }
   return status.instant ? tr('瞬间蓄力') : `${status.speedMultiplier}×`
+}
+
+function taskRuleStateLabel(kind) {
+  const feature = taskRuleFeature(kind)
+  if (busyFeatureID.value === feature.id) return tr('回读中')
+  const status = taskRuleStatus(kind)
+  if (status.enabled) return tr('已开启')
+  if (status.rvas.length) return tr('需要恢复')
+  if (!connected.value) return tr('未连接')
+  if (!status.available) return tr('不可用')
+  return tr('默认')
+}
+
+function taskRuleDisabled(kind, action = 'apply') {
+  if (!connected.value || interactionLocked.value) return true
+  const status = taskRuleStatus(kind)
+  if (action === 'restore') return !status.enabled && !status.rvas.length
+  if (!status.available) return true
+  return kind === 'score' && taskScoreMultiplierInvalid.value
+}
+
+function taskRuleProof(kind) {
+  const status = taskRuleStatus(kind)
+  if (!connected.value) return tr('连接后校验 2.0.3 入口与原字节')
+  if (status.rvas.length) return tr(`已回读 ${status.rvas.length} 个任务入口`)
+  return tr('尚未写入，游戏保持默认')
+}
+
+function summonDurationStateLabel() {
+  if (busyFeatureID.value === SUMMON_DURATION_FEATURE.id) return tr('回读中')
+  if (summonDurationStatus.value.enabled) return tr('已开启')
+  if (summonDurationStatus.value.currentBytes) return tr('需要恢复')
+  if (!connected.value) return tr('未连接')
+  if (!summonDurationStatus.value.available) return tr('不可用')
+  return tr('默认')
+}
+
+function summonDurationDisabled(action = 'apply') {
+  if (!connected.value || interactionLocked.value) return true
+  if (action === 'restore') return !summonDurationStatus.value.enabled && !summonDurationStatus.value.currentBytes
+  return !summonDurationStatus.value.available || summonDurationMultiplierInvalid.value || summonDurationStatus.value.enabled
 }
 
 function featureStateLabel(feature) {
@@ -925,6 +1217,123 @@ onBeforeUnmount(() => {
     </section>
 
     <section
+      v-if="mode === 'combat'"
+      class="tuning-priority ui-card ui-panel"
+      :class="{ 'is-on': summonDurationStatus.enabled }"
+      :aria-label="tr('召唤持续时间')"
+    >
+      <header class="tuning-priority-head">
+        <div>
+          <p>{{ tr('召唤战斗规则') }}</p>
+          <h2>{{ tr('召唤持续时间') }}</h2>
+          <span>{{ tr('延长召唤效果在场时间，或设为无限持续；默认关闭；切换页面后继续生效。') }}</span>
+        </div>
+        <div class="tuning-tags">
+          <span class="ui-tag is-warn">{{ tr('2.0.3 · 实验') }}</span>
+          <span class="ui-tag" :class="summonDurationStatus.enabled ? 'is-ok' : summonDurationStatus.available ? 'is-info' : 'is-danger'">{{ summonDurationStateLabel() }}</span>
+        </div>
+      </header>
+
+      <form class="tuning-form" @submit.prevent="requestSummonDurationApply">
+        <div class="tuning-control-grid is-charge">
+          <fieldset class="tuning-control">
+            <legend>{{ tr('调整方式') }}</legend>
+            <div class="tuning-segment ui-seg" role="group" :aria-label="tr('召唤持续时间调整方式')">
+              <button type="button" class="ui-seg-btn" :class="{ 'is-on': summonDurationMode === 'multiplier' }" :aria-pressed="summonDurationMode === 'multiplier'" :disabled="interactionLocked || summonDurationStatus.enabled" @click="summonDurationMode = 'multiplier'">{{ tr('持续时间倍率') }}</button>
+              <button type="button" class="ui-seg-btn" :class="{ 'is-on': summonDurationMode === 'infinite' }" :aria-pressed="summonDurationMode === 'infinite'" :disabled="interactionLocked || summonDurationStatus.enabled" @click="summonDurationMode = 'infinite'">{{ tr('无限持续') }}</button>
+            </div>
+          </fieldset>
+
+          <label v-if="summonDurationMode === 'multiplier'" class="tuning-control ui-field">
+            <span class="ui-field-label">{{ tr('持续时间倍率') }}</span>
+            <span class="tuning-number"><input v-model.trim="summonDurationMultiplier" class="ui-input" type="number" min="0.1" max="16" step="0.1" inputmode="decimal" :aria-invalid="summonDurationMultiplierInvalid" :disabled="interactionLocked || summonDurationStatus.enabled"><b aria-hidden="true">×</b></span>
+            <small :class="{ 'is-error': summonDurationMultiplierInvalid }">{{ tr(summonDurationMultiplierInvalid ? '请输入 0.1 到 16.0。' : '1× 为游戏默认；建议从 2× 或 4× 开始。') }}</small>
+          </label>
+        </div>
+
+        <p v-if="summonDurationStatus.error" class="feature-error ui-notice is-danger">{{ tr(summonDurationStatus.error) }}</p>
+        <div class="tuning-evidence"><span>{{ tr(summonDurationStatus.evidenceNote || '连接后校验 2.0.3 召唤持续时间入口和原字节。') }}</span><strong>{{ summonDurationStatus.enabled ? tr(summonDurationStatus.infinite ? '无限持续' : `${summonDurationStatus.durationMultiplier}×`) : tr('当前保持游戏默认') }}</strong></div>
+        <footer class="tuning-actions">
+          <span class="feature-proof">{{ connected && summonDurationStatus.rva ? `RVA ${formatRVA(summonDurationStatus.rva)}` : tr('尚未写入，游戏保持默认') }}</span>
+          <div class="ui-actions">
+            <button v-if="summonDurationStatus.enabled || summonDurationStatus.currentBytes" type="button" class="ui-btn is-ghost is-sm" :disabled="summonDurationDisabled('restore')" @click="requestSummonDurationRestore">{{ tr('恢复默认') }}</button>
+            <button type="submit" class="ui-btn is-primary is-sm" :disabled="summonDurationDisabled()">{{ tr(busyFeatureID === SUMMON_DURATION_FEATURE.id ? '回读中…' : '应用设置') }}</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+
+    <section
+      v-if="mode === 'characters'"
+      class="tuning-priority ui-card ui-panel"
+      :class="{ 'is-on': combatTuningStatus.actionSpeed.enabled }"
+      :aria-label="tr('人物动作速度')"
+    >
+      <header class="tuning-priority-head">
+        <div>
+          <p>{{ tr('通用角色功能') }}</p>
+          <h2>{{ tr('人物动作速度') }}</h2>
+          <span>{{ tr('只调整角色动作节奏，不改变整个游戏的时间速度；默认只作用于自己。') }}</span>
+        </div>
+        <div class="tuning-tags">
+          <span class="ui-tag is-warn">{{ tr('实验候选') }}</span>
+          <span class="ui-tag" :class="combatTuningStatus.actionSpeed.enabled ? 'is-ok' : combatTuningStatus.actionSpeed.available ? 'is-info' : 'is-danger'">
+            {{ tuningStateLabel('actionSpeed') }}
+          </span>
+        </div>
+      </header>
+
+      <form class="tuning-form" @submit.prevent="requestCombatTuningApply('actionSpeed')">
+        <div class="tuning-control-grid is-charge">
+          <label class="tuning-control ui-field">
+            <span class="ui-field-label">{{ tr('动作速度倍率') }}</span>
+            <span class="tuning-number">
+              <input
+                v-model.trim="actionSpeedMultiplier"
+                class="ui-input"
+                type="number"
+                min="0.1"
+                max="5"
+                step="0.1"
+                inputmode="decimal"
+                :aria-invalid="actionSpeedMultiplierInvalid"
+                :disabled="interactionLocked"
+              >
+              <b aria-hidden="true">×</b>
+            </span>
+            <small :class="{ 'is-error': actionSpeedMultiplierInvalid }">
+              {{ tr(actionSpeedMultiplierInvalid ? '请输入 0.1 到 5.0。' : '1× 为游戏默认；建议从 1.25× 或 1.5× 开始。') }}
+            </small>
+          </label>
+
+          <fieldset class="tuning-control">
+            <legend>{{ tr('作用范围') }}</legend>
+            <div class="tuning-segment ui-seg" role="group" :aria-label="tr('人物动作速度作用范围')">
+              <button type="button" class="ui-seg-btn" :class="{ 'is-on': actionSpeedScope === 'self' }" :aria-pressed="actionSpeedScope === 'self'" :disabled="interactionLocked" @click="actionSpeedScope = 'self'">{{ tr('仅自己（默认）') }}</button>
+              <button type="button" class="ui-seg-btn" :class="{ 'is-on': actionSpeedScope === 'party' }" :aria-pressed="actionSpeedScope === 'party'" :disabled="interactionLocked" @click="actionSpeedScope = 'party'">{{ tr('应用全队（实验）') }}</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <p v-if="actionSpeedScope === 'party'" class="tuning-warning ui-notice is-warn">{{ tr('全队范围会处理同一角色上下文中的队友；请先在离线队伍中确认动作、判定和技能释放。') }}</p>
+        <p v-if="combatTuningStatus.actionSpeed.error" class="feature-error ui-notice is-danger">{{ tr(combatTuningStatus.actionSpeed.error) }}</p>
+
+        <div class="tuning-evidence">
+          <span>{{ tr(combatTuningStatus.actionSpeed.evidenceNote || '连接后校验 2.0.3 的人物动作字段入口；任何原字节不一致都会拒绝写入。') }}</span>
+          <strong>{{ tuningCurrentSetting('actionSpeed') }}</strong>
+        </div>
+
+        <footer class="tuning-actions">
+          <span class="feature-proof">{{ tuningProof('actionSpeed') }}</span>
+          <div class="ui-actions">
+            <button v-if="combatTuningStatus.actionSpeed.enabled" type="button" class="ui-btn is-ghost is-sm" :disabled="tuningDisabled('actionSpeed', 'restore')" @click="requestCombatTuningRestore('actionSpeed')">{{ tr('恢复默认') }}</button>
+            <button type="submit" class="ui-btn is-primary is-sm" :disabled="tuningDisabled('actionSpeed')">{{ tr(busyFeatureID === ACTION_SPEED_FEATURE.id ? '回读中…' : combatTuningStatus.actionSpeed.enabled ? '更新并回读' : '应用设置') }}</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+
+    <section
       v-if="mode === 'characters'"
       class="tuning-priority ui-card ui-panel"
       :class="{ 'is-on': combatTuningStatus.charge.enabled }"
@@ -1032,6 +1441,52 @@ onBeforeUnmount(() => {
         </label>
       </header>
 
+      <section v-if="mode === 'quest'" class="task-rule-grid" :aria-label="tr('任务规则快捷设置')">
+        <article class="task-rule-card patch-feature-card" :class="{ 'is-on': taskRulesStatus.scoreMultiplier.enabled, 'needs-recovery': taskRulesStatus.scoreMultiplier.rvas.length && !taskRulesStatus.scoreMultiplier.enabled }" :aria-busy="busyFeatureID === TASK_SCORE_FEATURE.id">
+          <div class="patch-feature-summary">
+            <div class="feature-title-block">
+              <div class="feature-kicker"><span>{{ tr('任务结算') }}</span><span>{{ tr('分数') }}</span></div>
+              <h4>{{ tr('任务分数倍率') }}</h4>
+              <small class="feature-evidence">{{ tr('只放大任务结算分数，不改变奖励物品数量，也不与掉落倍率叠加。') }}</small>
+            </div>
+            <span class="ui-tag" :class="taskRulesStatus.scoreMultiplier.enabled ? 'is-ok' : taskRulesStatus.scoreMultiplier.rvas.length ? 'is-warn' : taskRulesStatus.scoreMultiplier.available ? 'is-info' : 'is-danger'">{{ taskRuleStateLabel('score') }}</span>
+          </div>
+          <label class="task-rule-field ui-field">
+            <span class="ui-field-label">{{ tr('分数倍率') }}</span>
+            <span class="tuning-number"><input v-model.trim="taskScoreMultiplier" class="ui-input" type="number" min="0.1" max="16" step="0.1"><b>×</b></span>
+            <small :class="{ 'is-error': taskScoreMultiplierInvalid }">{{ tr('可填 0.1–16；默认建议 2×。') }}</small>
+          </label>
+          <p v-if="taskRulesStatus.scoreMultiplier.error" class="feature-error ui-notice is-danger">{{ tr(taskRulesStatus.scoreMultiplier.error) }}</p>
+          <div class="patch-feature-actions">
+            <span class="feature-proof">{{ taskRuleProof('score') }}</span>
+            <div class="ui-actions">
+              <button v-if="taskRulesStatus.scoreMultiplier.enabled || taskRulesStatus.scoreMultiplier.rvas.length" type="button" class="ui-btn is-ghost is-sm" :disabled="taskRuleDisabled('score', 'restore')" @click="requestTaskRuleRestore('score')">{{ tr('恢复默认') }}</button>
+              <button type="button" class="ui-btn is-primary is-sm" :disabled="taskRuleDisabled('score')" @click="requestTaskRuleApply('score')">{{ tr(busyFeatureID === TASK_SCORE_FEATURE.id ? '回读中…' : taskRulesStatus.scoreMultiplier.enabled ? '更新并回读' : '应用设置') }}</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="task-rule-card patch-feature-card" :class="{ 'is-on': taskRulesStatus.sideQuestAutoComplete.enabled, 'needs-recovery': taskRulesStatus.sideQuestAutoComplete.rvas.length && !taskRulesStatus.sideQuestAutoComplete.enabled }" :aria-busy="busyFeatureID === TASK_SIDE_QUEST_FEATURE.id">
+          <div class="patch-feature-summary">
+            <div class="feature-title-block">
+              <div class="feature-kicker"><span>{{ tr('任务进度') }}</span><span>{{ tr('支线目标') }}</span></div>
+              <h4>{{ tr('自动补齐支线目标进度') }}</h4>
+              <small class="feature-evidence">{{ tr('当支线目标更新时把当前计数补到要求值；它不直接发奖，奖励仍由任务结算流程处理。') }}</small>
+            </div>
+            <span class="ui-tag" :class="taskRulesStatus.sideQuestAutoComplete.enabled ? 'is-ok' : taskRulesStatus.sideQuestAutoComplete.rvas.length ? 'is-warn' : taskRulesStatus.sideQuestAutoComplete.available ? 'is-info' : 'is-danger'">{{ taskRuleStateLabel('sideQuest') }}</span>
+          </div>
+          <p v-if="taskRulesStatus.sideQuestAutoComplete.error" class="feature-error ui-notice is-danger">{{ tr(taskRulesStatus.sideQuestAutoComplete.error) }}</p>
+          <div class="task-rule-note ui-notice is-info">{{ tr('适合不想反复核对支线计数的任务；默认关闭，开启后常驻到你主动恢复或安全断开。') }}</div>
+          <div class="patch-feature-actions">
+            <span class="feature-proof">{{ taskRuleProof('sideQuest') }}</span>
+            <div class="ui-actions">
+              <button v-if="taskRulesStatus.sideQuestAutoComplete.enabled || taskRulesStatus.sideQuestAutoComplete.rvas.length" type="button" class="ui-btn is-ghost is-sm" :disabled="taskRuleDisabled('sideQuest', 'restore')" @click="requestTaskRuleRestore('sideQuest')">{{ tr('恢复默认') }}</button>
+              <button type="button" class="ui-btn is-primary is-sm" :disabled="taskRuleDisabled('sideQuest')" @click="requestTaskRuleApply('sideQuest')">{{ tr(busyFeatureID === TASK_SIDE_QUEST_FEATURE.id ? '回读中…' : taskRulesStatus.sideQuestAutoComplete.enabled ? '保持开启' : '开启') }}</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
       <article
         v-if="mode === 'quest'"
         class="conflux-feature patch-feature-card"
@@ -1083,19 +1538,41 @@ onBeforeUnmount(() => {
       <div v-else class="patch-feature-workspace">
         <aside class="patch-group-pane">
           <label class="patch-group-select ui-field">
-            <span class="ui-field-label">{{ tr('当前分组') }}</span>
-            <select class="ui-select" :value="currentGroup?.key" @change="selectGroup($event.target.value)">
+            <span class="ui-field-label">{{ tr('显示范围') }}</span>
+            <select class="ui-select" :value="browserScope" @change="selectBrowserScope($event.target.value)">
+              <option value="all">{{ tr('全部功能') }}</option>
+              <option value="active">{{ tr('已开启与待恢复') }}</option>
               <option v-for="group in groups" :key="group.key" :value="group.key">{{ group.label }} ({{ group.features.length }})</option>
             </select>
           </label>
           <nav class="patch-group-disclosure" :aria-label="`${modeCopy.label} ${tr('分组')}`">
             <button
+              type="button"
+              class="patch-group-button is-overview"
+              :class="{ 'is-on': browserScope === 'all' }"
+              :aria-pressed="browserScope === 'all'"
+              @click="selectBrowserScope('all')"
+            >
+              <span>{{ tr('全部功能') }}</span>
+              <b>{{ groups.reduce((total, group) => total + group.features.length, 0) }}</b>
+            </button>
+            <button
+              type="button"
+              class="patch-group-button is-overview"
+              :class="{ 'is-on': browserScope === 'active' }"
+              :aria-pressed="browserScope === 'active'"
+              @click="selectBrowserScope('active')"
+            >
+              <span>{{ tr('已开启与待恢复') }}</span>
+              <b>{{ browserOwnedFeatureCount }}</b>
+            </button>
+            <button
               v-for="group in groups"
               :key="group.key"
               type="button"
               class="patch-group-button"
-              :class="{ 'is-on': currentGroup?.key === group.key }"
-              :aria-expanded="currentGroup?.key === group.key"
+              :class="{ 'is-on': browserScope === group.key }"
+              :aria-expanded="browserScope === group.key"
               :aria-controls="`patch-group-${mode}-${group.key}`"
               @click="selectGroup(group.key)"
             >
@@ -1105,18 +1582,19 @@ onBeforeUnmount(() => {
           </nav>
         </aside>
 
-        <section v-if="currentGroup" :id="`patch-group-${mode}-${currentGroup.key}`" class="patch-feature-column" :aria-label="`${currentGroup.label} ${tr('功能')}`">
+        <div v-if="displayedGroups.length" class="patch-feature-sections">
+        <section v-for="group in displayedGroups" :id="`patch-group-${mode}-${group.key}`" :key="group.key" class="patch-feature-column" :aria-label="`${group.label} ${tr('功能')}`">
           <header class="patch-group-heading">
             <div>
               <span>{{ modeCopy.label }}</span>
-              <h3>{{ currentGroup.label }}</h3>
+              <h3>{{ group.label }}</h3>
             </div>
-            <small>{{ currentGroup.features.length }} {{ tr('项已验证补丁') }}</small>
+            <small>{{ group.features.length }} {{ tr('项已验证补丁') }}</small>
           </header>
 
           <div class="patch-feature-list">
             <article
-              v-for="feature in currentGroup.features"
+              v-for="feature in group.features"
               :key="feature.id"
               class="patch-feature-card ui-card"
               :class="{ 'is-on': statusFor(feature).enabled, 'needs-recovery': ownsFeature(feature) && !statusFor(feature).enabled }"
@@ -1129,6 +1607,7 @@ onBeforeUnmount(() => {
                     <span>{{ tr('补丁') }} {{ feature.catalogId }}</span>
                   </div>
                   <h4>{{ displayFeatureName(feature) }}</h4>
+                  <small v-if="displayFeatureSummary(feature)" class="feature-description">{{ displayFeatureSummary(feature) }}</small>
                   <small
                     v-if="feature.evidenceNote"
                     class="feature-evidence"
@@ -1182,6 +1661,11 @@ onBeforeUnmount(() => {
             </article>
           </div>
         </section>
+        </div>
+        <div v-else class="patch-empty ui-empty is-compact">
+          <strong>{{ tr('当前没有已开启或待恢复的功能') }}</strong>
+          <span>{{ tr('开启功能后，它会在这里集中显示。') }}</span>
+        </div>
       </div>
     </section>
 
@@ -1452,7 +1936,7 @@ onBeforeUnmount(() => {
 }
 .search-glyph::after { content:""; position:absolute; right:-5px; bottom:-3px; width:6px; height:2px; background:var(--text-muted); transform:rotate(45deg); }
 
-.patch-feature-workspace { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-4); align-items:start; }
+.patch-feature-workspace { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-5); align-items:start; }
 .patch-group-pane { min-width:0; }
 .patch-group-select { display:flex; }
 .patch-group-disclosure { display:none; min-width:0; }
@@ -1476,18 +1960,24 @@ onBeforeUnmount(() => {
 }
 .patch-group-button:hover,.patch-group-button:focus-visible { border-color:var(--border-default); background:var(--state-hover); color:var(--text-primary); }
 .patch-group-button.is-on { border-color:var(--selected-border); background:var(--selected-bg); color:var(--selected-fg); box-shadow:3px 0 0 var(--selected-bar) inset; }
+.patch-group-button.is-overview { color:var(--text-primary); font-weight:var(--fw-semibold); }
+.patch-group-button.is-overview + .patch-group-button.is-overview { margin-bottom:var(--space-2); }
 .patch-group-button span { min-width:0; overflow-wrap:anywhere; }
 .patch-group-button b { min-width:24px; padding:1px var(--space-2); border-radius:var(--radius-pill); background:var(--surface-card-pop); color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-xs); text-align:center; }
 
-.patch-feature-column { min-width:0; }
+.patch-feature-sections { min-width:0; display:flex; flex-direction:column; gap:var(--space-6); }
+.patch-feature-column { min-width:0; scroll-margin-top:96px; }
 .patch-group-heading { justify-content:space-between; margin-bottom:var(--space-3); padding:0 var(--space-1) var(--space-3); border-bottom:1px solid var(--border-soft); }
 .patch-group-heading > div span { color:var(--accent); font-size:var(--fs-xs); font-weight:var(--fw-bold); letter-spacing:.08em; }
 .patch-group-heading h3 { margin:2px 0 0; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-lg); line-height:var(--lh-tight); }
 .patch-group-heading small { color:var(--text-muted); font-size:var(--fs-xs); }
-.patch-feature-list { min-width:0; display:flex; flex-direction:column; gap:var(--space-3); }
+.patch-feature-list { min-width:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr)); gap:var(--space-3); align-items:stretch; }
 
 .patch-feature-card {
   min-width:0;
+  min-height:214px;
+  display:flex;
+  flex-direction:column;
   padding:var(--space-4);
   border-color:var(--border-default);
   background:var(--surface-card-pop);
@@ -1496,6 +1986,12 @@ onBeforeUnmount(() => {
 }
 .patch-feature-card.is-on { border-color:var(--success); background:color-mix(in srgb,var(--success-bg) 36%,var(--surface-card-pop)); box-shadow:3px 0 0 var(--success) inset; }
 .patch-feature-card.needs-recovery { border-color:var(--warning); box-shadow:3px 0 0 var(--warning) inset; }
+.task-rule-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); margin-bottom:var(--space-3); }
+.task-rule-card { border:1px solid var(--border-default); border-left:3px solid var(--accent-border); min-width:0; }
+.task-rule-field { max-width:260px; margin-top:var(--space-3); }
+.task-rule-field > small { color:var(--text-muted); font-size:var(--fs-xs); }
+.task-rule-field > small.is-error { color:var(--danger); }
+.task-rule-note { margin-top:var(--space-3); }
 .conflux-feature { border:1px solid var(--border-default); border-left:3px solid var(--accent-border); }
 .conflux-readback {
   min-width:0;
@@ -1522,10 +2018,11 @@ onBeforeUnmount(() => {
 .feature-kicker { display:flex; flex-wrap:wrap; gap:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); }
 .feature-kicker span + span::before { content:"·"; margin-right:var(--space-2); }
 .feature-title-block h4 { margin:var(--space-1) 0 0; color:var(--text-primary); font-size:var(--fs-base); line-height:var(--lh-tight); overflow-wrap:anywhere; }
+.feature-description { display:block; margin-top:var(--space-2); color:var(--text-secondary); font-size:var(--fs-sm); line-height:var(--lh-normal); }
 .feature-evidence { display:block; margin-top:var(--space-2); color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .feature-evidence.is-candidate { color:var(--warning-ink); }
 .feature-conflict,.feature-error { margin:var(--space-3) 0 0; }
-.patch-feature-actions { justify-content:space-between; margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--border-soft); }
+.patch-feature-actions { justify-content:space-between; margin-top:auto; padding-top:var(--space-3); border-top:1px solid var(--border-soft); }
 .feature-proof { min-width:0; color:var(--text-muted); font-size:var(--fs-xs); line-height:var(--lh-normal); }
 .feature-switch { min-width:124px; flex:0 0 auto; }
 .switch-track { width:27px; height:16px; flex:0 0 27px; padding:2px; border-radius:var(--radius-pill); background:color-mix(in srgb,var(--text-muted) 44%,transparent); transition:background-color var(--dur-base) var(--ease-out); }
@@ -1572,15 +2069,23 @@ onBeforeUnmount(() => {
 .confirm-actions { grid-column:1 / -1; }
 
 @container tool-panel (min-width:680px) {
-  .patch-feature-workspace { grid-template-columns:minmax(146px,30fr) minmax(0,70fr); gap:var(--space-4); }
+  .patch-feature-workspace { grid-template-columns:minmax(178px,224px) minmax(0,1fr); gap:var(--space-5); }
   .patch-group-select { display:none; }
   .patch-group-disclosure { display:flex; flex-direction:column; gap:var(--space-1); }
+  .patch-group-pane { position:sticky; top:var(--space-3); }
+}
+
+@container tool-panel (min-width:1180px) {
+  .patch-feature-workspace { grid-template-columns:232px minmax(0,1fr); gap:var(--space-6); }
+  .patch-feature-list { grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); }
 }
 
 @container tool-panel (max-width:679px) {
+  .task-rule-grid { grid-template-columns:minmax(0,1fr); }
   .patch-browser-head { align-items:stretch; flex-direction:column; }
   .patch-search { width:100%; flex-basis:auto; }
   .patch-feature-workspace { grid-template-columns:minmax(0,1fr); }
+  .patch-feature-sections { gap:var(--space-5); }
   .patch-connection { align-items:stretch; flex-direction:column; }
   .patch-connection-actions { width:100%; }
   .patch-connection-actions .ui-btn { flex:1 1 150px; }
@@ -1610,6 +2115,7 @@ onBeforeUnmount(() => {
   .patch-connection-main { align-items:flex-start; flex-wrap:wrap; }
   .patch-connection-main > .ui-tag { margin-left:46px; }
   .patch-feature-card { padding:var(--space-3); }
+  .patch-feature-card { min-height:0; }
   .patch-feature-summary { gap:var(--space-2); }
   .patch-feature-summary > .ui-tag { flex:0 0 auto; }
   .patch-confirm-dialog { grid-template-columns:minmax(0,1fr); padding:var(--space-5); }

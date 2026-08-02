@@ -25,7 +25,11 @@ const selected = computed(() => props.options.find(option => option.internalId =
 const filtered = computed(() => {
   const q = query.value.trim()
   if (!q) return props.options
-  return props.options.filter(option => matchText(option.displayName, q) || matchText(option.internalId, q))
+  return props.options.filter(option => [
+    option.displayName,
+    option.internalId,
+    ...(Array.isArray(option.searchTerms) ? option.searchTerms : []),
+  ].some(value => matchText(value, q)))
 })
 
 function optionIcon(option) {

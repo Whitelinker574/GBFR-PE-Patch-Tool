@@ -158,7 +158,7 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		}
 	})
 
-	t.Run("spatial and gravity lifecycle", func(t *testing.T) {
+	t.Run("spatial and continuous-jump lifecycle", func(t *testing.T) {
 		info, err := app.CharaAcquire(1)
 		if err != nil {
 			t.Fatal(err)
@@ -182,39 +182,39 @@ func TestLiveReleaseAcceptance(t *testing.T) {
 		if !move.RuntimeVerified || move.Before != move.Observed {
 			t.Fatalf("same-position spatial write did not verify: %+v", move)
 		}
-		available, err := app.RuntimeSpatialGravityStatusOwned(info.OwnerToken)
+		available, err := app.RuntimeSpatialJumpStatusOwned(info.OwnerToken)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !available.Available || available.Enabled || available.Error != "" {
-			t.Fatalf("gravity entrypoint is unavailable: %+v", available)
+			t.Fatalf("continuous-jump entrypoint is unavailable: %+v", available)
 		}
-		enabled, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, true)
+		enabled, err := app.RuntimeSpatialJumpSetEnabledOwned(info.OwnerToken, true)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !enabled.Available || !enabled.Enabled || !enabled.Owned || enabled.Error != "" {
-			t.Fatalf("gravity suppression did not become active: %+v", enabled)
+			t.Fatalf("continuous jump did not become active: %+v", enabled)
 		}
-		restored, err := app.RuntimeSpatialGravitySetEnabledOwned(info.OwnerToken, false)
+		restored, err := app.RuntimeSpatialJumpSetEnabledOwned(info.OwnerToken, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !restored.Available || restored.Enabled || restored.Owned || restored.Error != "" {
-			t.Fatalf("gravity suppression did not restore cleanly: %+v", restored)
+			t.Fatalf("continuous jump did not restore cleanly: %+v", restored)
 		}
 		if err := app.CharaRelease(info.OwnerToken); err != nil {
 			t.Fatal(err)
 		}
 	})
 
-	t.Run("2.0.3 runtime patch 045 and 054 lifecycle", func(t *testing.T) {
+	t.Run("2.0.3 runtime patch 045 054 and 060 lifecycle", func(t *testing.T) {
 		info, err := app.CharaAcquire(2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = app.CharaRelease(info.OwnerToken) })
-		for _, id := range []string{"runtime-patch-045", "runtime-patch-054"} {
+		for _, id := range []string{"runtime-patch-045", "runtime-patch-054", "runtime-patch-060"} {
 			active, err := app.RuntimePatchSetEnabledOwned(info.OwnerToken, id, true)
 			if err != nil {
 				t.Fatalf("enable %s: %v", id, err)

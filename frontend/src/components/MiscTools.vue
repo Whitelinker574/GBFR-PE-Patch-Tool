@@ -4,6 +4,7 @@ import { CharaAcquire, CharaRelease,
          CurrencyGetAllOwned, CurrencySetOneOwned,
          PotionGetAllOwned, PotionSetOneOwned,
          MaterialConsumeGetStatusOwned, MaterialConsumeSetEnabledOwned,
+         FreeConsumptionGetStatusOwned, FreeConsumptionSetEnabledOwned,
          CollectibleTaskCompleteOwned,
          InfiniteChallengeGetStatusOwned, InfiniteChallengeSetEnabledOwned,
          TerminusDropGetStatusOwned, TerminusDropScanOwned, TerminusDropSetEnabledOwned,
@@ -19,6 +20,8 @@ const loading = ref(false)
 
 const materialConsumeStatus = reactive({ rva: 0, enabled: false, currentBytes: '' })
 const materialConsumeLoading = ref(false)
+const freeConsumptionStatus = reactive({ available: false, enabled: false, rvas: [], currentBytes: [], evidenceNote: '', error: '' })
+const freeConsumptionLoading = ref(false)
 const collectibleTaskLoading = ref(false)
 const infiniteChallengeStatus = reactive({ rva: 0, enabled: false, owned: false, currentBytes: '' })
 const infiniteChallengeLoading = ref(false)
@@ -40,7 +43,8 @@ const runtimeCatalog = computed(() => {
     resources: [
       ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
-      ['素材不消耗', '只阻止素材扣减；正向获得路径待实机核对', '实验候选'],
+      ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3 专用'],
+      ['库存素材扣减保护', '只处理通用库存的负向素材增量，保留正向获得', '兼容路径'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
     mission: [
@@ -61,6 +65,7 @@ function clearConnectionState() {
   inventorySet45Enabled.value = false
   Object.assign(info, { pid: 0, moduleBase: 0, manager: 0 })
   Object.assign(materialConsumeStatus, { rva: 0, enabled: false, currentBytes: '' })
+  Object.assign(freeConsumptionStatus, { available: false, enabled: false, rvas: [], currentBytes: [], evidenceNote: '', error: '' })
   Object.assign(infiniteChallengeStatus, { rva: 0, enabled: false, owned: false, currentBytes: '' })
   Object.assign(terminusDropStatus, { found: false, address: 0, rva: 0, enabled: false, currentBytes: '' })
   currencies.value = []
@@ -86,6 +91,7 @@ async function connect() {
     connected.value = true
     Object.assign(info, res)
     loadMaterialConsumeStatus()
+    loadFreeConsumptionStatus()
     loadInfiniteChallengeStatus()
     loadTerminusDropStatus()
     loadCurrencyValues()
@@ -151,6 +157,31 @@ function setMaterialConsumeEnabled(enabled) {
     .then((status) => { applyMaterialConsumeStatus(status); emit('status', enabled ? '已开启升级/强化不材料消耗' : '已恢复升级/强化材料变化', 'success') })
     .catch((err) => emit('status', String(err), 'error'))
     .finally(() => { materialConsumeLoading.value = false })
+}
+
+function applyFreeConsumptionStatus(status) {
+  Object.assign(freeConsumptionStatus, status || { available: false, enabled: false, rvas: [], currentBytes: [], evidenceNote: '', error: '' })
+}
+
+function loadFreeConsumptionStatus() {
+  if (!connected.value) return
+  freeConsumptionLoading.value = true
+  FreeConsumptionGetStatusOwned(connectionOwnerToken)
+    .then(applyFreeConsumptionStatus)
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { freeConsumptionLoading.value = false })
+}
+
+function setFreeConsumptionEnabled(enabled) {
+  if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
+  freeConsumptionLoading.value = true
+  FreeConsumptionSetEnabledOwned(connectionOwnerToken, enabled)
+    .then((status) => {
+      applyFreeConsumptionStatus(status)
+      emit('status', enabled ? '已开启免费制作、交易与升级' : '已恢复制作、交易与升级的正常消耗', 'success')
+    })
+    .catch((err) => emit('status', String(err), 'error'))
+    .finally(() => { freeConsumptionLoading.value = false })
 }
 
 function applyInfiniteChallengeStatus(status) {
@@ -367,11 +398,11 @@ onBeforeUnmount(() => {
       <div class="memory-card compatibility-note ui-card ui-panel is-compact">
         <div class="memory-header">
           <span class="memory-title">实时修改与离线编辑</span>
-          <span class="memory-hint">DLC 2.0.2 分工</span>
+          <span class="memory-hint">GAME 2.0.3 功能边界</span>
         </div>
         <div class="memory-info">
-          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.2 特征动态定位，实时写入后立即回读。</span>
-          <span>药水和“不消耗素材”在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。</span>
+          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.3 已复核特征动态定位，实时写入后立即回读。</span>
+          <span>药水、免费消费和库存扣减保护在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。</span>
           <span>实时数值需要让游戏正常触发一次保存；游戏运行时不要同时离线修改同一存档。</span>
         </div>
       </div>
@@ -419,13 +450,33 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: freeConsumptionStatus.enabled }">
+          <div class="memory-header">
+            <span class="memory-title">免费制作、交易与升级</span>
+            <span class="info-dot" title="11 条消费路径作为一个整体启用、回读和恢复；任一入口不匹配都会拒绝开启。">!</span>
+            <span class="memory-hint">2.0.3 专用 · 11 站点原子补丁</span>
+          </div>
+          <p class="feature-help">用途：让制作、商店交易、武器与养成升级不再扣除所需货币和材料。它不会增加任务奖励，也不会改变拾取数量；需要奖励翻倍请使用掉落与锻造规则。</p>
+          <div class="memory-info">
+            <span>入口: {{ freeConsumptionStatus.rvas?.length || 0 }} / 11</span>
+            <span>状态: {{ freeConsumptionStatus.enabled ? '已开启' : (freeConsumptionStatus.available ? '可开启' : '未定位') }}</span>
+          </div>
+          <p v-if="freeConsumptionStatus.error" class="feature-help waiting">{{ freeConsumptionStatus.error }}</p>
+          <div class="memory-row">
+            <button class="btn-batch ui-btn is-primary is-sm" @click="setFreeConsumptionEnabled(true)" :disabled="freeConsumptionLoading || freeConsumptionStatus.enabled">开启免费消费</button>
+            <button class="btn-refresh ui-btn is-sm" @click="setFreeConsumptionEnabled(false)" :disabled="freeConsumptionLoading || !freeConsumptionStatus.enabled">恢复正常消耗</button>
+            <button class="btn-refresh ui-btn is-sm" @click="loadFreeConsumptionStatus" :disabled="freeConsumptionLoading">重新校验 11 个入口</button>
+          </div>
+          <details class="memory-diagnostics ui-disclosure"><summary>技术详情</summary><code class="memory-bytes">{{ freeConsumptionStatus.currentBytes?.join(' · ') || freeConsumptionStatus.evidenceNote || '未读取' }}</code></details>
+        </div>
+
         <div v-if="activeRuntimeGroup === 'resources'" class="memory-card ui-card ui-panel is-compact" :class="{ active: materialConsumeStatus.enabled }">
           <div class="memory-header">
-            <span class="memory-title">素材不消耗</span>
+            <span class="memory-title">库存素材扣减保护</span>
             <span class="info-dot" title="条件 Hook 已通过安装、回读和恢复测试；实际扣减与正向获得仍需游戏内分别核对。">!</span>
-            <span class="memory-hint">校验 RVA，失效时 AOB 重定位</span>
+            <span class="memory-hint">兼容路径 · 仅通用库存负向增量</span>
           </div>
-          <p class="feature-help">用途：强化或练成时尝试只跳过素材扣减。代码已验证安装、回读与恢复；任务奖励、拾取和药水等正向获得是否不受影响仍待实机验收。离开本页或退出工具时会尝试恢复原始指令。</p>
+          <p class="feature-help">用途：只拦截通用库存路径里的素材扣减，保留正向获得。它不是上方完整的免费制作功能；只在旧流程或特定素材仍会扣除时单独尝试。</p>
           <p v-if="inventorySet45Enabled" class="feature-help waiting">小钳蟹数量钩子正在占用同一指令地址；先恢复小钳蟹功能，才能切换素材不消耗。</p>
           <div class="memory-info">
             <span>RVA: {{ formatHex(materialConsumeStatus.rva) }}</span>
@@ -457,8 +508,8 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled && infiniteChallengeStatus.owned }">
           <div class="memory-header">
             <span class="memory-title">连续挑战</span>
-            <span class="info-dot" title="使用 DLC 2.0.2 唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
-            <span class="memory-hint">唯一 AOB · 三字节补丁 · 写后回读</span>
+            <span class="info-dot" title="使用 GAME 2.0.3 已核对的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
+            <span class="memory-hint">2.0.3 唯一 AOB · 三字节补丁 · 写后回读</span>
           </div>
           <p class="feature-help">用途：完成挑战后保持当前挑战次数，便于连续重复。进入挑战前开启，用完后立即恢复默认。</p>
           <div class="memory-info">
@@ -594,6 +645,12 @@ onBeforeUnmount(() => {
   border-radius:var(--radius-md);
   background:var(--surface-card-pop);
   text-align:left;
+}
+
+.preflight-grid article:last-of-type:nth-child(odd) {
+  width:calc(50% - var(--space-2));
+  grid-column:1 / -1;
+  justify-self:center;
 }
 
 .preflight-copy {
@@ -821,6 +878,10 @@ onBeforeUnmount(() => {
 @container runtime-page (max-width:480px) {
   .preflight-grid {
     grid-template-columns:minmax(0,1fr);
+  }
+
+  .preflight-grid article:last-of-type:nth-child(odd) {
+    width:100%;
   }
 
   .header {

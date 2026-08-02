@@ -9,6 +9,7 @@ const contracts = {
   'MiscTools.vue': ['CharaAcquire', 'CharaRelease'],
   'MonsterEnhance.vue': ['CharaAcquire', 'CharaRelease'],
   'WrightstoneMemoryGenerator.vue': ['WrightstoneMemoryAcquire', 'WrightstoneMemoryRelease'],
+  'WeaponMemoryGenerator.vue': ['WeaponMemoryAcquire', 'WeaponMemoryRelease'],
   'OverLimit.vue': ['OverLimitAcquire', 'OverLimitRelease'],
 }
 
@@ -42,6 +43,7 @@ test('stale acquire cleanup is queued instead of swallowing release failures', (
 test('runtime pages no longer call unconditional compatibility lifecycle APIs', () => {
   assert.doesNotMatch(sources['MiscTools.vue'], /Chara(?:Attach|Detach)/)
   assert.doesNotMatch(sources['WrightstoneMemoryGenerator.vue'], /WrightstoneMemory(?:Enable|Disable)/)
+  assert.doesNotMatch(sources['WeaponMemoryGenerator.vue'], /WeaponMemory(?:Enable|Disable)/)
   assert.doesNotMatch(sources['OverLimit.vue'], /OverLimit(?:Enable|Disable)/)
 })
 
@@ -65,6 +67,7 @@ test('live writes carry the current owner token and never call compatibility wri
     'SigilLoadoutRestore.vue': ['SigilMemoryUpdateOwned', 'SigilMemoryUpdate'],
     'SummonEditor.vue': ['SummonUpdateOwned', 'SummonUpdate'],
     'WrightstoneMemoryGenerator.vue': ['WrightstoneMemoryUpdateOwned', 'WrightstoneMemoryUpdate'],
+    'WeaponMemoryGenerator.vue': ['WeaponMemoryUpdateOwned', 'WeaponMemoryUpdate'],
     'OverLimit.vue': ['OverLimitSetAllOwned', 'OverLimitSetAll'],
     'MonsterEnhance.vue': ['MonsterEnhanceSetPatchValueEnabledOwned', 'MonsterEnhanceSetPatchValueEnabled'],
   }
@@ -93,6 +96,8 @@ test('live writes carry the current owner token and never call compatibility wri
   for (const [ownedCall, compatibilityCall, suffix = ''] of [
     ['MaterialConsumeGetStatusOwned', 'MaterialConsumeGetStatus', 'connectionOwnerToken'],
     ['MaterialConsumeSetEnabledOwned', 'MaterialConsumeSetEnabled', 'connectionOwnerToken,'],
+    ['FreeConsumptionGetStatusOwned', 'FreeConsumptionGetStatus', 'connectionOwnerToken'],
+    ['FreeConsumptionSetEnabledOwned', 'FreeConsumptionSetEnabled', 'connectionOwnerToken,'],
     ['CollectibleTaskCompleteOwned', 'CollectibleTaskComplete', 'connectionOwnerToken'],
     ['InfiniteChallengeGetStatusOwned', 'InfiniteChallengeGetStatus', 'connectionOwnerToken'],
     ['InfiniteChallengeSetEnabledOwned', 'InfiniteChallengeSetEnabled', 'connectionOwnerToken,'],

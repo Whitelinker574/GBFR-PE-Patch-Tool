@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.9"
+	appVersion  = "v2.0.10"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -76,6 +76,11 @@ const (
 	// rejects corrupted configuration values and still covers dual-4K setups.
 	maxAppWidth  = 7680
 	maxAppHeight = 4320
+	// Restored sizes are logical pixels. Leave a small work-area margin so a
+	// size captured while maximised cannot be scaled beyond the monitor on the
+	// next launch when Windows DPI scaling is 125% or 150%.
+	maxRestoredScreenWidthPercent  = 95
+	maxRestoredScreenHeightPercent = 90
 )
 
 // ── App ──
@@ -97,6 +102,7 @@ type App struct {
 	charaOwnerToken               string
 	sigilMemoryOwnerToken         string
 	wrightstoneMemoryOwnerToken   string
+	weaponMemoryOwnerToken        string
 	overLimitOwnerToken           string
 	// liveMemoryIndeterminateProcess poisons runtime item writes after a remote
 	// save thread times out. Creation time is part of the identity because
@@ -116,6 +122,9 @@ type App struct {
 	wrightstoneMemoryHookAddr      uintptr
 	wrightstoneMemoryCaveAddr      uintptr
 	wrightstoneMemoryOriginal      []byte
+	weaponMemoryHookAddr           uintptr
+	weaponMemoryCaveAddr           uintptr
+	weaponMemoryOriginal           []byte
 	itemSaveFunctionAddr           uintptr
 	currencyHookAddr               uintptr
 	currencyCaveAddr               uintptr
@@ -127,13 +136,15 @@ type App struct {
 	// runtimePatchPatchLeases owns only independently verified direct patches. The
 	// process identity and exact bytes make every record a retryable recovery
 	// lease; runtimePatchPatchOrder preserves reverse installation order on detach.
-	runtimePatchPatchLeases     map[string]runtimePatchPatchLease
-	runtimePatchPatchOrder      []string
-	confluxTimerLease           *confluxTimerLease
-	runtimeSpatialGravityLease  *runtimePatchPatchLease
-	taskRewardMultiplierLease   *taskRewardMultiplierLease
-	runtimePatchVerifiedProcess processInstanceID
-	runtimePatchVerifiedDigest  string
+	runtimePatchPatchLeases       map[string]runtimePatchPatchLease
+	runtimePatchPatchOrder        []string
+	confluxTimerLease             *confluxTimerLease
+	runtimeSpatialGravityLease    *runtimePatchPatchLease
+	runtimeSpatialJumpLease       *runtimePatchPatchLease
+	runtimeSpatialFlightHookLease *runtimeSpatialFlightHookLease
+	taskRewardMultiplierLease     *taskRewardMultiplierLease
+	runtimePatchVerifiedProcess   processInstanceID
+	runtimePatchVerifiedDigest    string
 	// The selected-item monitor uses two independent read-only address-capture
 	// hooks. Keep exact recovery evidence until both entry restoration and
 	// tool-owned cave-pointer clearing are proven.
@@ -143,15 +154,25 @@ type App struct {
 	// bytes are now proven restored. They intentionally remain mapped until the
 	// game exits because entry restoration cannot quiesce an in-flight thread.
 	// The metadata is dropped only when this process connection is detached.
-	retiredRuntimeCaves         []retiredRuntimeCave
-	materialConsumeAddr         uintptr
-	materialConsumeLease        *materialConsumeHookLease
-	combatTuningCooldownAddrs   []uintptr
-	combatTuningChargeAddr      uintptr
-	combatTuningCooldownLease   *combatTuningLease
-	combatTuningChargeLease     *combatTuningLease
-	infiniteChallengeAddr       uintptr
-	infiniteChallengeOwnerToken string
+	retiredRuntimeCaves            []retiredRuntimeCave
+	materialConsumeAddr            uintptr
+	materialConsumeLease           *materialConsumeHookLease
+	combatTuningCooldownAddrs      []uintptr
+	combatTuningChargeAddr         uintptr
+	combatTuningActionSpeedAddr    uintptr
+	combatTuningCooldownLease      *combatTuningLease
+	combatTuningChargeLease        *combatTuningLease
+	combatTuningActionSpeedLease   *combatTuningLease
+	freeConsumptionSiteAddrs       []uintptr
+	freeConsumptionLease           *freeConsumptionLease
+	taskScoreMultiplierAddr        uintptr
+	taskScoreMultiplierLease       *taskRuleLease
+	taskSideQuestAutoCompleteAddrs []uintptr
+	taskSideQuestAutoCompleteLease *taskRuleLease
+	summonDurationAddr             uintptr
+	summonDurationLease            *summonDurationLease
+	infiniteChallengeAddr          uintptr
+	infiniteChallengeOwnerToken    string
 	// runtimePatchMu serializes the two features sharing the versioned inventory
 	// material entry (2.0.2 RVA 0x356621; 2.0.3 RVA 0x34F8F1). Their
 	// read/validate/write sequence must be atomic or concurrent Wails calls can
@@ -189,6 +210,7 @@ type App struct {
 	emergencyWatcherWG           sync.WaitGroup
 	runtimeSpatialHotkeyMu       sync.Mutex
 	runtimeSpatialHotkey         runtimeSpatialHotkeyConfig
+	runtimeSpatialFlightMu       sync.Mutex
 	qolSessionWatcherMu          sync.Mutex
 	qolSessionWatcher            *runtimeQOLSessionWatcher
 	runtimeCompanionOwnerMu      sync.Mutex
@@ -234,9 +256,13 @@ func (a *App) startup(ctx context.Context) {
 		_, _ = a.startRuntimeLoadoutDetector(false)
 	}
 	width, height := config.windowSize()
+	if screenWidth, screenHeight := currentLogicalScreenSize(ctx); screenWidth > 0 && screenHeight > 0 {
+		width, height = config.windowSizeForScreen(screenWidth, screenHeight)
+	}
 	if width > 0 && height > 0 {
 		runtime.WindowSetSize(ctx, width, height)
 	}
+	runtime.WindowCenter(ctx)
 }
 
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
@@ -311,6 +337,37 @@ func (c AppConfig) windowSize() (int, int) {
 		return 0, 0
 	}
 	return max(minAppWidth, min(c.WindowWidth, maxAppWidth)), max(minAppHeight, min(c.WindowHeight, maxAppHeight))
+}
+
+func (c AppConfig) windowSizeForScreen(screenWidth, screenHeight int) (int, int) {
+	width, height := c.windowSize()
+	if width == 0 || height == 0 || screenWidth <= 0 || screenHeight <= 0 {
+		return width, height
+	}
+	maxWidth := max(minAppWidth, screenWidth*maxRestoredScreenWidthPercent/100)
+	maxHeight := max(minAppHeight, screenHeight*maxRestoredScreenHeightPercent/100)
+	return min(width, maxWidth), min(height, maxHeight)
+}
+
+func currentLogicalScreenSize(ctx context.Context) (int, int) {
+	screens, err := runtime.ScreenGetAll(ctx)
+	if err != nil && len(screens) == 0 {
+		return 0, 0
+	}
+	for _, screen := range screens {
+		if screen.IsCurrent {
+			return screen.Size.Width, screen.Size.Height
+		}
+	}
+	for _, screen := range screens {
+		if screen.IsPrimary {
+			return screen.Size.Width, screen.Size.Height
+		}
+	}
+	if len(screens) > 0 {
+		return screens[0].Size.Width, screens[0].Size.Height
+	}
+	return 0, 0
 }
 
 func (a *App) configFilePath() (string, error) {
@@ -798,6 +855,9 @@ func validatePotionSnapshot(name string, value int32) error {
 // CharaAttach finds the game process, opens a handle, reads module base and manager pointer.
 func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	a.disableRuntimeSpatialHotkeysOwned("", true)
+	if err := a.restoreRuntimeSpatialFlightHookOwned("", true); err != nil {
+		return CharaProcessInfo{}, fmt.Errorf("悬空飞行同帧 Hook 恢复失败: %w", err)
+	}
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if len(a.runtimePatchPatchLeases) != 0 || len(a.runtimePatchPatchOrder) != 0 {
@@ -815,8 +875,23 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 	if a.runtimeSpatialGravityLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("重力抑制仍由当前页面持有，请先恢复重力并安全释放")
 	}
+	if a.runtimeSpatialJumpLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("连续跳跃仍由当前页面持有，请先关闭并安全释放")
+	}
+	if a.runtimeSpatialFlightHookLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("悬空飞行同帧 Hook 仍由当前页面持有，请先关闭并安全释放")
+	}
 	if a.taskRewardMultiplierLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("任务奖励倍率仍由当前页面持有，请先恢复为 1× 并安全释放")
+	}
+	if a.freeConsumptionLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("免费制作、交易和升级仍由当前页面持有，请先关闭并安全释放")
+	}
+	if a.taskScoreMultiplierLease != nil || a.taskSideQuestAutoCompleteLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("任务规则增强仍由当前页面持有，请先关闭并安全释放")
+	}
+	if a.summonDurationLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("召唤持续时间仍由当前页面持有，请先关闭并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err == nil {
@@ -829,7 +904,12 @@ func (a *App) CharaAttach() (CharaProcessInfo, error) {
 
 // CharaAcquire attaches to the game and rotates the frontend owner lease.
 func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
-	a.disableRuntimeSpatialHotkeysOwned("", true)
+	a.runtimeSpatialHotkeyMu.Lock()
+	hotkeysActive := a.runtimeSpatialHotkey.Enabled
+	a.runtimeSpatialHotkeyMu.Unlock()
+	if hotkeysActive {
+		return CharaProcessInfo{}, fmt.Errorf("游戏内方向键仍由当前运行时连接持有，请先停用方向键再重新连接")
+	}
 	a.procMu.Lock()
 	defer a.procMu.Unlock()
 	if err := a.acceptRuntimeAcquireRequestLocked(requestID); err != nil {
@@ -850,8 +930,23 @@ func (a *App) CharaAcquire(requestID uint64) (CharaProcessInfo, error) {
 	if a.runtimeSpatialGravityLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("重力抑制由另一个运行时页面持有，请先恢复重力并安全释放")
 	}
+	if a.runtimeSpatialJumpLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("连续跳跃由另一个运行时页面持有，请先关闭并安全释放")
+	}
+	if a.runtimeSpatialFlightHookLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("悬空飞行同帧 Hook 由另一个运行时页面持有，请先关闭并安全释放")
+	}
 	if a.taskRewardMultiplierLease != nil {
 		return CharaProcessInfo{}, fmt.Errorf("任务奖励倍率由另一个运行时页面持有，请先恢复为 1× 并安全释放")
+	}
+	if a.freeConsumptionLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("免费制作、交易和升级由另一个运行时页面持有，请先关闭并安全释放")
+	}
+	if a.taskScoreMultiplierLease != nil || a.taskSideQuestAutoCompleteLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("任务规则增强由另一个运行时页面持有，请先关闭并安全释放")
+	}
+	if a.summonDurationLease != nil {
+		return CharaProcessInfo{}, fmt.Errorf("召唤持续时间由另一个运行时页面持有，请先关闭并安全释放")
 	}
 	info, err := a.charaAttachLocked()
 	if err != nil {
@@ -1203,14 +1298,19 @@ func (a *App) CharaRelease(token string) error {
 		a.runtimePatchMu.Lock()
 		tuningErr := a.restoreCombatTuningOwnedLocked(token, false)
 		materialErr := a.restoreMaterialConsumeOwnedLocked(token, false)
+		freeConsumptionErr := a.restoreFreeConsumptionOwnedLocked(token, false)
+		taskRulesErr := a.restoreTaskRulesOwnedLocked(token, false)
+		summonDurationErr := a.restoreSummonDurationOwnedLocked(token, false)
 		selectedErr := a.releaseRuntimePatchSelectedCaptureHooksLocked(token, false)
 		ctErr := a.restoreAllRuntimePatchPatchesLocked(token)
 		confluxErr := a.restoreConfluxTimerOwnedLocked(token, false)
 		gravityErr := a.restoreRuntimeSpatialGravityOwnedLocked(token, false)
+		jumpErr := a.restoreRuntimeSpatialJumpOwnedLocked(token, false)
+		flightErr := a.restoreRuntimeSpatialFlightHookOwnedLocked(token, false)
 		rewardErr := a.restoreTaskRewardMultiplierOwnedLocked(token, false)
 		challengeErr := a.restoreInfiniteChallengeOwnedLocked(token, false)
 		a.runtimePatchMu.Unlock()
-		if combined := errors.Join(tuningErr, materialErr, selectedErr, ctErr, confluxErr, gravityErr, rewardErr, challengeErr); combined != nil {
+		if combined := errors.Join(tuningErr, materialErr, freeConsumptionErr, taskRulesErr, summonDurationErr, selectedErr, ctErr, confluxErr, gravityErr, jumpErr, flightErr, rewardErr, challengeErr); combined != nil {
 			return fmt.Errorf("runtime restoration failed; connection remains owned: %w", combined)
 		}
 		if err := a.restoreMonsterEnhanceOwned(token, "all", false); err != nil {
@@ -1219,10 +1319,15 @@ func (a *App) CharaRelease(token string) error {
 	} else {
 		a.dropCombatTuningOwnerLocked(token, false)
 		a.dropMaterialConsumeOwnerLocked(token, false)
+		a.dropFreeConsumptionOwnerLocked(token, false)
+		a.dropTaskRuleOwnersLocked(token, false)
+		a.dropSummonDurationOwnerLocked(token, false)
 		a.dropRuntimePatchSelectedCaptureHooksLocked(token, false)
 		a.dropRuntimePatchPatchesForOwnerLocked(token)
 		a.dropConfluxTimerOwnerLocked(token)
 		a.dropRuntimeSpatialGravityOwnerLocked(token)
+		a.dropRuntimeSpatialJumpOwnerLocked(token)
+		a.dropRuntimeSpatialFlightHookOwnerLocked(token)
 		a.dropTaskRewardMultiplierOwnerLocked(token)
 		if runtimeOwnerTokenMatches(a.infiniteChallengeOwnerToken, token) {
 			a.infiniteChallengeOwnerToken = ""
@@ -1280,6 +1385,15 @@ func (a *App) charaDetachLocked() error {
 		if err := a.restoreMaterialConsumeOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("material consumption: %w", err))
 		}
+		if err := a.restoreFreeConsumptionOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("free consumption: %w", err))
+		}
+		if err := a.restoreTaskRulesOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("task rules: %w", err))
+		}
+		if err := a.restoreSummonDurationOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("summon duration: %w", err))
+		}
 		if err := a.restoreInfiniteChallengeOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous challenge: %w", err))
 		}
@@ -1295,6 +1409,12 @@ func (a *App) charaDetachLocked() error {
 		if err := a.restoreRuntimeSpatialGravityOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("spatial gravity: %w", err))
 		}
+		if err := a.restoreRuntimeSpatialJumpOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("continuous jump: %w", err))
+		}
+		if err := a.restoreRuntimeSpatialFlightHookOwnedLocked("", true); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("spatial flight same-frame hook: %w", err))
+		}
 		if err := a.restoreTaskRewardMultiplierOwnedLocked("", true); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("task reward multiplier: %w", err))
 		}
@@ -1307,6 +1427,9 @@ func (a *App) charaDetachLocked() error {
 		}
 		if err := a.releaseWrightstoneMemoryHook(); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("wrightstone-memory hook: %w", err))
+		}
+		if err := a.releaseWeaponMemoryHook(); err != nil {
+			releaseErr = errors.Join(releaseErr, fmt.Errorf("weapon-memory hook: %w", err))
 		}
 		if err := a.releaseCurrencyHook(); err != nil {
 			releaseErr = errors.Join(releaseErr, fmt.Errorf("currency hook: %w", err))
@@ -1347,6 +1470,9 @@ func (a *App) charaDetachLocked() error {
 	a.wrightstoneMemoryHookAddr = 0
 	a.wrightstoneMemoryCaveAddr = 0
 	a.wrightstoneMemoryOriginal = nil
+	a.weaponMemoryHookAddr = 0
+	a.weaponMemoryCaveAddr = 0
+	a.weaponMemoryOriginal = nil
 	a.itemSaveFunctionAddr = 0
 	a.currencyHookAddr = 0
 	a.currencyCaveAddr = 0
@@ -1355,6 +1481,8 @@ func (a *App) charaDetachLocked() error {
 	a.runtimePatchPatchLeases = nil
 	a.runtimePatchPatchOrder = nil
 	a.runtimeSpatialGravityLease = nil
+	a.runtimeSpatialJumpLease = nil
+	a.runtimeSpatialFlightHookLease = nil
 	a.taskRewardMultiplierLease = nil
 	a.runtimePatchSelectedMaterialHook = runtimePatchSelectedCaptureLease{}
 	a.runtimePatchSelectedKeyItemHook = runtimePatchSelectedCaptureLease{}
@@ -1363,13 +1491,24 @@ func (a *App) charaDetachLocked() error {
 	a.materialConsumeLease = nil
 	a.combatTuningCooldownAddrs = nil
 	a.combatTuningChargeAddr = 0
+	a.combatTuningActionSpeedAddr = 0
 	a.combatTuningCooldownLease = nil
 	a.combatTuningChargeLease = nil
+	a.combatTuningActionSpeedLease = nil
+	a.freeConsumptionSiteAddrs = nil
+	a.freeConsumptionLease = nil
+	a.taskScoreMultiplierAddr = 0
+	a.taskScoreMultiplierLease = nil
+	a.taskSideQuestAutoCompleteAddrs = nil
+	a.taskSideQuestAutoCompleteLease = nil
+	a.summonDurationAddr = 0
+	a.summonDurationLease = nil
 	a.infiniteChallengeAddr = 0
 	a.infiniteChallengeOwnerToken = ""
 	a.charaOwnerToken = ""
 	a.sigilMemoryOwnerToken = ""
 	a.wrightstoneMemoryOwnerToken = ""
+	a.weaponMemoryOwnerToken = ""
 	a.overLimitOwnerToken = ""
 	return nil
 }
@@ -2633,6 +2772,7 @@ const (
 	runtimeOwnerChara runtimeOwnerScope = iota + 1
 	runtimeOwnerSigil
 	runtimeOwnerWrightstone
+	runtimeOwnerWeapon
 	runtimeOwnerOverLimit
 )
 
@@ -2644,6 +2784,8 @@ func (a *App) runtimeOwnerTokenLocked(scope runtimeOwnerScope) string {
 		return a.sigilMemoryOwnerToken
 	case runtimeOwnerWrightstone:
 		return a.wrightstoneMemoryOwnerToken
+	case runtimeOwnerWeapon:
+		return a.weaponMemoryOwnerToken
 	case runtimeOwnerOverLimit:
 		return a.overLimitOwnerToken
 	default:
@@ -2730,6 +2872,9 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		a.wrightstoneMemoryHookAddr != 0 ||
 		a.wrightstoneMemoryCaveAddr != 0 ||
 		len(a.wrightstoneMemoryOriginal) != 0 ||
+		a.weaponMemoryHookAddr != 0 ||
+		a.weaponMemoryCaveAddr != 0 ||
+		len(a.weaponMemoryOriginal) != 0 ||
 		a.overLimitHookAddr != 0 ||
 		a.overLimitCaveAddr != 0 ||
 		a.currencyHookAddr != 0 ||
@@ -2740,10 +2885,17 @@ func (a *App) hasActiveRuntimeHookLeaseLocked() bool {
 		len(a.runtimePatchPatchOrder) != 0 ||
 		a.confluxTimerLease != nil ||
 		a.runtimeSpatialGravityLease != nil ||
+		a.runtimeSpatialJumpLease != nil ||
+		a.runtimeSpatialFlightHookLease != nil ||
 		a.taskRewardMultiplierLease != nil ||
 		a.materialConsumeLease != nil ||
 		a.combatTuningCooldownLease != nil ||
 		a.combatTuningChargeLease != nil ||
+		a.combatTuningActionSpeedLease != nil ||
+		a.freeConsumptionLease != nil ||
+		a.taskScoreMultiplierLease != nil ||
+		a.taskSideQuestAutoCompleteLease != nil ||
+		a.summonDurationLease != nil ||
 		a.infiniteChallengeOwnerToken != "" ||
 		a.hasRuntimePatchSelectedCaptureLeaseLocked()
 }

@@ -6,6 +6,57 @@ function identifier(value) {
   return String(value ?? '')
 }
 
+const featureSearchAliases = Object.freeze({
+  'runtime-patch-038': ['闪避次数', '防御'],
+  'runtime-patch-039': ['格挡次数', '防御'],
+  'runtime-patch-040': ['完美防御', '自动格挡'],
+  'runtime-patch-041': ['link', '连锁时间', '连锁槽'],
+  'runtime-patch-042': ['战斗道具', '药水', '道具不减'],
+  'runtime-patch-045': ['召唤石', '召唤限制'],
+  'runtime-patch-046': ['召唤石', '任务限制'],
+  'runtime-patch-048': ['隐藏宝箱', '开箱'],
+  'runtime-patch-050': ['宝箱', '自动拾取'],
+  'runtime-patch-051': ['战斗辅助', '全辅助', '无视限制'],
+  'runtime-patch-052': ['无视钥匙', '直接开箱', '体验优化'],
+  'runtime-patch-053': ['结算', '跳过动画'],
+  'runtime-patch-054': ['msp', '境界点数', '点数不减'],
+  'runtime-patch-055': ['因子合成', '强制最高等级', '炼成'],
+  'runtime-patch-056': ['cp', '混沌点数', 'dlc点数'],
+  'runtime-patch-057': ['专精技能上限', '突破专精', '专精上限'],
+  'runtime-patch-058': ['支线目标', '额外奖励'],
+  'runtime-patch-059': ['怒发冲冠', '刀上舞', '眩晕'],
+  'runtime-patch-060': ['link time', '无限link', '持续不减'],
+})
+
+const modeGroupOrder = Object.freeze({
+  combat: ['战斗功能'],
+  quest: ['体验优化', '任务修改'],
+  characters: [
+    '角色修改', '古兰', '伊欧', '拉卡姆', '欧根', '卡塔莉娜', '罗塞塔', '菲莉',
+    '娜露梅', '夏洛特', '尤达哈拉', '巴萨拉卡', '泽塔', '冈达葛萨', '巴恩', '伊德',
+    '圣德芬', '希耶提', '索恩', '贝阿朵丽丝', '尤斯提斯', '伽兰查', '玛琪拉菲菈',
+    '菲迪埃尔', '芙劳',
+  ],
+})
+
+const modeFeatureOrder = Object.freeze({
+  combat: [
+    'runtime-patch-038', 'runtime-patch-039', 'runtime-patch-040', 'runtime-patch-042',
+    'runtime-patch-041', 'runtime-patch-060', 'runtime-patch-043', 'runtime-patch-044',
+    'runtime-patch-045', 'runtime-patch-046', 'runtime-patch-059',
+  ],
+  quest: [
+    'runtime-patch-052', 'runtime-patch-051', 'runtime-patch-055', 'runtime-patch-054',
+    'runtime-patch-056', 'runtime-patch-057', 'runtime-patch-050', 'runtime-patch-048',
+    'runtime-patch-049', 'runtime-patch-047', 'runtime-patch-058', 'runtime-patch-053',
+  ],
+})
+
+function orderedIndex(values, value) {
+  const index = (values || []).indexOf(value)
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index
+}
+
 function catalogPatchBytes(value) {
   if (Array.isArray(value)) {
     return value.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 0xFF) ? value : null
@@ -19,7 +70,7 @@ function catalogPatchBytes(value) {
   }
 }
 
-function searchHaystack(feature, featureLabel, groupLabel) {
+function searchHaystack(feature, featureLabel, groupLabel, aliases) {
   return [
     feature?.name,
     feature?.displayName,
@@ -28,6 +79,8 @@ function searchHaystack(feature, featureLabel, groupLabel) {
     ...(Array.isArray(feature?.groupPath) ? feature.groupPath : []),
     featureLabel(feature),
     groupLabel(feature?.character || feature?.group),
+    ...(Array.isArray(feature?.aliases) ? feature.aliases : []),
+    ...(Array.isArray(aliases) ? aliases : []),
   ].map(text).join('\u0000').toLocaleLowerCase()
 }
 
@@ -36,21 +89,51 @@ export function buildRuntimePatchGroups(features, mode, query = '', options = {}
   const needle = text(query).toLocaleLowerCase()
   const featureLabel = typeof options?.featureLabel === 'function' ? options.featureLabel : feature => feature?.displayName || feature?.name
   const groupLabel = typeof options?.groupLabel === 'function' ? options.groupLabel : value => value
+  const aliasesFor = typeof options?.aliasesFor === 'function'
+    ? options.aliasesFor
+    : feature => featureSearchAliases[identifier(feature?.id)] || []
   const groups = new Map()
 
   for (const feature of Array.isArray(features) ? features : []) {
     if (feature?.mode !== wantedMode) continue
-    if (needle && !searchHaystack(feature, featureLabel, groupLabel).includes(needle)) continue
+    if (needle && !searchHaystack(feature, featureLabel, groupLabel, aliasesFor(feature)).includes(needle)) continue
     const key = text(wantedMode === 'characters' ? feature.character || feature.group : feature.group) || '其他'
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(feature)
   }
 
-  return [...groups].map(([key, groupedFeatures]) => ({
-    key,
-    label: text(groupLabel(key)) || key,
-    features: groupedFeatures,
-  }))
+  const featureOrder = modeFeatureOrder[wantedMode] || []
+  const groupOrder = modeGroupOrder[wantedMode] || []
+  return [...groups]
+    .map(([key, groupedFeatures]) => ({
+      key,
+      label: text(groupLabel(key)) || key,
+      features: [...groupedFeatures].sort((left, right) => {
+        const priority = orderedIndex(featureOrder, identifier(left?.id)) - orderedIndex(featureOrder, identifier(right?.id))
+        if (priority) return priority
+        return Number(left?.catalogId || 0) - Number(right?.catalogId || 0)
+      }),
+    }))
+    .sort((left, right) => {
+      const priority = orderedIndex(groupOrder, left.key) - orderedIndex(groupOrder, right.key)
+      if (priority) return priority
+      return left.label.localeCompare(right.label, 'zh-Hans-CN')
+    })
+}
+
+export function filterRuntimePatchGroups(groups, scope, statusIndex) {
+  const source = Array.isArray(groups) ? groups : []
+  if (scope === 'all') return source
+  if (scope === 'active') {
+    return source.map(group => ({
+      ...group,
+      features: group.features.filter(feature => {
+        const status = statusIndex?.get(identifier(feature?.id))
+        return status?.enabled || (Array.isArray(status?.rvas) && status.rvas.length > 0)
+      }),
+    })).filter(group => group.features.length > 0)
+  }
+  return source.filter(group => group.key === scope)
 }
 
 export function buildRuntimePatchStatusIndex(statuses) {

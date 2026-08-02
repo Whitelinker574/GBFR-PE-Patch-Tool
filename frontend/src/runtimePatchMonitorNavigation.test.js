@@ -67,7 +67,7 @@ test('new shell and home copy has exact English localization', () => {
     '后台归档连续稳定的队伍配装批次': 'Archive consecutive stable party-loadout batches',
     '只读后台检测': 'Read-Only Background Detection',
     '只读 · 自动归档稳定队伍批次': 'Read Only · Automatic Stable Party Archive',
-    '常驻归档连续稳定的队伍配装批次，并提供选中物品读取、稳定坐标诊断、一次性传送和按住移动的持续坐标飞行。': 'Continuously archive stable party-loadout batches, with selected-item reading, stable coordinate diagnostics, one-shot teleporting, and hold-to-move continuous coordinate flight.',
+    '常驻归档连续稳定的队伍配装批次，并提供选中物品读取、稳定坐标诊断、一次性传送和连续跳跃。': 'Continuously archive stable party-loadout batches, with selected-item reading, stable coordinate diagnostics, one-shot teleporting, and continuous jump.',
     '开启角色配装检测': 'Start Character Loadout Detection',
     '检测器只读游戏数据，可与其他连接功能同时使用；选中物品读取是同页的独立工具。': 'The detector reads game data only and can run alongside other connections. Selected-item reading is a separate tool on the same page.',
     '开启后自动后台检测': 'Automatic background detection after start',

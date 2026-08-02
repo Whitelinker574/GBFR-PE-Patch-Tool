@@ -1,5 +1,6 @@
 export const COMBAT_TUNING_COOLDOWN_ID = 'combat-tuning-cooldown'
 export const COMBAT_TUNING_CHARGE_ID = 'combat-tuning-charge'
+export const COMBAT_TUNING_ACTION_SPEED_ID = 'combat-tuning-action-speed'
 
 const MULTIPLIER_MIN = 0.1
 const MULTIPLIER_MAX = 100
@@ -70,7 +71,9 @@ export function emptyCombatTuningStatus() {
     evidenceNote: '',
     error: '',
   })
-  return { cooldown: feature(), charge: feature() }
+  const actionSpeed = feature()
+  actionSpeed.speedMultiplier = 1.5
+  return { cooldown: feature(), charge: feature(), actionSpeed }
 }
 
 export function normalizeCombatTuningStatus(value) {
@@ -80,7 +83,17 @@ export function normalizeCombatTuningStatus(value) {
   return {
     cooldown: normalizeFeatureStatus(value.cooldown, '冷却'),
     charge: normalizeFeatureStatus(value.charge, '蓄力'),
+    actionSpeed: normalizeFeatureStatus(value.actionSpeed, '人物动作速度'),
   }
+}
+
+export function parseActionSpeedMultiplier(value) {
+  const text = String(value ?? '').trim()
+  const numeric = Number(text)
+  if (!text || !Number.isFinite(numeric) || numeric < 0.1 || numeric > 5) {
+    throw new Error('人物动作速度倍率请输入 0.1 到 5.0')
+  }
+  return numeric
 }
 
 export function parseCombatTuningMultiplier(value, label) {
@@ -114,6 +127,16 @@ export function buildChargeRequest({ enabled = true, mode, multiplier }) {
   }
 }
 
+export function buildActionSpeedRequest({ enabled = true, multiplier, scope }) {
+  if (!enabled) return { enabled: false, speedMultiplier: 1.5, applyWholeParty: false }
+  if (!['self', 'party'].includes(scope)) throw new Error('请选择人物动作速度作用范围')
+  return {
+    enabled: true,
+    speedMultiplier: parseActionSpeedMultiplier(multiplier),
+    applyWholeParty: scope === 'party',
+  }
+}
+
 export function combatTuningStatusMatchesRequest(status, request, kind) {
   if (!status || status.enabled !== request.enabled) return false
   if (!request.enabled) return true
@@ -121,6 +144,10 @@ export function combatTuningStatusMatchesRequest(status, request, kind) {
     return status.noCooldown === request.noCooldown
       && status.applyWholeParty === request.applyWholeParty
       && (request.noCooldown || status.speedMultiplier === request.speedMultiplier)
+  }
+  if (kind === 'actionSpeed') {
+    return status.applyWholeParty === request.applyWholeParty
+      && status.speedMultiplier === request.speedMultiplier
   }
   return status.instant === request.instant
     && (request.instant || status.speedMultiplier === request.speedMultiplier)

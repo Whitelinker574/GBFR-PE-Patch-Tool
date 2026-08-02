@@ -21,6 +21,7 @@ const groups = [
     items: [
       { id: 'sigilMemory', icon: '◈', title: '因子即时编辑', copy: '读取并修改游戏里当前高亮的因子' },
       { id: 'wrightstoneMemory', icon: '✦', title: '祝福石即时编辑', copy: '读取并修改游戏里当前高亮的祝福石' },
+      { id: 'weaponMemory', icon: '⚔', title: '武器技能即时编辑', copy: '修改五个存档技能槽，并可常驻追加第六条及以后技能' },
       { id: 'summon', icon: '☾', title: '召唤石修改', copy: '修改当前召唤石的技能、副参数与等级' },
       { id: 'overlimit', icon: '✪', title: '角色上限突破', copy: '读取突破结果页并保存四项能力值' },
       { id: 'runtime', icon: '✧', title: '货币、素材与任务掉落', copy: '调整当前会话的金币、MSP、素材与掉落功能' },
@@ -40,7 +41,7 @@ const groups = [
       { id: 'virtualSigils', icon: '◇', title: '虚拟因子槽', copy: '运行时读取额外库存因子，不扩存档十二槽' },
       { id: 'audioMixer', icon: '声', title: '角色语音混音台', copy: '按角色调整后续语音与界面音效音量' },
       { id: 'camera', icon: '镜', title: '城镇镜头工坊', copy: '调整城镇镜头距离、高度与滚轮缩放' },
-      { id: 'spatialTools', icon: '标', title: '坐标与移动工具', copy: '离线使用书签、传送、世界轴移动和重力控制' },
+      { id: 'spatialTools', icon: '标', title: '坐标与移动工具', copy: '离线使用书签、传送、原生方向控制和连续跳跃' },
       { id: 'patchCombat', icon: '斗', title: '战斗规则补丁', copy: '闪避、格挡、Link 与召唤限制' },
       { id: 'patchCharacters', icon: '角', title: '角色机制补丁', copy: '按角色管理专属机制与冲突' },
       { id: 'patchQuest', icon: '任', title: '任务与便利补丁', copy: '倒计时、宝箱、结算与支线奖励' },
@@ -58,12 +59,12 @@ const groups = [
         <header class="project-heading">
           <span>GRANBLUE FANTASY: RELINK</span>
           <h1>GBFR 存档修改工具</h1>
-          <p>DLC 2.0.2 本地功能整合版</p>
+          <p>DLC 2.0.3 本地功能整合版</p>
           <p class="mode-guide">改存档：先<b>完全退出游戏</b>；游戏内实时改：先<b>启动并进入游戏</b>。同一份存档，两种方式别同时用。</p>
         </header>
 
         <nav class="home-groups" aria-label="功能入口">
-          <section v-for="group in groups" :key="group.id" class="home-group">
+          <section v-for="group in groups" :key="group.id" class="home-group" :data-group="group.id">
             <div class="home-group-head"><span class="home-group-mark">{{ group.mark }}</span><div><strong>{{ group.label }}</strong><small>{{ group.hint }}</small></div></div>
             <div class="home-group-items">
               <button v-for="item in group.items" :key="item.id" class="chapter-ribbon ui-card" @pointerenter="emit('warm', item.id)" @pointerdown="emit('warm', item.id)" @focus="emit('warm', item.id)" @click="emit('open', item.id)">
@@ -87,8 +88,8 @@ const groups = [
 <style scoped>
 .journal-home {
   width:100%;
-  height:100%;
-  min-height:0;
+  height:auto;
+  min-height:100%;
   display:flex;
   flex-direction:column;
   padding:var(--space-5);
@@ -98,8 +99,8 @@ const groups = [
 .illustrated-journal {
   position:relative;
   width:100%;
-  height:100%;
-  min-height:520px;
+  height:auto;
+  min-height:100%;
   flex:1 0 auto;
   overflow:hidden;
   border-radius:var(--radius-lg);
@@ -112,7 +113,7 @@ const groups = [
   position:absolute;
   z-index:1;
   inset:0;
-  background:linear-gradient(90deg,var(--surface-card-pop) 0%,color-mix(in srgb,var(--surface-card-pop) 94%,transparent) 39%,color-mix(in srgb,var(--surface-card-pop) 36%,transparent) 61%,transparent 78%);
+  background:linear-gradient(90deg,var(--surface-card-pop) 0%,color-mix(in srgb,var(--surface-card-pop) 96%,transparent) 50%,color-mix(in srgb,var(--surface-card-pop) 68%,transparent) 66%,color-mix(in srgb,var(--surface-card-pop) 12%,transparent) 80%,transparent 90%);
   pointer-events:none;
 }
 .illustrated-journal::after {
@@ -136,12 +137,13 @@ const groups = [
 .page-menu {
   position:relative;
   z-index:2;
-  width:clamp(500px,44vw,680px);
-  height:100%;
+  width:min(72%,920px);
+  height:auto;
+  min-height:100%;
   display:flex;
   flex-direction:column;
-  justify-content:center;
-  padding:clamp(32px,5vh,56px) clamp(28px,3vw,48px) clamp(32px,5vh,56px) clamp(36px,5vw,72px);
+  justify-content:flex-start;
+  padding:clamp(24px,3.2vh,40px) clamp(24px,2.4vw,40px) clamp(28px,4vh,48px) clamp(32px,4vw,64px);
 }
 .project-heading {
   margin:0 0 var(--space-6);
@@ -188,6 +190,7 @@ const groups = [
   flex-direction:column;
   gap:var(--space-5);
 }
+.home-group { min-width:0; }
 .home-group-head {
   min-width:0;
   display:flex;
@@ -294,33 +297,70 @@ const groups = [
   font-weight:var(--fw-semibold);
 }
 
+/* On a wide desktop the directory becomes a compact catalog instead of a
+   narrow phone-like column. The illustration remains a secondary visual rail
+   on the right, while every functional group gets enough room to stay useful. */
+/* Windows 150–160% scaling turns a 2048px fullscreen monitor into roughly
+   1280 CSS pixels inside WebView2, so enter the desktop catalog layout before
+   1440px instead of treating a real fullscreen window like a compact one. */
+@media (min-width:1180px) {
+  .page-menu { width:min(68%,1240px); }
+  .project-heading {
+    display:grid;
+    grid-template-columns:minmax(250px,.72fr) minmax(440px,1.28fr);
+    gap:0 var(--space-6);
+    align-items:end;
+    margin-bottom:var(--space-4);
+    padding-bottom:var(--space-4);
+  }
+  .project-heading > span,
+  .project-heading h1,
+  .project-heading > p:not(.mode-guide) { grid-column:1; }
+  .project-heading .mode-guide {
+    grid-column:2;
+    grid-row:1 / span 3;
+    align-self:center;
+    margin:0;
+  }
+  .home-groups {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:var(--space-4) var(--space-5);
+  }
+  .home-group[data-group="loadoutFlow"],
+  .home-group[data-group="runtimeTools"] { grid-column:1 / -1; }
+  .home-group[data-group="loadoutFlow"] .home-group-items { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .home-group[data-group="runtimeTools"] .home-group-items { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .chapter-ribbon { min-height:52px; padding-block:var(--space-2); }
+  .small-tabs { margin-top:var(--space-4); padding-top:var(--space-3); }
+}
+
 @media (max-width:960px) {
   .page-menu {
-    width:clamp(460px,58vw,560px);
+    width:min(82%,680px);
     padding-left:clamp(28px,5vw,48px);
   }
   .project-heading h1 { font-size:24px; }
 }
 @media (max-width:760px) {
   .journal-home { padding:var(--space-3); }
-  .illustrated-journal { height:auto; min-height:720px; }
+  .illustrated-journal { min-height:100%; }
   .illustrated-journal::before { background:color-mix(in srgb,var(--surface-card-pop) 84%,transparent); }
   .journal-scene { object-position:38% center; opacity:.46; }
   .page-menu {
     width:100%;
     height:auto;
-    min-height:720px;
+    min-height:100%;
     padding:var(--space-8) var(--space-6);
   }
   .home-group-items { grid-template-columns:minmax(0,1fr); }
   .small-tabs > span { width:100%; margin-left:0; }
 }
-/* Once the complete catalog is taller than a normal desktop viewport, let the
-   outer workspace own scrolling and keep the project heading at the top. */
+/* Short desktop windows keep the same scroll ownership and use denser cards. */
 @media (max-height:920px) and (min-width:761px) {
-  .journal-home { height:auto; min-height:100%; padding:var(--space-3); }
-  .illustrated-journal { height:auto; min-height:500px; }
-  .page-menu { height:auto; justify-content:flex-start; padding-block:var(--space-3); }
+  .journal-home { padding:var(--space-3); }
+  .illustrated-journal { min-height:100%; }
+  .page-menu { padding-block:var(--space-3); }
   .project-heading { margin-bottom:var(--space-4); padding-bottom:var(--space-3); }
   .project-heading h1 { font-size:22px; }
   .project-heading .mode-guide { margin-top:var(--space-2); padding-block:var(--space-2); }

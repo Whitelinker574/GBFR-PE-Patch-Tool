@@ -31,6 +31,20 @@ func TestPersistentRuntimeCompanionReconnectDecision(t *testing.T) {
 	}
 }
 
+func TestWeaponRuntimePendingRefreshIsNotAnInstalledHookButRemainsVisible(t *testing.T) {
+	process := processInstanceID{PID: 42, Created: 84}
+	status := runtimeCompanionStatus{PID: process.PID, Created: process.Created, State: "inactive_pending_refresh"}
+	if runtimeCompanionNeedsStop(status, process) || runtimeCompanionInstalled(status, process) {
+		t.Fatal("restored weapon Hook was still reported as installed")
+	}
+	if !runtimeCompanionRecoveryRequired(status, process) {
+		t.Fatal("pending native status refresh disappeared from recovery UI")
+	}
+	if shouldReconnectPersistentRuntimeCompanion(true, status, process) {
+		t.Fatal("supervisor reinjected weapon skills before pending cached state was acknowledged")
+	}
+}
+
 func TestRuntimeCompanionSummaryIncludesAuthoritativeRuntimePatchState(t *testing.T) {
 	summaries := (&App{}).GetRuntimeCompanionSummary()
 	foundReward := false

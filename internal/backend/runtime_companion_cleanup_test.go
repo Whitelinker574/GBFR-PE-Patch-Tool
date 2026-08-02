@@ -39,6 +39,23 @@ func TestRestoreRuntimeCompanionsAttemptsEveryRuntimeAndJoinsFailures(t *testing
 	}
 }
 
+func TestStopOwnedRuntimeCompanionAcceptsNilDisableCallback(t *testing.T) {
+	source, err := os.ReadFile("runtime_companion.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(source)
+	start := strings.Index(body, "func (a *App) stopOwnedRuntimeCompanion")
+	end := strings.Index(body[start:], "\nfunc (a *App) runtimeCompanionActive")
+	if start < 0 || end < 0 {
+		t.Fatal("stopOwnedRuntimeCompanion source block was not found")
+	}
+	block := body[start : start+end]
+	if !strings.Contains(block, "if disable != nil") {
+		t.Fatal("stopOwnedRuntimeCompanion still calls a nil disable callback during empty-config cleanup")
+	}
+}
+
 func TestRuntimeCompanionStatusMatchesCompleteProcessIdentity(t *testing.T) {
 	current := processInstanceID{PID: 42, Created: 100}
 	cases := []struct {
@@ -141,10 +158,11 @@ func TestNativeRuntimeCompanionsRestoreWhenToolOwnerExits(t *testing.T) {
 	if strings.Contains(releaseBlock, "DeleteFileW(") {
 		t.Fatal("native owner release must delete the validated file handle, not a path that may now name a successor")
 	}
-	for _, runtime := range []string{"camera", "virtual-sigils", "audio", "damage", "qol"} {
+	for _, runtime := range []string{"camera", "virtual-sigils", "weapon-skills", "audio", "damage", "qol"} {
 		start := strings.Index(body, "static DWORD Run"+map[string]string{
 			"camera":         "Camera",
 			"virtual-sigils": "VirtualSigil",
+			"weapon-skills":  "WeaponSkills",
 			"audio":          "Audio",
 			"damage":         "Damage",
 			"qol":            "QOL",

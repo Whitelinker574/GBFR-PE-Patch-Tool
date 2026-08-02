@@ -43,8 +43,9 @@ const COPY = Object.freeze({
   tabParty: ['队伍配装记录', 'Party Loadout History'],
   tabItems: ['选中物品', 'Selected Item'],
   tabSpatial: ['空间诊断', 'Spatial Diagnostics'],
-  spatialTitle: ['读取玩家与队伍坐标', 'Read Player & Party Coordinates'],
-  spatialSummary: ['进入稳定场景后点击读取。工具会连续核对三次，场景正在切换时不会拼出错误坐标。', 'Enter a stable scene, then read. The tool verifies three consecutive snapshots and will not combine coordinates while a scene is changing.'],
+  spatialMovementEyebrow: ['移动方式', 'Movement'],
+  spatialTitle: ['空间移动工具', 'Spatial Movement Tools'],
+  spatialSummary: ['先用虚拟地面抬高或降低角色；需要精确数值时，再使用下方的坐标读取、书签和传送。', 'Use Virtual Ground to raise or lower the character first. For exact values, use the coordinate reader, bookmarks, and teleport tools below.'],
   spatialRead: ['读取稳定坐标', 'Read Stable Coordinates'],
   spatialReading: ['正在核对三次快照…', 'Verifying Three Snapshots…'],
   spatialEmpty: ['进入城镇或任务中的稳定场景后再读取。标题、加载和过场阶段不会猜测坐标。', 'Read after entering a stable town or quest scene. Coordinates are not guessed on title, loading, or cutscene screens.'],
@@ -65,34 +66,77 @@ const COPY = Object.freeze({
   spatialBefore: ['传送前', 'Before Teleport'],
   spatialObserved: ['写入回读', 'Observed After Write'],
   spatialUnsupported: ['本工具无法可靠识别联机状态，请自行确认只在离线/单机中使用。', 'The app cannot reliably detect online state; confirm that you are offline or solo.'],
-  spatialFlightTitle: ['世界轴连续移动', 'Continuous World-Axis Movement'],
-  spatialFlightSummary: ['页面内可以按住轴向按钮；开启游戏内方向键后，切回游戏直接按 ← ↑ ↓ → 即可移动，不必再切回工具。', 'Hold the axis buttons in the app, or enable in-game arrow keys and move with ← ↑ ↓ → while the game is focused without switching back to the tool.'],
-  spatialFlightDirections: ['世界轴移动方向', 'World-axis movement directions'],
+  spatialFlightTitle: ['虚拟地面移动', 'Virtual Ground Movement'],
+  spatialFlightSummary: ['这是本页推荐的悬空方式：角色保持地面动作，能正常移动、攻击和使用技能；PageUp / PageDown 调整脚下虚拟地面的高度。', 'This is the recommended hover method: the character keeps grounded actions for normal movement, attacks, and skills while PageUp / PageDown moves the virtual surface.'],
+  spatialFlightRecommendedTag: ['推荐 · 已实测', 'Recommended · Field Tested'],
+  spatialFlightModeLabel: ['悬停时使用哪套动作', 'Actions While Hovering'],
+  spatialFlightModeGround: ['虚拟地面', 'Virtual Ground'],
+  spatialFlightModeGroundSummary: ['先在地面站稳，开启后直接按 PageUp 抬高角色与脚下接触面；不要先跳跃，避免进入角色的空中动作链。', 'Stand still on real ground first, then press PageUp to raise the character and contact surface together. Do not jump first, which would enter the character’s aerial action chain.'],
+  spatialFlightModeAerial: ['空中动作', 'Aerial Actions'],
+  spatialFlightModeAerialSummary: ['保留跳跃姿态与空中攻击，适合想一直使用角色原生空中招式的情况。', 'Keeps the jump pose and aerial attacks for characters whose native air kit is desired.'],
+  spatialFlightDirections: ['高级坐标微调（诊断用）', 'Advanced Coordinate Nudge (Diagnostics)'],
+  spatialMovementGuideTitle: ['进入游戏后这样操作', 'Controls in Game'],
+  spatialMovementHorizontal: ['水平移动', 'Horizontal Movement'],
+  spatialMovementHorizontalSummary: ['继续使用游戏原本的移动键和镜头方向；工具不会替换 WASD。', 'Keep using the game’s native movement keys and camera direction; the tool does not replace WASD.'],
+  spatialMovementVertical: ['升高 / 降低', 'Raise / Lower'],
+  spatialMovementVerticalSummary: ['抬高或降低虚拟地面，松开按键后保持当前高度。', 'Move the virtual surface up or down and release to hold the current altitude.'],
+  spatialMovementJump: ['正常跳跃', 'Normal Jump'],
+  spatialMovementJumpSummary: ['可从虚拟地面正常起跳并重新落回当前高度。', 'Jump normally from the virtual surface and land back at its current height.'],
+  spatialMovementToggle: ['快速开关', 'Quick Toggle'],
+  spatialMovementToggleSummary: ['仅在游戏位于前台时响应，关闭时安全恢复。', 'Responds only while the game is focused and restores safely when turned off.'],
+  spatialMovementAxes: ['X / Z 是水平位置，由游戏原生 WASD 与镜头方向控制；Y 是高度，由 PageUp / PageDown 调整。要输入精确 X、Y、Z，请使用下方“精确坐标与传送”。', 'X / Z are horizontal position controlled by native WASD and camera direction; Y is altitude controlled by PageUp / PageDown. For exact X, Y, and Z values, use “Exact Coordinates & Teleport” below.'],
+  spatialCoordinateToolsTitle: ['精确坐标与传送', 'Exact Coordinates & Teleport'],
+  spatialCoordinateToolsSummary: ['读取当前坐标、保存书签，或直接填写 X / Y / Z 进行一次传送。这里不是日常悬空移动的主入口。', 'Read current coordinates, save bookmarks, or enter exact X / Y / Z values for a one-time teleport. This is not the main everyday hover control.'],
   spatialFlightUp: ['上升', 'Up'],
   spatialFlightDown: ['下降', 'Down'],
   spatialFlightStop: ['停止', 'Stop'],
-  spatialFlightStep: ['移动速度（单位/秒）', 'Movement speed (units/s)'],
+  spatialFlightStep: ['坐标微调速度（单位/秒）', 'Coordinate nudge speed (units/s)'],
   spatialFlightMoving: ['按住移动中', 'Moving While Held'],
   spatialFlightInvalidStep: ['移动速度必须在 0.1 到 1000 单位/秒之间。', 'Movement speed must be between 0.1 and 1000 units/s.'],
-  spatialHotkeys: ['游戏内方向键', 'In-Game Arrow Keys'],
-  spatialHotkeysReady: ['仅游戏窗口在前台时响应：←/→ 移动 X，↑/↓ 移动 Z。', 'Active only while the game window is focused: ←/→ move X and ↑/↓ move Z.'],
-  spatialHotkeysEnabled: ['已启用；回到游戏后直接使用方向键。F12、断开或退出会停用。', 'Enabled. Return to the game and use the arrow keys. F12, disconnecting, or exiting disables them.'],
-  spatialHotkeysEnable: ['启用方向键', 'Enable Arrow Keys'],
-  spatialHotkeysDisable: ['停用方向键', 'Disable Arrow Keys'],
+  spatialTrueFlightSpeed: ['升降速度（单位/秒）', 'Vertical Speed (units/s)'],
+  spatialTrueFlightInvalidSpeed: ['飞行速度必须在 0.1 到 20 之间。', 'Flight speed must be between 0.1 and 20.'],
+  spatialVirtualGroundStart: ['开启虚拟地面', 'Enable Virtual Ground'],
+  spatialTrueFlightTakeoff: ['开启飞行控制', 'Enable Flight Controls'],
+  spatialTrueFlightLand: ['降落并关闭', 'Land & Turn Off'],
+  spatialTrueFlightKeys: ['虚拟地面：站稳后按 PageUp 直接升起。空中动作：按自己的跳跃键后在最高点悬停。方向键移动，PageUp 上升，PageDown 下降，F8 也可开关。', 'Virtual Ground: stand still and press PageUp to rise directly. Aerial Actions: jump normally and hover at the apex. Arrows move, PageUp ascends, PageDown descends, and F8 also toggles flight.'],
+  spatialContinuousJumpAdvanced: ['连续跳跃（可选）', 'Continuous Jump (Optional)'],
+  spatialContinuousJumpTitle: ['连续跳跃', 'Continuous Jump'],
+  spatialContinuousJumpSummary: ['单独放宽连续起跳限制，可独立使用；它不会制造虚拟地面。', 'Separately relaxes repeated jump initiation and can be used on its own; it does not create a virtual ground.'],
+  spatialOptionalTag: ['可选 · 默认关闭', 'Optional · Off by Default'],
+  spatialAerialExperimentTitle: ['空中动作悬停', 'Aerial-Action Hover'],
+  spatialAerialExperimentSummary: ['保留原生跳跃姿态和空中招式的旧方案，当前存在动作链只能执行一次等问题。', 'Legacy mode that keeps native jump poses and aerial moves; action chains can still become one-shot or stuck.'],
+  spatialAerialExperimentTag: ['实验 · 不推荐', 'Experimental · Not Recommended'],
+  spatialAerialActiveTag: ['空中动作实验已开启', 'Aerial Experiment On'],
+  spatialAerialExperimentBoundary: ['只建议用于临时体验原生空中招式。需要稳定移动、普攻、技能和蓄力时，请使用上方“虚拟地面移动”。', 'Use only for briefly trying native aerial moves. For reliable movement, attacks, skills, and charge actions, use Virtual Ground Movement above.'],
+  spatialAerialExperimentEnable: ['仍要开启空中动作实验', 'Enable Aerial Experiment Anyway'],
+  spatialHotkeys: ['飞行常驻控制', 'Persistent Flight Controls'],
+  spatialHotkeysReady: ['默认关闭。开启虚拟地面时会自动启动；只在游戏位于前台时接收 PageUp、PageDown 和 F8。', 'Off by default and starts automatically with Virtual Ground. PageUp, PageDown, and F8 are accepted only while the game is focused.'],
+  spatialHotkeysEnabled: ['常驻控制已开启；切出游戏时会释放输入，回到游戏后继续响应，不会因为切换工具页面而停止。', 'Persistent controls are active. Input is released when the game loses focus and resumes when focus returns; switching tool pages does not stop it.'],
+  spatialFlightHotkeysEnabled: ['飞行控制已开启：虚拟地面请站稳后直接按 PageUp；空中动作模式才需要先跳跃。', 'Flight controls are active: for Virtual Ground, stand still and press PageUp directly; only Aerial Actions requires a jump first.'],
+  spatialFlightActiveTag: ['虚拟地面已开启', 'Virtual Ground On'],
+  spatialFlightInactiveTag: ['默认关闭', 'Off by Default'],
+  spatialFlightDiagnostics: ['飞行诊断', 'Flight Diagnostics'],
+  spatialFlightTemplateReady: ['地面模板', 'Floor Template'],
+  spatialFlightTemplateCaptured: ['已捕获', 'Captured'],
+  spatialFlightTemplateWaiting: ['等待站稳地面后捕获', 'Waiting for Stable Ground'],
+  spatialFlightActionId: ['当前动作 ID', 'Current Action ID'],
+  spatialFlightQueries: ['地面查询 / 虚拟接触写回', 'Floor Queries / Replayed Contacts'],
+  spatialFlightLastQuery: ['最近查询', 'Last Query'],
+  spatialFlightQueryHit: ['原生命中', 'Native Hit'],
+  spatialFlightQuerySynthesized: ['虚拟补全/未命中', 'Synthesized / Miss'],
+  spatialHotkeysEnable: ['开启常驻控制', 'Enable Persistent Controls'],
+  spatialHotkeysDisable: ['关闭常驻控制', 'Disable Persistent Controls'],
   spatialHotkeysChanging: ['正在切换…', 'Changing…'],
-  spatialHotkeysError: ['方向键移动已自动停用：{error}', 'Arrow-key movement stopped automatically: {error}'],
-  spatialGravity: ['重力锁定', 'Gravity Lock'],
-  spatialGravityReady: ['当前版本原始指令已核对', 'Current-Version Instructions Verified'],
-  spatialGravityEnabled: ['重力已抑制', 'Gravity Suppressed'],
-  spatialGravityEnable: ['抑制重力', 'Suppress Gravity'],
-  spatialGravityDisable: ['恢复重力', 'Restore Gravity'],
+  spatialHotkeysError: ['飞行常驻控制已自动停用：{error}', 'Persistent flight controls stopped automatically: {error}'],
+  spatialGravity: ['连续跳跃补丁', 'Continuous-Jump Patch'],
+  spatialGravityReady: ['游戏 2.0.3 的连续起跳入口已核对', 'The continuous-jump entry points for game 2.0.3 are verified'],
+  spatialGravityEnabled: ['连续跳跃补丁已开启', 'Continuous jump patch is active'],
+  spatialGravityEnable: ['开启连续跳跃', 'Enable Continuous Jump'],
+  spatialGravityDisable: ['关闭并恢复两处原字节', 'Disable and Restore Both Sites'],
   spatialGravityChanging: ['正在核对并写入…', 'Verifying and Writing…'],
-  spatialGravityRecovery: ['等待恢复原始指令，请点击“恢复重力”', 'Recovery Pending — Select Restore Gravity'],
+  spatialGravityRecovery: ['等待恢复两处原始指令，请点击关闭', 'Recovery Pending — Restore Both Sites'],
   spatialGravityUnavailable: ['入口不可用', 'Entry Unavailable'],
-  spatialNoclip: ['穿墙 / 无碰撞', 'Noclip / No Collision'],
-  spatialNotLocated: ['尚未找到可验证的碰撞入口', 'No verified collision entry yet'],
-  spatialUnavailable: ['未开放', 'Unavailable'],
-  spatialFlightBoundary: ['坐标移动与重力抑制是两个独立功能；穿墙仍未开放。每一步移动都会重新核对玩家实体与坐标节点。', 'Coordinate movement and gravity suppression are independent. Noclip remains unavailable. Every movement step revalidates the player entity and transform node.'],
+  spatialFlightBoundary: ['虚拟地面只调整本机角色脚下的接触面和 Y 高度，不覆盖游戏原生的 X / Z 移动。关闭、断开、F12 与退出都会恢复本工具持有的 Hook 和补丁。', 'Virtual Ground adjusts only the local character’s contact surface and Y altitude without replacing native X / Z movement. Disable, disconnect, F12, and app exit restore every app-owned hook and patch.'],
   partyTitle: ['读取当前队伍配装', 'Read Current Party Loadouts'],
   partySummary: ['点击读取后会连续核对三次。内容稳定时，每名角色卡片下方会出现预览、导出、上传和部署入口。', 'The tool verifies three consecutive reads. Once stable, each character card shows preview, export, upload, and deploy actions.'],
   readPartyLoadouts: ['读取队伍与配装', 'Read Party & Loadouts'],
@@ -197,12 +241,14 @@ const COPY = Object.freeze({
   statusPartyFailed: ['队伍快照读取失败：{error}', 'Party snapshot failed: {error}'],
   statusSpatialRead: ['三次坐标拓扑一致，已更新空间诊断。', 'Coordinate topology matched across three reads; spatial diagnostics were updated.'],
   statusSpatialTeleport: ['一次性传送已写入并完成回读。', 'One-shot teleport was written and verified.'],
-  statusSpatialFlightActive: ['持续坐标飞行已开始；松开按键立即停止。', 'Continuous coordinate flight started; release the button to stop.'],
-  statusSpatialFlightStopped: ['持续坐标飞行已停止：{error}', 'Continuous coordinate flight stopped: {error}'],
+  statusSpatialFlightActive: ['高级坐标微调已开始；松开按键立即停止。', 'Advanced coordinate nudge started; release the button to stop.'],
+  statusSpatialFlightStopped: ['高级坐标微调已停止：{error}', 'Advanced coordinate nudge stopped: {error}'],
   statusSpatialHotkeysEnabled: ['游戏内方向键已启用；只在游戏窗口位于前台时响应。', 'In-game arrow keys enabled; they respond only while the game window is focused.'],
   statusSpatialHotkeysDisabled: ['游戏内方向键已停用。', 'In-game arrow keys disabled.'],
-  statusSpatialGravityEnabled: ['重力写入指令已暂停，并完成回读验证。', 'The gravity write instruction was suppressed and verified.'],
-  statusSpatialGravityDisabled: ['重力原始指令已恢复，并完成回读验证。', 'The original gravity instruction was restored and verified.'],
+  statusSpatialTrueFlightEnabled: ['已起飞并开启悬停；松开 PageUp / PageDown 时会保持当前高度。', 'Takeoff complete and hover enabled; releasing PageUp / PageDown holds the current height.'],
+  statusSpatialTrueFlightDisabled: ['飞行已关闭，连续跳跃入口已按所有权恢复，游戏重力会自然接管并降落。', 'Flight is off, owned continuous-jump sites were restored, and game gravity will take over for landing.'],
+  statusSpatialGravityEnabled: ['连续跳跃两处动作判定已同时写入并完成回读。', 'Both continuous-jump action checks were written and verified.'],
+  statusSpatialGravityDisabled: ['连续跳跃两处原字节已同时恢复并完成回读。', 'Both original continuous-jump sites were restored and verified.'],
   statusCaptureEnabled: ['两个只读捕获器已启用。', 'Both read-only captures are enabled.'],
   statusCaptureDisabled: ['捕获器已停用，原字节已恢复。', 'Captures are disabled and original bytes restored.'],
   statusCaptureRefreshed: ['捕获状态已刷新。', 'Capture status refreshed.'],
@@ -255,6 +301,13 @@ function unsignedInteger(value, label, maximum = Number.MAX_SAFE_INTEGER, allowZ
 
 function finiteNumber(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new TypeError(`${label} must be finite`)
+  return value
+}
+
+function unsignedIntegerIdentity(value, label) {
+  if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/.test(value)) {
+    throw new TypeError(`${label} must be a canonical unsigned decimal string`)
+  }
   return value
 }
 
@@ -578,32 +631,81 @@ export function normalizeRuntimeSpatialGravityStatus(value, expectedOwnerToken, 
   return deepFreeze(normalized)
 }
 
+export function normalizeRuntimeSpatialJumpStatus(value, expectedOwnerToken, expectedPID) {
+  const status = objectValue(value, 'spatial continuous-jump status')
+  verifyOwnerAndProcess(status, expectedOwnerToken, expectedPID, 'spatial continuous-jump status')
+  runtimeLayout(status.gameVersion, 'spatial continuous jump')
+  stringValue(status.source, 'spatial continuous-jump source', `game_runtime_continuous_jump_${status.gameVersion}`)
+  if (!Array.isArray(status.rvas) || status.rvas.length !== 2 || !Array.isArray(status.currentBytes) || status.currentBytes.length !== 2) {
+    throw new TypeError('spatial continuous jump must report exactly two guarded sites')
+  }
+  return deepFreeze({
+    ownerToken: expectedOwnerToken,
+    pid: expectedPID,
+    processCreated: unsignedIntegerIdentity(status.processCreated, 'spatial continuous-jump process creation identity'),
+    enabled: booleanValue(status.enabled, 'spatial continuous-jump enabled'),
+    available: booleanValue(status.available, 'spatial continuous-jump available'),
+    owned: booleanValue(status.owned, 'spatial continuous-jump owned'),
+    recoveryPending: booleanValue(status.recoveryPending, 'spatial continuous-jump recovery pending'),
+    rvas: status.rvas.map((value, index) => unsignedInteger(value, `spatial continuous-jump RVA ${index + 1}`, 0xFFFFFFFF, false)),
+    currentBytes: status.currentBytes.map(value => typeof value === 'string' ? value : ''),
+    gameVersion: status.gameVersion,
+    source: status.source,
+    error: typeof status.error === 'string' ? status.error : '',
+  })
+}
+
 export function normalizeRuntimeSpatialHotkeyStatus(value, expectedOwnerToken, expectedPID) {
   const status = objectValue(value, 'spatial hotkey status')
   const enabled = booleanValue(status.enabled, 'spatial hotkey enabled')
   const foregroundOnly = booleanValue(status.foregroundOnly, 'spatial hotkey foreground guard')
   const ownerLeaseId = typeof status.ownerLeaseId === 'string' ? status.ownerLeaseId : ''
   const pid = unsignedInteger(status.pid, 'spatial hotkey process', 0xFFFFFFFF)
-  const processCreated = unsignedInteger(status.processCreated, 'spatial hotkey process creation identity', Number.MAX_SAFE_INTEGER)
+  const processCreated = unsignedIntegerIdentity(status.processCreated, 'spatial hotkey process creation identity')
   const speed = finiteNumber(status.speed, 'spatial hotkey speed')
+  const inputMode = stringValue(status.inputMode, 'spatial hotkey input mode', 'native_wasd')
+  const flightEnabled = booleanValue(status.flightEnabled, 'spatial flight enabled')
+  const flightMode = stringValue(status.flightMode, 'spatial flight mode')
+  if (!['virtual_ground', 'aerial'].includes(flightMode)) throw new TypeError('spatial flight mode is not supported')
+  const verticalInputMode = stringValue(status.verticalInputMode, 'spatial flight vertical input mode', 'same_frame_height_hook')
   const layout = runtimeLayout(status.gameVersion, 'spatial hotkey')
   stringValue(status.source, 'spatial hotkey source', layout.hotkeySource)
   if (!foregroundOnly) throw new TypeError('spatial hotkeys must be guarded by the foreground game window')
-  if (speed < 0.1 || speed > 1000) throw new TypeError('spatial hotkey speed is outside the supported range')
-  if (enabled || ownerLeaseId || pid || processCreated) {
+  if (speed < 0.1 || speed > 20) throw new TypeError('spatial hotkey speed is outside the supported range')
+  if (enabled || ownerLeaseId || pid || processCreated !== '0') {
     if (ownerLeaseId !== expectedOwnerToken) throw new TypeError('spatial hotkey owner token is stale')
     if (pid !== expectedPID) throw new TypeError('spatial hotkey process identity changed')
-    if (!processCreated) throw new TypeError('spatial hotkey process creation identity is missing')
+    if (processCreated === '0') throw new TypeError('spatial hotkey process creation identity is missing')
+  }
+  const rawDiagnostics = status.flightDiagnostics && typeof status.flightDiagnostics === 'object'
+    ? status.flightDiagnostics
+    : {}
+  const flightDiagnostics = {
+    actionId: unsignedInteger(rawDiagnostics.actionId ?? 0, 'spatial flight action ID', 0xFFFFFFFF),
+    currentHeight: finiteNumber(rawDiagnostics.currentHeight ?? 0, 'spatial flight current height'),
+    targetHeight: finiteNumber(rawDiagnostics.targetHeight ?? 0, 'spatial flight target height'),
+    grounded: booleanValue(rawDiagnostics.grounded ?? false, 'spatial flight grounded state'),
+    anchored: booleanValue(rawDiagnostics.anchored ?? false, 'spatial flight anchored state'),
+    lastFloorQueryHit: booleanValue(rawDiagnostics.lastFloorQueryHit ?? false, 'spatial flight last floor-query result'),
+    contactTemplateReady: booleanValue(rawDiagnostics.contactTemplateReady ?? false, 'spatial flight contact-template state'),
+    floorQueries: unsignedIntegerIdentity(rawDiagnostics.floorQueries ?? '0', 'spatial flight floor-query count'),
+    acceptedContacts: unsignedIntegerIdentity(rawDiagnostics.acceptedContacts ?? '0', 'spatial flight accepted-contact count'),
+    snapshotSequence: unsignedIntegerIdentity(rawDiagnostics.snapshotSequence ?? '0', 'spatial flight snapshot sequence'),
   }
   return deepFreeze({
     enabled,
     foregroundOnly,
     speed,
+    inputMode,
+    flightEnabled,
+    flightMode,
+    verticalInputMode,
     ownerLeaseId,
     pid,
     processCreated,
     gameVersion: status.gameVersion,
     source: status.source,
+    flightDiagnostics,
     lastError: typeof status.lastError === 'string' ? status.lastError : '',
   })
 }

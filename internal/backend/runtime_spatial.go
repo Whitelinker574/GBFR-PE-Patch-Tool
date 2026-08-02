@@ -17,7 +17,10 @@ const (
 	runtimeSpatialGravityContextBack         = 4
 	// Keep the gravity write under its own lease so normal stop, disconnect,
 	// emergency stop, and application shutdown all use the same restore path.
-	runtimeSpatialGravityStableReleaseEnabled = true
+	// Static RTTI proved this is a ModelImpl field setter, not player gravity.
+	// Retain only the recovery path for an older owned lease; never install it
+	// in a new session. The controller-safe replacement is continuous jump.
+	runtimeSpatialGravityStableReleaseEnabled = false
 )
 
 var (

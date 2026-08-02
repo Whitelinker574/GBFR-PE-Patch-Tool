@@ -17,6 +17,7 @@ import { language, translateText } from '../i18n'
 import { functionAssetManifest } from '../generated/functionAssetManifest.js'
 import { beginPerformanceMeasure } from '../performanceMonitor.js'
 import { translateRuntimeCompatibilityError } from '../runtimeCompatibilityErrors.js'
+import weaponMemoryLilithArt from '../assets/gbfr/cutouts/weapon-memory-lilith-generated.webp'
 
 const pageLoaders = Object.freeze({
   progression: () => import('./ProgressionEditor.vue'),
@@ -27,6 +28,7 @@ const pageLoaders = Object.freeze({
   wrightstone: () => import('./WrightstoneGenerator.vue'),
   summonSave: () => import('./SummonSaveEditor.vue'),
   wrightstoneMemory: () => import('./WrightstoneMemoryGenerator.vue'),
+  weaponMemory: () => import('./WeaponMemoryGenerator.vue'),
   summon: () => import('./SummonEditor.vue'),
   overlimit: () => import('./OverLimit.vue'),
   runtime: () => import('./MiscTools.vue'),
@@ -78,6 +80,7 @@ const LoadoutViewer = asyncPage('loadoutPresets')
 const WrightstoneGenerator = asyncPage('wrightstone')
 const SummonSaveEditor = asyncPage('summonSave')
 const WrightstoneMemoryGenerator = asyncPage('wrightstoneMemory')
+const WeaponMemoryGenerator = asyncPage('weaponMemory')
 const SummonEditor = asyncPage('summon')
 const OverLimit = asyncPage('overlimit')
 const MiscTools = asyncPage('runtime')
@@ -98,6 +101,7 @@ const cachedRuntimePages = Object.freeze({
   sigilMemory: SigilMemoryGenerator,
   loadout: SigilLoadoutRestore,
   wrightstoneMemory: WrightstoneMemoryGenerator,
+  weaponMemory: WeaponMemoryGenerator,
   summon: SummonEditor,
   overlimit: OverLimit,
   runtime: MiscTools,
@@ -138,6 +142,7 @@ const runtimeCompanionStates = reactive({
   runtimeMonitor: { id: 'runtimeMonitor', active: false, recoveryRequired: false },
   spatialTools: { id: 'spatialTools', active: false, recoveryRequired: false },
   selectedItemMonitor: { id: 'selectedItemMonitor', active: false, recoveryRequired: false },
+  weaponMemory: { id: 'weaponMemory', active: false, recoveryRequired: false },
   taskRewardMultiplier: { id: 'taskRewardMultiplier', active: false, recoveryRequired: false, multiplier: 1 },
 })
 const naturalDropRecovery = reactive({ blocked: false, detail: '' })
@@ -159,6 +164,7 @@ const runtimeCompanionLabels = {
   runtimeMonitor: ['配装检测', 'Loadout detector'],
   spatialTools: ['空间移动', 'Spatial controls'],
   selectedItemMonitor: ['物品捕获', 'Item capture'],
+  weaponMemory: ['武器技能', 'Weapon skills'],
   taskRewardMultiplier: ['任务奖励', 'Quest rewards'],
 }
 const runtimeCompanionRoutes = Object.freeze({ taskRewardMultiplier: 'naturalDrop' })
@@ -297,6 +303,7 @@ const toolNavigationModes = Object.freeze({
   save: 'offline',
   sigilMemory: 'live',
   wrightstoneMemory: 'live',
+  weaponMemory: 'live',
   summon: 'live',
   overlimit: 'live',
   runtime: 'live',
@@ -382,6 +389,13 @@ const toolMeta = {
     caution: '写入成功会自动停止读取并恢复游戏指令；继续修改前，必须重新启用并在游戏中选择目标。',
     speaker: '玛琪拉菲菈', note: '写入后旧记录会失效。回到游戏里重新选中目标，再继续。',
   },
+  weaponMemory: {
+    group: 'memory', title: '武器技能即时编辑', eyebrow: '游戏内当前武器', status: '实时 · 2.0.3', tone: 'live',
+    description: '读取游戏武器列表中当前高亮的武器，直接修改记录里真实存在的五个技能槽；支持添加、替换、清空和调整等级。',
+    usage: ['启动 2.0.3 游戏并打开武器列表', '启用读取后高亮目标武器，核对武器编号和五槽', '预览变更后一次写入；页面会保存、回读并恢复捕获指令'],
+    caution: '武器记录只有五个物理技能槽，不会虚构第六槽；写入不连带修改武器等级、觉醒、祝福或角色配装。非常规组合可能被游戏规范化。',
+    speaker: '莉莉丝', note: '先看清当前武器，再决定赋予它怎样的力量。五个槽位，一个都不要写错。',
+  },
   summon: {
     group: 'memory', title: '召唤石即时修改', eyebrow: '游戏内召唤石', status: '实时保存', tone: 'live',
     description: '读取游戏背包中当前选中的召唤石，修改它的技能、副参数和等级，再调用游戏自身保存流程。',
@@ -412,9 +426,9 @@ const toolMeta = {
   },
   spatialTools: {
     group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '可用 · 实验', tone: 'calibrate',
-    description: '读取坐标、保存书签、传送，并通过页面按钮或游戏内方向键进行世界轴移动；重力抑制可独立开启和恢复。',
-    usage: ['进入离线或单机内容并连接游戏', '按需保存原点或书签，再开启方向键或重力抑制', '切场景后先核对坐标状态；F12、断开或退出会停止本工具管理的会话'],
-    caution: '世界轴移动和重力抑制已提供可用入口，但仍需你在不同场景实测并反馈；当前不包含穿墙或相机相对飞行。',
+    description: '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W/A/S/D；连续跳跃使用 2.0.3 双站点补丁与原生跳跃输入。',
+    usage: ['进入离线或单机内容并连接游戏', '点击“起飞并悬停”，方向键移动，PageUp / PageDown 升降，松开升降键保持高度', '点击“降落并关闭”恢复自然重力；F12、断开或退出会恢复本工具管理的补丁'],
+    caution: '不会再修改导致动作异常的模型 setter。高级坐标微调只用于传送校准；当前连续跳跃不是穿墙或相机相对飞行。',
     speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
   },
   selectedItemMonitor: {
@@ -540,7 +554,7 @@ const toolMeta = {
 
 const navigation = computed(() => [
   { id: 'save', mark: '档', label: language.value === 'zh' ? '存档与配装（离线）' : 'Saves & Loadouts', caption: language.value === 'zh' ? '退出游戏后编辑；备份、写入并回读' : 'Edit offline with backup and readback', items: ['loadoutPresets', 'sigil', 'wrightstone', 'summonSave', 'progression', 'chara', 'save', 'saveDiff'] },
-  { id: 'memory', mark: '改', label: language.value === 'zh' ? '游戏内即时编辑' : 'In-Game Live Editing', caption: language.value === 'zh' ? '选中目标后读取、修改并保存' : 'Select, read, edit, and save in game', items: ['sigilMemory', 'wrightstoneMemory', 'summon', 'overlimit', 'runtime'] },
+  { id: 'memory', mark: '改', label: language.value === 'zh' ? '游戏内即时编辑' : 'In-Game Live Editing', caption: language.value === 'zh' ? '选中目标后读取、修改并保存' : 'Select, read, edit, and save in game', items: ['sigilMemory', 'wrightstoneMemory', 'weaponMemory', 'summon', 'overlimit', 'runtime'] },
   { id: 'loadoutFlow', mark: '配', label: language.value === 'zh' ? '配装采集与复刻' : 'Loadout Capture & Restore', caption: language.value === 'zh' ? '队友后台检测与十二因子录制' : 'Party detection and 12-sigil recording', items: ['runtimeMonitor', 'loadout'] },
   { id: 'runtimeTools', mark: '运', label: language.value === 'zh' ? '单机运行时工具' : 'Solo Runtime Tools', caption: language.value === 'zh' ? '显示、因子、音频、镜头与规则补丁' : 'Display, sigils, audio, camera, and rules', items: ['runtimeQOL', 'virtualSigils', 'audioMixer', 'camera', 'spatialTools', 'patchCombat', 'patchCharacters', 'patchQuest', 'monster'] },
   { id: 'tools', mark: '具', label: language.value === 'zh' ? '游戏文件、诊断与设置' : 'Files, Diagnostics & Settings', caption: language.value === 'zh' ? '掉落表、实时诊断、适配与维护' : 'Drop tables, live diagnostics, compatibility, maintenance', items: ['naturalDrop', 'selectedItemMonitor', 'formulaSampler', 'compatibility', 'patch', 'language'] },
@@ -599,8 +613,8 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '单机运行时工具', status: '9 页接入', tone: 'flow', detail: '显示与房间、虚拟因子、角色语音、城镇镜头、坐标移动、三类规则补丁与怪物控制' },
   { scope: '实时只读诊断', status: '2 / 2', tone: 'ok', detail: '选中物品查看与角色公式采样需要连接游戏，但不会修改进程数据或存档' },
   { scope: '游戏文件与设置', status: '4 页已接入', tone: 'ok', detail: '掉落与锻造规则、版本适配、游戏文件维护、语言与显示' },
-  { scope: '运行时补丁覆盖', status: '59 已接入 / 4 待证据', tone: 'ok', detail: '58 个稳定目录功能和 1 个 EXE 锁定候选项已接入；另有 4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
-  { scope: '运行时补丁目录', status: '59 / 82 / 80', tone: 'ok', detail: '59 功能 / 82 站点 / 80 AOB；按 2.0.2 / 2.0.3 EXE 选择严格签名、原字节与唯一命中证据' },
+  { scope: '运行时补丁覆盖', status: '60 已接入 / 4 待证据', tone: 'ok', detail: '59 个双版本验证目录功能和 1 个 EXE 锁定候选项已接入；另有 4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
+  { scope: '运行时补丁目录', status: '60 / 83 / 81', tone: 'ok', detail: '60 功能 / 83 站点 / 81 AOB；按 2.0.2 / 2.0.3 EXE 选择严格签名、原字节与唯一命中证据' },
   { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 EXE 候选 + 1 现场修复', tone: 'ok', detail: '新增刀上舞自身眩晕移除候选；祝福石捕获与自动完美格挡连招修复继续使用独立版本守卫和写后回读' },
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
   { scope: '真实游戏进程 E2E', status: '关键路径已验证', tone: 'ok', detail: '2.0.3 已验证镜头、音频、QOL、伤害捕获、虚拟因子入口、空间/重力和运行时补丁生命周期；未逐项覆盖的游戏效果仍保留实验等级' },
@@ -615,8 +629,8 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: 'Solo runtime tools', status: '9 pages integrated', tone: 'flow', detail: 'Display and room tools, virtual sigils, voice audio, town camera, spatial controls, three patch groups, and monster control' },
   { scope: 'Live read-only diagnostics', status: '2 / 2', tone: 'ok', detail: 'Selected-item viewing and formula sampling require the running game but do not alter process data or saves' },
   { scope: 'Game files and settings', status: '4 pages integrated', tone: 'ok', detail: 'Drop and crafting rules, version compatibility, game-file maintenance, and language/display' },
-  { scope: 'Runtime patch coverage', status: '59 integrated / 4 pending', tone: 'ok', detail: '58 stable catalog features and 1 executable-locked candidate are integrated; 4 other candidates remain hidden until field or layout evidence is sufficient' },
-  { scope: 'Runtime patch catalog', status: '59 / 82 / 80', tone: 'ok', detail: '59 features / 82 sites / 80 AOBs select strict signatures, original bytes, and unique-hit evidence for the 2.0.2 or 2.0.3 executable' },
+  { scope: 'Runtime patch coverage', status: '60 integrated / 4 pending', tone: 'ok', detail: '59 dual-version verified catalog features and 1 executable-locked candidate are integrated; 4 other candidates remain hidden until field or layout evidence is sufficient' },
+  { scope: 'Runtime patch catalog', status: '60 / 83 / 81', tone: 'ok', detail: '60 features / 83 sites / 81 AOBs select strict signatures, original bytes, and unique-hit evidence for the 2.0.2 or 2.0.3 executable' },
   { scope: 'DLC 2.0.2 delta audit', status: '58 stable + 1 EXE candidate + 1 field fix', tone: 'ok', detail: 'The Glass Cannon self-stun removal candidate was added; wrightstone capture and the auto-perfect-guard combo fix keep their independent version guards and writeback' },
   { scope: 'Current maintenance delta', status: '2 / 2 verified', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use a unique signature, three-byte patch, and writeback verification' },
   { scope: 'Real game-process E2E', status: 'Critical paths verified', tone: 'ok', detail: 'Game 2.0.3 lifecycle checks cover camera, audio, QOL, damage capture, virtual-sigil entry, spatial/gravity, and runtime patches; untested gameplay effects remain experimental' },
@@ -690,6 +704,7 @@ const activeCachedRuntimePage = computed(() => cachedRuntimePages[activeTab.valu
 const isLoadoutWorkspace = computed(() => activeTab.value === 'loadoutPresets' && loadoutEditing.value)
 const functionArt = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
   .map(([id, asset]) => [id, asset.art.variants.display.url])))
+functionArt.weaponMemory = weaponMemoryLilithArt
 const currentArt = computed(() => functionArt[activeTab.value] || '')
 const functionStickers = reactive(Object.fromEntries(Object.entries(functionAssetManifest.assets)
   .map(([id, asset]) => [id, asset.sticker.variants.display.url])))
@@ -947,7 +962,7 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.9</span>
+        <span class="build-chip release-build">v2.0.10</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || showCTFeatureStatus || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button
@@ -1114,7 +1129,7 @@ function showStatus(message, type) {
               @runtime-state="updateRuntimeCompanionState"
             />
             <KeepAlive>
-              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" :key="activeTab" @status="showStatus" />
+              <component v-if="activeCachedRuntimePage" :is="activeCachedRuntimePage" :key="activeTab" @status="showStatus" @runtime-state="updateRuntimeCompanionState" />
             </KeepAlive>
             <KeepAlive>
               <LoadoutViewer v-if="activeTab === 'loadoutPresets'" :pending-import="pendingRuntimeLoadout" @import-consumed="pendingRuntimeLoadout = null" @status="showStatus" @editing-change="loadoutEditing = $event" />
@@ -1959,6 +1974,7 @@ button,input,select { font:inherit; }
 .tool-stage[data-tool="wrightstone"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="summonSave"] { --art-scale:160%; --art-x:calc(-20dvh + 27px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="wrightstoneMemory"] { --art-scale:160%; --art-x:calc(-6.77dvh + 9px); --art-y:calc(3dvh - 4px); }
+.tool-stage[data-tool="weaponMemory"] { --art-scale:150%; --art-x:calc(-4.2dvh + 6px); --art-y:calc(2dvh - 3px); }
 .tool-stage[data-tool="summon"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="overlimit"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }
 .tool-stage[data-tool="runtime"] { --art-scale:160%; --art-x:calc(-32.55dvh + 43px); --art-y:calc(3dvh - 4px); }

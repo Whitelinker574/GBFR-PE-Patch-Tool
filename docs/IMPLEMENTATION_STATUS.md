@@ -2,6 +2,14 @@
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
 
+## v2.0.10 game 2.0.3 additions
+
+The current-weapon editor captures the highlighted 2.0.3 weapon record, backs up the save before a write, updates exactly five persistent skill slots, and verifies the post-save memory window. Additional skills use a separate owned runtime aggregator bound to the selected weapon instead of overwriting the following weapon record. The catalog also names the observed `0x02D0B733` trait as `超凡技艺 / Unbound Technique` in both languages.
+
+The spatial page now treats virtual-ground contact as the primary workflow: native WASD provides horizontal movement and PageUp/PageDown moves the accepted ground plane vertically. Continuous jump remains an independent option. The aerial-action variant is still experimental because repeated attacks, dodges, jumps, and action-state transitions do not yet form a stable general-purpose ground state.
+
+Five camera presets, summon-duration control, task-score and side-objective rules, free crafting/trading/upgrades, and the expanded 60-entry patch catalog use the same PID/creation-time ownership, original-byte verification, readback, and restoration lifecycle. Restored window geometry is clamped to the current monitor, and the 960×640 layout keeps the primary runtime controls visible without page-level horizontal overflow.
+
 ## v2.0.9 game 2.0.3 compatibility
 
 The 2.0.3 archive comparison covers 2,120 `system/table` files and 332 reviewed character/combat MessagePack configs. Only four localization bundles changed; every project-used gameplay table and all reviewed configs are byte-identical to the locked 2.0.2 baseline. Static catalogs, loadout computation, sharing, Logs, and process-independent offline workflows therefore retain their verified data inputs.

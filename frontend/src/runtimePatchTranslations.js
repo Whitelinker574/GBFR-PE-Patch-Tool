@@ -60,6 +60,7 @@ const zhFeatureNames = Object.freeze({
   'runtime-patch-057': '突破专精技能上限',
   'runtime-patch-058': '强制获得支线目标奖励',
   'runtime-patch-059': '刀上舞：免除自身眩晕',
+  'runtime-patch-060': 'Link time 持续不减',
 })
 
 export const runtimePatchEnglishFeatureNames = Object.freeze({
@@ -122,6 +123,7 @@ export const runtimePatchEnglishFeatureNames = Object.freeze({
   'runtime-patch-057': 'Remove Mastery Skill Cap',
   'runtime-patch-058': 'Force Side-Objective Rewards',
   'runtime-patch-059': 'Glass Cannon: Remove Its Self-Stun',
+  'runtime-patch-060': 'Infinite Link Time',
 })
 
 const groupEnglishNames = Object.freeze({
@@ -153,7 +155,90 @@ const groupEnglishNames = Object.freeze({
   '其他': 'Other',
 })
 
+const groupChineseDisplayNames = Object.freeze({
+  '角色修改': '通用角色机制',
+  '战斗功能': '战斗规则',
+  '任务修改': '任务流程',
+  '体验优化': '养成与便利',
+})
+
+const zhFeatureSummaries = Object.freeze({
+  'runtime-patch-038': '闪避次数不会耗尽，适合练习动作和熟悉高难招式。',
+  'runtime-patch-039': '格挡次数不会耗尽；仍需主动按下格挡。',
+  'runtime-patch-040': '满足入口条件时自动按完美格挡处理。',
+  'runtime-patch-041': '更容易进入 Link time；它不是持续时间锁定。',
+  'runtime-patch-042': '药水等战斗道具使用后不扣次数。',
+  'runtime-patch-043': '命中部位时快速完成破坏。',
+  'runtime-patch-044': 'BOSS 进入 Break 后，让可输出窗口保持更久。',
+  'runtime-patch-045': '解除召唤使用条件；任务自身的召唤禁用由下一项控制。',
+  'runtime-patch-046': '允许在原本禁止召唤的任务中使用召唤石。',
+  'runtime-patch-047': '挑战任务的限时计时不会减少。',
+  'runtime-patch-048': '立即显示任务里尚未发现的隐藏宝箱。',
+  'runtime-patch-049': '冻结普通任务倒计时；不修改挑战次数。',
+  'runtime-patch-050': '经过任务宝箱时自动完成收集。',
+  'runtime-patch-051': '在原本不允许的内容中开放战斗辅助选项。',
+  'runtime-patch-052': '开启需要钥匙的宝箱时，不再检查钥匙数量。',
+  'runtime-patch-053': '任务结束后跳过较长的结算演出。',
+  'runtime-patch-054': '消费 MSP 或境界点数时保持当前数量。',
+  'runtime-patch-055': '游戏内合成因子时，直接采用最高等级结果。',
+  'runtime-patch-056': '无尽模式消费 CP 时保持当前数量。',
+  'runtime-patch-057': '解除专精技能的原始等级上限判断。',
+  'runtime-patch-058': '结算时把支线目标奖励按完成处理；不自动推进任务过程。',
+  'runtime-patch-059': '只免除刀上舞带来的自身眩晕，不会清除其他负面状态。',
+  'runtime-patch-060': '进入 Link time 后停止持续时间衰减。',
+})
+
+const enFeatureSummaries = Object.freeze({
+  'runtime-patch-038': 'Dodge charges do not run out, useful for practicing difficult attacks.',
+  'runtime-patch-039': 'Block charges do not run out; you still press block yourself.',
+  'runtime-patch-040': 'Treats eligible blocks as perfect blocks.',
+  'runtime-patch-041': 'Makes Link Time easier to trigger; it does not freeze its duration.',
+  'runtime-patch-042': 'Potions and other battle items do not lose uses.',
+  'runtime-patch-043': 'Quickly completes part breaks when that part is hit.',
+  'runtime-patch-044': 'Keeps the damage window open longer after a boss enters Break.',
+  'runtime-patch-045': 'Removes summon conditions; quest-level summon bans are controlled separately.',
+  'runtime-patch-046': 'Allows summons in quests that normally prohibit them.',
+  'runtime-patch-047': 'Challenge timers no longer count down.',
+  'runtime-patch-048': 'Reveals undiscovered hidden chests in the current quest.',
+  'runtime-patch-049': 'Freezes the regular quest timer without changing attempt counts.',
+  'runtime-patch-050': 'Automatically collects quest chests when you reach them.',
+  'runtime-patch-051': 'Makes Full Assist available in content that normally restricts it.',
+  'runtime-patch-052': 'Opens key-locked chests without checking your key count.',
+  'runtime-patch-053': 'Skips the long results presentation after a quest.',
+  'runtime-patch-054': 'Keeps MSP and Boundary Points when they are spent.',
+  'runtime-patch-055': 'Uses the maximum-level result when synthesizing sigils in game.',
+  'runtime-patch-056': 'Keeps CP when it is spent in Endless content.',
+  'runtime-patch-057': 'Removes the original mastery-skill level cap check.',
+  'runtime-patch-058': 'Treats side-objective rewards as complete at results; it does not play the objective for you.',
+  'runtime-patch-059': 'Removes only Glass Cannon self-stun, not unrelated debuffs.',
+  'runtime-patch-060': 'Stops Link Time duration from decreasing after it starts.',
+})
+
 const textEnglish = Object.freeze({
+  '延长召唤效果在场时间，或设为无限持续；默认关闭；切换页面后继续生效。': 'Extend how long summon effects remain active, or keep them active indefinitely. Off by default and remains active when switching pages.',
+  '召唤持续时间倍率回读超出 0.1 到 16.0': 'Summon-duration read-back multiplier is outside 0.1 to 16.0',
+  '召唤持续时间入口回读无效': 'Invalid summon-duration entry read-back',
+  '召唤持续时间操作失败：': 'Summon-duration operation failed: ',
+  '召唤持续时间写后回读状态不一致': 'Summon-duration read-back did not match the requested state',
+  '召唤持续时间已应用并回读': 'Summon duration was applied and verified',
+  '召唤持续时间已恢复默认': 'Summon duration was restored to the game default',
+  '召唤持续时间调整方式': 'Summon Duration Mode',
+  '召唤持续时间': 'Summon Duration',
+  '召唤战斗规则': 'Summon Combat Rule',
+  '持续时间倍率': 'Duration Multiplier',
+  '无限持续': 'Infinite Duration',
+  '1× 为游戏默认；建议从 2× 或 4× 开始。': '1× is the game default; start with 2× or 4×.',
+  '连接后校验 2.0.3 召唤持续时间入口和原字节。': 'After connecting, verify the 2.0.3 summon-duration entry and original bytes.',
+  '2.0.3 召唤持续时间递减入口已锁定；倍率与无限持续共用同一可恢复 Hook。': 'The 2.0.3 summon-duration decay entry is verified; multiplier and infinite modes share one recoverable hook.',
+  '人物动作速度': 'Character Action Speed',
+  '通用角色功能': 'General Character Feature',
+  '只调整角色动作节奏，不改变整个游戏的时间速度；默认只作用于自己。': 'Changes character action pacing without changing the whole game timescale. It affects only you by default.',
+  '动作速度倍率': 'Action Speed Multiplier',
+  '人物动作速度作用范围': 'Character Action Speed Scope',
+  '请输入 0.1 到 5.0。': 'Enter a value from 0.1 to 5.0.',
+  '1× 为游戏默认；建议从 1.25× 或 1.5× 开始。': '1× is the game default. Start with 1.25× or 1.5×.',
+  '全队范围会处理同一角色上下文中的队友；请先在离线队伍中确认动作、判定和技能释放。': 'Party scope also processes teammates in the same character context. Verify actions, hit detection, and skill use in an offline party first.',
+  '连接后校验 2.0.3 的人物动作字段入口；任何原字节不一致都会拒绝写入。': 'After connecting, the app verifies the 2.0.3 character-action field entry and rejects any original-byte mismatch.',
   '能力冷却调整': 'Ability Cooldown Tuning',
   '三角色共享蓄力调整': 'Shared Charge Tuning for Three Characters',
   '伊欧 / 巴萨拉卡 / 冈达葛萨：蓄力调整': 'Io / Vaseraga / Ghandagoza: Charge Tuning',
@@ -297,6 +382,11 @@ const textEnglish = Object.freeze({
   '默认': 'Default',
   '开启': 'Enable',
   '当前分组': 'Current Group',
+  '显示范围': 'Display Scope',
+  '全部功能': 'All Features',
+  '已开启与待恢复': 'Enabled & Pending Restore',
+  '当前没有已开启或待恢复的功能': 'No Enabled or Pending Features',
+  '开启功能后，它会在这里集中显示。': 'Enabled features will be collected here.',
   '技术详情': 'Technical Details',
   '项已验证补丁': 'verified patches',
   '目录 ID': 'Catalog ID',
@@ -367,9 +457,14 @@ export function translateRuntimePatchFeatureName(feature, locale = 'zh') {
   return String(runtimePatchEnglishFeatureNames[String(feature?.id || '')] || source).replace(/:\s*$/u, '')
 }
 
+export function translateRuntimePatchFeatureSummary(feature, locale = 'zh') {
+  const id = String(feature?.id || '')
+  return locale === 'en' ? enFeatureSummaries[id] || '' : zhFeatureSummaries[id] || ''
+}
+
 export function translateRuntimePatchGroupName(group, locale = 'zh') {
   const source = String(group ?? '')
-  return locale === 'en' ? groupEnglishNames[source] || source : source
+  return locale === 'en' ? groupEnglishNames[source] || source : groupChineseDisplayNames[source] || source
 }
 
 export function translateRuntimePatchText(value, locale = 'zh') {

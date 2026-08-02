@@ -10,6 +10,7 @@
 #include <TlHelp32.h>
 #include <vector>
 #include <array>
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <filesystem>
@@ -2058,6 +2059,309 @@ static DWORD RunVirtualSigilRuntime()
         Sleep(250);
     }
     StopVirtualSigilRuntime();
+    return 0;
+}
+
+#pragma pack(push, 1)
+struct WeaponRuntimeConfigHeader
+{
+    char magic[8];
+    uint32_t schema;
+    uint32_t enabled;
+    int32_t weaponSlot;
+    uint32_t weaponId;
+    uint32_t entryCount;
+};
+
+struct WeaponRuntimeSkillEntry
+{
+    uint32_t hash;
+    uint32_t level;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(WeaponRuntimeConfigHeader) == 28);
+static_assert(sizeof(WeaponRuntimeSkillEntry) == 8);
+
+using WeaponTraitAggregationFunction = void(*)(uintptr_t, uintptr_t, uintptr_t);
+using ApplyWeaponTraitFunction = void(*)(uint32_t, uintptr_t, uint32_t, uint32_t, uint32_t);
+static constexpr uint32_t kWeaponRuntimeMaxEntries = 2048;
+static constexpr lm_address_t kWeaponRuntimeStatusManagerRva203 = 0x07C21940;
+static SRWLOCK g_weaponRuntimeLock = SRWLOCK_INIT;
+static std::array<WeaponRuntimeSkillEntry, kWeaponRuntimeMaxEntries> g_weaponRuntimeSkills{};
+static size_t g_weaponRuntimeSkillCount = 0;
+static int32_t g_weaponRuntimeSlot = -1;
+static uint32_t g_weaponRuntimeId = 0;
+static lm_address_t g_weaponRuntimeModuleBase = 0;
+static lm_address_t g_weaponAggregationTarget = LM_ADDRESS_BAD;
+static WeaponTraitAggregationFunction g_originalWeaponAggregation = nullptr;
+static ApplyWeaponTraitFunction g_applyWeaponTrait = nullptr;
+static lm_size_t g_weaponAggregationHookSize = 0;
+static lm_byte_t g_weaponAggregationOriginal[32]{};
+static lm_byte_t g_weaponAggregationInstalled[32]{};
+static lm_size_t g_weaponAggregationInstalledSize = 0;
+static std::atomic<LONG> g_weaponRuntimeCallbacks{ 0 };
+static std::atomic<LONG> g_weaponRuntimeCleanRebuilds{ 0 };
+static std::atomic<bool> g_weaponRuntimeStopping{ false };
+
+class WeaponRuntimeCallbackGuard
+{
+public:
+    WeaponRuntimeCallbackGuard() { g_weaponRuntimeCallbacks.fetch_add(1); }
+    ~WeaponRuntimeCallbackGuard() { g_weaponRuntimeCallbacks.fetch_sub(1); }
+    WeaponRuntimeCallbackGuard(const WeaponRuntimeCallbackGuard&) = delete;
+    WeaponRuntimeCallbackGuard& operator=(const WeaponRuntimeCallbackGuard&) = delete;
+};
+
+static bool ReadWeaponRuntimeConfig(const std::wstring& path, bool requireEnabled)
+{
+    std::vector<uint8_t> data;
+    const size_t maximum = sizeof(WeaponRuntimeConfigHeader) +
+        static_cast<size_t>(kWeaponRuntimeMaxEntries) * sizeof(WeaponRuntimeSkillEntry);
+    if (!ReadSharedFile(path, data, maximum) || data.size() < sizeof(WeaponRuntimeConfigHeader)) return false;
+    WeaponRuntimeConfigHeader header{};
+    memcpy(&header, data.data(), sizeof(header));
+    if (memcmp(header.magic, "GBFRWK01", 8) != 0 || header.schema != 1 || header.weaponSlot < 0 ||
+        !header.weaponId || header.weaponId == kUnwornCharacterHash || !header.entryCount ||
+        header.entryCount > kWeaponRuntimeMaxEntries ||
+        data.size() != sizeof(header) + static_cast<size_t>(header.entryCount) * sizeof(WeaponRuntimeSkillEntry)) return false;
+    if (requireEnabled && header.enabled != 1) return false;
+    std::vector<WeaponRuntimeSkillEntry> next(header.entryCount);
+    memcpy(next.data(), data.data() + sizeof(header), next.size() * sizeof(WeaponRuntimeSkillEntry));
+    for (const auto& skill : next)
+    {
+        if (!skill.hash || skill.hash == kUnwornCharacterHash || !skill.level || skill.level > 0x7FFFFFFFu) return false;
+    }
+    AcquireSRWLockExclusive(&g_weaponRuntimeLock);
+    g_weaponRuntimeSlot = header.weaponSlot;
+    g_weaponRuntimeId = header.weaponId;
+    g_weaponRuntimeSkillCount = next.size();
+    std::copy(next.begin(), next.end(), g_weaponRuntimeSkills.begin());
+    ReleaseSRWLockExclusive(&g_weaponRuntimeLock);
+    return header.enabled == 1;
+}
+
+static bool ResolveLocalWeaponStatusUnsafe(uintptr_t status, uintptr_t weapon)
+{
+    if (!g_weaponRuntimeModuleBase || !status || !weapon ||
+        !MemoryRegionAllows(status + 0x5B60, sizeof(uint32_t), false) ||
+        !MemoryRegionAllows(status + 0x5EAC, sizeof(int32_t), false) ||
+        !MemoryRegionAllows(weapon, 8, false) || *reinterpret_cast<int32_t*>(status + 0x5EAC) != 1) return false;
+    uintptr_t global = g_weaponRuntimeModuleBase + kWeaponRuntimeStatusManagerRva203;
+    if (!MemoryRegionAllows(global, sizeof(uintptr_t), false)) return false;
+    uintptr_t manager = *reinterpret_cast<uintptr_t*>(global);
+    if (!manager || !MemoryRegionAllows(manager + 0xA58, 4, false) ||
+        !MemoryRegionAllows(manager + 0xA40, sizeof(uintptr_t), false) ||
+        !MemoryRegionAllows(manager + 0xA30, sizeof(uintptr_t), false)) return false;
+    uint32_t mask = *reinterpret_cast<uint32_t*>(manager + 0xA58);
+    if (mask > 0xFFFF || ((mask + 1) & mask) != 0) return false;
+    uintptr_t table = *reinterpret_cast<uintptr_t*>(manager + 0xA40);
+    uintptr_t sentinel = *reinterpret_cast<uintptr_t*>(manager + 0xA30);
+    if (!table || !sentinel) return false;
+    uintptr_t bucket = table + static_cast<uintptr_t>((kLocalPlayerStatusKey & mask) * 0x10u);
+    if (!MemoryRegionAllows(bucket, 0x10, false)) return false;
+    uintptr_t last = *reinterpret_cast<uintptr_t*>(bucket);
+    uintptr_t node = *reinterpret_cast<uintptr_t*>(bucket + 8);
+    for (int step = 0; step < 256 && node && node != sentinel; ++step)
+    {
+        if (!MemoryRegionAllows(node, 0x38, false)) return false;
+        if (*reinterpret_cast<uint32_t*>(node + 0x10) == kLocalPlayerStatusKey)
+            return *reinterpret_cast<uintptr_t*>(node + 0x30) == status;
+        if (node == last) break;
+        node = *reinterpret_cast<uintptr_t*>(node + 8);
+    }
+    return false;
+}
+
+static bool ResolveLocalWeaponStatus(uintptr_t status, uintptr_t weapon)
+{
+    __try
+    {
+        return ResolveLocalWeaponStatusUnsafe(status, weapon);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+static void ApplyExtraWeaponSkillsUnsafe(uintptr_t status, uintptr_t accumulator, uintptr_t weapon,
+    int32_t targetSlot, uint32_t targetId, const WeaponRuntimeSkillEntry* skills, size_t count)
+{
+    __try
+    {
+        if (!skills || *reinterpret_cast<int32_t*>(weapon) != targetSlot ||
+            *reinterpret_cast<uint32_t*>(weapon + 4) != targetId ||
+            !MemoryRegionAllows(status + 0x5B60, sizeof(uint32_t), false)) return;
+        const uint32_t statusValue = *reinterpret_cast<uint32_t*>(status + 0x5B60);
+        for (size_t index = 0; index < count; ++index)
+        {
+            if (g_weaponRuntimeStopping.load()) break;
+            g_applyWeaponTrait(statusValue, accumulator, skills[index].hash, skills[index].level, 0);
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+static void WeaponTraitAggregationDetour(uintptr_t status, uintptr_t accumulator, uintptr_t weapon)
+{
+    WeaponRuntimeCallbackGuard callbackGuard;
+    if (g_originalWeaponAggregation) g_originalWeaponAggregation(status, accumulator, weapon);
+    if (g_weaponRuntimeStopping.load())
+    {
+        // This callback ran the complete native aggregator after additions were
+        // disabled. It is the only evidence that the cached status was rebuilt
+        // without the runtime-only weapon skills.
+        g_weaponRuntimeCleanRebuilds.fetch_add(1);
+        return;
+    }
+    if (accumulator && ResolveLocalWeaponStatus(status, weapon))
+    {
+        std::array<WeaponRuntimeSkillEntry, kWeaponRuntimeMaxEntries> skills{};
+        size_t skillCount = 0;
+        int32_t targetSlot = -1;
+        uint32_t targetId = 0;
+        AcquireSRWLockShared(&g_weaponRuntimeLock);
+        targetSlot = g_weaponRuntimeSlot;
+        targetId = g_weaponRuntimeId;
+        skillCount = g_weaponRuntimeSkillCount;
+        std::copy_n(g_weaponRuntimeSkills.begin(), skillCount, skills.begin());
+        ReleaseSRWLockShared(&g_weaponRuntimeLock);
+        ApplyExtraWeaponSkillsUnsafe(status, accumulator, weapon, targetSlot, targetId, skills.data(), skillCount);
+    }
+}
+
+static bool StopWeaponSkillsRuntime()
+{
+    g_weaponRuntimeCleanRebuilds.store(0);
+    g_weaponRuntimeStopping.store(true);
+    const DWORD rebuildDeadline = GetTickCount() + 500;
+    while (g_weaponRuntimeCleanRebuilds.load() == 0 &&
+        static_cast<LONG>(GetTickCount() - rebuildDeadline) < 0) Sleep(10);
+    const bool cleanRebuildObserved = g_weaponRuntimeCleanRebuilds.load() != 0;
+    bool ownedEntry = g_weaponAggregationTarget == LM_ADDRESS_BAD || g_weaponAggregationHookSize == 0;
+    if (!ownedEntry && g_weaponAggregationInstalledSize == g_weaponAggregationHookSize &&
+        g_weaponAggregationInstalledSize <= sizeof(g_weaponAggregationInstalled))
+    {
+        lm_byte_t current[sizeof(g_weaponAggregationInstalled)]{};
+        ownedEntry = LM_ReadMemory(g_weaponAggregationTarget, current, g_weaponAggregationInstalledSize) == g_weaponAggregationInstalledSize &&
+            memcmp(current, g_weaponAggregationInstalled, g_weaponAggregationInstalledSize) == 0;
+    }
+    const bool restored = ownedEntry && (g_weaponAggregationTarget == LM_ADDRESS_BAD ||
+        RestoreLibmemHookAfterDrain(g_weaponAggregationTarget,
+            reinterpret_cast<lm_address_t>(g_originalWeaponAggregation), &g_weaponAggregationHookSize,
+            g_weaponAggregationOriginal, sizeof(g_weaponAggregationOriginal), g_weaponRuntimeCallbacks));
+    if (!restored) g_patchCoreCanUnload.store(false);
+    const wchar_t* state = !restored ? L"restore_failed" :
+        cleanRebuildObserved ? L"inactive" : L"inactive_pending_refresh";
+    const wchar_t* detail = !restored ? L"weapon skill hook ownership/restoration could not be proven; module kept loaded" :
+        cleanRebuildObserved ? L"weapon aggregation hook restored after a clean native status rebuild" :
+        L"weapon aggregation hook restored; cached status still needs the next native rebuild";
+    WriteRuntimeStatus(L"weapon-skills", state, detail);
+    ReleaseRuntimeOwnerAfterVerifiedStop(L"weapon-skills", restored);
+    if (restored) g_weaponAggregationInstalledSize = 0;
+    return restored;
+}
+
+static DWORD RunWeaponSkillsRuntime()
+{
+    RuntimeOwnerGuard owner;
+    if (!owner.OpenFromCommand(L"weapon-skills"))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"tool owner identity is missing or no longer alive");
+        return 1;
+    }
+    const std::wstring configPath = RuntimePath(L"weapon-skills.bin");
+    if (configPath.empty() || !ReadWeaponRuntimeConfig(configPath, true))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"weapon skill configuration is missing or invalid");
+        return 1;
+    }
+    lm_module_t module{};
+    if (!LM_FindModule("granblue_fantasy_relink.exe", &module))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"game module is unavailable");
+        return 1;
+    }
+    const char* aggregationSignature = "56 57 53 48 83 EC 30 4C 89 C3 48 89 D6 48 89 CF 45 8B 80 A4 00 00 00 44 8B 8B A8 00 00 00 8B 89 60 5B 00 00 C7 44 24 20";
+    const char* applySignature = "55 41 57 41 56 41 55 41 54 56 57 53 48 83 EC 58 48 8D 6C 24 50 48 C7 45 00 FE FF FF FF 41 81 F8 B0 E0 7A 88 0F 84 63 03 00 00 44 89 C7 48 89 D6";
+    g_weaponAggregationTarget = FindUniqueSignature(aggregationSignature, module);
+    const lm_address_t applyTarget = FindUniqueSignature(applySignature, module);
+    if (g_weaponAggregationTarget == LM_ADDRESS_BAD || applyTarget == LM_ADDRESS_BAD)
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"weapon skill signatures were missing or ambiguous");
+        return 1;
+    }
+    lm_byte_t call[5]{};
+    int32_t displacement = 0;
+    if (LM_ReadMemory(g_weaponAggregationTarget + 0x2C, call, sizeof(call)) != sizeof(call) || call[0] != 0xE8)
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"native weapon trait call preflight failed");
+        return 1;
+    }
+    memcpy(&displacement, call + 1, sizeof(displacement));
+    const lm_address_t resolvedApply = g_weaponAggregationTarget + 0x31 + displacement;
+    if (resolvedApply != applyTarget)
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"native weapon trait call target did not match the guarded aggregator");
+        return 1;
+    }
+    g_weaponRuntimeModuleBase = module.base;
+    g_applyWeaponTrait = reinterpret_cast<ApplyWeaponTraitFunction>(applyTarget);
+    if (LM_ReadMemory(g_weaponAggregationTarget, g_weaponAggregationOriginal, sizeof(g_weaponAggregationOriginal)) != sizeof(g_weaponAggregationOriginal))
+    {
+        WriteRuntimeInactiveAndReleaseOwner(L"weapon-skills", L"weapon aggregation entry preflight read failed");
+        return 1;
+    }
+    g_weaponRuntimeStopping.store(false);
+    g_weaponRuntimeCleanRebuilds.store(0);
+    g_weaponAggregationHookSize = LM_HookCode(g_weaponAggregationTarget,
+        reinterpret_cast<lm_address_t>(&WeaponTraitAggregationDetour),
+        reinterpret_cast<lm_address_t*>(&g_originalWeaponAggregation));
+    if (!g_weaponAggregationHookSize)
+    {
+        const bool restored = StopWeaponSkillsRuntime();
+        WriteStartupFailureAfterStop(L"weapon-skills", restored, L"weapon aggregation hook installation failed");
+        return 1;
+    }
+    if (g_weaponAggregationHookSize > sizeof(g_weaponAggregationInstalled) ||
+        LM_ReadMemory(g_weaponAggregationTarget, g_weaponAggregationInstalled, g_weaponAggregationHookSize) != g_weaponAggregationHookSize)
+    {
+        // This follows immediately after our successful install, before the
+        // runtime is published. Restore synchronously rather than retaining an
+        // unidentifiable Hook ownership state.
+        const bool restored = RestoreLibmemHookAfterDrain(g_weaponAggregationTarget,
+            reinterpret_cast<lm_address_t>(g_originalWeaponAggregation), &g_weaponAggregationHookSize,
+            g_weaponAggregationOriginal, sizeof(g_weaponAggregationOriginal), g_weaponRuntimeCallbacks);
+        if (!restored) g_patchCoreCanUnload.store(false);
+        WriteStartupFailureAfterStop(L"weapon-skills", restored, L"weapon aggregation hook ownership readback failed");
+        return 1;
+    }
+    g_weaponAggregationInstalledSize = g_weaponAggregationHookSize;
+    WriteRuntimeStatus(L"weapon-skills", L"active", L"extra weapon skills are using the native trait aggregator");
+    FILETIME previous{};
+    while (owner.Alive())
+    {
+        WIN32_FILE_ATTRIBUTE_DATA data{};
+        if (!GetFileAttributesExW(configPath.c_str(), GetFileExInfoStandard, &data)) break;
+        std::vector<uint8_t> headerData;
+        WeaponRuntimeConfigHeader header{};
+        if (!ReadSharedFile(configPath, headerData, sizeof(header) +
+            static_cast<size_t>(kWeaponRuntimeMaxEntries) * sizeof(WeaponRuntimeSkillEntry)) ||
+            headerData.size() < sizeof(header)) break;
+        memcpy(&header, headerData.data(), sizeof(header));
+        if (header.enabled != 1) break;
+        if (CompareFileTime(&data.ftLastWriteTime, &previous) != 0)
+        {
+            previous = data.ftLastWriteTime;
+            if (!ReadWeaponRuntimeConfig(configPath, false))
+                WriteRuntimeStatus(L"weapon-skills", L"active", L"hot configuration was rejected; keeping the active weapon skills");
+        }
+        Sleep(250);
+    }
+    StopWeaponSkillsRuntime();
     return 0;
 }
 
@@ -4409,6 +4713,7 @@ static DWORD WINAPI InitThread(LPVOID)
         if (PatchIdEquals(command, "runtime_audio")) return RunAudioRuntime();
         if (PatchIdEquals(command, "runtime_party_observer")) return RunPartyObserverRuntime();
         if (PatchIdEquals(command, "runtime_virtual_sigils")) return RunVirtualSigilRuntime();
+        if (PatchIdEquals(command, "runtime_weapon_skills")) return RunWeaponSkillsRuntime();
         if (PatchIdEquals(command, "runtime_damage")) return RunDamageRuntime();
         if (PatchIdEquals(command, "runtime_qol")) return RunQOLRuntime();
     }

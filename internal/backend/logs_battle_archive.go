@@ -21,18 +21,19 @@ type LogsBattleArchiveRequest struct {
 }
 
 type LogsBattleSummary struct {
-	ID             int64    `json:"id"`
-	Time           int64    `json:"time"`
-	Duration       int64    `json:"duration"`
-	TotalDamage    *int64   `json:"totalDamage,omitempty"`
-	DPS            *float64 `json:"dps,omitempty"`
-	QuestID        *uint32  `json:"questId,omitempty"`
-	QuestName      string   `json:"questName"`
-	PrimaryTarget  *uint32  `json:"primaryTarget,omitempty"`
-	Completed      *bool    `json:"completed,omitempty"`
-	Protocol       int      `json:"protocol"`
-	PlayerNames    []string `json:"playerNames"`
-	CharacterTypes []string `json:"characterTypes"`
+	ID                   int64    `json:"id"`
+	Time                 int64    `json:"time"`
+	Duration             int64    `json:"duration"`
+	TotalDamage          *int64   `json:"totalDamage,omitempty"`
+	DPS                  *float64 `json:"dps,omitempty"`
+	QuestID              *uint32  `json:"questId,omitempty"`
+	QuestName            string   `json:"questName"`
+	PrimaryTarget        *uint32  `json:"primaryTarget,omitempty"`
+	Completed            *bool    `json:"completed,omitempty"`
+	Protocol             int      `json:"protocol"`
+	PlayerNames          []string `json:"playerNames"`
+	CharacterTypes       []string `json:"characterTypes"`
+	LegalityFindingCount int      `json:"legalityFindingCount,omitempty"`
 }
 
 type LogsBattleArchivePage struct {
@@ -59,18 +60,19 @@ type LogsBattleSkill struct {
 }
 
 type LogsBattlePlayer struct {
-	Slot          int                       `json:"slot"`
-	PlayerName    string                    `json:"playerName"`
-	CharacterName string                    `json:"characterName"`
-	CharacterHash string                    `json:"characterHash,omitempty"`
-	CharacterCode string                    `json:"characterCode,omitempty"`
-	Damage        int64                     `json:"damage"`
-	DPS           float64                   `json:"dps"`
-	Percentage    float64                   `json:"percentage"`
-	Skills        []LogsBattleSkill         `json:"skills"`
-	Timeline      []int64                   `json:"timeline"`
-	Loadout       *RuntimePatchPartyLoadout `json:"loadout,omitempty"`
-	Warnings      []string                  `json:"warnings,omitempty"`
+	Slot             int                        `json:"slot"`
+	PlayerName       string                     `json:"playerName"`
+	CharacterName    string                     `json:"characterName"`
+	CharacterHash    string                     `json:"characterHash,omitempty"`
+	CharacterCode    string                     `json:"characterCode,omitempty"`
+	Damage           int64                      `json:"damage"`
+	DPS              float64                    `json:"dps"`
+	Percentage       float64                    `json:"percentage"`
+	Skills           []LogsBattleSkill          `json:"skills"`
+	Timeline         []int64                    `json:"timeline"`
+	Loadout          *RuntimePatchPartyLoadout  `json:"loadout,omitempty"`
+	Warnings         []string                   `json:"warnings,omitempty"`
+	LegalityFindings []LogsBuildLegalityFinding `json:"legalityFindings,omitempty"`
 }
 
 type LogsBattleTarget struct {
@@ -274,6 +276,15 @@ func readLogsBattleArchivePageDB(db *sql.DB, columns map[string]bool, request Lo
 	if hasMore && len(items) > 0 {
 		nextTime = items[len(items)-1].Time
 		nextID = items[len(items)-1].ID
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	if counts, countErr := readLogsLegalityCounts(db, ids); countErr == nil {
+		for index := range items {
+			items[index].LegalityFindingCount = counts[items[index].ID]
+		}
 	}
 	unsupported := 0
 	if err := db.QueryRow("SELECT COUNT(*) FROM logs WHERE version <> 1").Scan(&unsupported); err != nil {
@@ -641,6 +652,14 @@ func (a *App) LogsBattleArchiveDetail(id int64) (*LogsBattleDetail, error) {
 		return nil, fmt.Errorf("解码战斗记录失败: %w", err)
 	}
 	detail := buildLogsBattleDetail(summary, encounter)
+	if findings, findingErr := readLogsLegalityFindings(a.logsArchiveDB, id); findingErr == nil {
+		for index := range detail.Players {
+			slot := detail.Players[index].Slot - 1
+			detail.Players[index].LegalityFindings = append(detail.Players[index].LegalityFindings, findings[slot]...)
+		}
+	} else {
+		detail.DecodeWarnings = append(detail.DecodeWarnings, fmt.Sprintf(runtimePatchMonitorText("Logs 合法性结果无法读取：%v", "Could not read stored Logs legality findings: %v"), findingErr))
+	}
 	return &detail, nil
 }
 

@@ -21,14 +21,15 @@ test('runtime tools consume shared page, panel, toolbar, tabs, controls and card
 
 test('runtime feature titles stay short and put operational detail in helper text', () => {
   assert.match(source, /class="memory-title">副本药水</)
-  assert.match(source, /class="memory-title">素材不消耗</)
+  assert.match(source, /class="memory-title">免费制作、交易与升级</)
+  assert.match(source, /class="memory-title">库存素材扣减保护</)
   assert.doesNotMatch(source, /class="memory-title">药神（/)
   assert.doesNotMatch(source, /class="memory-title">升级\/强化\/练成不材料消耗（/)
 })
 
 test('connection catalog and connected views keep every feature discoverable', () => {
   assert.match(source, /\['小钳蟹相关'/)
-  for (const label of ['实时货币编辑', '副本药水', '素材不消耗', '连续挑战', '巴武掉落 100%']) {
+  for (const label of ['实时货币编辑', '副本药水', '免费制作、交易与升级', '库存素材扣减保护', '连续挑战', '巴武掉落 100%']) {
     assert.match(source, new RegExp(label))
   }
   assert.doesNotMatch(source, /runtimeCatalog\.slice\(/)
@@ -39,8 +40,9 @@ test('connection catalog centers an even card grid while card content shares a l
   assert.match(source, /class="preflight-status"/)
   assert.match(scopedStyle, /\.preflight-grid\s*\{[\s\S]*?width\s*:\s*min\(100%,960px\)[\s\S]*?margin-inline\s*:\s*auto[\s\S]*?grid-template-columns\s*:\s*repeat\(2,minmax\(0,1fr\)\)/)
   assert.match(scopedStyle, /\.preflight-grid article\s*\{[\s\S]*?align-items\s*:\s*flex-start[\s\S]*?text-align\s*:\s*left/)
+  assert.match(scopedStyle, /\.preflight-grid article:last-of-type:nth-child\(odd\)\s*\{[\s\S]*?grid-column\s*:\s*1\s*\/\s*-1[\s\S]*?justify-self\s*:\s*center/)
   assert.match(scopedStyle, /\.preflight-status\s*\{[\s\S]*?margin-top\s*:\s*auto[\s\S]*?justify-content\s*:\s*flex-start/)
-  assert.match(scopedStyle, /@container\s+runtime-page\s*\(max-width\s*:\s*480px\)\s*\{[\s\S]*?\.preflight-grid\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,1fr\)/)
+  assert.match(scopedStyle, /@container\s+runtime-page\s*\(max-width\s*:\s*480px\)\s*\{[\s\S]*?\.preflight-grid\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,1fr\)[\s\S]*?article:last-of-type:nth-child\(odd\)[\s\S]*?width\s*:\s*100%/)
 })
 
 test('technical bytes are collapsed into shared disclosures', () => {
@@ -94,9 +96,15 @@ test('experimental runtime integrations are absent from the stable page', () => 
 test('continuous challenge is a stable owned mission action', () => {
   assert.match(source, /InfiniteChallengeGetStatusOwned/)
   assert.match(source, /InfiniteChallengeSetEnabledOwned/)
-  assert.match(source, /连续挑战[\s\S]*DLC 2\.0\.2\s*特征/)
-  assert.match(source, /唯一 AOB · 三字节补丁 · 写后回读/)
+  assert.match(source, /连续挑战[\s\S]*2\.0\.3 唯一 AOB · 三字节补丁 · 写后回读/)
   assert.match(source, /infiniteChallengeStatus\.owned/)
+})
+
+test('full free consumption is a separate owned atomic action, not a renamed material hook', () => {
+  assert.match(source, /FreeConsumptionGetStatusOwned\(connectionOwnerToken\)/)
+  assert.match(source, /FreeConsumptionSetEnabledOwned\(connectionOwnerToken, enabled\)/)
+  assert.match(source, /11 站点原子补丁/)
+  assert.match(source, /它不是上方完整的免费制作功能/)
 })
 
 test('runtime scoped styles contain no legacy dark palette or scale hover', () => {

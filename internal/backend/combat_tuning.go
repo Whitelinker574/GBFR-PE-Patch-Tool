@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
 )
 
@@ -17,6 +18,7 @@ const (
 var (
 	combatCooldownMarker              = []byte("GBFRCD01")
 	combatChargeMarker                = []byte("GBFRCH01")
+	combatActionSpeedMarker           = []byte("GBFRAS01")
 	combatTuningInstallRemoteCodeHook = installRemoteCodeHook
 	combatCooldownSpecs               = []combatTuningSiteSpec{
 		{
@@ -52,6 +54,20 @@ var (
 			true, true, true, true, true, true, true, true, true, true, true, true, true, true,
 		},
 	}
+	combatActionSpeedSpec = combatTuningSiteSpec{
+		Label:    "人物动作变速路径",
+		Original: []byte{0xC5, 0xFA, 0x10, 0x40, 0x18},
+		Pattern: []byte{
+			0xC5, 0xFA, 0x10, 0x40, 0x18, 0xEB, 0,
+			0xC5, 0, 0, 0, 0, 0, 0, 0,
+			0xC5, 0, 0, 0, 0, 0x75,
+		},
+		Mask: []bool{
+			true, true, true, true, true, true, false,
+			true, false, false, false, false, false, false, false,
+			true, false, false, false, false, true,
+		},
+	}
 )
 
 type CombatCooldownRequest struct {
@@ -65,6 +81,12 @@ type CombatChargeRequest struct {
 	Enabled         bool    `json:"enabled"`
 	Instant         bool    `json:"instant"`
 	SpeedMultiplier float64 `json:"speedMultiplier"`
+}
+
+type CombatActionSpeedRequest struct {
+	Enabled         bool    `json:"enabled"`
+	SpeedMultiplier float64 `json:"speedMultiplier"`
+	ApplyWholeParty bool    `json:"applyWholeParty"`
 }
 
 type CombatTuningFeatureStatus struct {
@@ -82,8 +104,9 @@ type CombatTuningFeatureStatus struct {
 }
 
 type CombatTuningStatus struct {
-	Cooldown CombatTuningFeatureStatus `json:"cooldown"`
-	Charge   CombatTuningFeatureStatus `json:"charge"`
+	Cooldown    CombatTuningFeatureStatus `json:"cooldown"`
+	Charge      CombatTuningFeatureStatus `json:"charge"`
+	ActionSpeed CombatTuningFeatureStatus `json:"actionSpeed"`
 }
 
 type combatTuningSiteSpec struct {
@@ -105,17 +128,19 @@ type combatTuningSiteLease struct {
 type combatTuningKind string
 
 const (
-	combatTuningKindCooldown combatTuningKind = "cooldown"
-	combatTuningKindCharge   combatTuningKind = "charge"
+	combatTuningKindCooldown    combatTuningKind = "cooldown"
+	combatTuningKindCharge      combatTuningKind = "charge"
+	combatTuningKindActionSpeed combatTuningKind = "action-speed"
 )
 
 type combatTuningLease struct {
-	OwnerToken string
-	Process    processInstanceID
-	Kind       combatTuningKind
-	Cooldown   CombatCooldownRequest
-	Charge     CombatChargeRequest
-	Sites      []combatTuningSiteLease
+	OwnerToken  string
+	Process     processInstanceID
+	Kind        combatTuningKind
+	Cooldown    CombatCooldownRequest
+	Charge      CombatChargeRequest
+	ActionSpeed CombatActionSpeedRequest
+	Sites       []combatTuningSiteLease
 }
 
 func (lease *combatTuningLease) active() bool {
@@ -214,6 +239,49 @@ func (a *App) CombatTuningSetChargeOwned(token string, request CombatChargeReque
 	return a.readCombatTuningStatusLocked(token)
 }
 
+// CombatTuningSetActionSpeedOwned installs or restores the 2.0.3-only
+// per-character action-speed hook. It changes the actor action-time field and
+// never touches the process-wide game timescale.
+func (a *App) CombatTuningSetActionSpeedOwned(token string, request CombatActionSpeedRequest) (CombatTuningStatus, error) {
+	liveMemoryWriteMu.Lock()
+	defer liveMemoryWriteMu.Unlock()
+	if err := a.acquireOwnedRuntimeWriteLease(runtimeOwnerChara, token); err != nil {
+		return CombatTuningStatus{}, err
+	}
+	defer a.procMu.Unlock()
+	if err := a.ensureLiveMemoryWritesSafe(); err != nil {
+		return CombatTuningStatus{}, err
+	}
+	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "人物动作变速"); err != nil {
+		return CombatTuningStatus{}, err
+	}
+	if request.Enabled && !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+		return CombatTuningStatus{}, errors.New("人物动作变速仅支持已验证的游戏 2.0.3 可执行文件")
+	}
+	if request.Enabled && !stableReleaseCombatTuningWriteEnabled {
+		return CombatTuningStatus{}, errors.New("人物动作变速在稳定版中保持禁用：仍缺少本机/全队范围的任务验收")
+	}
+	a.runtimePatchMu.Lock()
+	defer a.runtimePatchMu.Unlock()
+	if err := validateCombatActionSpeedRequest(request); err != nil {
+		return CombatTuningStatus{}, err
+	}
+	if a.combatTuningActionSpeedLease != nil {
+		if err := a.restoreOneCombatTuningLeaseLocked(a.combatTuningActionSpeedLease, token, false); err != nil {
+			return CombatTuningStatus{}, err
+		}
+		a.combatTuningActionSpeedLease = nil
+	}
+	if request.Enabled {
+		lease, err := a.installCombatActionSpeedLocked(token, request)
+		if err != nil {
+			return CombatTuningStatus{}, err
+		}
+		a.combatTuningActionSpeedLease = lease
+	}
+	return a.readCombatTuningStatusLocked(token)
+}
+
 func validateCombatChargeCatalogConflict(leases map[string]runtimePatchPatchLease) error {
 	if _, active := leases["runtime-patch-017"]; active {
 		return fmt.Errorf("三角色共享蓄力调整与冈达葛萨“瞬间直冲拳”不能同时开启；请先恢复瞬间直冲拳")
@@ -242,6 +310,17 @@ func validateCombatChargeRequest(request CombatChargeRequest) error {
 	if math.IsNaN(request.SpeedMultiplier) || math.IsInf(request.SpeedMultiplier, 0) ||
 		request.SpeedMultiplier < 0.1 || request.SpeedMultiplier > 100 {
 		return fmt.Errorf("蓄力速度倍率请输入 0.1 到 100")
+	}
+	return nil
+}
+
+func validateCombatActionSpeedRequest(request CombatActionSpeedRequest) error {
+	if !request.Enabled {
+		return nil
+	}
+	if math.IsNaN(request.SpeedMultiplier) || math.IsInf(request.SpeedMultiplier, 0) ||
+		request.SpeedMultiplier < 0.1 || request.SpeedMultiplier > 5 {
+		return fmt.Errorf("人物动作速度倍率请输入 0.1 到 5.0")
 	}
 	return nil
 }
@@ -295,6 +374,31 @@ func (a *App) installCombatChargeLocked(ownerToken string, request CombatChargeR
 	}
 	lease.Sites = append(lease.Sites, site)
 	a.combatTuningChargeLease = lease
+	if err := a.publishCombatTuningLeaseLocked(lease); err != nil {
+		return nil, err
+	}
+	return lease, nil
+}
+
+func (a *App) installCombatActionSpeedLocked(ownerToken string, request CombatActionSpeedRequest) (*combatTuningLease, error) {
+	addr, err := a.locateCombatActionSpeedLocked()
+	if err != nil {
+		return nil, err
+	}
+	lease := &combatTuningLease{
+		OwnerToken:  ownerToken,
+		Process:     a.currentProcessInstance(),
+		Kind:        combatTuningKindActionSpeed,
+		ActionSpeed: request,
+	}
+	site, err := a.prepareCombatTuningSite(addr, combatActionSpeedSpec, func(cave uintptr) ([]byte, error) {
+		return buildCombatActionSpeedCave(cave, addr+combatTuningHookSize, request)
+	})
+	if err != nil {
+		return nil, err
+	}
+	lease.Sites = append(lease.Sites, site)
+	a.combatTuningActionSpeedLease = lease
 	if err := a.publishCombatTuningLeaseLocked(lease); err != nil {
 		return nil, err
 	}
@@ -373,6 +477,9 @@ func (a *App) clearCombatTuningLease(lease *combatTuningLease) {
 	if a.combatTuningChargeLease == lease {
 		a.combatTuningChargeLease = nil
 	}
+	if a.combatTuningActionSpeedLease == lease {
+		a.combatTuningActionSpeedLease = nil
+	}
 }
 
 func (a *App) readCombatTuningStatusLocked(ownerToken string) (CombatTuningStatus, error) {
@@ -384,7 +491,11 @@ func (a *App) readCombatTuningStatusLocked(ownerToken string) (CombatTuningStatu
 	if err != nil {
 		return CombatTuningStatus{}, err
 	}
-	return CombatTuningStatus{Cooldown: cooldown, Charge: charge}, nil
+	actionSpeed, err := a.readCombatTuningFeatureLocked(ownerToken, "action-speed")
+	if err != nil {
+		return CombatTuningStatus{}, err
+	}
+	return CombatTuningStatus{Cooldown: cooldown, Charge: charge, ActionSpeed: actionSpeed}, nil
 }
 
 func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuningKind) (CombatTuningFeatureStatus, error) {
@@ -419,6 +530,21 @@ func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuning
 			addr, err = a.locateCombatChargeLocked()
 			addrs = []uintptr{addr}
 		}
+	case combatTuningKindActionSpeed:
+		lease = a.combatTuningActionSpeedLease
+		specs = []combatTuningSiteSpec{combatActionSpeedSpec}
+		status.SpeedMultiplier = 1.5
+		status.EvidenceNote = "2.0.3 EXE 人物动作字段入口、唯一签名与恢复路径已核对；本机/全队作用范围和实际战斗节奏仍待任务实测。"
+		if lease == nil && a.runtimePatchVerifiedDigest != "" &&
+			!strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+			status.Error = "人物动作变速仅支持已验证的游戏 2.0.3 可执行文件"
+			return status, nil
+		}
+		if lease == nil {
+			var addr uintptr
+			addr, err = a.locateCombatActionSpeedLocked()
+			addrs = []uintptr{addr}
+		}
 	default:
 		return CombatTuningFeatureStatus{}, fmt.Errorf("未知战斗参数类型: %q", kind)
 	}
@@ -443,9 +569,12 @@ func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuning
 			status.NoCooldown = lease.Cooldown.NoCooldown
 			status.ApplyWholeParty = lease.Cooldown.ApplyWholeParty
 			status.SpeedMultiplier = lease.Cooldown.SpeedMultiplier
-		} else {
+		} else if kind == combatTuningKindCharge {
 			status.Instant = lease.Charge.Instant
 			status.SpeedMultiplier = lease.Charge.SpeedMultiplier
+		} else {
+			status.ApplyWholeParty = lease.ActionSpeed.ApplyWholeParty
+			status.SpeedMultiplier = lease.ActionSpeed.SpeedMultiplier
 		}
 		for _, site := range lease.Sites {
 			current, readErr := readCombatTuningBytes(a, site.EntryAddr, len(site.Installed))
@@ -488,6 +617,13 @@ func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuning
 // restoreCombatTuningOwnedLocked runs with procMu and runtimePatchMu held.
 func (a *App) restoreCombatTuningOwnedLocked(ownerToken string, force bool) error {
 	var result error
+	if lease := a.combatTuningActionSpeedLease; lease != nil {
+		if err := a.restoreOneCombatTuningLeaseLocked(lease, ownerToken, force); err != nil {
+			result = errors.Join(result, fmt.Errorf("action speed: %w", err))
+		} else {
+			a.combatTuningActionSpeedLease = nil
+		}
+	}
 	if lease := a.combatTuningChargeLease; lease != nil {
 		if err := a.restoreOneCombatTuningLeaseLocked(lease, ownerToken, force); err != nil {
 			result = errors.Join(result, fmt.Errorf("charge: %w", err))
@@ -567,6 +703,10 @@ func (a *App) dropCombatTuningOwnerLocked(ownerToken string, force bool) {
 		a.combatTuningChargeLease = nil
 		a.combatTuningChargeAddr = 0
 	}
+	if lease := a.combatTuningActionSpeedLease; lease != nil && (force || ownerToken != "" && lease.OwnerToken == ownerToken) {
+		a.combatTuningActionSpeedLease = nil
+		a.combatTuningActionSpeedAddr = 0
+	}
 }
 
 func (a *App) locateCombatCooldownLocked() ([]uintptr, error) {
@@ -594,6 +734,18 @@ func (a *App) locateCombatChargeLocked() (uintptr, error) {
 		return 0, err
 	}
 	a.combatTuningChargeAddr = addr
+	return addr, nil
+}
+
+func (a *App) locateCombatActionSpeedLocked() (uintptr, error) {
+	if a.combatTuningActionSpeedAddr != 0 {
+		return a.combatTuningActionSpeedAddr, nil
+	}
+	addr, err := a.scanPatternUnique(combatActionSpeedSpec.Pattern, combatActionSpeedSpec.Mask, combatActionSpeedSpec.Label)
+	if err != nil {
+		return 0, err
+	}
+	a.combatTuningActionSpeedAddr = addr
 	return addr, nil
 }
 
@@ -703,6 +855,52 @@ func buildCombatChargeCave(cave, returnAddr uintptr, request CombatChargeRequest
 		if err := patchCombatRIPRelative(code, factorDisp, cave, factorOffset); err != nil {
 			return nil, err
 		}
+	}
+	return code, nil
+}
+
+func buildCombatActionSpeedCave(cave, returnAddr uintptr, request CombatActionSpeedRequest) ([]byte, error) {
+	if err := validateCombatActionSpeedRequest(request); err != nil {
+		return nil, err
+	}
+	code := make([]byte, 0, 80)
+	shortJumps := make([]int, 0, 3)
+	code = append(code, 0x51)                   // push rcx
+	code = append(code, 0x48, 0x8B, 0x4B, 0x58) // mov rcx,[rbx+58]
+	code = append(code, 0x48, 0x85, 0xC9)       // test rcx,rcx
+	code = append(code, 0x74, 0)                // je original
+	shortJumps = append(shortJumps, len(code)-1)
+	code = append(code, 0x80, 0xB9, 0xFE, 0x01, 0, 0, 1) // cmp byte [rcx+1FE],1
+	code = append(code, 0x75, 0)                         // jne original
+	shortJumps = append(shortJumps, len(code)-1)
+	if !request.ApplyWholeParty {
+		code = append(code, 0x83, 0xB9, 0x10, 0x02, 0, 0, 1) // cmp dword [rcx+210],1
+		code = append(code, 0x75, 0)                         // jne original
+		shortJumps = append(shortJumps, len(code)-1)
+	}
+	code = append(code, 0xF3, 0x0F, 0x10, 0x05, 0, 0, 0, 0) // movss xmm0,[rip+factor]
+	factorDisp := len(code) - 4
+	code = append(code, 0xF3, 0x0F, 0x11, 0x40, 0x18) // movss [rax+18],xmm0
+	originalOffset := len(code)
+	for _, displacement := range shortJumps {
+		if err := patchCombatShortJump(code, displacement, originalOffset); err != nil {
+			return nil, err
+		}
+	}
+	code = append(code, 0x59) // pop rcx
+	code = append(code, combatActionSpeedSpec.Original...)
+	jump, err := makeRelJump(cave+uintptr(len(code)), returnAddr, 5)
+	if err != nil {
+		return nil, err
+	}
+	code = append(code, jump...)
+	code = append(code, combatActionSpeedMarker...)
+	factorOffset := len(code)
+	var raw [4]byte
+	binary.LittleEndian.PutUint32(raw[:], math.Float32bits(float32(request.SpeedMultiplier)))
+	code = append(code, raw[:]...)
+	if err := patchCombatRIPRelative(code, factorDisp, cave, factorOffset); err != nil {
+		return nil, err
 	}
 	return code, nil
 }

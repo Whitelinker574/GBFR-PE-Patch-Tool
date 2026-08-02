@@ -9,9 +9,10 @@ import {
   RuntimePatchSelectedItemsDisableOwned,
   RuntimePatchSelectedItemsEnableOwned,
   RuntimePatchSelectedItemsStatusOwned,
-  RuntimeSpatialGravitySetEnabledOwned,
-  RuntimeSpatialGravityStatusOwned,
+  RuntimeSpatialJumpSetEnabledOwned,
+  RuntimeSpatialJumpStatusOwned,
   RuntimeSpatialHotkeysSetEnabledOwned,
+  RuntimeSpatialHotkeysSetFlightModeOwned,
   RuntimeSpatialHotkeysStatusOwned,
   RuntimeSpatialMoveOwned,
   RuntimeSpatialTeleportOwned,
@@ -28,7 +29,7 @@ import {
   normalizeRuntimePatchPartySnapshot,
   normalizeRuntimePatchSelectedRecord,
   normalizeRuntimePatchSelectedStatus,
-  normalizeRuntimeSpatialGravityStatus,
+  normalizeRuntimeSpatialJumpStatus,
   normalizeRuntimeSpatialHotkeyStatus,
   normalizeRuntimeSpatialTeleport,
   runtimeMonitorRoleName,
@@ -61,6 +62,8 @@ const flightDirection = ref('')
 const flightPending = ref(false)
 const FLIGHT_FRAME_MS = 45
 const flightSpeed = ref(8)
+const flightMode = ref('virtual_ground')
+const coordinateNudgeSpeed = ref(8)
 const hotkeyStatus = ref(null)
 const gravityStatus = ref(null)
 const gravityError = ref('')
@@ -93,9 +96,11 @@ const captureChanging = computed(() => ['capture-enable', 'capture-disable'].inc
 const gravityChanging = computed(() => activeOperation.value?.kind === 'gravity-change')
 const gravityRefreshing = computed(() => activeOperation.value?.kind === 'gravity-refresh')
 const hotkeyChanging = computed(() => activeOperation.value?.kind === 'hotkeys-change')
+const trueFlightChanging = computed(() => activeOperation.value?.kind === 'flight-change')
 const detectedGameVersion = computed(() => gravityStatus.value?.gameVersion || hotkeyStatus.value?.gameVersion || selectedStatus.value?.gameVersion || '')
 const hotkeyDetail = computed(() => {
   if (hotkeyStatus.value?.lastError) return t('spatialHotkeysError', { error: hotkeyStatus.value.lastError })
+  if (hotkeyStatus.value?.flightEnabled) return t('spatialFlightHotkeysEnabled')
   return t(hotkeyStatus.value?.enabled ? 'spatialHotkeysEnabled' : 'spatialHotkeysReady')
 })
 const gravityDetail = computed(() => {
@@ -241,7 +246,7 @@ const flightDirections = Object.freeze({
 
 function flightDelta(direction) {
   const unit = flightDirections[direction]
-  const speed = Number(flightSpeed.value)
+  const speed = Number(coordinateNudgeSpeed.value)
   if (!unit || !Number.isFinite(speed) || speed < 0.1 || speed > 1000) throw new Error(t('spatialFlightInvalidStep'))
   const distance = speed * FLIGHT_FRAME_MS / 1000
   return { x: unit.x * distance, y: unit.y * distance, z: unit.z * distance }
@@ -348,7 +353,7 @@ async function connect() {
     processInfo.value = { pid: acquired.pid, moduleBase: acquired.moduleBase }
     connected.value = true
     try {
-      gravityStatus.value = normalizeRuntimeSpatialGravityStatus(await RuntimeSpatialGravityStatusOwned(acquiredOwnerToken), acquiredOwnerToken, acquired.pid)
+      gravityStatus.value = normalizeRuntimeSpatialJumpStatus(await RuntimeSpatialJumpStatusOwned(acquiredOwnerToken), acquiredOwnerToken, acquired.pid)
       gravityError.value = ''
     } catch (error) {
       gravityStatus.value = null
@@ -565,7 +570,7 @@ async function refreshGravityStatus() {
   const epoch = lifecycleEpoch
   try {
     if (!ownerToken || !connected.value) throw new Error(t('statusConnect'))
-    gravityStatus.value = normalizeRuntimeSpatialGravityStatus(await RuntimeSpatialGravityStatusOwned(ownerToken), ownerToken, processInfo.value.pid)
+    gravityStatus.value = normalizeRuntimeSpatialJumpStatus(await RuntimeSpatialJumpStatusOwned(ownerToken), ownerToken, processInfo.value.pid)
     gravityError.value = ''
     if (gravityStatus.value.error) throw new Error(gravityStatus.value.error)
   } catch (error) {
@@ -585,7 +590,7 @@ async function setGravityEnabled(enabled) {
   const epoch = lifecycleEpoch
   try {
     if (!ownerToken || !connected.value) throw new Error(t('statusConnect'))
-    const status = normalizeRuntimeSpatialGravityStatus(await RuntimeSpatialGravitySetEnabledOwned(ownerToken, enabled), ownerToken, processInfo.value.pid)
+    const status = normalizeRuntimeSpatialJumpStatus(await RuntimeSpatialJumpSetEnabledOwned(ownerToken, enabled), ownerToken, processInfo.value.pid)
     if (!operationIsCurrent(operationToken, epoch, ownerToken)) return
     gravityStatus.value = status
     gravityError.value = ''
@@ -596,7 +601,7 @@ async function setGravityEnabled(enabled) {
     if (operationIsCurrent(operationToken, epoch, ownerToken)) {
       gravityError.value = errorMessage(error)
       try {
-        gravityStatus.value = normalizeRuntimeSpatialGravityStatus(await RuntimeSpatialGravityStatusOwned(ownerToken), ownerToken, processInfo.value.pid)
+        gravityStatus.value = normalizeRuntimeSpatialJumpStatus(await RuntimeSpatialJumpStatusOwned(ownerToken), ownerToken, processInfo.value.pid)
         if (gravityStatus.value.recoveryPending) gravityError.value = ''
       } catch {
         // Keep the original operation error; disconnect will retry backend recovery.
@@ -613,6 +618,7 @@ function applySpatialHotkeyStatus(value) {
   try {
     const status = normalizeRuntimeSpatialHotkeyStatus(value, connectionOwnerToken, processInfo.value.pid)
     hotkeyStatus.value = status
+    flightMode.value = status.flightMode
     if (status.lastError) announce(t('spatialHotkeysError', { error: status.lastError }), 'danger')
   } catch {
     // Ignore stale events from an owner or game process that has already been replaced.
@@ -642,6 +648,54 @@ async function setSpatialHotkeysEnabled(enabled) {
   } finally {
     finishOperation(operationToken)
   }
+}
+
+async function setTrueFlightEnabled(enabled) {
+  if (!connected.value || releasePending.value) return
+  const operationToken = beginOperation('flight-change')
+  if (!operationToken) return
+  const epoch = lifecycleEpoch
+  const ownerToken = connectionOwnerToken
+  try {
+    const speed = Number(flightSpeed.value)
+    if (!Number.isFinite(speed) || speed < 0.1 || speed > 20) throw new Error(t('spatialTrueFlightInvalidSpeed'))
+    let status = hotkeyStatus.value
+    if (enabled && !status?.enabled) {
+      status = normalizeRuntimeSpatialHotkeyStatus(
+        await RuntimeSpatialHotkeysSetEnabledOwned(ownerToken, true, speed),
+        ownerToken,
+        processInfo.value.pid,
+      )
+    }
+    status = normalizeRuntimeSpatialHotkeyStatus(
+      await RuntimeSpatialHotkeysSetFlightModeOwned(ownerToken, enabled, flightMode.value),
+      ownerToken,
+      processInfo.value.pid,
+    )
+    if (!operationIsCurrent(operationToken, epoch, ownerToken)) return
+    hotkeyStatus.value = status
+    try {
+      gravityStatus.value = normalizeRuntimeSpatialJumpStatus(await RuntimeSpatialJumpStatusOwned(ownerToken), ownerToken, processInfo.value.pid)
+      gravityError.value = ''
+    } catch {
+      // Flight status is authoritative; a later refresh can retry the advanced patch detail.
+    }
+    announce(t(enabled ? 'statusSpatialTrueFlightEnabled' : 'statusSpatialTrueFlightDisabled'), 'ok')
+  } catch (error) {
+    if (operationIsCurrent(operationToken, epoch, ownerToken)) announce(t('statusActionFailed', { error: errorMessage(error) }), 'danger')
+  } finally {
+    finishOperation(operationToken)
+  }
+}
+
+async function enableVirtualGround() {
+  flightMode.value = 'virtual_ground'
+  await setTrueFlightEnabled(true)
+}
+
+async function enableAerialExperiment() {
+  flightMode.value = 'aerial'
+  await setTrueFlightEnabled(true)
 }
 
 function capturePhase(kind) {
@@ -713,52 +767,90 @@ watch([spatialRuntimeActive, spatialRecoveryRequired, selectedItemRuntimeActive]
     </template>
 
     <section v-if="activeTab === 'spatial'" id="runtime-monitor-panel-spatial" class="spatial-panel ui-card ui-panel" data-monitor-panel="spatial">
-      <header class="panel-heading"><div><h3 class="ui-section-title">{{ t('spatialTitle') }}</h3><p class="ui-section-copy">{{ t('spatialSummary') }}</p></div><button type="button" class="ui-btn is-primary is-sm" :disabled="interactionLocked || !connected" @click="readSpatialSnapshot">{{ activeOperation?.kind === 'spatial-read' ? t('spatialReading') : t('spatialRead') }}</button></header>
-      <div v-if="!spatialSnapshot" class="monitor-empty ui-empty"><strong>{{ t('spatialCurrent') }}</strong><span>{{ t('spatialEmpty') }}</span></div>
-      <div v-else class="spatial-entity-grid">
-        <article v-for="entity in spatialSnapshot.entities" :key="entity.role" class="spatial-entity ui-card is-flat" :class="{ 'is-empty': !entity.present }">
-          <header><strong>{{ runtimeMonitorRoleName(entity.role, language) }}</strong><span class="ui-tag" :class="entity.present ? 'is-ok' : ''">{{ entity.present ? t('verifiedSnapshot') : t('notInParty') }}</span></header>
-          <div v-if="entity.present" class="coordinate-row"><span v-for="axis in ['x', 'y', 'z']" :key="axis"><small>{{ axis.toUpperCase() }}</small><b>{{ formatRuntimeCoordinate(entity.position[axis]) }}</b></span></div>
-          <p v-else>{{ t('emptySlotCopy') }}</p>
-        </article>
-      </div>
-      <section class="teleport-lab ui-card is-flat">
-        <header class="panel-heading"><div><h4>{{ t('spatialTeleportTitle') }}</h4><p>{{ t('spatialTeleportSummary') }}</p></div><span class="ui-tag is-warn">{{ t('spatialExperimental') }}</span></header>
-        <div class="teleport-controls">
-          <label v-for="axis in ['x', 'y', 'z']" :key="axis"><span>{{ axis.toUpperCase() }}</span><input v-model="teleportTarget[axis]" class="ui-input" type="number" step="0.1" inputmode="decimal" :disabled="interactionLocked || !connected || !spatialSnapshot" /></label>
-          <button type="button" class="ui-btn is-primary" :disabled="interactionLocked || !connected || !spatialSnapshot" @click="teleportPlayer">{{ activeOperation?.kind === 'spatial-teleport' ? t('spatialTeleporting') : t('spatialTeleport') }}</button>
-        </div>
-        <div v-if="lastTeleport" class="teleport-result"><span><small>{{ t('spatialBefore') }}</small><b>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(lastTeleport.before[axis])).join(' / ') }}</b></span><span><small>{{ t('spatialObserved') }}</small><b>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(lastTeleport.observed[axis])).join(' / ') }}</b></span></div>
-        <section class="spatial-bookmarks">
-          <header><div><b>{{ t('spatialBookmarks') }}</b><small>{{ t('spatialBookmarkLoad') }} · {{ t('spatialTeleport') }}</small></div><button v-if="spatialOrigin" type="button" class="ui-btn is-sm" :disabled="interactionLocked" @click="fillTeleportTarget(spatialOrigin)">{{ t('spatialSessionOrigin') }}</button></header>
-          <div class="bookmark-compose"><input v-model="spatialBookmarkName" class="ui-input" maxlength="36" :placeholder="t('spatialBookmarkName')" :disabled="!spatialSnapshot" @keyup.enter="saveSpatialBookmark" /><button type="button" class="ui-btn is-sm" :disabled="!currentPlayerPosition() || !spatialBookmarkName.trim()" @click="saveSpatialBookmark">{{ t('spatialBookmarkSave') }}</button></div>
-          <div v-if="spatialBookmarks.length" class="bookmark-list"><article v-for="bookmark in spatialBookmarks" :key="bookmark.id"><span><b>{{ bookmark.name }}</b><small>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(bookmark.position[axis])).join(' / ') }}</small></span><button type="button" class="ui-btn is-sm" @click="fillTeleportTarget(bookmark.position)">{{ t('spatialBookmarkLoad') }}</button><button type="button" class="bookmark-delete" :aria-label="`${t('spatialBookmarkDelete')} ${bookmark.name}`" @click="deleteSpatialBookmark(bookmark.id)">×</button></article></div>
-          <p v-else>{{ t('spatialBookmarkEmpty') }}</p>
-        </section>
-        <p class="spatial-boundary">{{ t('spatialUnsupported') }}</p>
-      </section>
-      <section class="flight-lab ui-card is-flat">
-        <header class="panel-heading"><div><h4>{{ t('spatialFlightTitle') }}</h4><p>{{ t('spatialFlightSummary') }}</p></div><span class="ui-tag is-warn">{{ flightDirection ? t('spatialFlightMoving') : t('spatialExperimental') }}</span></header>
-        <div class="flight-console">
-          <div class="flight-pad" :aria-label="t('spatialFlightDirections')">
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('x-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">−X</button>
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('y+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">{{ t('spatialFlightUp') }} +Y</button>
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('x+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">+X</button>
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('z-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">−Z</button>
-            <button type="button" class="ui-btn flight-stop" :disabled="!flightDirection" @click="stopFlight">{{ t('spatialFlightStop') }}</button>
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('z+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">+Z</button>
-            <span></span>
-            <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('y-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">{{ t('spatialFlightDown') }} −Y</button>
-            <span></span>
-          </div>
-          <div class="flight-settings">
-            <label><span>{{ t('spatialFlightStep') }}</span><input v-model.number="flightSpeed" class="ui-input" type="number" min="0.1" max="1000" step="0.1" inputmode="decimal" :disabled="Boolean(flightDirection) || hotkeyStatus?.enabled" /></label>
+      <header class="panel-heading spatial-page-heading"><div><span class="section-eyebrow">{{ t('spatialMovementEyebrow') }}</span><h3 class="ui-section-title">{{ t('spatialTitle') }}</h3><p class="ui-section-copy">{{ t('spatialSummary') }}</p></div></header>
+
+      <section class="flight-lab virtual-ground-deck ui-card is-flat">
+        <header class="panel-heading"><div><h4>{{ t('spatialFlightTitle') }}</h4><p>{{ t('spatialFlightSummary') }}</p></div><span class="ui-tag" :class="hotkeyStatus?.flightEnabled && flightMode === 'virtual_ground' ? 'is-ok' : 'is-warn'">{{ hotkeyStatus?.flightEnabled ? t(flightMode === 'virtual_ground' ? 'spatialFlightActiveTag' : 'spatialAerialActiveTag') : t('spatialFlightRecommendedTag') }}</span></header>
+        <div class="virtual-ground-layout">
+          <div class="virtual-ground-primary">
             <div class="flight-capability" :class="{ 'is-active': hotkeyStatus?.enabled, 'has-error': hotkeyStatus?.lastError }"><span><b>{{ t('spatialHotkeys') }}</b><small>{{ hotkeyDetail }}</small></span><button type="button" class="ui-btn is-sm" :class="hotkeyStatus?.enabled ? 'is-ghost' : 'is-primary'" :disabled="interactionLocked || !connected" @click="setSpatialHotkeysEnabled(!hotkeyStatus?.enabled)">{{ hotkeyChanging ? t('spatialHotkeysChanging') : t(hotkeyStatus?.enabled ? 'spatialHotkeysDisable' : 'spatialHotkeysEnable') }}</button></div>
-            <div class="flight-capability" :class="{ 'is-active': gravityStatus?.enabled, 'has-error': gravityError || gravityStatus?.error }"><span><b>{{ t('spatialGravity') }}</b><small>{{ gravityDetail }}</small></span><button v-if="gravityStatus?.enabled || gravityStatus?.recoveryPending" type="button" class="ui-btn is-sm is-ghost" :disabled="interactionLocked || !connected" @click="setGravityEnabled(false)">{{ gravityChanging ? t('spatialGravityChanging') : t('spatialGravityDisable') }}</button><button v-else type="button" class="ui-btn is-sm is-primary" :disabled="interactionLocked || !connected || gravityStatus?.available !== true" @click="setGravityEnabled(true)">{{ gravityChanging ? t('spatialGravityChanging') : t('spatialGravityEnable') }}</button></div>
-            <div class="flight-capability"><span><b>{{ t('spatialNoclip') }}</b><small>{{ t('spatialNotLocated') }}</small></span><button type="button" class="ui-btn is-sm" disabled>{{ t('spatialUnavailable') }}</button></div>
+            <div class="true-flight-controls" :class="{ 'is-active': hotkeyStatus?.flightEnabled && flightMode === 'virtual_ground' }">
+              <div class="virtual-ground-action-row">
+                <label><span>{{ t('spatialTrueFlightSpeed') }}</span><input v-model.number="flightSpeed" class="ui-input" type="number" min="0.1" max="20" step="0.1" inputmode="decimal" :disabled="interactionLocked || hotkeyStatus?.flightEnabled" /></label>
+                <div class="ui-actions"><button type="button" class="ui-btn is-primary" :disabled="interactionLocked || !connected || hotkeyStatus?.flightEnabled" @click="enableVirtualGround">{{ trueFlightChanging ? t('spatialHotkeysChanging') : t('spatialVirtualGroundStart') }}</button><button type="button" class="ui-btn is-ghost" :disabled="interactionLocked || !connected || !hotkeyStatus?.flightEnabled" @click="setTrueFlightEnabled(false)">{{ trueFlightChanging ? t('spatialHotkeysChanging') : t('spatialTrueFlightLand') }}</button></div>
+              </div>
+              <p class="virtual-ground-start-note">{{ t('spatialFlightModeGroundSummary') }}</p>
+              <dl v-if="hotkeyStatus?.flightEnabled" class="flight-diagnostics" :aria-label="t('spatialFlightDiagnostics')">
+                <div><dt>{{ t('spatialFlightTemplateReady') }}</dt><dd :class="hotkeyStatus.flightDiagnostics.contactTemplateReady ? 'is-ready' : 'is-waiting'">{{ t(hotkeyStatus.flightDiagnostics.contactTemplateReady ? 'spatialFlightTemplateCaptured' : 'spatialFlightTemplateWaiting') }}</dd></div>
+                <div><dt>{{ t('spatialFlightActionId') }}</dt><dd><code>{{ hotkeyStatus.flightDiagnostics.actionId }}</code></dd></div>
+                <div><dt>{{ t('spatialFlightQueries') }}</dt><dd><code>{{ hotkeyStatus.flightDiagnostics.floorQueries }} / {{ hotkeyStatus.flightDiagnostics.acceptedContacts }}</code></dd></div>
+                <div><dt>{{ t('spatialFlightLastQuery') }}</dt><dd>{{ t(hotkeyStatus.flightDiagnostics.lastFloorQueryHit ? 'spatialFlightQueryHit' : 'spatialFlightQuerySynthesized') }}</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="movement-guide" :aria-label="t('spatialMovementGuideTitle')">
+            <h5>{{ t('spatialMovementGuideTitle') }}</h5>
+            <div class="movement-key-grid">
+              <article><kbd>W A S D</kbd><span><b>{{ t('spatialMovementHorizontal') }}</b><small>{{ t('spatialMovementHorizontalSummary') }}</small></span></article>
+              <article><kbd>PageUp<br />PageDown</kbd><span><b>{{ t('spatialMovementVertical') }}</b><small>{{ t('spatialMovementVerticalSummary') }}</small></span></article>
+              <article><kbd>Space</kbd><span><b>{{ t('spatialMovementJump') }}</b><small>{{ t('spatialMovementJumpSummary') }}</small></span></article>
+              <article><kbd>F8</kbd><span><b>{{ t('spatialMovementToggle') }}</b><small>{{ t('spatialMovementToggleSummary') }}</small></span></article>
+            </div>
+            <p class="axis-explainer">{{ t('spatialMovementAxes') }}</p>
           </div>
         </div>
         <p class="spatial-boundary">{{ t('spatialFlightBoundary') }}</p>
+      </section>
+
+      <div class="spatial-option-grid">
+        <details class="flight-feature continuous-jump-feature ui-card is-flat">
+          <summary><span><b>{{ t('spatialContinuousJumpTitle') }}</b><small>{{ t('spatialContinuousJumpSummary') }}</small></span><span class="ui-tag">{{ t('spatialOptionalTag') }}</span></summary>
+          <div class="flight-capability" :class="{ 'is-active': gravityStatus?.enabled, 'has-error': gravityError || gravityStatus?.error }"><span><b>{{ t('spatialGravity') }}</b><small>{{ gravityDetail }}</small></span><button v-if="gravityStatus?.enabled || gravityStatus?.recoveryPending" type="button" class="ui-btn is-sm is-ghost" :disabled="interactionLocked || !connected" @click="setGravityEnabled(false)">{{ gravityChanging ? t('spatialGravityChanging') : t('spatialGravityDisable') }}</button><button v-else type="button" class="ui-btn is-sm is-primary" :disabled="interactionLocked || !connected || gravityStatus?.available !== true" @click="setGravityEnabled(true)">{{ gravityChanging ? t('spatialGravityChanging') : t('spatialGravityEnable') }}</button></div>
+        </details>
+        <details class="flight-feature aerial-experiment ui-card is-flat">
+          <summary><span><b>{{ t('spatialAerialExperimentTitle') }}</b><small>{{ t('spatialAerialExperimentSummary') }}</small></span><span class="ui-tag is-warn">{{ t('spatialAerialExperimentTag') }}</span></summary>
+          <div class="aerial-experiment-body"><p>{{ t('spatialAerialExperimentBoundary') }}</p><button type="button" class="ui-btn is-ghost" :disabled="interactionLocked || !connected || hotkeyStatus?.flightEnabled" @click="enableAerialExperiment">{{ t('spatialAerialExperimentEnable') }}</button></div>
+        </details>
+      </div>
+
+      <section class="coordinate-tools">
+        <header class="panel-heading coordinate-tools-heading"><div><h4>{{ t('spatialCoordinateToolsTitle') }}</h4><p>{{ t('spatialCoordinateToolsSummary') }}</p></div><button type="button" class="ui-btn is-primary is-sm" :disabled="interactionLocked || !connected" @click="readSpatialSnapshot">{{ activeOperation?.kind === 'spatial-read' ? t('spatialReading') : t('spatialRead') }}</button></header>
+        <div v-if="!spatialSnapshot" class="monitor-empty coordinate-empty ui-empty"><strong>{{ t('spatialCurrent') }}</strong><span>{{ t('spatialEmpty') }}</span></div>
+        <div v-else class="spatial-entity-grid">
+          <article v-for="entity in spatialSnapshot.entities" :key="entity.role" class="spatial-entity ui-card is-flat" :class="{ 'is-empty': !entity.present }">
+            <header><strong>{{ runtimeMonitorRoleName(entity.role, language) }}</strong><span class="ui-tag" :class="entity.present ? 'is-ok' : ''">{{ entity.present ? t('verifiedSnapshot') : t('notInParty') }}</span></header>
+            <div v-if="entity.present" class="coordinate-row"><span v-for="axis in ['x', 'y', 'z']" :key="axis"><small>{{ axis.toUpperCase() }}</small><b>{{ formatRuntimeCoordinate(entity.position[axis]) }}</b></span></div>
+            <p v-else>{{ t('emptySlotCopy') }}</p>
+          </article>
+        </div>
+        <section class="teleport-lab ui-card is-flat">
+          <header class="panel-heading"><div><h4>{{ t('spatialTeleportTitle') }}</h4><p>{{ t('spatialTeleportSummary') }}</p></div><span class="ui-tag is-warn">{{ t('spatialExperimental') }}</span></header>
+          <div class="teleport-controls">
+            <label v-for="axis in ['x', 'y', 'z']" :key="axis"><span>{{ axis.toUpperCase() }}</span><input v-model="teleportTarget[axis]" class="ui-input" type="number" step="0.1" inputmode="decimal" :disabled="interactionLocked || !connected || !spatialSnapshot" /></label>
+            <button type="button" class="ui-btn is-primary" :disabled="interactionLocked || !connected || !spatialSnapshot" @click="teleportPlayer">{{ activeOperation?.kind === 'spatial-teleport' ? t('spatialTeleporting') : t('spatialTeleport') }}</button>
+          </div>
+          <div v-if="lastTeleport" class="teleport-result"><span><small>{{ t('spatialBefore') }}</small><b>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(lastTeleport.before[axis])).join(' / ') }}</b></span><span><small>{{ t('spatialObserved') }}</small><b>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(lastTeleport.observed[axis])).join(' / ') }}</b></span></div>
+          <section class="spatial-bookmarks">
+            <header><div><b>{{ t('spatialBookmarks') }}</b><small>{{ t('spatialBookmarkLoad') }} · {{ t('spatialTeleport') }}</small></div><button v-if="spatialOrigin" type="button" class="ui-btn is-sm" :disabled="interactionLocked" @click="fillTeleportTarget(spatialOrigin)">{{ t('spatialSessionOrigin') }}</button></header>
+            <div class="bookmark-compose"><input v-model="spatialBookmarkName" class="ui-input" maxlength="36" :placeholder="t('spatialBookmarkName')" :disabled="!spatialSnapshot" @keyup.enter="saveSpatialBookmark" /><button type="button" class="ui-btn is-sm" :disabled="!currentPlayerPosition() || !spatialBookmarkName.trim()" @click="saveSpatialBookmark">{{ t('spatialBookmarkSave') }}</button></div>
+            <div v-if="spatialBookmarks.length" class="bookmark-list"><article v-for="bookmark in spatialBookmarks" :key="bookmark.id"><span><b>{{ bookmark.name }}</b><small>{{ ['x','y','z'].map(axis => formatRuntimeCoordinate(bookmark.position[axis])).join(' / ') }}</small></span><button type="button" class="ui-btn is-sm" @click="fillTeleportTarget(bookmark.position)">{{ t('spatialBookmarkLoad') }}</button><button type="button" class="bookmark-delete" :aria-label="`${t('spatialBookmarkDelete')} ${bookmark.name}`" @click="deleteSpatialBookmark(bookmark.id)">×</button></article></div>
+            <p v-else>{{ t('spatialBookmarkEmpty') }}</p>
+          </section>
+          <details class="flight-advanced coordinate-nudge-tools">
+            <summary>{{ t('spatialFlightDirections') }}</summary>
+            <label><span>{{ t('spatialFlightStep') }}</span><input v-model.number="coordinateNudgeSpeed" class="ui-input" type="number" min="0.1" max="1000" step="0.1" inputmode="decimal" :disabled="Boolean(flightDirection)" /></label>
+            <div class="flight-pad" :aria-label="t('spatialFlightDirections')">
+              <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('x-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">−X</button>
+              <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('y+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">{{ t('spatialFlightUp') }} +Y</button>
+              <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('x+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">+X</button>
+              <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('z-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">−Z</button>
+              <button type="button" class="ui-btn flight-stop" :disabled="!flightDirection" @click="stopFlight">{{ t('spatialFlightStop') }}</button>
+              <button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('z+', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">+Z</button>
+              <span></span><button type="button" class="ui-btn flight-axis" :disabled="!connected || !spatialSnapshot || operationBusy || releasePending" @pointerdown.prevent="startFlight('y-', $event)" @pointerup="stopFlight" @pointercancel="stopFlight" @lostpointercapture="stopFlight">{{ t('spatialFlightDown') }} −Y</button><span></span>
+            </div>
+          </details>
+          <p class="spatial-boundary">{{ t('spatialUnsupported') }}</p>
+        </section>
       </section>
     </section>
 
@@ -858,16 +950,61 @@ watch([spatialRuntimeActive, spatialRecoveryRequired, selectedItemRuntimeActive]
 .spatial-bookmarks { min-width:0; display:grid; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--border-soft); background:var(--surface-sunken); }
 .spatial-bookmarks > header { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); }.spatial-bookmarks > header > div { min-width:0; display:grid; gap:2px; }.spatial-bookmarks > header b { color:var(--text-primary); font-size:var(--fs-sm); }.spatial-bookmarks > header small,.spatial-bookmarks > p { color:var(--text-muted); font-size:var(--fs-xs); }.spatial-bookmarks > p { margin:0; }
 .bookmark-compose { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); }.bookmark-list { min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }.bookmark-list article { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto 28px; gap:var(--space-2); align-items:center; padding:var(--space-2); border:1px solid var(--border-default); background:var(--surface-card); }.bookmark-list article > span { min-width:0; display:grid; gap:1px; }.bookmark-list b,.bookmark-list small { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.bookmark-list b { color:var(--text-primary); font-size:var(--fs-xs); }.bookmark-list small { color:var(--text-muted); font-family:var(--font-data); font-size:var(--fs-2xs); }.bookmark-delete { width:28px; height:28px; border:0; background:transparent; color:var(--text-muted); cursor:pointer; }.bookmark-delete:hover { color:var(--danger-ink); background:var(--danger-bg); }
-.flight-lab { display:grid; gap:var(--space-3); padding:var(--space-4); }
+.section-eyebrow { display:block; margin-bottom:var(--space-1); color:var(--accent-strong); font-size:var(--fs-xs); font-weight:var(--fw-bold); letter-spacing:.08em; text-transform:uppercase; }
+.spatial-page-heading { padding-bottom:var(--space-3); border-bottom:1px solid var(--border-soft); }
+.flight-lab { display:grid; gap:var(--space-4); padding:clamp(var(--space-4),2.2cqi,var(--space-5)); }
 .flight-lab h4,.flight-lab p { margin:0; }
-.flight-console { display:grid; grid-template-columns:minmax(280px,1.05fr) minmax(240px,.95fr); gap:var(--space-4); align-items:start; }
+.virtual-ground-deck { border-color:var(--accent-border); background:linear-gradient(145deg,color-mix(in srgb,var(--accent-soft) 38%,var(--surface-card-pop)),var(--surface-card-pop) 55%); box-shadow:4px 0 0 color-mix(in srgb,var(--accent) 72%,transparent) inset; }
+.virtual-ground-layout { display:grid; grid-template-columns:minmax(280px,.86fr) minmax(420px,1.14fr); gap:var(--space-4); align-items:start; }
+.virtual-ground-primary { min-width:0; display:grid; gap:var(--space-3); }
+.flight-advanced { min-width:0; padding:var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-sunken); }
+.flight-advanced > summary { cursor:pointer; color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-semibold); }
+.flight-advanced[open] > summary { margin-bottom:var(--space-3); }
+.flight-advanced > label { display:grid; grid-template-columns:minmax(0,1fr) 110px; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3); color:var(--text-secondary); font-size:var(--fs-sm); font-weight:var(--fw-semibold); }
 .flight-pad { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2); padding:var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-md); background:var(--surface-sunken); }
 .flight-pad .ui-btn { min-width:0; min-height:42px; padding-inline:var(--space-2); touch-action:none; user-select:none; }
 .flight-axis:active:not(:disabled) { border-color:var(--accent-border); background:var(--accent); color:var(--text-on-accent); }
 .flight-stop { border-color:var(--warning); color:var(--warning-ink); background:var(--warning-bg); }
-.flight-settings { display:grid; gap:var(--space-2); }
-.flight-settings > label { display:grid; grid-template-columns:minmax(0,1fr) 110px; align-items:center; gap:var(--space-3); min-height:42px; }
-.flight-settings > label span { color:var(--text-secondary); font-size:var(--fs-sm); font-weight:var(--fw-semibold); }
+.true-flight-controls { display:grid; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--accent-border); border-radius:var(--radius-md); background:linear-gradient(135deg,color-mix(in srgb,var(--accent-soft) 32%,var(--surface-card-pop)),var(--surface-card-pop)); box-shadow:3px 0 0 color-mix(in srgb,var(--accent) 70%,transparent) inset; }
+.true-flight-controls.is-active { border-color:var(--success); background:linear-gradient(135deg,color-mix(in srgb,var(--success-bg) 48%,var(--surface-card-pop)),var(--surface-card-pop)); box-shadow:3px 0 0 var(--success) inset; }
+.virtual-ground-action-row { display:grid; grid-template-columns:minmax(150px,.72fr) minmax(250px,1.28fr); gap:var(--space-3); align-items:end; }
+.virtual-ground-action-row > label { min-width:0; display:grid; gap:var(--space-1); color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-semibold); }
+.virtual-ground-action-row > label .ui-input { width:100%; min-width:0; }
+.virtual-ground-action-row .ui-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.true-flight-controls .ui-btn { width:100%; }
+.virtual-ground-start-note { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.65; }
+.movement-guide { min-width:0; display:grid; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-md); background:color-mix(in srgb,var(--surface-card-pop) 90%,transparent); }
+.movement-guide h5 { margin:0; color:var(--text-primary); font-family:var(--font-display); font-size:var(--fs-md); }
+.movement-key-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
+.movement-key-grid article { min-width:0; display:grid; grid-template-columns:minmax(78px,.4fr) minmax(0,1fr); gap:var(--space-3); align-items:center; padding:var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-card-pop); }
+.movement-key-grid kbd { min-height:38px; display:grid; place-items:center; padding:var(--space-1) var(--space-2); border:1px solid var(--accent-border); border-bottom-width:3px; border-radius:var(--radius-sm); background:var(--surface-sunken); color:var(--accent-strong); font-family:var(--font-data); font-size:var(--fs-xs); font-weight:var(--fw-bold); line-height:1.35; text-align:center; }
+.movement-key-grid b,.movement-key-grid small { display:block; }
+.movement-key-grid b { color:var(--text-primary); font-size:var(--fs-sm); }
+.movement-key-grid small { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
+.axis-explainer { padding:var(--space-3); border-left:3px solid var(--accent); background:var(--accent-soft); color:var(--text-secondary); font-size:var(--fs-xs); line-height:1.6; }
+.flight-diagnostics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; margin:0; overflow:hidden; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--border-subtle); }
+.flight-diagnostics > div { min-width:0; display:grid; gap:2px; padding:var(--space-2); background:color-mix(in srgb,var(--surface-card-pop) 92%,transparent); }
+.flight-diagnostics dt { color:var(--text-muted); font-size:var(--fs-xs); }
+.flight-diagnostics dd { min-width:0; margin:0; color:var(--text-primary); font-size:var(--fs-sm); font-weight:var(--fw-semibold); overflow-wrap:anywhere; }
+.flight-diagnostics dd.is-ready { color:var(--success); }
+.flight-diagnostics dd.is-waiting { color:var(--warning); }
+.spatial-option-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); align-items:start; }
+.flight-feature { min-width:0; padding:0; overflow:hidden; }
+.flight-feature > summary { min-height:74px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); cursor:pointer; list-style:none; }
+.flight-feature > summary::-webkit-details-marker { display:none; }
+.flight-feature > summary > span:first-child { min-width:0; display:grid; gap:var(--space-1); }
+.flight-feature > summary b { color:var(--text-primary); font-size:var(--fs-md); }
+.flight-feature > summary small { color:var(--text-muted); font-size:var(--fs-xs); line-height:1.45; }
+.flight-feature[open] > summary { border-bottom:1px solid var(--border-soft); background:var(--surface-sunken); }
+.flight-feature .flight-capability,.aerial-experiment-body { margin:var(--space-3); }
+.continuous-jump-feature { border-color:color-mix(in srgb,var(--accent-border) 72%,var(--border-default)); }
+.aerial-experiment { opacity:.88; }
+.aerial-experiment-body { display:grid; gap:var(--space-3); }
+.aerial-experiment-body p { margin:0; color:var(--text-muted); font-size:var(--fs-sm); line-height:1.6; }
+.coordinate-tools { min-width:0; display:grid; gap:var(--space-3); margin-top:var(--space-2); padding-top:var(--space-4); border-top:1px solid var(--border-soft); }
+.coordinate-tools-heading h4,.coordinate-tools-heading p { margin:0; }
+.coordinate-empty { min-height:72px; margin-top:0; padding:var(--space-3); border:1px dashed var(--border-default); border-radius:var(--radius-sm); background:color-mix(in srgb,var(--surface-sunken) 74%,transparent); }
+.coordinate-nudge-tools { margin-top:var(--space-1); }
 .flight-capability { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); min-height:48px; padding:var(--space-2) var(--space-3); border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-card-pop); }
 .flight-capability.is-active { border-color:var(--success); box-shadow:3px 0 0 var(--success) inset; background:color-mix(in srgb,var(--success-bg) 42%,var(--surface-card-pop)); }
 .flight-capability.has-error { border-color:var(--warning); box-shadow:3px 0 0 var(--warning) inset; }
@@ -876,7 +1013,7 @@ watch([spatialRuntimeActive, spatialRecoveryRequired, selectedItemRuntimeActive]
 .flight-capability b,.flight-capability small { display:block; }
 .flight-capability b { color:var(--text-primary); font-size:var(--fs-sm); }
 .flight-capability small { margin-top:2px; color:var(--text-muted); font-size:var(--fs-xs); overflow-wrap:anywhere; }
-@container runtime-monitor (max-width:720px) { .monitor-connection,.panel-heading,.capture-toolbar { align-items:stretch; flex-direction:column; }.connection-actions,.connection-actions .ui-btn { width:100%; }.capture-steps,.bookmark-list { grid-template-columns:repeat(2,minmax(0,1fr)); }.teleport-controls { grid-template-columns:repeat(3,minmax(0,1fr)); }.teleport-controls .ui-btn { grid-column:1 / -1; }.teleport-result { grid-template-columns:minmax(0,1fr); } }
-@container runtime-monitor (max-width:720px) { .flight-console { grid-template-columns:minmax(0,1fr); } }
-@container runtime-monitor (max-width:460px) { .capture-steps,.record-card dl,.coordinate-row,.teleport-controls,.bookmark-compose,.bookmark-list { grid-template-columns:minmax(0,1fr); }.teleport-controls .ui-btn { grid-column:auto; }.spatial-bookmarks > header { align-items:stretch; flex-direction:column; }.spatial-bookmarks > header .ui-btn,.bookmark-compose .ui-btn { width:100%; }.flight-settings > label { grid-template-columns:minmax(0,1fr); }.flight-settings > label .ui-input { width:100%; }.flight-capability { align-items:stretch; flex-direction:column; }.flight-capability .ui-btn { width:100%; } }
+@container runtime-monitor (max-width:920px) { .virtual-ground-layout { grid-template-columns:minmax(0,1fr); }.movement-key-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container runtime-monitor (max-width:720px) { .panel-heading,.capture-toolbar { align-items:stretch; flex-direction:column; }.monitor-connection { align-items:center; flex-flow:row wrap; gap:var(--space-2); }.connection-summary { flex:1 1 250px; }.connection-actions { width:auto; flex:0 1 auto; display:grid; grid-template-columns:repeat(2,minmax(118px,auto)); }.connection-actions .ui-btn { width:auto; }.spatial-page-heading { padding-bottom:var(--space-2); }.capture-steps,.bookmark-list,.spatial-option-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.spatial-option-grid { grid-template-columns:minmax(0,1fr); }.teleport-controls { grid-template-columns:repeat(3,minmax(0,1fr)); }.teleport-controls .ui-btn { grid-column:1 / -1; }.teleport-result { grid-template-columns:minmax(0,1fr); }.virtual-ground-action-row { grid-template-columns:minmax(0,1fr); } }
+@container runtime-monitor (max-width:460px) { .capture-steps,.record-card dl,.coordinate-row,.teleport-controls,.bookmark-compose,.bookmark-list,.movement-key-grid { grid-template-columns:minmax(0,1fr); }.connection-summary { flex-basis:100%; }.connection-actions { width:100%; }.connection-actions .ui-btn { width:100%; }.teleport-controls .ui-btn { grid-column:auto; }.spatial-bookmarks > header { align-items:stretch; flex-direction:column; }.spatial-bookmarks > header .ui-btn,.bookmark-compose .ui-btn { width:100%; }.virtual-ground-action-row .ui-actions { grid-template-columns:minmax(0,1fr); }.flight-capability { align-items:stretch; flex-direction:column; }.flight-capability .ui-btn { width:100%; }.flight-feature > summary { align-items:flex-start; flex-direction:column; }.movement-key-grid article { grid-template-columns:72px minmax(0,1fr); } }
 </style>

@@ -71,6 +71,13 @@ test('camera lab owns injection and themed controls without an external loader',
   assert.match(source, /type="range" min="0\.001" max="1"/)
   assert.match(source, /@container camera-lab \(max-width:480px\)/)
   assert.doesNotMatch(source, /#[0-9a-f]{3,8}/i)
+  for (const preset of ['角色细节', '游戏默认', '舒适探索', '战斗广角', '远景观察']) {
+    assert.match(source, new RegExp(preset))
+  }
+  assert.match(source, /const cameraPresets = Object\.freeze\(\[/)
+  assert.match(source, /class="camera-preset-grid"/)
+  assert.match(source, /@click="usePreset\(preset\)"/)
+  assert.doesNotMatch(source, /kind === 'game'/)
 })
 
 test('virtual sigil lab exposes real-instance slots, direct safe construction, presets, and overflow', async () => {

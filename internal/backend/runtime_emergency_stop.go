@@ -41,7 +41,7 @@ func (a *App) startRuntimeEmergencyWatcher() {
 	a.emergencyWatcherWG.Add(1)
 	go func() {
 		defer a.emergencyWatcherWG.Done()
-		a.runRuntimeEmergencyWatcher(ctx, runtimeKeyPressed, 40*time.Millisecond, func() {
+		a.runRuntimeEmergencyWatcher(ctx, runtimeKeyPressed, 16*time.Millisecond, func() {
 			result, err := a.runtimeEmergencyStop("F12")
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, runtimeEmergencyStopEvent, result)

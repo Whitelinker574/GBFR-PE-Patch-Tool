@@ -67,6 +67,30 @@ func TestCombatTuningRequestBounds(t *testing.T) {
 		{name: "charge infinity", run: func() error {
 			return validateCombatChargeRequest(CombatChargeRequest{Enabled: true, SpeedMultiplier: math.Inf(1)})
 		}},
+		{name: "action speed disabled ignores multiplier", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{SpeedMultiplier: math.NaN()})
+		}, ok: true},
+		{name: "action speed minimum", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: 0.1})
+		}, ok: true},
+		{name: "action speed maximum", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: 5})
+		}, ok: true},
+		{name: "action speed zero", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: 0})
+		}},
+		{name: "action speed below minimum", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: math.Nextafter(0.1, 0)})
+		}},
+		{name: "action speed above maximum", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: math.Nextafter(5, 6)})
+		}},
+		{name: "action speed NaN", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: math.NaN()})
+		}},
+		{name: "action speed infinity", run: func() error {
+			return validateCombatActionSpeedRequest(CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: math.Inf(1)})
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.run()
@@ -81,7 +105,7 @@ func TestCombatTuningRequestBounds(t *testing.T) {
 }
 
 func TestCombatTuningSiteSpecificationsAreComplete(t *testing.T) {
-	specs := append(append([]combatTuningSiteSpec(nil), combatCooldownSpecs...), combatChargeSpec)
+	specs := append(append(append([]combatTuningSiteSpec(nil), combatCooldownSpecs...), combatChargeSpec), combatActionSpeedSpec)
 	for _, spec := range specs {
 		t.Run(spec.Label, func(t *testing.T) {
 			if len(spec.Original) != combatTuningHookSize {
@@ -100,9 +124,10 @@ func TestCombatTuningSiteSpecificationsAreComplete(t *testing.T) {
 			}
 		})
 	}
-	if len(combatCooldownMarker) != 8 || len(combatChargeMarker) != 8 ||
-		bytes.Equal(combatCooldownMarker, combatChargeMarker) {
-		t.Fatalf("ownership markers must be distinct fixed 8-byte values: cooldown=%q charge=%q", combatCooldownMarker, combatChargeMarker)
+	if len(combatCooldownMarker) != 8 || len(combatChargeMarker) != 8 || len(combatActionSpeedMarker) != 8 ||
+		bytes.Equal(combatCooldownMarker, combatChargeMarker) || bytes.Equal(combatCooldownMarker, combatActionSpeedMarker) ||
+		bytes.Equal(combatChargeMarker, combatActionSpeedMarker) {
+		t.Fatalf("ownership markers must be distinct fixed 8-byte values: cooldown=%q charge=%q action=%q", combatCooldownMarker, combatChargeMarker, combatActionSpeedMarker)
 	}
 }
 
@@ -239,6 +264,45 @@ func TestCombatChargeCavesScaleFrameIncrementAndReturn(t *testing.T) {
 	}
 }
 
+func TestCombatActionSpeedCaveScopesActorAndReturns(t *testing.T) {
+	const cave = uintptr(0x180000000)
+	const returnAddr = uintptr(0x180001000)
+	self, err := buildCombatActionSpeedCave(cave, returnAddr, CombatActionSpeedRequest{
+		Enabled: true, SpeedMultiplier: 1.5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	party, err := buildCombatActionSpeedCave(cave, returnAddr, CombatActionSpeedRequest{
+		Enabled: true, SpeedMultiplier: 2, ApplyWholeParty: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextGuard := []byte{0x80, 0xB9, 0xFE, 0x01, 0, 0, 1}
+	localGuard := []byte{0x83, 0xB9, 0x10, 0x02, 0, 0, 1}
+	writeSpeed := []byte{0xF3, 0x0F, 0x11, 0x40, 0x18}
+	if !bytes.Contains(self, contextGuard) || !bytes.Contains(self, localGuard) || !bytes.Contains(self, writeSpeed) {
+		t.Fatalf("self-only action-speed cave is missing scope/write guards: % X", self)
+	}
+	if !bytes.Contains(party, contextGuard) || bytes.Contains(party, localGuard) || !bytes.Contains(party, writeSpeed) {
+		t.Fatalf("party action-speed cave has the wrong scope guards: % X", party)
+	}
+	for name, code := range map[string][]byte{"self": self, "party": party} {
+		t.Run(name, func(t *testing.T) {
+			if got := bytes.Count(code, combatActionSpeedSpec.Original); got != 1 {
+				t.Fatalf("displaced original count=%d, want 1: % X", got, code)
+			}
+			originalOffset := bytes.Index(code, combatActionSpeedSpec.Original)
+			if originalOffset < 1 || code[originalOffset-1] != 0x59 {
+				t.Fatalf("original is not preceded by pop rcx: % X", code)
+			}
+			assertCombatCaveReturn(t, code, cave, returnAddr, combatActionSpeedMarker)
+			assertCombatFactor(t, code, cave, combatActionSpeedMarker, map[string]float32{"self": 1.5, "party": 2}[name])
+		})
+	}
+}
+
 func assertCombatCaveReturn(t *testing.T, code []byte, cave, returnAddr uintptr, marker []byte) {
 	t.Helper()
 	markerOffset := bytes.Index(code, marker)
@@ -268,7 +332,7 @@ func assertCombatFactor(t *testing.T, code []byte, cave uintptr, marker []byte, 
 	dispOffset := -1
 	for index := 0; index+8 <= markerOffset; index++ {
 		if code[index] == 0xF3 && code[index+1] == 0x0F &&
-			(code[index+2] == 0x5E || code[index+2] == 0x59) &&
+			(code[index+2] == 0x10 || code[index+2] == 0x5E || code[index+2] == 0x59) &&
 			(code[index+3] == 0x05 || code[index+3] == 0x0D || code[index+3] == 0x35) {
 			dispOffset = index + 4
 		}
@@ -305,24 +369,27 @@ func newCombatTuningProcessFixture(t *testing.T) *combatTuningProcessFixture {
 		page:     page,
 		original: make(map[uintptr][]byte),
 		app: &App{
-			hProcess:                  handle,
-			moduleBase:                page,
-			charaPID:                  uint32(os.Getpid()),
-			charaCreated:              created,
-			charaOwnerToken:           "combat-owner",
-			combatTuningCooldownAddrs: []uintptr{page + 0x100, page + 0x200, page + 0x300},
-			combatTuningChargeAddr:    page + 0x400,
+			hProcess:                    handle,
+			moduleBase:                  page,
+			charaPID:                    uint32(os.Getpid()),
+			charaCreated:                created,
+			charaOwnerToken:             "combat-owner",
+			combatTuningCooldownAddrs:   []uintptr{page + 0x100, page + 0x200, page + 0x300},
+			combatTuningChargeAddr:      page + 0x400,
+			combatTuningActionSpeedAddr: page + 0x500,
 		},
 	}
 	for index, spec := range combatCooldownSpecs {
 		fixture.writeOriginal(t, fixture.app.combatTuningCooldownAddrs[index], spec.Original)
 	}
 	fixture.writeOriginal(t, fixture.app.combatTuningChargeAddr, combatChargeSpec.Original)
+	fixture.writeOriginal(t, fixture.app.combatTuningActionSpeedAddr, combatActionSpeedSpec.Original)
 	t.Cleanup(func() {
 		caves := make(map[uintptr]struct{})
 		for _, lease := range []*combatTuningLease{
 			fixture.app.combatTuningCooldownLease,
 			fixture.app.combatTuningChargeLease,
+			fixture.app.combatTuningActionSpeedLease,
 		} {
 			if lease == nil {
 				continue
@@ -439,6 +506,35 @@ func TestCombatTuningChargeInstallReadbackAndRestore(t *testing.T) {
 	}
 	if got := fixture.read(t, fixture.app.combatTuningChargeAddr, len(combatChargeSpec.Original)); !bytes.Equal(got, combatChargeSpec.Original) {
 		t.Fatalf("charge entry after restore=% X", got)
+	}
+}
+
+func TestCombatTuningActionSpeedInstallReadbackAndRestore(t *testing.T) {
+	fixture := newCombatTuningProcessFixture(t)
+	request := CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: 1.75, ApplyWholeParty: true}
+	lease, err := fixture.app.installCombatActionSpeedLocked("combat-owner", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := fixture.read(t, lease.Sites[0].EntryAddr, combatTuningHookSize)
+	if !bytes.Equal(entry, lease.Sites[0].Installed) || relJumpTarget(lease.Sites[0].EntryAddr, entry) != lease.Sites[0].CaveAddr {
+		t.Fatalf("action-speed entry is not the owned cave jump: % X", entry)
+	}
+	status, err := fixture.app.readCombatTuningFeatureLocked("combat-owner", combatTuningKindActionSpeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Enabled || !status.Available || !status.ApplyWholeParty || status.SpeedMultiplier != 1.75 || len(status.RVAs) != 1 {
+		t.Fatalf("unexpected installed action-speed status: %+v", status)
+	}
+	if err := fixture.app.restoreCombatTuningOwnedLocked("combat-owner", false); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.app.combatTuningActionSpeedLease != nil {
+		t.Fatal("successful action-speed restore retained its active lease")
+	}
+	if got := fixture.read(t, fixture.app.combatTuningActionSpeedAddr, len(combatActionSpeedSpec.Original)); !bytes.Equal(got, combatActionSpeedSpec.Original) {
+		t.Fatalf("action-speed entry after restore=% X", got)
 	}
 }
 
@@ -567,7 +663,11 @@ func TestCombatTuningCooldownRestoreContinuesAfterOneCorruptCave(t *testing.T) {
 func TestCharaReleaseRestoresCombatTuningOwnedByThePage(t *testing.T) {
 	fixture := newCombatTuningProcessFixture(t)
 	entry := fixture.app.combatTuningChargeAddr
+	actionEntry := fixture.app.combatTuningActionSpeedAddr
 	if _, err := fixture.app.installCombatChargeLocked("combat-owner", CombatChargeRequest{Enabled: true, Instant: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.app.installCombatActionSpeedLocked("combat-owner", CombatActionSpeedRequest{Enabled: true, SpeedMultiplier: 1.5}); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.app.CharaRelease("combat-owner"); err != nil {
@@ -576,10 +676,14 @@ func TestCharaReleaseRestoresCombatTuningOwnedByThePage(t *testing.T) {
 	if got := fixture.read(t, entry, len(combatChargeSpec.Original)); !bytes.Equal(got, combatChargeSpec.Original) {
 		t.Fatalf("owned page release did not restore charge entry: % X", got)
 	}
+	if got := fixture.read(t, actionEntry, len(combatActionSpeedSpec.Original)); !bytes.Equal(got, combatActionSpeedSpec.Original) {
+		t.Fatalf("owned page release did not restore action-speed entry: % X", got)
+	}
 	if fixture.app.hProcess != 0 || fixture.app.charaOwnerToken != "" ||
-		fixture.app.combatTuningChargeLease != nil || len(fixture.app.retiredRuntimeCaves) != 0 {
-		t.Fatalf("owned page release retained runtime state: handle=%v owner=%q lease=%+v retired=%+v",
-			fixture.app.hProcess, fixture.app.charaOwnerToken, fixture.app.combatTuningChargeLease, fixture.app.retiredRuntimeCaves)
+		fixture.app.combatTuningChargeLease != nil || fixture.app.combatTuningActionSpeedLease != nil || len(fixture.app.retiredRuntimeCaves) != 0 {
+		t.Fatalf("owned page release retained runtime state: handle=%v owner=%q charge=%+v action=%+v retired=%+v",
+			fixture.app.hProcess, fixture.app.charaOwnerToken, fixture.app.combatTuningChargeLease,
+			fixture.app.combatTuningActionSpeedLease, fixture.app.retiredRuntimeCaves)
 	}
 }
 
@@ -713,5 +817,40 @@ func TestCombatTuningPatternsMatchLocalGame202(t *testing.T) {
 				t.Fatalf("RVA 0x%X original=% X, want % X", check.rva, got, check.spec.Original)
 			}
 		})
+	}
+}
+
+func TestCombatActionSpeedPatternMatchesLocalGame203(t *testing.T) {
+	path := os.Getenv("GBFR_GAME_EXE_203_TEST")
+	if path == "" {
+		t.Skip("set GBFR_GAME_EXE_203_TEST to verify the local game 2.0.3 executable")
+	}
+	if err := verifyRuntimePatchLocalGameIdentityExact(path, runtimePatchLocalGame203Size, runtimePatchLocalGame203SHA256); err != nil {
+		t.Fatalf("verify local game 2.0.3 identity: %v", err)
+	}
+	sections, err := readRuntimePatchLocalExecutableSections(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pattern := runtimePatchPattern{
+		Values: append([]byte(nil), combatActionSpeedSpec.Pattern...),
+		Mask:   make([]byte, len(combatActionSpeedSpec.Mask)),
+	}
+	for index, exact := range combatActionSpeedSpec.Mask {
+		if exact {
+			pattern.Mask[index] = 0xFF
+		}
+	}
+	matches := findRuntimePatchLocalPatternMatches(sections, pattern)
+	const wantRVA = uint32(0xBB0918)
+	if len(matches) != 1 || matches[0].rva != wantRVA {
+		t.Fatalf("matches=%s, want one match at RVA 0x%X", formatRuntimePatchLocalMatchLocations(matches), wantRVA)
+	}
+	got, err := readPEImageRVA(path, uintptr(wantRVA), len(combatActionSpeedSpec.Original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, combatActionSpeedSpec.Original) {
+		t.Fatalf("RVA 0x%X original=% X, want % X", wantRVA, got, combatActionSpeedSpec.Original)
 	}
 }

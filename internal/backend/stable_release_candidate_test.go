@@ -12,8 +12,8 @@ func TestRuntimeFeatureEntrypointsRemainAvailable(t *testing.T) {
 	if !stableReleaseVirtualSigilWriteEnabled {
 		t.Fatal("virtual sigil entrypoint is locked")
 	}
-	if !runtimeSpatialGravityStableReleaseEnabled {
-		t.Fatal("gravity suppression entrypoint is locked")
+	if runtimeSpatialGravityStableReleaseEnabled {
+		t.Fatal("the ModelImpl field setter must not be exposed as gravity suppression")
 	}
 
 	catalog, err := loadRuntimePatchCatalog()

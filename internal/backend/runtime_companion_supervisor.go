@@ -66,6 +66,15 @@ func (a *App) reconnectPersistentVirtualSigilRuntime(process processInstanceID) 
 	a.reconnectPersistentRuntimeCompanion(&virtualSigilModMu, process, "virtual-sigils", "runtime_virtual_sigils", virtualSigilRuntimeEnabled)
 }
 
+func (a *App) reconnectPersistentWeaponSkillsRuntime(process processInstanceID) {
+	weaponRuntimeSkillsMu.Lock()
+	defer weaponRuntimeSkillsMu.Unlock()
+	if !shouldReconnectPersistentRuntimeCompanion(weaponRuntimeSkillsEnabled(), readRuntimeCompanionStatus("weapon-skills"), process) {
+		return
+	}
+	_ = a.startRuntimeCompanionForDigest("weapon-skills", "runtime_weapon_skills", game203ExecutableSHA256)
+}
+
 func (a *App) reconnectPersistentRuntimeCompanions() {
 	process, err := findRuntimeProcessInstance()
 	if err != nil {
@@ -74,6 +83,7 @@ func (a *App) reconnectPersistentRuntimeCompanions() {
 	a.reconnectPersistentCameraRuntime(process)
 	a.reconnectPersistentAudioRuntime(process)
 	a.reconnectPersistentVirtualSigilRuntime(process)
+	a.reconnectPersistentWeaponSkillsRuntime(process)
 }
 
 func (a *App) startPersistentRuntimeCompanionSupervisor() {
