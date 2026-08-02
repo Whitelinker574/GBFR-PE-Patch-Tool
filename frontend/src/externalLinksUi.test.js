@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v2.0.11 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.11"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.11')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.11')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.11')
+test('release metadata uses v2.0.12 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.12"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.12')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.12')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.12')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -82,11 +82,26 @@ test('formal release identifies the packaged application without test-build bran
   const metadata = JSON.parse(readRoot('wails.json'))
   const shell = readRoot('frontend/src/components/PatchTool.vue')
   const run = readRoot('internal/backend/run.go')
-  assert.equal(metadata.name, 'GBFR PE Patch Tool')
-  assert.equal(metadata.info.productName, 'GBFR PE Patch Tool')
+  assert.equal(metadata.name, '碧蓝幻想：Relink 空域工坊')
+  assert.equal(metadata.info.productName, '碧蓝幻想：Relink 空域工坊')
   assert.doesNotMatch(shell, /TEST BUILD|测试版/)
-  assert.match(shell, /v2\.0\.11/)
-  assert.match(run, /Title:\s+"GBFR PE Patch Tool"/)
+  assert.match(shell, /v2\.0\.12/)
+  assert.match(run, /Title:\s+"碧蓝幻想：Relink 空域工坊"/)
+})
+
+test('application surfaces use the independent Skyfarer Workshop brand', () => {
+  const paths = [
+    'frontend/index.html',
+    'frontend/src/components/PatchTool.vue',
+    'frontend/src/components/HomeJournal.vue',
+    'frontend/src/components/LoadoutShareWorkshop.vue',
+    'internal/backend/run.go',
+  ]
+  for (const path of paths) {
+    const source = readRoot(path)
+    assert.match(source, /碧蓝幻想：Relink 空域工坊/, `${path} is missing the current Chinese product name`)
+    assert.doesNotMatch(source, /GBFR 存档修改工具/, `${path} retains the former shared product name`)
+  }
 })
 
 test('release navigation cannot open a caller-supplied website', () => {

@@ -58,7 +58,7 @@ const groups = [
       <div class="page-menu">
         <header class="project-heading">
           <span>GRANBLUE FANTASY: RELINK</span>
-          <h1>GBFR 存档修改工具</h1>
+          <h1>碧蓝幻想：Relink 空域工坊</h1>
           <p>DLC 2.0.3 本地功能整合版</p>
           <p class="mode-guide">改存档：先<b>完全退出游戏</b>；游戏内实时改：先<b>启动并进入游戏</b>。同一份存档，两种方式别同时用。</p>
         </header>

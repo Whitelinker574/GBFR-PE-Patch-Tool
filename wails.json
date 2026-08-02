@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "GBFR PE Patch Tool",
+  "name": "碧蓝幻想：Relink 空域工坊",
   "outputfilename": "GBFR PE Patch Tool",
   "frontend:install": "npm ci --include=optional",
   "frontend:build": "npm run build",
@@ -12,8 +12,8 @@
   },
   "info": {
     "companyName": "Whitelinker574",
-    "productName": "GBFR PE Patch Tool",
-    "productVersion": "2.0.11",
+    "productName": "碧蓝幻想：Relink 空域工坊",
+    "productVersion": "2.0.12",
     "copyright": "Community tool for personal save management",
     "comments": "Granblue Fantasy: Relink 2.0.3 save, loadout, and sharing utility with guarded legacy runtime features"
   }

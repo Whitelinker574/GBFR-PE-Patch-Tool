@@ -288,7 +288,7 @@ export const uiTranslations = {
   '伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。当前满血参考按“同区相加，跨区相乘”展示；攻击 DOWN、战斗 Buff、坚守低血曲线、格挡和无敌没有当前状态时不强行计入。': 'Io +5% reduced the same hit from 36,938 to 35,091 in two matching tests. The current full-HP reference adds within each zone and multiplies across zones; Attack DOWN, battle buffs, the low-HP Garrison curve, guarding, and invincibility are excluded without live state.',
   '无条件防御力按百分比降低受击伤害；伊欧 +5% 实测将同一攻击从 36,938 降至 35,091，重复两次一致。条件防御、格挡、独立减伤和无敌仍保留在效果明细中，不混入该倍率。': 'Unconditional Defense reduces incoming damage by the same percentage. Io +5% reduced the same hit from 36,938 to 35,091 in two identical repeats. Conditional defense, guarding, independent damage cuts, and invincibility remain separate from this rate.',
   // Application shell and home journal
-  'GBFR 存档修改工具': 'GBFR Save Editor',
+  '碧蓝幻想：Relink 空域工坊': 'Granblue Fantasy: Relink Skyfarer Workshop',
   '最小化': 'Minimize',
   '最大化或还原': 'Maximize or Restore',
   '关闭': 'Close',

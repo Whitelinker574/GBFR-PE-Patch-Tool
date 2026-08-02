@@ -40,7 +40,7 @@ test('the title-record shell has exact English copy instead of mixed substring t
 
 test('the full home shell uses exact English copy instead of substring hybrids', () => {
   for (const text of [
-    'GBFR 存档修改工具',
+    '碧蓝幻想：Relink 空域工坊',
     '最大化或还原',
     '改存档：先',
     '完全退出游戏',

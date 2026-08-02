@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.11"
+	appVersion  = "v2.0.12"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -310,7 +310,7 @@ func handleDetachBeforeClose(ctx context.Context, detachErr error) bool {
 	logPath := appendDiagnosticError("before-close hook restoration", detachErr)
 	_, _ = closeMessageDialog(ctx, runtime.MessageDialogOptions{
 		Type:  runtime.ErrorDialog,
-		Title: "无法安全关闭 GBFR PE Patch Tool",
+		Title: "无法安全关闭碧蓝幻想：Relink 空域工坊",
 		Message: fmt.Sprintf(
 			"工具未能恢复游戏进程中的运行时 Hook，因此已阻止关闭，以免游戏继续跳转到工具管理的内存。\n\n请保持工具开启，退出游戏后再关闭工具，或再次尝试关闭。\n\n错误：%v\n\n诊断日志：%s",
 			detachErr, logPath,

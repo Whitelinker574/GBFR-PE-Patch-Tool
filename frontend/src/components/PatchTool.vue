@@ -960,9 +960,9 @@ function showStatus(message, type) {
     <header class="titlebar" style="--wails-draggable:drag" @dblclick.self="WindowToggleMaximise">
       <div class="titlebar-brand">
         <span class="brand-glyph">✦</span>
-        <span class="titlebar-title">GBFR 存档修改工具</span>
+        <span class="titlebar-title">碧蓝幻想：Relink 空域工坊</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.11</span>
+        <span class="build-chip release-build">v2.0.12</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || showCTFeatureStatus || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button
@@ -1020,7 +1020,7 @@ function showStatus(message, type) {
         </button>
         <button class="sidebar-heading" type="button" title="返回功能首页" @click="selectTool('home')">
           <span class="sidebar-kicker">GBFR PE PATCH TOOL</span>
-          <strong>GBFR 存档修改工具</strong>
+          <strong>碧蓝幻想：Relink 空域工坊</strong>
           <span>碧蓝幻想 Relink 养成工具集</span>
         </button>
         <nav class="primary-nav" aria-label="主要功能">
