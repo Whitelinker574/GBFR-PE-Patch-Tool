@@ -60,3 +60,9 @@ FileListAbsolute.txt
 # Local documentation and field captures
 /docs/local/
 /field-*.zip
+
+# Local research records (kept out of the repository)
+/docs/COOP_GAME_REWARD_MULTIPLIER_RESEARCH.md
+/docs/PARTY_CAPTURE_REUSE_RESEARCH.md
+/docs/VIRTUAL_SIGIL_203_CRASH_AUDIT.md
+/docs/evidence/share-portrait-provenance.md

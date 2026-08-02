@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/screenshots/v2.0.12-home.jpg" alt="Relink Skyfarer Workshop v2.0.12 full home screen" width="960">
+</p>
+
 # Relink Skyfarer Workshop (Granblue Fantasy: Relink)
 
 [简体中文](README.md) · [Download the latest stable release](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [Open the community loadout catalog](https://share.whitelinker.top/?lang=en)

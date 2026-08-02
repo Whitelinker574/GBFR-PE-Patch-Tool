@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/screenshots/v2.0.12-home.jpg" alt="Relink Skyfarer Workshop v2.0.12 完整首页" width="960">
+</p>
+
 # 碧蓝幻想：Relink 空域工坊（Relink Skyfarer Workshop）
 
 [English README](README_EN.md) · [下载最新正式版](https://github.com/Whitelinker574/GBFR-PE-Patch-Tool/releases/latest) · [在线配装图鉴](https://share.whitelinker.top)
