@@ -2,6 +2,10 @@
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
 
+## v2.0.11 external-save loadout recovery
+
+Loadout preview and write preflight now recover each of the 29 playable characters' canonical `PLxxxx` owner code directly from the already selected character hash. Imported, converted, or partially repaired saves therefore no longer lose access to a valid character weapon merely because their saved preset has no recognized mastery node or a dangling equipped-weapon reference. Unknown character hashes remain fail-closed, and a character-specific weapon is still rejected when its canonical owner differs from the selected character.
+
 ## v2.0.10 game 2.0.3 additions
 
 The current-weapon editor captures the highlighted 2.0.3 weapon record, backs up the save before a write, updates exactly five persistent skill slots, and verifies the post-save memory window. Additional skills use a separate owned runtime aggregator bound to the selected weapon instead of overwriting the following weapon record. The catalog also names the observed `0x02D0B733` trait as `超凡技艺 / Unbound Technique` in both languages.

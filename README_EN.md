@@ -14,6 +14,8 @@
 
 ## Game 2.0.3 compatibility
 
+v2.0.11 fixes the misleading “cannot determine character weapon owner” error on imported, migrated, or incomplete saves. The application now recovers each of the 29 playable characters' canonical `PLxxxx` owner from the selected character hash. A missing mastery record or dangling equipped-weapon reference no longer blocks that character's valid weapon, while weapons owned by another character are still rejected.
+
 v2.0.10 adds a live editor for the currently highlighted weapon. It can back up, edit, and read back the five persistent skill slots, while skill six and beyond use the game's native skill-aggregation path as an explicitly enabled runtime feature. The camera workshop now provides five presets. Spatial tools put the verified virtual-ground workflow first, with native WASD movement and PageUp/PageDown elevation, while continuous jump and the less reliable aerial-action experiment remain separate. New 2.0.3 quest conveniences cover summon duration, quest score, side objectives, and free crafting/trading/upgrades. Every live feature remains off by default and retains page, F12, disconnect, and shutdown restoration.
 
 v2.0.9 makes every persistent connection explicit and off by default. Loadout capture, virtual sigils, audio, camera, and live patches appear in the title bar only after the user enables them; navigation does not stop them, and each status chip returns to the page that can disable it. Stale status from a previous game PID is no longer presented as active, while F12 and normal disable paths restore app-owned hooks. The virtual-sigil workspace also switches to a single-column layout at common window widths so its stop controls remain reachable.

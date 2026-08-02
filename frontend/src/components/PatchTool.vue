@@ -962,7 +962,7 @@ function showStatus(message, type) {
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">GBFR 存档修改工具</span>
         <span class="build-chip">GAME 2.0.3</span>
-        <span class="build-chip release-build">v2.0.10</span>
+        <span class="build-chip release-build">v2.0.11</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || showCTFeatureStatus || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
         <button

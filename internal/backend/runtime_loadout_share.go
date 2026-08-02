@@ -20,6 +20,18 @@ var runtimeOwnerCharacterHash = map[string]uint32{
 	"PL2900": 0x74DD4C79,
 }
 
+var runtimeCharacterOwnerByHash = func() map[uint32]string {
+	owners := make(map[uint32]string, len(runtimeOwnerCharacterHash))
+	for ownerCode, characterHash := range runtimeOwnerCharacterHash {
+		owners[characterHash] = ownerCode
+	}
+	return owners
+}()
+
+func canonicalOwnerCodeForCharacterHash(characterHash uint32) string {
+	return runtimeCharacterOwnerByHash[characterHash]
+}
+
 func maximizeCapturedSigil(catalog *Catalog, source RuntimePatchPartySigil) RuntimePatchPartySigil {
 	definition := catalog.LookupSigilByHash(source.Hash)
 	if definition == nil {

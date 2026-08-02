@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.11.md`](RELEASE_NOTES_v2.0.11.md) | v2.0.11 外部、迁移和缺记录存档的配装武器归属回退修复 |
 | [`RELEASE_NOTES_v2.0.10.md`](RELEASE_NOTES_v2.0.10.md) | v2.0.10 武器技能、镜头预设、虚拟地面与任务便利更新 |
 | [`RELEASE_NOTES_v2.0.9.md`](RELEASE_NOTES_v2.0.9.md) | v2.0.9 常驻状态、配装检测与 2.0.3 运行时修复 |
 | [`RELEASE_NOTES_v2.0.8.md`](RELEASE_NOTES_v2.0.8.md) | v2.0.8 全任务普通物品结算倍率 |

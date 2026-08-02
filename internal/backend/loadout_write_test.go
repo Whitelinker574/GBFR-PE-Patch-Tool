@@ -53,6 +53,45 @@ func TestClearSigilRejectsMalformedSaveWithoutPanicking(t *testing.T) {
 
 var testLoadoutSave = strings.TrimSpace(os.Getenv("GBFR_TEST_LOADOUT_SAVE"))
 
+func TestKnownCharacterHashResolvesWeaponOwnerWithoutSaveEvidence(t *testing.T) {
+	// Imported, converted, or partially repaired saves can have a valid character
+	// identity while their saved loadout has neither a recognized mastery node nor
+	// a resolvable equipped-weapon reference. The selected character hash is still
+	// sufficient to recover the canonical owner code.
+	save := &SaveData{unitsByType: map[uint32][]*unitEntry{
+		loadoutCharIDType: nil,
+	}}
+	index := &loadoutIndex{
+		wepBySlotID: map[uint32]uint32{},
+		wepHash:     map[uint32]*unitEntry{},
+	}
+
+	if len(runtimeOwnerCharacterHash) != 29 {
+		t.Fatalf("canonical roster has %d characters, want 29", len(runtimeOwnerCharacterHash))
+	}
+	seenHashes := make(map[uint32]string, len(runtimeOwnerCharacterHash))
+	for wantOwner, characterHash := range runtimeOwnerCharacterHash {
+		if previousOwner, duplicate := seenHashes[characterHash]; duplicate {
+			t.Fatalf("canonical character hash %08X is shared by %s and %s", characterHash, previousOwner, wantOwner)
+		}
+		seenHashes[characterHash] = wantOwner
+		if gotOwner := index.deriveOwnerCode(save, characterHash); gotOwner != wantOwner {
+			t.Errorf("character %08X owner code = %q, want %s", characterHash, gotOwner, wantOwner)
+		}
+	}
+
+	ownerCode := index.deriveOwnerCode(save, 0x74DD4C79)
+	if _, err := validateLoadoutWeaponDefinition(0x1EB2B398, ownerCode); err != nil {
+		t.Fatalf("Fiediel weapon was rejected after canonical owner recovery: %v", err)
+	}
+	if _, err := validateLoadoutWeaponDefinition(0x1EB2B398, "PL0400"); err == nil {
+		t.Fatal("canonical owner recovery must not allow a character-specific weapon on another character")
+	}
+	if owner := index.deriveOwnerCode(save, 0xDEADBEEF); owner != "" {
+		t.Fatalf("unknown character owner = %q, want empty", owner)
+	}
+}
+
 func haveSave(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil

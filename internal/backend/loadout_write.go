@@ -222,9 +222,14 @@ func resolveBlockChara(save *SaveData, unitID uint32) (charaHash uint32, ok bool
 	return found, true
 }
 
-// deriveOwnerCode 推导角色的 PLxxxx：从该角色现有配装的专精节点 char（权威）
-// 与武器 ownerCode 双源交叉。两源须一致；无法确定时返回空串（=只放行通用武器）。
+// deriveOwnerCode 推导角色的 PLxxxx。29 名正式角色的 canonical hash 是角色身份
+// 的第一真值；即使导入/转换存档缺少专精节点或武器引用，也能恢复正确归属。
+// 未知角色才回退到专精节点与武器 ownerCode 双源交叉；两源冲突或都缺失时
+// 返回空串（=只放行通用武器），不会因此放宽跨角色武器校验。
 func (ix *loadoutIndex) deriveOwnerCode(save *SaveData, charaHash uint32) string {
+	if ownerCode := canonicalOwnerCodeForCharacterHash(charaHash); ownerCode != "" {
+		return ownerCode
+	}
 	fromMastery := ""
 	fromWeapon := ""
 	for _, ce := range save.findAllUnitsByType(loadoutCharIDType) {
