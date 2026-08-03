@@ -171,6 +171,17 @@ func TestLoadoutOptimizerInventorySnapshotCarriesDeployableEquipmentStages(t *te
 			t.Fatalf("wrightstone option is not bound to one weapon: %#v", option)
 		}
 	}
+	summonStage := snapshot.Stages[slices.IndexFunc(snapshot.Stages, func(stage LoadoutOptimizerEquipmentStage) bool { return stage.Key == "summons" })]
+	for _, option := range summonStage.Options {
+		if editable, _ := option.ApplyPayload["editableMainTrait"].(bool); !editable {
+			t.Fatalf("summon option %s is missing the confirmed main-trait edit capability: %#v", option.ID, option.ApplyPayload)
+		}
+		for _, key := range []string{"slotId", "expectUnitId", "expectTypeHash", "expectMainTraitHash", "expectMainTraitLevel", "expectSubParamHash", "expectSubParamLevel", "expectRank", "subParamHash", "subParamLevel", "rank"} {
+			if _, ok := option.ApplyPayload[key]; !ok {
+				t.Fatalf("summon option %s is missing stale/readback field %s: %#v", option.ID, key, option.ApplyPayload)
+			}
+		}
+	}
 	masteryStage := snapshot.Stages[slices.IndexFunc(snapshot.Stages, func(stage LoadoutOptimizerEquipmentStage) bool { return stage.Key == "mastery" })]
 	for _, option := range masteryStage.Options {
 		if option.ID == "mastery:none" {
@@ -207,4 +218,79 @@ func TestLoadoutOptimizerInventorySnapshotCarriesDeployableEquipmentStages(t *te
 		}
 		t.Logf("weapon slot %d replacement option counts: %v", pick.SlotID, counts)
 	}
+}
+
+func TestEveryMaxStageWeaponSkillIsResolvableAndReachableByOptimizer(t *testing.T) {
+	data, err := loadLoadoutWeaponStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	traitIDs := traitHashMapWithRawKeys(catalog)
+	levelTwoFactorBoosts := 0
+	checkedWeapons := 0
+	for rowKey, row := range data.Weapons {
+		complete := true
+		for _, group := range row.RebuildSkillLevelKeys {
+			if strings.TrimSpace(group) == "" || len(rebuildSkillOptionsForSlot(data, catalog, group, 7)) == 0 {
+				complete = false
+				break
+			}
+		}
+		if !complete {
+			continue
+		}
+		checkedWeapons++
+		weapon := &LoadoutWeaponContext{
+			StoredHash: rowKey, SlotID: uint32(checkedWeapons), Level: 150, Uncap: 6, Transcendence: 6,
+			SkillSlots: make([]LoadoutWeaponSkillSlot, 5),
+		}
+		variants := optimizerWeaponSkillVariants(weapon, traitIDs, LoadoutPermanentGrowth{})
+		if len(variants) == 0 {
+			t.Fatalf("weapon %s has no optimizer variants", rowKey)
+		}
+		type skillKey struct {
+			hash  string
+			level int
+		}
+		reachable := map[skillKey]bool{}
+		for _, variant := range variants {
+			stage, _ := variant.ApplyPayload["weaponTranscendence"].(int)
+			if stage != 7 {
+				continue
+			}
+			for _, bonus := range variant.FixedBonuses {
+				reachable[skillKey{hash: bonus.TraitID, level: bonus.Level}] = true
+			}
+		}
+		for _, group := range row.RebuildSkillLevelKeys {
+			for _, option := range rebuildSkillOptionsForSlot(data, catalog, group, 7) {
+				hash, parseErr := ParseHashHex(option.Hash)
+				if parseErr != nil {
+					t.Fatalf("weapon %s group %s has invalid hash %q", rowKey, group, option.Hash)
+				}
+				traitID := resolveTraitValueID(hash, traitIDs)
+				skill := newLoadoutWeaponSkill(data, catalog, weapon.Name, 0, hash, option.Level, "weapon-rebuild", group, "超凡 7/7")
+				if traitID == "" || skill.TraitID == "" || strings.TrimSpace(skill.Name) == "" || strings.TrimSpace(skill.Effect) == "" {
+					t.Fatalf("weapon %s group %s special skill is unresolved: option=%+v skill=%+v traitID=%q", rowKey, group, option, skill, traitID)
+				}
+				if !reachable[skillKey{hash: canonicalTraitValueID(traitID), level: option.Level}] {
+					t.Fatalf("weapon %s group %s skill %s Lv%d is parsed but absent from optimizer variants", rowKey, group, skill.Name, option.Level)
+				}
+				if hash == 0x57E8A93F && option.Level == 2 {
+					levelTwoFactorBoosts++
+				}
+			}
+		}
+	}
+	if checkedWeapons == 0 {
+		t.Fatal("no five-slot transcendence weapons were checked")
+	}
+	if levelTwoFactorBoosts == 0 {
+		t.Fatal("max-stage weapon table exposed no 因子强化 Lv2 rows")
+	}
+	t.Logf("checked %d weapon rows; verified %d 因子强化 Lv2 max-stage options", checkedWeapons, levelTwoFactorBoosts)
 }

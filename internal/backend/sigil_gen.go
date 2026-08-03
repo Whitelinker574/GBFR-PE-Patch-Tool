@@ -34,11 +34,12 @@ type SigilInfo struct {
 }
 
 type TraitInfo struct {
-	InternalID    string `json:"internalId"`
-	Hash          string `json:"hash"`
-	DisplayName   string `json:"displayName"`
-	MaxLevel      int    `json:"maxLevel"`
-	AllowedLevels []int  `json:"allowedLevels"`
+	InternalID       string `json:"internalId"`
+	Hash             string `json:"hash"`
+	DisplayName      string `json:"displayName"`
+	MaxLevel         int    `json:"maxLevel"`
+	AllowedLevels    []int  `json:"allowedLevels"`
+	FactorBoostFixed bool   `json:"factorBoostFixed,omitempty"`
 }
 
 type SigilAtlasEntry struct {
@@ -50,9 +51,10 @@ type SigilAtlasEntry struct {
 }
 
 type SigilAtlas struct {
-	DataVersion string            `json:"dataVersion"`
-	Sigils      []SigilAtlasEntry `json:"sigils"`
-	Traits      []TraitInfo       `json:"traits"`
+	DataVersion             string            `json:"dataVersion"`
+	Sigils                  []SigilAtlasEntry `json:"sigils"`
+	Traits                  []TraitInfo       `json:"traits"`
+	WritableSecondaryTraits []TraitInfo       `json:"writableSecondaryTraits,omitempty"`
 }
 
 type SigilAtlasIndexEntry struct {
@@ -65,9 +67,10 @@ type SigilAtlasIndexEntry struct {
 }
 
 type SigilAtlasIndex struct {
-	DataVersion string                 `json:"dataVersion"`
-	Sigils      []SigilAtlasIndexEntry `json:"sigils"`
-	Traits      []TraitInfo            `json:"traits"`
+	DataVersion             string                 `json:"dataVersion"`
+	Sigils                  []SigilAtlasIndexEntry `json:"sigils"`
+	Traits                  []TraitInfo            `json:"traits"`
+	WritableSecondaryTraits []TraitInfo            `json:"writableSecondaryTraits,omitempty"`
 }
 
 type SaveInfo struct {
@@ -249,20 +252,24 @@ func (sg *SigilGen) GetTraitList() ([]TraitInfo, error) {
 		if !isSelectableTrait(&sg.catalog.Traits[i]) {
 			continue
 		}
+		maxLevel := derefInt(t.MaxLevel)
 		result = append(result, TraitInfo{
-			InternalID:    t.InternalID,
-			Hash:          t.Hash,
-			DisplayName:   cnTrait(t.DisplayName),
-			MaxLevel:      derefInt(t.MaxLevel),
-			AllowedLevels: t.AllowedLevels,
+			InternalID:       t.InternalID,
+			Hash:             t.Hash,
+			DisplayName:      cnTrait(t.DisplayName),
+			MaxLevel:         maxLevel,
+			AllowedLevels:    t.AllowedLevels,
+			FactorBoostFixed: traitUsesSingleFixedLevel(loadTraitValues()[canonicalTraitValueID(t.InternalID)], maxLevel),
 		})
 	}
 	return result, nil
 }
 
-// GetSigilAtlas returns the complete audited catalog in one IPC response. The
-// secondary pool is produced by the same rules used by construction and save
-// writes, so the atlas cannot drift into a separate compatibility language.
+// GetSigilAtlas returns the complete audited catalog in one IPC response.
+// SecondaryTraits remains the natural/table pool; WritableSecondaryTraits is
+// the shared, broader pool accepted by the save writer with a forced-write
+// warning. Keeping both prevents optimizer manufacture from being mistaken
+// for natural drop evidence.
 func (sg *SigilGen) GetSigilAtlas() (*SigilAtlas, error) {
 	items, err := sg.GetSigilList()
 	if err != nil {
@@ -276,6 +283,7 @@ func (sg *SigilGen) GetSigilAtlas() (*SigilAtlas, error) {
 	sg.mu.Lock()
 	defer sg.mu.Unlock()
 	result := &SigilAtlas{DataVersion: "GBFR 2.0.2", Traits: traits, Sigils: make([]SigilAtlasEntry, 0, len(items))}
+	writableByID := make(map[string]TraitInfo)
 	for _, item := range items {
 		definition, err := sg.catalog.RequireSigil(item.InternalID)
 		if err != nil {
@@ -316,9 +324,41 @@ func (sg *SigilGen) GetSigilAtlas() (*SigilAtlas, error) {
 			sort.Slice(entry.SecondaryTraits, func(i, j int) bool {
 				return entry.SecondaryTraits[i].DisplayName < entry.SecondaryTraits[j].DisplayName
 			})
+			writable, err := sg.catalog.GetWritableSecondaryTraits(definition)
+			if err != nil {
+				return nil, err
+			}
+			for _, trait := range writable {
+				if trait.InternalID == definition.PrimaryTraitID || !isSelectableTrait(trait) {
+					continue
+				}
+				levels, err := sg.catalog.RequireSecondaryTraitLevels(definition, trait)
+				if err != nil {
+					continue
+				}
+				available := naturalSigilLevels(levels)
+				if len(available) == 0 {
+					continue
+				}
+				candidate := TraitInfo{
+					InternalID: trait.InternalID, Hash: trait.Hash, DisplayName: cnTrait(trait.DisplayName),
+					MaxLevel: maxNaturalSigilLevel(available), AllowedLevels: available,
+					FactorBoostFixed: traitUsesSingleFixedLevel(
+						loadTraitValues()[canonicalTraitValueID(trait.InternalID)], derefInt(trait.MaxLevel)),
+				}
+				if previous, ok := writableByID[candidate.InternalID]; !ok || candidate.MaxLevel > previous.MaxLevel {
+					writableByID[candidate.InternalID] = candidate
+				}
+			}
 		}
 		result.Sigils = append(result.Sigils, entry)
 	}
+	for _, trait := range writableByID {
+		result.WritableSecondaryTraits = append(result.WritableSecondaryTraits, trait)
+	}
+	sort.Slice(result.WritableSecondaryTraits, func(i, j int) bool {
+		return result.WritableSecondaryTraits[i].DisplayName < result.WritableSecondaryTraits[j].DisplayName
+	})
 	return result, nil
 }
 
@@ -338,9 +378,10 @@ func (sg *SigilGen) GetSigilAtlasIndex() (*SigilAtlasIndex, error) {
 		traitIndexes[trait.InternalID] = uint16(index)
 	}
 	result := &SigilAtlasIndex{
-		DataVersion: atlas.DataVersion,
-		Traits:      atlas.Traits,
-		Sigils:      make([]SigilAtlasIndexEntry, 0, len(atlas.Sigils)),
+		DataVersion:             atlas.DataVersion,
+		Traits:                  atlas.Traits,
+		WritableSecondaryTraits: atlas.WritableSecondaryTraits,
+		Sigils:                  make([]SigilAtlasIndexEntry, 0, len(atlas.Sigils)),
 	}
 	for _, entry := range atlas.Sigils {
 		compact := SigilAtlasIndexEntry{SigilInfo: entry.SigilInfo, Source: entry.Source, Confidence: entry.Confidence, TableExact: entry.TableExact}

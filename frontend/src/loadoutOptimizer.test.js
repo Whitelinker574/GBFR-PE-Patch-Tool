@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveFixedCharacterRoute, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain, synthesizeOwnedFirstSuggestion } from './loadoutOptimizer.js'
+import { boundedCombinations, buildCatalogCandidates, buildInventoryCandidates, buildOptimizerTargetCatalog, buildTableExactCandidates, evaluateCombatBuild, solveEquipmentAwareSuggestions, solveEquipmentAwareSuggestionsByDomain, solveFixedCharacterRoute, solveLoadoutSuggestions, solveLoadoutSuggestionsByDomain, synthesizeOwnedFirstSuggestion } from './loadoutOptimizer.js'
 
 const targets = [{ name: '伤害上限', weight: 3, cap: 65 }, { name: '暴击率', weight: 2, cap: 45 }]
+
+test('target catalog includes equipment-only final-panel skills', () => {
+  const result = buildOptimizerTargetCatalog({ traits: [{ internalId: 'HP', displayName: '体力', maxLevel: 50 }] }, {
+    baseFixedBonuses: [{ traitId: 'BASE', name: '因子强化', level: 1 }],
+    stages: [{ key: 'weapon', options: [{ fixedBonuses: [{ traitId: 'CAP', name: '超凡破限', level: 55 }], variants: [{ fixedBonuses: [{ traitId: 'NOVA', name: '浩劫新星', level: 35 }] }] }] }],
+  })
+  assert.deepEqual(result.map(item => [item.internalId, item.displayName, item.sourceMaxLevel]).sort((a, b) => a[0].localeCompare(b[0], 'en')), [
+    ['BASE', '因子强化', 1],
+    ['CAP', '超凡破限', 55],
+    ['HP', '体力', 50],
+    ['NOVA', '浩劫新星', 35],
+  ])
+})
 
 test('catalog candidates use only audited constructible shells and legal secondary rows', () => {
   const atlas = { sigils: [
@@ -29,6 +42,46 @@ test('plus shells never become illegal single-trait candidates', () => {
   assert.equal(candidates.find(item => item.sigilId === 'SINGLE').secondaryTraitId, '')
 })
 
+test('manufacturing never emits the same trait in both primary and secondary slots', () => {
+  const atlas = {
+    writableSecondaryTraits: [{ internalId: 'HP', displayName: '体力', maxLevel: 15 }],
+    traits: [{ internalId: 'HP', displayName: '体力', maxLevel: 15 }],
+    sigils: [{
+      internalId: 'HP_PLUS', hash: '01', displayName: '体力 V+', constructible: true,
+      supportsSecondaryTrait: true, primaryTraitId: 'HP', primaryTraitName: '体力', firstTraitMaxLevel: 15,
+      secondaryTraits: [{ internalId: 'HP', displayName: '体力', maxLevel: 15 }],
+    }],
+  }
+
+  assert.equal(buildCatalogCandidates(atlas, [{ traitId: 'HP', name: '体力', cap: 30, weight: 1 }]).length, 0)
+})
+
+test('manufacturing can use audited writable secondary pairs without promoting them to table-exact evidence', () => {
+  const atlas = {
+    traits: [
+      { internalId: 'PRIMARY', hash: 'A1', displayName: '攻击力', maxLevel: 15 },
+      { internalId: 'NATURAL', hash: 'B2', displayName: '暴击率', maxLevel: 15 },
+      { internalId: 'WRITABLE', hash: 'C3', displayName: '明镜止水', maxLevel: 15 },
+    ],
+    writableSecondaryTraits: [
+      { internalId: 'NATURAL', hash: 'B2', displayName: '暴击率', maxLevel: 15 },
+      { internalId: 'WRITABLE', hash: 'C3', displayName: '明镜止水', maxLevel: 15 },
+    ],
+    sigils: [{
+      internalId: 'ATTACK_PLUS', hash: 'D4', displayName: '攻击力 V+', constructible: true,
+      tableExact: true, supportsSecondaryTrait: true, primaryTraitId: 'PRIMARY', primaryTraitName: '攻击力',
+      firstTraitMaxLevel: 15, allowedSigilLevels: [15], defaultSigilLevel: 15,
+      secondaryTraits: [{ internalId: 'NATURAL', hash: 'B2', displayName: '暴击率', maxLevel: 15 }],
+    }],
+  }
+  const candidates = buildCatalogCandidates(atlas, [{ traitId: 'WRITABLE', name: '明镜止水', weight: 1, cap: 15 }])
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0].secondaryTraitId, 'WRITABLE')
+  assert.equal(candidates[0].naturalSecondary, false)
+  assert.equal(candidates[0].tableExact, false)
+  assert.equal(buildTableExactCandidates(atlas, [{ traitId: 'WRITABLE', name: '明镜止水', weight: 1, cap: 15 }]).length, 0)
+})
+
 test('catalog and table candidates exclude character sigils owned by another character', () => {
   const characterTargets = [{ name: '战气', weight: 1, cap: 15 }]
   const atlas = { sigils: [
@@ -42,6 +95,34 @@ test('catalog and table candidates exclude character sigils owned by another cha
   assert.deepEqual(buildCatalogCandidates(atlas, characterTargets, 'PL0400').map(item => item.sigilId), ['DLC_OWNED', 'GENERIC', 'IO'])
   assert.deepEqual(buildTableExactCandidates(atlas, characterTargets, 'PL0400').map(item => item.sigilId), ['GENERIC', 'IO'])
   assert.deepEqual(buildCatalogCandidates(atlas, characterTargets, '').map(item => item.sigilId), ['GENERIC'])
+})
+
+test('manufactured character-exclusive traits stay in the primary slot even when a bad table row offers them as secondary', () => {
+  const characterTargets = [{ name: '黑龙的战气', weight: 1, cap: 15 }]
+  const atlas = {
+    traits: [
+      { internalId: 'SANDALPHON_WARPATH', displayName: '黑龙的战气', hash: 'AA' },
+      { internalId: 'DAMAGE_CAP', displayName: '伤害上限', hash: 'BB' },
+    ],
+    sigils: [
+      {
+        internalId: 'SANDALPHON_EXCLUSIVE', hash: '10', displayName: '黑龙的战气+',
+        category: 'character_sigil', allowedOwnerCodes: ['PL2900'], constructible: true,
+        supportsSecondaryTrait: false, primaryTraitId: 'SANDALPHON_WARPATH',
+        primaryTraitName: '黑龙的战气', firstTraitMaxLevel: 15,
+      },
+      {
+        internalId: 'CORRUPT_PLUS_SHELL', hash: '11', displayName: '伤害上限 V+',
+        category: 'normal', constructible: true, supportsSecondaryTrait: true,
+        primaryTraitId: 'DAMAGE_CAP', primaryTraitName: '伤害上限', firstTraitMaxLevel: 15,
+        secondaryTraits: [{ internalId: 'SANDALPHON_WARPATH', displayName: '黑龙的战气', hash: 'AA', maxLevel: 15 }],
+      },
+    ],
+  }
+
+  const candidates = buildCatalogCandidates(atlas, characterTargets, 'PL2900')
+  assert.equal(candidates.some(item => item.secondaryTraitId === 'SANDALPHON_WARPATH'), false)
+  assert.equal(candidates.some(item => item.primaryTraitId === 'SANDALPHON_WARPATH'), true)
 })
 
 test('fixed character routes assign twelve primary slots in linear time and reuse distinct inventory first', () => {
@@ -114,6 +195,14 @@ test('inventory candidates preserve independent real instances', () => {
   ], targets, { sigils: [{ internalId: 'EXACT_A', hash: 'ABC' }] })
   assert.deepEqual(candidates.map(item => item.slotId), [4, 9])
   assert.equal(candidates[0].sigilId, 'EXACT_A')
+})
+
+test('inventory candidate builder can expose non-target factors for final-slot filling', () => {
+  const rows = buildInventoryCandidates([
+    { slotId: 1, name: '目标', primaryTraitName: '伤害上限', primaryTraitLevel: 15 },
+    { slotId: 2, name: '填充', primaryTraitName: '其他技能', primaryTraitLevel: 15 },
+  ], [{ name: '伤害上限', cap: 15 }], null, { includeUnmatched: true })
+  assert.deepEqual(rows.map(item => item.slotId), [1, 2])
 })
 
 test('owned-first deployment maximizes real SlotID reuse before creating missing sigils', () => {
@@ -275,6 +364,27 @@ test('skill-target solver accepts more than four goals and fills them from first
   assert.deepEqual(result.picked.map(item => item.id), ['target-1', 'target-2', 'target-3', 'target-4', 'target-5'])
   assert.deepEqual(result.totals.map(item => item.effective), [10, 10, 10, 10, 10, 0, 0])
   assert.equal(result.method, 'heuristic-fallback')
+})
+
+test('many-target fallback does not waste a slot on one large early trait when paired rows can satisfy every goal', () => {
+  const orderedTargets = ['A', 'B', 'C', 'D', 'E'].map(name => ({ name, cap: name === 'A' ? 20 : 10, weight: 1 }))
+  const candidates = [
+    ...Array.from({ length: 20 }, (_, index) => ({
+      id: `a-distractor-${String(index).padStart(2, '0')}`,
+      source: 'catalog',
+      name: `Late-only ${index}`,
+      traits: [{ name: 'E', level: 1 }],
+    })),
+    { id: 'waste-a', source: 'catalog', name: 'A only', traits: [{ name: 'A', level: 20 }] },
+    { id: 'pair-ab', source: 'catalog', name: 'A+B', traits: [{ name: 'A', level: 10 }, { name: 'B', level: 10 }] },
+    { id: 'pair-ac', source: 'catalog', name: 'A+C', traits: [{ name: 'A', level: 10 }, { name: 'C', level: 10 }] },
+    { id: 'pair-de', source: 'catalog', name: 'D+E', traits: [{ name: 'D', level: 10 }, { name: 'E', level: 10 }] },
+  ]
+
+  const [result] = solveLoadoutSuggestions({ candidates, targets: orderedTargets, slotCount: 3, limit: 3 })
+
+  assert.deepEqual(result.totals.map(item => item.effective), [20, 10, 10, 10, 10])
+  assert.deepEqual(result.picked.map(item => item.id).sort(), ['pair-ab', 'pair-ac', 'pair-de'])
 })
 
 test('exact inventory solver stays deterministic with repeated equivalent instances', () => {
@@ -861,6 +971,221 @@ function syntheticEquipmentDomain() {
     ],
   }
 }
+
+test('skill-target equipment solver combines weapon, wrightstone, summon, and sigil levels before filling the gap', () => {
+  const skillOption = (id, stage, level, applyPayload) => ({
+    id,
+    label: id,
+    baseStatDeltas: {},
+    fixedBonuses: level ? [{ traitId: 'DAMAGE_CAP', name: 'Damage Cap', level }] : [],
+    fixedTotals: [],
+    applyPayload,
+    unresolvedAtoms: [],
+    ...(stage === 'wrightstone' ? { requires: { weapon: ['weapon:2'] } } : {}),
+  })
+  const snapshot = {
+    schemaVersion: 1,
+    domain: 'inventory',
+    baseStats: { attack: 1000, hp: 1000, critRate: 0 },
+    baseFixedBonuses: [], baseFixedTotals: [], baseDefenseZones: [],
+    baseSelection: { weapon: ['weapon:1'], wrightstone: ['wrightstone:weapon:1'], summons: ['summon:1'] },
+    stages: [
+      { key: 'weapon', choose: 1, options: [
+        skillOption('weapon:1', 'weapon', 0, { weaponSlotId: 1 }),
+        skillOption('weapon:2', 'weapon', 15, { weaponSlotId: 2, weaponSkillHashes: ['A', 'B', 'C', 'D', 'E'] }),
+      ] },
+      { key: 'wrightstone', choose: 1, options: [
+        { ...skillOption('wrightstone:weapon:1', 'wrightstone', 0, { weaponSlotId: 1 }), requires: { weapon: ['weapon:1'] } },
+        skillOption('wrightstone:weapon:2', 'wrightstone', 20, { weaponSlotId: 2, wrightstoneHash: 'C0FFEE' }),
+      ] },
+      { key: 'summons', choose: 1, options: [
+        skillOption('summon:1', 'summons', 0, { slotId: 1 }),
+        skillOption('summon:2', 'summons', 15, { slotId: 2 }),
+      ] },
+    ],
+  }
+  const sigils = [{
+    id: 'slot:99', slotId: 99, source: 'inventory', name: '伤害上限 V',
+    primaryTraitId: 'DAMAGE_CAP', traits: [{ id: 'DAMAGE_CAP', name: '伤害上限', level: 15 }],
+  }]
+
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot,
+    sigilCandidates: sigils,
+    sigilSlotCount: 12,
+    limit: 10,
+    scenario: { mode: 'target', targets: [{ traitId: 'DAMAGE_CAP', name: '伤害上限', weight: 1, cap: 65 }] },
+  })
+
+  assert.equal(result.totals[0].level, 65)
+  assert.equal(result.totals[0].effective, 65)
+  assert.equal(result.picked.length, 1)
+  assert.equal(result.picked[0].slotId, 99)
+  assert.deepEqual(result.targetSources[0].sources.map(item => [item.stage, item.level]), [
+    ['weapon', 15], ['wrightstone', 20], ['summons', 15], ['sigils', 15],
+  ])
+  assert.deepEqual(new Set(result.equipmentDiffs.map(item => item.stage)), new Set(['weapon', 'wrightstone', 'summons']))
+  assert.deepEqual(result.applyPayload.equipment, {
+    weapon: [{ weaponSlotId: 2, weaponSkillHashes: ['A', 'B', 'C', 'D', 'E'] }],
+    wrightstone: [{ weaponSlotId: 2, wrightstoneHash: 'C0FFEE' }],
+    summons: [{ slotId: 2 }],
+  })
+})
+
+test('skill-target equipment solver can stage confirmed summon main-trait edits to free scarce factor slots', () => {
+  const editableSummon = (slotId) => equipmentOption(`summon:${slotId}`, 0, {
+    slotId,
+    editableMainTrait: true,
+    expectUnitId: 100 + slotId,
+    expectTypeHash: `TYPE${slotId}`,
+    expectMainTraitHash: `OLD${slotId}`,
+    expectMainTraitLevel: 1,
+    expectSubParamHash: `SUB${slotId}`,
+    expectSubParamLevel: 2,
+    expectRank: 3,
+    subParamHash: `SUB${slotId}`,
+    subParamLevel: 2,
+    rank: 3,
+  })
+  const snapshot = {
+    schemaVersion: 1,
+    domain: 'inventory',
+    baseStats: { attack: 1000, hp: 1000, critRate: 0 },
+    baseFixedBonuses: [], baseFixedTotals: [], baseDefenseZones: [],
+    baseSelection: { summons: ['summon:1', 'summon:2'] },
+    stages: [{ key: 'summons', choose: 2, unique: true, options: [editableSummon(1), editableSummon(2)] }],
+  }
+  const trait = (id, hash, name, level = 10) => ({ id, name, level, hash })
+  const sigils = [
+    {
+      id: 'pair-ab', source: 'catalog', name: 'A+B', exactPrimaryTraitHash: 'A0', exactSecondaryTraitHash: 'B0',
+      primaryTraitId: 'A', secondaryTraitId: 'B', traits: [trait('A', 'A0', 'A'), trait('B', 'B0', 'B')],
+    },
+    {
+      id: 'pair-cd', source: 'catalog', name: 'C+D', exactPrimaryTraitHash: 'C0', exactSecondaryTraitHash: 'D0',
+      primaryTraitId: 'C', secondaryTraitId: 'D', traits: [trait('C', 'C0', 'C'), trait('D', 'D0', 'D')],
+    },
+    {
+      id: 'single-e', source: 'catalog', name: 'E', exactPrimaryTraitHash: 'E0',
+      primaryTraitId: 'E', traits: [trait('E', 'E0', 'E')],
+    },
+  ]
+  const targets = ['A', 'B', 'C', 'D', 'E'].map(name => ({ traitId: name, name, weight: 1, cap: name === 'A' || name === 'B' ? 30 : 10 }))
+
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot, sigilCandidates: sigils, sigilSlotCount: 2, limit: 4,
+    scenario: { mode: 'target', targets },
+  })
+
+  assert.deepEqual(result.totals.map(item => item.effective), [30, 30, 10, 10, 10])
+  assert.deepEqual(result.picked.map(item => item.id).sort(), ['pair-cd', 'single-e'])
+  assert.deepEqual(result.applyPayload.equipment.summons.map(item => [item.slotId, item.mainTraitHash, item.mainTraitLevel]), [
+    [1, 'A0', 30],
+    [2, 'B0', 30],
+  ])
+})
+
+test('factor boost raises normal factor traits but leaves fixed-effect traits at their stored level', () => {
+  const snapshot = {
+    schemaVersion: 1,
+    domain: 'inventory',
+    baseStats: { attack: 1000, hp: 1000, critRate: 0 },
+    baseFixedBonuses: [{ traitId: 'SKILL_113_00', name: '因子强化', level: 1 }],
+    baseFixedTotals: [], baseDefenseZones: [], baseSelection: {}, stages: [],
+  }
+  const sigils = [
+    { id: 'normal', source: 'inventory', slotId: 1, name: '普通因子', traits: [{ id: 'NORMAL', name: '普通技能', level: 15 }] },
+    { id: 'fixed', source: 'inventory', slotId: 2, name: '固定因子', traits: [{ id: 'FIXED', name: '狂战士', level: 15, fixedLevel: true }] },
+  ]
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot,
+    sigilCandidates: sigils,
+    sigilSlotCount: 2,
+    limit: 10,
+    scenario: { mode: 'target', targets: [
+      { traitId: 'NORMAL', name: '普通技能', weight: 1, cap: 16 },
+      { traitId: 'FIXED', name: '狂战士', weight: 1, cap: 15 },
+    ] },
+  })
+
+  assert.deepEqual(result.totals.map(item => [item.traitId, item.level]), [['NORMAL', 16], ['FIXED', 15]])
+})
+
+test('manufactured target factors lower stored levels so the final panel matches exact requested levels', () => {
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot: {
+      schemaVersion: 1, domain: 'catalog', baseStats: {}, baseFixedTotals: [], baseDefenseZones: [], baseSelection: {}, stages: [],
+      baseFixedBonuses: [{ traitId: 'SKILL_113_00', name: '因子强化', level: 1 }],
+    },
+    sigilCandidates: [{
+      id: 'made', source: 'catalog', name: '制造因子', sigilId: 'MADE',
+      primaryTraitId: 'A', primaryLevel: 15, secondaryTraitId: 'B', secondaryLevel: 15,
+      traits: [{ id: 'A', name: '属性克制转换', level: 15 }, { id: 'B', name: '金刚', level: 15 }],
+    }],
+    sigilSlotCount: 1,
+    limit: 4,
+    scenario: { mode: 'target', targets: [
+      { traitId: 'A', name: '属性克制转换', weight: 2, cap: 15 },
+      { traitId: 'B', name: '金刚', weight: 1, cap: 10 },
+    ] },
+  })
+
+  assert.equal(result.picked[0].primaryLevel, 14)
+  assert.equal(result.picked[0].secondaryLevel, 9)
+  assert.deepEqual(result.totals.map(item => item.level), [15, 10])
+})
+
+test('many-target equipment solver budgets one boosted Lv15 factor per Lv16 goal instead of duplicating slots', () => {
+  const targets = ['A', 'B', 'C', 'D', 'E'].map(name => ({ traitId: name, name, weight: 1, cap: 16 }))
+  const sigils = targets.map((target, index) => ({
+    id: `factor-${target.name}`, source: 'catalog', name: target.name,
+    sigilId: `SIGIL_${target.name}`, primaryTraitId: target.traitId, primaryLevel: 15,
+    traits: [{ id: target.traitId, name: target.name, level: 15 }],
+    exactPrimaryTraitHash: `0${index + 1}`,
+  }))
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot: {
+      schemaVersion: 1, domain: 'inventory', baseStats: {}, baseFixedTotals: [], baseDefenseZones: [], baseSelection: {}, stages: [],
+      baseFixedBonuses: [{ traitId: 'SKILL_113_00', name: '因子强化', level: 1 }],
+    },
+    sigilCandidates: sigils, sigilSlotCount: 5, limit: 4,
+    scenario: { mode: 'target', targets },
+  })
+
+  assert.deepEqual(result.totals.map(item => item.effective), [16, 16, 16, 16, 16])
+  assert.deepEqual(result.picked.map(item => item.id).sort(), ['factor-A', 'factor-B', 'factor-C', 'factor-D', 'factor-E'])
+})
+
+test('target equipment solver completes all staged slots without retaining target-overflow factors', () => {
+  const target = { traitId: 'A', name: '目标技能', weight: 1, cap: 16 }
+  const wanted = {
+    id: 'wanted', source: 'inventory', slotId: 1, name: '目标因子', retained: true,
+    traits: [{ id: 'A', name: '目标技能', level: 15 }],
+  }
+  const overflowing = {
+    id: 'overflowing', source: 'inventory', slotId: 2, name: '重复目标', retained: true,
+    traits: [{ id: 'A', name: '目标技能', level: 15 }],
+  }
+  const neutral = {
+    id: 'neutral', source: 'inventory', slotId: 3, name: '无冲突填充',
+    traits: [{ id: 'B', name: '其他技能', level: 15 }],
+  }
+  const [result] = solveEquipmentAwareSuggestions({
+    snapshot: {
+      schemaVersion: 1, domain: 'inventory', baseStats: {}, baseFixedTotals: [], baseDefenseZones: [], baseSelection: {}, stages: [],
+      baseFixedBonuses: [{ traitId: 'SKILL_113_00', name: '因子强化', level: 1 }],
+    },
+    sigilCandidates: [wanted, overflowing, neutral],
+    sigilSlotCount: 2,
+    limit: 4,
+    scenario: { mode: 'target', targets: [target], baseSigils: [wanted, overflowing] },
+  })
+
+  assert.equal(result.picked.length, 2)
+  assert.ok(result.picked.some(item => item.slotId === 3))
+  assert.equal(result.picked.some(item => item.slotId === 1) || result.picked.some(item => item.slotId === 2), true)
+  assert.equal(result.totals[0].level, 16)
+})
 
 test('equipment-aware solver matches a small brute-force oracle across every equipment category', () => {
   const sigils = [

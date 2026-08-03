@@ -4,5 +4,7 @@ export function createOptimizerWorkerMessage(id, payload, solveAllDomains, modes
     payload,
     solveAllDomains: Boolean(solveAllDomains),
     solveFixedRoute: Boolean(modes?.solveFixedRoute),
+    solveMixedDomains: Boolean(modes?.solveMixedDomains),
+    solveEquipmentAware: Boolean(modes?.solveEquipmentAware),
   }))
 }

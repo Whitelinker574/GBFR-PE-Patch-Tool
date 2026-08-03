@@ -23,6 +23,7 @@ type LoadoutWeaponInlineEdit struct {
 	ExpectUnitID        uint32   `json:"expectUnitId"`
 	ExpectStoredHash    string   `json:"expectStoredHash"`
 	ExpectTranscendence int      `json:"expectTranscendence"`
+	Transcendence       *int     `json:"transcendence,omitempty"`
 	ExpectSkillHashes   []string `json:"expectSkillHashes"`
 	SkillHashes         []string `json:"skillHashes"`
 }
@@ -46,9 +47,10 @@ type LoadoutSummonInlineEdit struct {
 }
 
 type preparedLoadoutWeaponEdit struct {
-	slotID uint32
-	unitID uint32
-	skills [5]uint32
+	slotID        uint32
+	unitID        uint32
+	transcendence int
+	skills        [5]uint32
 }
 
 type preparedLoadoutSummonEdit struct {
@@ -99,16 +101,18 @@ func exactWeaponUnitForSlot(save *SaveData, slotID uint32) (uint32, error) {
 
 func exactSummonStateForSlot(save *SaveData, slotID uint32) (uint32, SummonTraitState, error) {
 	var unitID uint32
+	found := false
 	for _, entry := range save.findAllUnitsByType(1456) {
 		if entry.ValueCnt != 1 || entry.Uint32() != slotID {
 			continue
 		}
-		if unitID != 0 && unitID != entry.UnitID {
+		if found && unitID != entry.UnitID {
 			return 0, SummonTraitState{}, fmt.Errorf("summon SlotID %d maps to multiple owned instances", slotID)
 		}
 		unitID = entry.UnitID
+		found = true
 	}
-	if unitID == 0 {
+	if !found {
 		return 0, SummonTraitState{}, fmt.Errorf("summon SlotID %d does not exist", slotID)
 	}
 	typeEntry, typeOK := save.findUnitExact(1457, unitID)
@@ -211,8 +215,21 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 			return nil, fmt.Errorf("stale weapon snapshot for SlotID %d", slotID)
 		}
 		stage := int(transcendence.Int32())
+		if edit.Transcendence != nil {
+			stage = *edit.Transcendence
+		}
 		if stage <= 0 || stage > 7 {
 			return nil, fmt.Errorf("weapon SlotID %d does not have a valid transcendence skill stage", slotID)
+		}
+		if stage < int(transcendence.Int32()) {
+			return nil, fmt.Errorf("weapon SlotID %d optimizer edit cannot lower transcendence from %d to %d", slotID, transcendence.Int32(), stage)
+		}
+		if stage > int(transcendence.Int32()) {
+			xp, xpOK := save.findUnitExact(weaponXPIDType, unitID)
+			uncap, uncapOK := save.findUnitExact(weaponUncapIDType, unitID)
+			if !xpOK || xp.ValueCnt != 1 || !uncapOK || uncap.ValueCnt != 1 || weaponLevelForXP(xp.Uint32()) < 150 || uncap.Int32() < 6 {
+				return nil, fmt.Errorf("weapon SlotID %d must be Lv150 and fully uncapped before transcendence can be raised", slotID)
+			}
 		}
 		row, ok := resolveLoadoutWeaponTableRow(data, hash.Uint32())
 		if !ok {
@@ -230,7 +247,7 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 				continue
 			}
 			options := rebuildSkillOptionsForSlot(data, catalog, row.RebuildSkillLevelKeys[index], stage)
-			if len(options) <= 1 {
+			if len(options) <= 1 && stage == int(transcendence.Int32()) {
 				return nil, fmt.Errorf("weapon SlotID %d skill slot %d is fixed at the current stage", slotID, index+1)
 			}
 			legal := false
@@ -244,7 +261,7 @@ func prepareLoadoutWeaponEdits(save *SaveData, edits []LoadoutWeaponInlineEdit, 
 				return nil, fmt.Errorf("weapon SlotID %d skill slot %d rejects trait %s outside its verified group", slotID, index+1, hashText(draft))
 			}
 		}
-		prepared = append(prepared, preparedLoadoutWeaponEdit{slotID: slotID, unitID: unitID, skills: draftSkills})
+		prepared = append(prepared, preparedLoadoutWeaponEdit{slotID: slotID, unitID: unitID, transcendence: stage, skills: draftSkills})
 	}
 	return prepared, nil
 }
@@ -351,6 +368,9 @@ func applyPreparedLoadoutInlineResources(save *SaveData, prepared *preparedLoado
 		return nil
 	}
 	for _, edit := range prepared.weapons {
+		if err := save.patchInt(weaponTranscendenceIDType, edit.unitID, edit.transcendence); err != nil {
+			return err
+		}
 		extra, ok := save.findUnitExact(weaponExtraIDType, edit.unitID)
 		if !ok || extra.ValueCnt < 5 {
 			return fmt.Errorf("weapon SlotID %d lost its 2818 vector before apply", edit.slotID)
@@ -391,6 +411,10 @@ func verifyPreparedLoadoutInlineResources(save *SaveData, prepared *preparedLoad
 	}
 	verified := 0
 	for _, edit := range prepared.weapons {
+		transcendence, ok := save.findUnitExact(weaponTranscendenceIDType, edit.unitID)
+		if !ok || transcendence.ValueCnt != 1 || int(transcendence.Int32()) != edit.transcendence {
+			return verified, fmt.Errorf("weapon SlotID %d 2817 readback mismatch", edit.slotID)
+		}
 		extra, ok := save.findUnitExact(weaponExtraIDType, edit.unitID)
 		if !ok || extra.ValueCnt < 5 {
 			return verified, fmt.Errorf("weapon SlotID %d readback is missing 2818", edit.slotID)

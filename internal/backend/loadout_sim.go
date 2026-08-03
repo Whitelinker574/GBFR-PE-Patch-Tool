@@ -246,8 +246,15 @@ func simulateTraits(pairs []struct {
 
 	var out []TraitBonus
 	for _, id := range order {
-		def := tv[id]
 		hash := hashByID[id]
+		def := tv[id]
+		if def == nil {
+			// Some DLC skill_status rows are keyed by their raw hash even though
+			// the catalog has a stable SKILL_/MEMORY_TRAIT_ identity. Keep the
+			// catalog identity for aggregation and UI matching, while reading the
+			// effect curve from the exact-hash row.
+			def = tv[fmt.Sprintf("%08X", hash)]
+		}
 		summonName, isSummonMain := summonNames[hash]
 		if def == nil {
 			if isSummonMain {
@@ -322,8 +329,13 @@ func resolveTraitValueID(hash uint32, hashToID map[uint32]string) string {
 	// DLC hashes can have a save-catalog ID and a newer audited value-table
 	// alias. Resolve by the exact hash join used by simulateTraits so source
 	// attribution and level aggregation always land on the same canonical row.
-	if (id == "" || values[id] == nil) && values[rawID] != nil {
+	if id == "" && values[rawID] != nil {
 		id = rawID
+	}
+	if id != "" && values[id] == nil && values[rawID] != nil {
+		if canonicalRaw := canonicalTraitValueID(rawID); canonicalRaw != rawID {
+			id = canonicalRaw
+		}
 	}
 	// A summon catalog entry with no value row must still survive the join so
 	// the final panel can explain that it was deliberately left out.

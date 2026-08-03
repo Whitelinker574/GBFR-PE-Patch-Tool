@@ -11,6 +11,7 @@ import { characterAssetIcon, summonAssetIcon, traitAssetIcon, weaponAssetIcon } 
 import { compatibleLoadoutShareCode, isOfflineLoadoutShareCode } from '../loadoutShareCode'
 import { createOperationGate } from '../runtimeOperationGate.js'
 import { loadoutShareSessionKey, rememberPublishedLoadoutShare } from '../loadoutShareSession.js'
+import { optimizerEquipmentDraft } from '../loadoutOptimizerApply.js'
 import skillIconFiles from '../loadoutSkillIcons.json'
 import CatalogSelect from './CatalogSelect.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -92,6 +93,8 @@ const summonInlineEnabled = ref(false)
 const summonDrafts = ref({})
 const weaponInlineEnabled = ref(false)
 const weaponSkillDrafts = ref([])
+const optimizerWeaponEdit = ref(null)
+const optimizerSummonEdits = ref([])
 const finalStats = ref(null)
 const combatReference = ref(null)
 const simulationError = ref('')
@@ -378,20 +381,31 @@ function summonDraftChanged(summon, draft) {
 function buildWeaponInlineEdits() {
   const weapon = selectedWeaponContext.value
   const current = (weapon?.skillSlots || []).map(slot => normalizedHash(slot.currentHash))
-  const draft = weaponSkillDrafts.value.map(normalizedHash)
-  if (op.value !== 'write' || !weaponInlineEnabled.value || !weaponInlineAvailable.value
-    || current.length !== 5 || draft.length !== 5 || current.every((hash, index) => hash === draft[index])) return []
+  const staged = optimizerWeaponEdit.value && Number(optimizerWeaponEdit.value.slotId) === Number(weapon?.slotId)
+    ? optimizerWeaponEdit.value
+    : null
+  const draft = (staged?.skillHashes || weaponSkillDrafts.value).map(normalizedHash)
+  const targetTranscendence = Number(staged?.transcendence || weapon?.transcendence || 0)
+  if (op.value !== 'write' || (!staged && (!weaponInlineEnabled.value || !weaponInlineAvailable.value))
+    || current.length !== 5 || draft.length !== 5
+    || (targetTranscendence === Number(weapon?.transcendence || 0) && current.every((hash, index) => hash === draft[index]))) return []
   return [{
     slotId: Number(weapon.slotId),
     expectUnitId: Number(weapon.unitId),
     expectStoredHash: weapon.storedHash,
     expectTranscendence: Number(weapon.transcendence),
+    transcendence: targetTranscendence,
     expectSkillHashes: current,
     skillHashes: draft,
   }]
 }
 function buildSummonInlineEdits() {
   if (op.value !== 'write' || !summonInlineEnabled.value || !summonSelectionValid.value) return []
+  if (optimizerSummonEdits.value.length) {
+    const selected = new Set(selectedSummons.value.map(item => Number(item?.slotId || 0)).filter(Boolean))
+    const staged = optimizerSummonEdits.value.filter(item => selected.has(Number(item.slotId || 0)))
+    if (staged.length === optimizerSummonEdits.value.length) return staged
+  }
   return selectedSummons.value.flatMap((summon) => {
     const draft = summonDrafts.value[summon?.slotId]
     if (!summonDraftChanged(summon, draft)) return []
@@ -423,6 +437,17 @@ watch(() => selectedSummons.value.map(summonSnapshotKey).join('|'), () => {
   const next = {}
   for (const summon of selectedSummons.value) {
     if (summon) next[summon.slotId] = makeSummonDraft(summon)
+  }
+  for (const edit of optimizerSummonEdits.value) {
+    if (!next[edit.slotId]) continue
+    next[edit.slotId] = {
+      ...next[edit.slotId],
+      mainTraitHash: edit.mainTraitHash,
+      mainTraitLevel: Number(edit.mainTraitLevel || 0),
+      subParamHash: edit.subParamHash,
+      subParamLevel: Number(edit.subParamLevel || 0),
+      rank: Number(edit.rank || 0),
+    }
   }
   summonDrafts.value = next
 }, { immediate: true })
@@ -923,6 +948,8 @@ function setMasteryHashes(hashes) {
 function hydrateFromTarget({ preserveImport = false } = {}) {
   importMissing.value = []
   importWarnings.value = []
+  optimizerWeaponEdit.value = null
+  optimizerSummonEdits.value = []
   if (!preserveImport) {
     importApplyPayload.value = null
     importDraft.value = null
@@ -959,10 +986,55 @@ function selectImportTarget(unitId) {
 }
 
 let handledOptimizerPlanRequest = 0
+function stageOptimizerEquipment(result) {
+  const equipment = result?.applyPayload?.equipment || {}
+  const equipmentDraft = optimizerEquipmentDraft(result)
+  let changes = 0
+  const weapon = Array.isArray(equipment.weapon) ? equipment.weapon[0] : null
+  const weaponSlotId = Number(weapon?.weaponSlotId || 0)
+  if (weaponSlotId && (ctx.value?.weapons || []).some(item => Number(item.slotId) === weaponSlotId)) {
+    if (Number(form.value.weaponSlotId || 0) !== weaponSlotId) changes++
+    form.value.weaponSlotId = weaponSlotId
+    const hashes = Array.isArray(weapon?.weaponSkillHashes) ? weapon.weaponSkillHashes.map(String).filter(Boolean) : []
+    importedWeaponSkillSnapshot.value = hashes.length === 5 ? hashes : []
+    const transcendence = Number(weapon?.weaponTranscendence || 0)
+    optimizerWeaponEdit.value = hashes.length === 5
+      ? { slotId: weaponSlotId, skillHashes: hashes, transcendence }
+      : null
+    if (hashes.length === 5) changes++
+  }
+  const summons = Array.isArray(equipment.summons) ? equipment.summons : []
+  const summonIDs = summons.map(item => Number(item?.slotId || 0)).filter(Boolean)
+  if (summonIDs.length === 4 && new Set(summonIDs).size === 4
+    && summonIDs.every(slotId => (statContext.value?.summons || []).some(item => Number(item.slotId) === slotId))) {
+    if (summonIDs.some((slotId, index) => Number(summonSlotIds.value[index] || 0) !== slotId)) changes++
+    summonSlotIds.value = summonIDs
+    writeGlobalSummons.value = true
+    optimizerSummonEdits.value = equipmentDraft.summonEdits
+    if (equipmentDraft.summonEdits.length) {
+      summonInlineEnabled.value = true
+      const next = { ...summonDrafts.value }
+      for (const edit of equipmentDraft.summonEdits) {
+        const summon = (statContext.value?.summons || []).find(item => Number(item.slotId) === Number(edit.slotId))
+        if (!summon) continue
+        next[edit.slotId] = {
+          ...makeSummonDraft(summon),
+          mainTraitHash: edit.mainTraitHash,
+          mainTraitLevel: Number(edit.mainTraitLevel || 0),
+          subParamHash: edit.subParamHash,
+          subParamLevel: Number(edit.subParamLevel || 0),
+          rank: Number(edit.rank || 0),
+        }
+      }
+      summonDrafts.value = next
+      changes += equipmentDraft.summonEdits.length
+    }
+  }
+  return changes
+}
 function stageOptimizerPlan(payload) {
   const picked = payload?.result?.picked || []
   if (!ctx.value) return false
-  if (!picked.length) return false
   const baseSlots = [...factorSlots.value]
   let next = createFactorSlots()
   let cursor = 0
@@ -1006,18 +1078,21 @@ function stageOptimizerPlan(payload) {
     })
     appliedCandidates++
   }
-  if (!appliedCandidates) return false
-  const usedBag = new Set(next.filter(entry => entry?.kind === 'bag').map(entry => Number(entry.slotId)))
-  for (const entry of baseSlots) {
-    if (cursor >= 12) break
-    if (!entry || (entry.kind === 'bag' && usedBag.has(Number(entry.slotId)))) continue
-    next[cursor++] = entry
-    if (entry.kind === 'bag') usedBag.add(Number(entry.slotId))
+  if (appliedCandidates) {
+    const usedBag = new Set(next.filter(entry => entry?.kind === 'bag').map(entry => Number(entry.slotId)))
+    for (const entry of baseSlots) {
+      if (cursor >= 12) break
+      if (!entry || (entry.kind === 'bag' && usedBag.has(Number(entry.slotId)))) continue
+      next[cursor++] = entry
+      if (entry.kind === 'bag') usedBag.add(Number(entry.slotId))
+    }
+    factorSlots.value = next
+    activeFactorIndex.value = 0
+    factorMode.value = next.some(entry => entry?.kind === 'construct') ? 'construct' : 'bag'
   }
-  factorSlots.value = next
-  activeFactorIndex.value = 0
+  const equipmentChanges = stageOptimizerEquipment(payload?.result)
+  if (!appliedCandidates && !equipmentChanges) return false
   op.value = 'write'
-  factorMode.value = next.some(entry => entry?.kind === 'construct') ? 'construct' : 'bag'
   return true
 }
 function optimizerPlanMessage(payload) {
@@ -1026,7 +1101,9 @@ function optimizerPlanMessage(payload) {
   const deployment = payload?.result?.deploymentMode === 'owned-first'
     ? `已优先复用 ${owned} 个背包因子，并为 ${constructed} 个缺口准备独立新因子；`
     : ''
-  return `${deployment}优化方案已载入当前角色配装草稿，请核对因子和目标槽后保存`
+  const equipmentChanges = Number(payload?.result?.equipmentDiffs?.length || 0)
+  const equipment = equipmentChanges ? `已同步载入 ${equipmentChanges} 类装备调整；` : ''
+  return `${deployment}${equipment}优化方案已载入当前角色配装草稿，请核对武器、祝福、召唤石、因子和最终技能等级后保存`
 }
 function applyOptimizerPlan(payload) {
   if (!stageOptimizerPlan(payload)) {
@@ -1251,6 +1328,7 @@ function buildWriteRequest() {
 
 function onWeaponSelectionChanged() {
   importedWeaponSkillSnapshot.value = []
+  optimizerWeaponEdit.value = null
 }
 
 const writeInvalid = computed(() => {
@@ -1783,6 +1861,9 @@ async function apply() {
             <span><b>{{ selectedWeaponContext.name }}</b><small>Lv{{ selectedWeaponContext.level }} · 觉醒 {{ selectedWeaponContext.awakening }} · 超凡 {{ selectedWeaponContext.transcendence }}</small></span>
             <em>HP {{ formatFinalStat(selectedWeaponContext.total?.hp) }} · 攻击 {{ formatFinalStat(selectedWeaponContext.total?.attack) }}</em>
           </div>
+          <p v-if="optimizerWeaponEdit" class="hint optimizer-weapon-stage-note">
+            最优方案将这把武器写为超凡 {{ optimizerWeaponEdit.transcendence }}，并同步完整 5 槽武器技能；保存前仍可返回结果区更换方案。
+          </p>
           <div v-if="selectedWeaponContext" class="equipped-resource-summary" aria-label="当前草稿装备摘要">
             <div><b>武器技能</b><span><i v-for="skill in selectedWeaponContext.skills" :key="`${skill.slot}-${skill.traitHash}`">{{ skill.name || '未收录' }} Lv{{ skill.level }}</i><i v-if="!selectedWeaponContext.skills?.length" class="dim">无</i></span></div>
             <div><b>武器祝福</b><span><i v-if="selectedWeaponContext.wrightstone">{{ selectedWeaponContext.wrightstone.name || '未收录祝福' }}</i><i v-for="trait in selectedWeaponContext.wrightstone?.traits || []" :key="`${trait.index}-${trait.hash}`">{{ trait.name || trait.hash }} Lv{{ trait.level }}</i><i v-if="!selectedWeaponContext.wrightstone" class="dim">无</i></span></div>

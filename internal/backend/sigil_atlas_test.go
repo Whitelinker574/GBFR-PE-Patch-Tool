@@ -13,6 +13,18 @@ func TestSigilAtlasUsesTheWritableCompatibilityCatalog(t *testing.T) {
 	if atlas.DataVersion != "GBFR 2.0.2" || len(atlas.Sigils) == 0 || len(atlas.Traits) == 0 {
 		t.Fatalf("incomplete atlas: version=%q sigils=%d traits=%d", atlas.DataVersion, len(atlas.Sigils), len(atlas.Traits))
 	}
+	if len(atlas.WritableSecondaryTraits) == 0 {
+		t.Fatal("atlas omitted the shared writable secondary pool")
+	}
+	knownTraits := make(map[string]bool, len(atlas.Traits))
+	for _, trait := range atlas.Traits {
+		knownTraits[trait.InternalID] = true
+	}
+	for _, trait := range atlas.WritableSecondaryTraits {
+		if !knownTraits[trait.InternalID] || trait.MaxLevel < 1 {
+			t.Fatalf("atlas exposes invalid shared writable secondary %+v", trait)
+		}
+	}
 	tableExactCount := 0
 	for _, entry := range atlas.Sigils {
 		if entry.TableExact {
@@ -75,6 +87,9 @@ func TestSigilAtlasIndexFitsIPCAndPreservesSecondaryIdentity(t *testing.T) {
 	t.Logf("compact atlas payload: %d bytes", len(data))
 	if len(compact.Sigils) != len(full.Sigils) || len(compact.Traits) != len(full.Traits) {
 		t.Fatalf("compact atlas lost catalog rows: compact=%d/%d full=%d/%d", len(compact.Sigils), len(compact.Traits), len(full.Sigils), len(full.Traits))
+	}
+	if len(compact.WritableSecondaryTraits) != len(full.WritableSecondaryTraits) {
+		t.Fatalf("compact atlas lost shared writable traits: compact=%d full=%d", len(compact.WritableSecondaryTraits), len(full.WritableSecondaryTraits))
 	}
 	for index, entry := range compact.Sigils {
 		original := full.Sigils[index]

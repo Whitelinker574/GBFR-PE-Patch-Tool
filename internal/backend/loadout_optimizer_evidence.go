@@ -242,7 +242,7 @@ func optimizerSummonPanelDelta(summon LoadoutSummon) (map[string]float64, bool) 
 	return result, recognized
 }
 
-func optimizerWeaponSkillVariants(weapon *LoadoutWeaponContext, traitIDs map[uint32]string) []LoadoutOptimizerEquipmentVariant {
+func optimizerWeaponSkillVariants(weapon *LoadoutWeaponContext, traitIDs map[uint32]string, growth LoadoutPermanentGrowth) []LoadoutOptimizerEquipmentVariant {
 	if weapon == nil || len(weapon.SkillSlots) == 0 {
 		return nil
 	}
@@ -255,47 +255,87 @@ func optimizerWeaponSkillVariants(weapon *LoadoutWeaponContext, traitIDs map[uin
 	for _, skill := range weapon.Skills {
 		effectiveLevels[strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(skill.TraitHash), "0x"))] = skill.Level
 	}
-	groups := make([][]choice, 0, len(weapon.SkillSlots))
-	for _, slot := range weapon.SkillSlots {
-		options := make([]choice, 0, len(slot.Options)+1)
-		seen := map[string]bool{}
-		for _, option := range slot.Options {
-			hash := strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(option.Hash), "0x"))
-			if hash == "" || seen[hash] {
-				continue
-			}
-			seen[hash] = true
-			level := option.Level
-			if effectiveLevels[hash] > 0 {
-				level = effectiveLevels[hash]
-			}
-			options = append(options, choice{hash: hash, name: option.Name, level: level})
-		}
-		currentHash := strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(slot.CurrentHash), "0x"))
-		if currentHash != "" && !seen[currentHash] {
-			options = append(options, choice{hash: currentHash, name: slot.CurrentName, level: slot.CurrentLevel})
-		}
-		if len(options) == 0 {
-			return nil
-		}
-		groups = append(groups, options)
+	data, err := loadLoadoutWeaponStats()
+	if err != nil {
+		return nil
 	}
-	variants := make([]LoadoutOptimizerEquipmentVariant, 0, 96)
-	var visit func(int, []choice)
-	visit = func(index int, picked []choice) {
-		if len(variants) >= 256 {
-			return
+	catalog, err := LoadCatalog()
+	if err != nil {
+		return nil
+	}
+	storedHash, err := ParseHashHex(weapon.StoredHash)
+	if err != nil {
+		return nil
+	}
+	row, ok := resolveLoadoutWeaponTableRow(data, storedHash)
+	if !ok {
+		return nil
+	}
+	stages := []int{weapon.Transcendence}
+	if weapon.Transcendence < 7 && weapon.Level >= 150 && weapon.Uncap >= 6 {
+		stages = append(stages, 7)
+	}
+	const variantLimit = 256
+	variants := make([]LoadoutOptimizerEquipmentVariant, 0, variantLimit)
+	for _, stage := range stages {
+		groups := make([][]choice, 0, 5)
+		for index := 0; index < 5; index++ {
+			slotOptions := rebuildSkillOptionsForSlot(data, catalog, row.RebuildSkillLevelKeys[index], stage)
+			options := make([]choice, 0, len(slotOptions)+1)
+			seen := map[string]bool{}
+			for _, option := range slotOptions {
+				hash := strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(option.Hash), "0x"))
+				if hash == "" || seen[hash] {
+					continue
+				}
+				seen[hash] = true
+				level := option.Level
+				if hash == "79027FC8" && growth.MasterSystemAvailable && growth.MasterProgressIndex > 0 {
+					level = min(growth.MasterProgressIndex, 55)
+				}
+				if stage == weapon.Transcendence && effectiveLevels[hash] > 0 {
+					level = effectiveLevels[hash]
+				}
+				options = append(options, choice{hash: hash, name: option.Name, level: level})
+			}
+			if stage == weapon.Transcendence && index < len(weapon.SkillSlots) {
+				slot := weapon.SkillSlots[index]
+				currentHash := strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(slot.CurrentHash), "0x"))
+				if currentHash != "" && !seen[currentHash] {
+					options = append(options, choice{hash: currentHash, name: slot.CurrentName, level: slot.CurrentLevel})
+				}
+			}
+			if len(options) == 0 {
+				groups = nil
+				break
+			}
+			groups = append(groups, options)
 		}
-		if index == len(groups) {
+		if len(groups) != 5 {
+			continue
+		}
+		for index := range groups {
+			sort.Slice(groups[index], func(i, j int) bool {
+				return groups[index][i].hash < groups[index][j].hash ||
+					(groups[index][i].hash == groups[index][j].hash && groups[index][i].name < groups[index][j].name)
+			})
+		}
+		stageBudget := variantLimit / len(stages)
+		stageStart := len(variants)
+		seenVariants := map[string]bool{}
+		appendVariant := func(picked []choice) bool {
+			if len(variants)-stageStart >= stageBudget || len(variants) >= variantLimit {
+				return false
+			}
 			hashes := make([]string, 0, len(picked))
 			names := make([]string, 0, len(picked))
 			variant := LoadoutOptimizerEquipmentVariant{ApplyPayload: map[string]any{}, UnresolvedAtoms: []string{}}
 			for _, item := range picked {
 				hashes = append(hashes, item.hash)
 				names = append(names, item.name)
-				hash, err := ParseHashHex(item.hash)
+				hash, parseErr := ParseHashHex(item.hash)
 				traitID := ""
-				if err == nil {
+				if parseErr == nil {
 					traitID = resolveTraitValueID(hash, traitIDs)
 				}
 				if traitID == "" {
@@ -304,17 +344,71 @@ func optimizerWeaponSkillVariants(weapon *LoadoutWeaponContext, traitIDs map[uin
 					variant.FixedBonuses = append(variant.FixedBonuses, optimizerFixedBonus(traitID, item.name, item.level))
 				}
 			}
-			variant.ID = strings.Join(hashes, ":")
-			variant.Label = strings.Join(names, " / ")
-			variant.ApplyPayload = map[string]any{"weaponSlotId": weapon.SlotID, "weaponSkillHashes": hashes}
+			variant.ID = fmt.Sprintf("stage:%d|%s", stage, strings.Join(hashes, ":"))
+			if seenVariants[variant.ID] {
+				return true
+			}
+			seenVariants[variant.ID] = true
+			variant.Label = fmt.Sprintf("超凡 %d · %s", stage, strings.Join(names, " / "))
+			variant.ApplyPayload = map[string]any{"weaponSlotId": weapon.SlotID, "weaponTranscendence": stage, "weaponSkillHashes": hashes}
 			variants = append(variants, variant)
-			return
+			return true
 		}
-		for _, option := range groups[index] {
-			visit(index+1, append(picked, option))
+		product := 1
+		for _, group := range groups {
+			if product > stageBudget/len(group) {
+				product = stageBudget + 1
+				break
+			}
+			product *= len(group)
+		}
+		if product <= stageBudget {
+			var visit func(int, []choice)
+			visit = func(index int, picked []choice) {
+				if index == len(groups) {
+					appendVariant(picked)
+					return
+				}
+				for _, option := range groups[index] {
+					visit(index+1, append(picked, option))
+				}
+			}
+			visit(0, nil)
+			continue
+		}
+
+		// Large five-slot products are represented within a fixed IPC budget.
+		// First cover every legal option in every slot, then spend the remaining
+		// budget on deterministic pairwise combinations. This prevents an early
+		// DFS prefix from hiding later-stage skills such as 因子强化 Lv2 or a
+		// weapon-specific damage-cap trait from the target catalog.
+		baseline := make([]choice, len(groups))
+		for index := range groups {
+			baseline[index] = groups[index][0]
+		}
+		appendVariant(baseline)
+		for groupIndex, group := range groups {
+			for optionIndex := 1; optionIndex < len(group); optionIndex++ {
+				picked := append([]choice(nil), baseline...)
+				picked[groupIndex] = group[optionIndex]
+				if !appendVariant(picked) {
+					break
+				}
+			}
+		}
+		for left := 0; left < len(groups) && len(variants)-stageStart < stageBudget; left++ {
+			for right := left + 1; right < len(groups) && len(variants)-stageStart < stageBudget; right++ {
+				for leftOption := 1; leftOption < len(groups[left]) && len(variants)-stageStart < stageBudget; leftOption++ {
+					for rightOption := 1; rightOption < len(groups[right]) && len(variants)-stageStart < stageBudget; rightOption++ {
+						picked := append([]choice(nil), baseline...)
+						picked[left] = groups[left][leftOption]
+						picked[right] = groups[right][rightOption]
+						appendVariant(picked)
+					}
+				}
+			}
 		}
 	}
-	visit(0, nil)
 	sort.Slice(variants, func(i, j int) bool { return variants[i].ID < variants[j].ID })
 	return variants
 }
@@ -429,7 +523,7 @@ func (a *App) LoadoutOptimizerInventorySnapshot(path, charaHex string, loadoutUn
 			BaseStatDeltas: map[string]float64{"attack": weapon.Total.ATK, "hp": weapon.Total.HP, "stun": weapon.Total.Stun, "critRate": weapon.Total.CritRate},
 			ApplyPayload:   map[string]any{"weaponSlotId": pick.SlotID}, UnresolvedAtoms: []string{},
 		}
-		weaponOption.Variants = optimizerWeaponSkillVariants(weapon, traitIDs)
+		weaponOption.Variants = optimizerWeaponSkillVariants(weapon, traitIDs, stats.PermanentGrowth)
 		if !weapon.FormulaVerified {
 			weaponOption.UnresolvedAtoms = append(weaponOption.UnresolvedAtoms, "weapon-formula-unverified")
 		}
@@ -468,7 +562,14 @@ func (a *App) LoadoutOptimizerInventorySnapshot(path, charaHex string, loadoutUn
 		panelDelta, subParamResolved := optimizerSummonPanelDelta(summon)
 		option := LoadoutOptimizerEquipmentOption{
 			ID: fmt.Sprintf("summon:%d", summon.SlotID), Label: summon.Name,
-			BaseStatDeltas: panelDelta, ApplyPayload: map[string]any{"slotId": summon.SlotID}, UnresolvedAtoms: []string{},
+			BaseStatDeltas: panelDelta, ApplyPayload: map[string]any{
+				"slotId": summon.SlotID, "editableMainTrait": true,
+				"expectUnitId": summon.UnitID, "expectTypeHash": summon.TypeHash,
+				"expectMainTraitHash": summon.MainTraitHash, "expectMainTraitLevel": summon.MainTraitLevel,
+				"expectSubParamHash": summon.SubParamHash, "expectSubParamLevel": summon.SubParamLevel,
+				"expectRank":   summon.Rank,
+				"subParamHash": summon.SubParamHash, "subParamLevel": summon.SubParamLevel, "rank": summon.Rank,
+			}, UnresolvedAtoms: []string{},
 		}
 		if !subParamResolved {
 			option.UnresolvedAtoms = append(option.UnresolvedAtoms, "summon-sub-param:"+summon.SubParamHash)

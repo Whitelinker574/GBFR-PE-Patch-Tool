@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v2.0.12 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.12"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.12')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.12')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.12')
+test('release metadata uses v2.0.13 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.13"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.13')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.13')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.13')
 })
 
 test('application and evidence content links only to this repository', () => {
@@ -78,6 +78,11 @@ test('packaged metadata no longer identifies another maintainer', () => {
   assert.doesNotMatch(windowsInfo, /"0000"/)
 })
 
+test('clean Wails builds install the dev-time compiler and asset generator dependencies', () => {
+  const metadata = JSON.parse(readRoot('wails.json'))
+  assert.equal(metadata['frontend:install'], 'npm ci --include=dev --include=optional')
+})
+
 test('formal release identifies the packaged application without test-build branding', () => {
   const metadata = JSON.parse(readRoot('wails.json'))
   const shell = readRoot('frontend/src/components/PatchTool.vue')
@@ -85,7 +90,7 @@ test('formal release identifies the packaged application without test-build bran
   assert.equal(metadata.name, '碧蓝幻想：Relink 空域工坊')
   assert.equal(metadata.info.productName, '碧蓝幻想：Relink 空域工坊')
   assert.doesNotMatch(shell, /TEST BUILD|测试版/)
-  assert.match(shell, /v2\.0\.12/)
+  assert.match(shell, /v2\.0\.13/)
   assert.match(run, /Title:\s+"碧蓝幻想：Relink 空域工坊"/)
 })
 

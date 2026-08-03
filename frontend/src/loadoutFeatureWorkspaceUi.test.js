@@ -75,18 +75,21 @@ test('catalog-heavy atlas stays mounted while contextual tools stay with their l
 
 test('optimizer apply enters the requested preset and stages a draft before save', () => {
   assert.match(optimizer, /emit\('apply'/)
-  assert.match(optimizer, /回填到当前配装草稿/)
+  assert.match(optimizer, /回填完整方案到草稿/)
   assert.match(optimizer, /applyResult\(result\)/)
-  assert.match(optimizer, /if \(!result\?\.picked\?\.length\) return/)
+  assert.match(optimizer, /!result\?\.picked\?\.length && !result\?\.equipment\?\.length/)
   assert.match(viewer, /:preferred-unit-id="editorTargetUnitId"/)
+  assert.match(editor, /function stageOptimizerEquipment\(result\)/)
   assert.match(editor, /function stageOptimizerPlan\(payload\)/)
   assert.match(editor, /function applyOptimizerPlan\(payload\)/)
-  assert.doesNotMatch(editor, /optimizerEquipmentDraft\(payload\?\.result\)/)
-  assert.match(editor, /if \(!picked\.length\) return false/)
-  assert.match(editor, /if \(!appliedCandidates\) return false/)
-  assert.doesNotMatch(editor, /return equipmentApplied/)
+  assert.match(editor, /weaponSlotId/)
+  assert.match(editor, /optimizerWeaponEdit/)
+  assert.match(editor, /weaponTranscendence/)
+  assert.match(editor, /transcendence: targetTranscendence/)
+  assert.match(editor, /writeGlobalSummons\.value = true/)
+  assert.match(editor, /if \(!appliedCandidates && !equipmentChanges\) return false/)
   assert.match(editor, /factorWorkspaceMode\.value = 'manual'/)
-  assert.match(editor, /优化方案已载入当前角色配装草稿，请核对因子和目标槽后保存/)
+  assert.match(editor, /请核对武器、祝福、召唤石、因子和最终技能等级后保存/)
 })
 
 test('smart loadout supports exact skill levels and owned-first gap construction', () => {
@@ -206,7 +209,8 @@ test('optimizer distinguishes formula-ranked directions from exact custom trait 
   assert.match(optimizer, /按目标生成方案/)
   assert.match(optimizer, /targetFulfilment/)
   assert.match(optimizer, /高级战斗条件/)
-  assert.match(optimizer, /保持当前武器、祝福、召唤石与专精不变，只重新安排 12 个因子槽/)
+  assert.match(optimizer, /武器技能、武器祝福、召唤石与因子会一起凑目标/)
+  assert.match(optimizer, /专精和永久成长保持不变/)
   assert.match(optimizer, /profile\.value !== 'custom'/)
 })
 

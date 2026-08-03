@@ -12,7 +12,7 @@ test('optimizer worker messages strip Vue proxies before postMessage', () => {
     },
   })
 
-  const message = createOptimizerWorkerMessage(7, reactivePayload, true, { solveFixedRoute: true })
+  const message = createOptimizerWorkerMessage(7, reactivePayload, true, { solveFixedRoute: true, solveEquipmentAware: true })
 
   assert.doesNotThrow(() => structuredClone(message))
   assert.deepEqual(message, {
@@ -26,5 +26,7 @@ test('optimizer worker messages strip Vue proxies before postMessage', () => {
     },
     solveAllDomains: true,
     solveFixedRoute: true,
+    solveMixedDomains: false,
+    solveEquipmentAware: true,
   })
 })

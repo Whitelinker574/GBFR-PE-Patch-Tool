@@ -6,7 +6,7 @@ import { traitAssetIcon } from '../gameAssetIcons'
 import { language } from '../i18n.js'
 import { characterBuildRoutes, LOADOUT_CHARACTER_ROUTE_VERSION, routeTraitTargets } from '../loadoutCharacterRoutes.js'
 import { graduationRouteBranches, LOADOUT_ROUTE_BRANCH_VERSION } from '../loadoutRouteBranches.js'
-import { buildCatalogCandidates, buildInventoryCandidates, buildTableExactCandidates, synthesizeOwnedFirstSuggestion } from '../loadoutOptimizer'
+import { buildCatalogCandidates, buildInventoryCandidates, buildOptimizerTargetCatalog, buildTableExactCandidates, synthesizeOwnedFirstSuggestion } from '../loadoutOptimizer'
 import { characterLoadoutProfile, LOADOUT_ACTION_TYPES, LOADOUT_CHARACTER_PROFILE_VERSION, LOADOUT_DIRECTIONS, LOADOUT_SCENARIO_VERSION } from '../loadoutScenarioConfig.js'
 import { sigilAtlasStore } from '../sigilAtlasStore'
 import { createOptimizerWorkerMessage } from '../utils/optimizerWorkerPayload.js'
@@ -37,6 +37,7 @@ const selectedRouteId = ref('')
 const selectedRouteBranchId = ref('graduation')
 const selected = ref([])
 const targetLevels = ref({})
+const targetLevelLimit = 999
 const customSelected = ref([])
 const customTargetLevels = ref({})
 const pendingTraitId = ref('')
@@ -111,6 +112,7 @@ const ownerAllowedSigils = computed(() => (atlas.value.sigils || []).filter(entr
   const owner = String(ownerCode.value || '').trim().toUpperCase()
   return !!owner && (entry.allowedOwnerCodes || []).some(item => String(item || '').trim().toUpperCase() === owner)
 }))
+const targetTraitCatalog = computed(() => buildOptimizerTargetCatalog(atlas.value, inventorySnapshot.value))
 const reachableTraitIds = computed(() => {
   const ids = new Set()
   for (const entry of ownerAllowedSigils.value) {
@@ -121,23 +123,29 @@ const reachableTraitIds = computed(() => {
     if (item?.primaryTraitId) ids.add(item.primaryTraitId)
     if (item?.secondaryTraitId) ids.add(item.secondaryTraitId)
   }
+  for (const stage of inventorySnapshot.value?.stages || []) for (const option of stage.options || []) {
+    for (const bonus of option.fixedBonuses || []) if (bonus?.traitId) ids.add(bonus.traitId)
+    for (const variant of option.variants || []) for (const bonus of variant.fixedBonuses || []) {
+      if (bonus?.traitId) ids.add(bonus.traitId)
+    }
+  }
   return ids
 })
 const conditionalTraitIds = computed(() => [...new Set(ownerAllowedSigils.value
   .filter(entry => entry?.category === 'character_sigil')
   .map(entry => entry.primaryTraitId)
   .filter(Boolean))])
-const availableTraits = computed(() => (atlas.value.traits || []).filter(trait => reachableTraitIds.value.has(trait.internalId)).map(trait => ({
+const availableTraits = computed(() => targetTraitCatalog.value.filter(trait => reachableTraitIds.value.has(trait.internalId)).map(trait => ({
   ...trait,
   displayName: trait.displayName || trait.internalId,
-  levelHint: `Lv${trait.maxLevel || 65}`,
+  levelHint: `${(trait.sources || []).some(source => source !== 'sigil') ? tx('装备来源', 'Equipment Source') : tx('因子来源', 'Sigil Source')} · ${tx('单来源最高', 'Max per source')} Lv${trait.sourceMaxLevel || trait.maxLevel || '?'}`,
 })))
-const pendingTrait = computed(() => atlas.value.traits.find(item => item.internalId === pendingTraitId.value) || null)
+const pendingTrait = computed(() => targetTraitCatalog.value.find(item => item.internalId === pendingTraitId.value) || null)
 const chosen = computed(() => selected.value.map((id, index) => {
-  const trait = atlas.value.traits.find(item => item.internalId === id)
+  const trait = targetTraitCatalog.value.find(item => item.internalId === id)
   if (!trait) return null
-  const naturalMax = Math.max(1, Number(trait.maxLevel || 65))
-  const requested = Math.max(1, Math.min(naturalMax, Number(targetLevels.value[id] || naturalMax)))
+  const naturalMax = Math.max(1, Number(trait.sourceMaxLevel || trait.maxLevel || 15))
+  const requested = Math.max(1, Math.min(targetLevelLimit, Number(targetLevels.value[id] || naturalMax)))
   return { ...trait, priority: index + 1, weight: 1, cap: requested, targetLevel: requested }
 }).filter(Boolean))
 const coverageInputsValid = computed(() => {
@@ -246,12 +254,11 @@ function routeFinalCheckState(item) {
   }
 }
 function onPendingTraitPick(trait) {
-  const max = Math.max(1, Number(trait?.maxLevel || 65))
+  const max = Math.max(1, Number(trait?.sourceMaxLevel || trait?.maxLevel || 15))
   pendingTraitLevel.value = Math.min(15, max)
 }
 function clampPendingTraitLevel() {
-  const max = Math.max(1, Number(pendingTrait.value?.maxLevel || 65))
-  pendingTraitLevel.value = Math.max(1, Math.min(max, Number(pendingTraitLevel.value) || 1))
+  pendingTraitLevel.value = Math.max(1, Math.min(targetLevelLimit, Number(pendingTraitLevel.value) || 1))
 }
 function addPendingTrait() {
   if (!pendingTraitId.value) return
@@ -277,9 +284,9 @@ function chooseTrait(id) {
     delete next[id]
     targetLevels.value = next
   } else {
-    const trait = atlas.value.traits.find(item => item.internalId === id)
+    const trait = targetTraitCatalog.value.find(item => item.internalId === id)
     selected.value = [...selected.value, id]
-    targetLevels.value = { ...targetLevels.value, [id]: Math.max(1, Number(trait?.maxLevel || 15)) }
+    targetLevels.value = { ...targetLevels.value, [id]: Math.max(1, Number(trait?.sourceMaxLevel || trait?.maxLevel || 15)) }
   }
   rememberCustomTargets()
   solved.value = false
@@ -327,7 +334,10 @@ function resultGroup(result) {
   return resultConstructionCount(result) > 0 ? 1 : 0
 }
 function resultSignature(result) {
-  return (result?.picked || []).map(item => `${item?.source || ''}:${item?.slotId || 0}:${item?.id || item?.sigilId || item?.name || ''}`).join('|')
+  return [
+    ...(result?.equipment || []).map(item => `equipment:${item?.stage || ''}:${item?.id || ''}:${item?.variantId || ''}`),
+    ...(result?.picked || []).map(item => `${item?.source || ''}:${item?.slotId || 0}:${item?.id || item?.sigilId || item?.name || ''}`),
+  ].join('|')
 }
 function combatResultPriority(result) {
   return ({ inventory: 0, 'owned-first': 1, catalog: 2, table: 3 })[String(result?.domain || '')] ?? 9
@@ -444,9 +454,7 @@ function previewIcon(row) {
   return traitAssetIcon({ internalId: trait.internalId, name: trait.name })
 }
 function setTargetLevel(id, value) {
-  const trait = atlas.value.traits.find(item => item.internalId === id)
-  const max = Math.max(1, Number(trait?.maxLevel || 65))
-  targetLevels.value = { ...targetLevels.value, [id]: Math.max(1, Math.min(max, Number(value) || 1)) }
+  targetLevels.value = { ...targetLevels.value, [id]: Math.max(1, Math.min(targetLevelLimit, Number(value) || 1)) }
   rememberCustomTargets()
   cancelSolve()
   solved.value = false
@@ -500,23 +508,23 @@ function applyPendingTarget(target) {
   const ids = [...new Set([
     ...(target?.traitIds || []),
     ...requestedTargets.map(item => item?.traitId),
-  ])].filter(id => atlas.value.traits.some(item => item.internalId === id))
+  ])].filter(id => targetTraitCatalog.value.some(item => item.internalId === id))
   if (!ids.length) return
   cancelSolve()
   profile.value = 'custom'
   selected.value = [...new Set(ids)]
   targetLevels.value = Object.fromEntries(selected.value.map(id => {
-    const trait = atlas.value.traits.find(item => item.internalId === id)
+    const trait = targetTraitCatalog.value.find(item => item.internalId === id)
     const requested = Number(target?.targetLevels?.[id] || requestedTargets.find(item => item?.traitId === id)?.targetLevel || 0)
-    const max = Math.max(1, Number(trait?.maxLevel || 15))
-    return [id, Math.max(1, Math.min(max, requested || max))]
+    const initial = Math.max(1, Number(trait?.sourceMaxLevel || trait?.maxLevel || 15))
+    return [id, Math.max(1, Math.min(targetLevelLimit, requested || initial))]
   }))
   customSelected.value = selected.value.slice()
   customTargetLevels.value = { ...targetLevels.value }
   solved.value = false
 }
 function applyResult(result) {
-  if (!result?.picked?.length) return
+  if (!result?.picked?.length && !result?.equipment?.length) return
   emit('apply', {
     result: JSON.parse(JSON.stringify(result)),
     domain: result.domain || domain.value,
@@ -537,12 +545,14 @@ function targetFulfilment(result) {
     const state = blocked ? 'waiting' : met ? 'met' : 'blocked'
     if (!met) blocked = true
     return {
+      traitId: item.internalId,
       name: item.displayName,
       actual,
       target: item.targetLevel,
       missing: Math.max(0, item.targetLevel - actual),
       met,
       state,
+      sources: (result?.targetSources || []).find(source => source.traitId === item.internalId || source.name === item.displayName)?.sources || [],
     }
   })
   const firstGap = rows.findIndex(item => !item.met)
@@ -554,6 +564,20 @@ function targetFulfilment(result) {
     firstUnmet: rows[completedPrefix] || null,
     waitingCount: rows.slice(completedPrefix + 1).length,
   }
+}
+function equipmentStageLabel(stage) {
+  return ({ weapon: tx('武器', 'Weapon'), wrightstone: tx('武器祝福', 'Wrightstone'), summons: tx('召唤石', 'Summons'), mastery: tx('专精', 'Mastery'), base: tx('角色基础', 'Character Base'), sigils: tx('因子', 'Sigils') })[stage] || stage
+}
+function targetSourceText(row) {
+  return (row?.sources || []).map(source => `${equipmentStageLabel(source.stage)} ${source.label ? `· ${source.label} ` : ''}+${source.level}`).join(' / ')
+}
+function changedEquipment(result) {
+  const changed = new Set((result?.equipmentDiffs || []).map(item => item.stage))
+  return (result?.equipment || []).filter(item => changed.has(item.stage)).map(item => ({
+    stage: item.stage,
+    stageLabel: equipmentStageLabel(item.stage),
+    label: item.variantLabel ? `${item.label || item.id}` : (item.label || item.id),
+  }))
 }
 function routeFulfilment(result) {
   if (!selectedRoute.value) return { rows: [], complete: true }
@@ -574,7 +598,7 @@ function routeFulfilment(result) {
 }
 function localizedResultTotals(result) {
   return (result?.totals || []).map(item => {
-    const catalogTrait = atlas.value.traits.find(trait => trait.internalId === item?.traitId)
+    const catalogTrait = targetTraitCatalog.value.find(trait => trait.internalId === item?.traitId)
     const displayName = String(catalogTrait?.displayName || item?.name || '').trim()
     if (!displayName || /^(?:MEMORY|SKILL|TRAIT|SIGIL|ABILITY|WEAPON|SUMMON)_[A-Z0-9_]+$/i.test(displayName)) return null
     return { ...item, displayName }
@@ -792,15 +816,16 @@ async function solve() {
   solving.value = true
   const generation = ++solveGeneration
   try {
-    if (combatMode.value || domain.value === 'inventory' || domain.value === 'all') await loadInventory()
+    if (props.savePath && props.charaHash) await loadInventory()
     if (generation !== solveGeneration) return
     const routeMode = optimizerIntent.value === 'auto' && !!selectedRoute.value
     const targets = routeMode
       ? selectedRouteTargets.value
       : combatMode.value
         ? combatCandidateTargets()
-      : chosen.value.map(item => ({ name: item.displayName, weight: item.weight, cap: item.targetLevel }))
+      : chosen.value.map(item => ({ traitId: item.internalId, name: item.displayName, weight: item.weight, cap: item.targetLevel }))
     const inventoryCandidates = buildInventoryCandidates(inventory.value, targets, atlas.value)
+    const inventoryFillers = buildInventoryCandidates(inventory.value, targets, atlas.value, { includeUnmatched: true })
     const catalogCandidates = buildCatalogCandidates(atlas.value, targets, ownerCode.value)
     const tableCandidates = buildTableExactCandidates(atlas.value, targets, ownerCode.value, catalogCandidates)
     const equippedSlotIds = new Set((props.baseLoadout?.sigils || []).map(item => Number(item?.slotId || 0)).filter(Boolean))
@@ -808,6 +833,9 @@ async function solve() {
       .filter(item => equippedSlotIds.has(Number(item?.slotId || 0)))
       .map(item => ({ ...item, retained: true }))
     const retainedBySlot = new Map(retainedCandidates.map(item => [Number(item.slotId), item]))
+    const fillerCandidates = inventoryFillers.map(item => equippedSlotIds.has(Number(item?.slotId || 0))
+      ? { ...item, retained: true }
+      : item)
     const baseSigils = (props.baseLoadout?.sigils || []).map(item => retainedBySlot.get(Number(item?.slotId || 0)) || {
       id: item.hash || item.name,
       slotId: Number(item.slotId || 0),
@@ -843,6 +871,7 @@ async function solve() {
       domain: domain.value,
       scenarioVersion: LOADOUT_SCENARIO_VERSION,
       baseSigils,
+      fillerSigils: fillerCandidates,
       characterRouteId: selectedRoute.value?.id || '',
       characterRouteVersion: selectedRoute.value ? LOADOUT_CHARACTER_ROUTE_VERSION : '',
       characterRouteBranchId: selectedRouteBranch.value?.branchId || '',
@@ -852,7 +881,7 @@ async function solve() {
     }
     const scoringScenario = combatMode.value && inventorySnapshot.value
       ? { ...scenario, ...inventoryCombatScenario(), targets, domain: domain.value }
-      : scenario
+      : { ...scenario, mode: 'target', targets }
     resolvedScenario = scoringScenario
     const runWorker = (payload, modes = {}) => new Promise((resolve, reject) => {
       const worker = new Worker(new URL('../loadoutOptimizer.worker.js', import.meta.url), { type: 'module' })
@@ -877,6 +906,35 @@ async function solve() {
           slotCount: 12,
           scenario: { ...scoringScenario, domain: 'owned-first' },
         }, { solveFixedRoute: true }).then(resolve, reject)
+        return
+      }
+      if (!combatMode.value && inventorySnapshot.value) {
+        const targetDomain = domain.value === 'all' ? 'owned-first' : domain.value
+        const targetCandidates = domain.value === 'inventory'
+          ? inventoryCandidates
+          : domain.value === 'table'
+            ? tableSolveCandidates
+            : domain.value === 'catalog'
+              ? catalogSolveCandidates
+              : includeRetained([...inventoryCandidates, ...catalogCandidates])
+        const snapshot = JSON.parse(JSON.stringify(inventorySnapshot.value))
+        snapshot.domain = targetDomain
+        // Keep mastery fixed to this preset. Target-skill planning may change
+        // the weapon, its bound wrightstone, summons and the twelve sigil
+        // slots, but must not silently rewrite permanent/progression choices.
+        const masteryBase = new Set((Array.isArray(snapshot.baseSelection?.mastery)
+          ? snapshot.baseSelection.mastery
+          : [snapshot.baseSelection?.mastery]).filter(Boolean).map(String))
+        snapshot.stages = (snapshot.stages || []).map(stage => stage.key === 'mastery'
+          ? { ...stage, options: (stage.options || []).filter(option => masteryBase.has(String(option.id))) }
+          : stage).filter(stage => stage.key !== 'mastery' || stage.options.length)
+        runWorker({
+          snapshot,
+          sigilCandidates: targetCandidates,
+          sigilSlotCount: 12,
+          limit: 10,
+          scenario: { ...scoringScenario, mode: 'target', targets, domain: targetDomain },
+        }, { solveEquipmentAware: true }).then(resolve, reject)
         return
       }
       if (domain.value !== 'all') {
@@ -976,7 +1034,7 @@ onBeforeUnmount(cancelSolve)
         <div v-if="optimizerIntent === 'skills'" class="skill-target-workflow">
           <div class="skill-target-entry" aria-label="添加技能目标">
             <label class="target-skill-field"><span>{{ tx('目标技能', 'Target Skill') }}</span><CatalogSelect v-model="pendingTraitId" :options="availableTraits" :icon-resolver="icon" detail-key="levelHint" :placeholder="tx('搜索并选择技能', 'Search and choose a skill')" :search-placeholder="tx('输入技能名称、拼音或 ID', 'Enter a skill name or ID')" @pick="onPendingTraitPick" /></label>
-            <label class="target-level-field"><span>{{ tx('目标等级', 'Target Level') }}</span><input v-model.number="pendingTraitLevel" class="ui-input" type="number" min="1" :max="pendingTrait?.maxLevel || 65" @change="clampPendingTraitLevel" /></label>
+            <label class="target-level-field"><span>{{ tx('目标等级', 'Target Level') }}</span><input v-model.number="pendingTraitLevel" class="ui-input" type="number" min="1" :max="targetLevelLimit" @change="clampPendingTraitLevel" /></label>
             <button type="button" class="add-target-button ui-btn is-primary" :disabled="!pendingTraitId" @click="addPendingTrait">{{ selected.includes(pendingTraitId) ? tx('更新目标', 'Update Target') : tx('加入目标', 'Add Target') }}</button>
           </div>
           <div class="chosen-traits">
@@ -986,7 +1044,7 @@ onBeforeUnmount(cancelSolve)
                 <img v-if="icon(trait)" :src="icon(trait)" alt="" />
                 <b>#{{ index + 1 }}</b>
                 <span>{{ trait.displayName }}</span>
-                <label><small>Lv</small><input :value="trait.targetLevel" class="ui-input" type="number" min="1" :max="trait.maxLevel || 65" @change="setTargetLevel(trait.internalId, $event.target.value)" /></label>
+                <label><small>Lv</small><input :value="trait.targetLevel" class="ui-input" type="number" min="1" :max="targetLevelLimit" @change="setTargetLevel(trait.internalId, $event.target.value)" /></label>
                 <span class="chosen-order-actions"><button type="button" :disabled="index === 0" :aria-label="tx(`提高${trait.displayName}的优先级`, `Raise priority for ${trait.displayName}`)" @click="moveTrait(index, -1)">↑</button><button type="button" :disabled="index === chosen.length - 1" :aria-label="tx(`降低${trait.displayName}的优先级`, `Lower priority for ${trait.displayName}`)" @click="moveTrait(index, 1)">↓</button></span>
                 <button type="button" :aria-label="tx(`移除${trait.displayName}`, `Remove ${trait.displayName}`)" @click="chooseTrait(trait.internalId)">×</button>
               </article>
@@ -1116,10 +1174,10 @@ onBeforeUnmount(cancelSolve)
         <header class="optimizer-output-heading"><div><strong>{{ tx('方案结果', 'Plan Results') }}</strong><span>{{ tx('计算结果会在这里显示；应用后回填当前草稿并切回手动配装，不会直接写入存档。', 'Results appear here. Applying fills the current draft and returns to manual mode; it does not write the save.') }}</span></div></header>
         <p v-if="solving" class="optimizer-progress" role="status">{{ tx('正在组合 12 个因子槽，请稍候…', 'Building 12 sigil slots…') }}</p>
         <p v-else-if="solveError" class="optimizer-error" role="alert">{{ solveError }}</p>
-          <div v-if="solved && primaryResult" class="result-scope ui-notice is-info"><strong>{{ selectedRouteBranch ? tx(`只显示“${selectedRouteBranch.nameZh}”的最佳可达方案`, `Showing the best reachable plan for “${selectedRouteBranch.nameEn}”`) : combatMode ? tx('先显示无需制造的纯背包方案，再给出缺口制造与游戏表方案作对照', 'Owned-only plans come first, followed by created-gap and game-table comparisons') : tx('结果先按是否满足目标，再按是否需要制造排序', 'Results prioritize target completion, then whether creation is needed') }}</strong><span>{{ tx('保持当前武器、祝福、召唤石与专精不变，只重新安排 12 个因子槽；永久成长也不会改动。', 'Keeps the current weapon, wrightstone, summons, and mastery unchanged and only rearranges the 12 sigil slots; permanent growth also stays unchanged.') }}</span></div>
+          <div v-if="solved && primaryResult" class="result-scope ui-notice is-info"><strong>{{ selectedRouteBranch && optimizerIntent === 'auto' ? tx(`只显示“${selectedRouteBranch.nameZh}”的最佳可达方案`, `Showing the best reachable plan for “${selectedRouteBranch.nameEn}”`) : combatMode ? tx('先显示无需制造的纯背包方案，再给出缺口制造与游戏表方案作对照', 'Owned-only plans come first, followed by created-gap and game-table comparisons') : tx('按游戏最终技能等级联合计算', 'Uses Combined In-Game Skill Levels') }}</strong><span>{{ !combatMode && inventorySnapshot ? tx('武器技能、武器祝福、召唤石与因子会一起凑目标；专精和永久成长保持不变。先预览来源与装备变化，确认后才回填草稿。', 'Weapon skills, wrightstone, summons, and sigils are combined toward each target. Mastery and permanent growth stay unchanged. Review sources and equipment changes before filling the draft.') : tx('只重新安排 12 个因子槽；永久成长不会改动。', 'Only rearranges the 12 sigil slots; permanent growth stays unchanged.') }}</span></div>
         <p v-if="solved && suppressedManufacturedCount" class="optimizer-empty is-success">{{ tx(`当前背包方案已经不低于 ${suppressedManufacturedCount} 个制造候选，这些更差的制造方案已隐藏；不会为了“能制造”而推荐更差配装。`, `The current inventory plan already matches or beats ${suppressedManufacturedCount} manufactured candidates, so those inferior plans are hidden.`) }}</p>
         <p v-if="!solving && !solveError && !solved" class="optimizer-empty">{{ tx('点击计算后，方案会显示在这里，并可直接预览 12 个因子槽。', 'After calculation, plans appear here with a direct preview of all 12 sigil slots.') }}</p>
-        <p v-else-if="!solving && !solveError && (!results.length || !results[0].picked.length)" class="optimizer-empty is-warning">{{ tx('这组条件暂时配不出来。可降低目标等级、放宽高级条件，或改为允许制造缺少的因子。', 'No plan matches these conditions yet. Lower target levels, relax advanced conditions, or allow missing sigils to be created.') }}</p>
+        <p v-else-if="!solving && !solveError && (!results.length || (!results[0].picked?.length && !results[0].equipment?.length))" class="optimizer-empty is-warning">{{ tx('这组条件暂时配不出来。可降低目标等级、放宽高级条件，或改为允许制造缺少的因子。', 'No plan matches these conditions yet. Lower target levels, relax advanced conditions, or allow missing sigils to be created.') }}</p>
         <template v-for="(result, index) in displayResults" v-else :key="`${result.domain}-${result.domainRank || index + 1}-${result.score}`">
           <h3 v-if="index === 0 || resultGroup(displayResults[index - 1]) !== resultGroup(result)" class="result-group-heading"><span>{{ resultGroupLabel(result) }}</span><small>{{ resultGroup(result) === 0 ? tx('无需制造，直接回填背包实例', 'No creation; fills owned instances directly') : resultGroup(result) === 1 ? tx('目标满足，但背包存在缺口', 'Targets met, with inventory gaps') : tx('当前来源无法完全满足目标', 'Selected source cannot fully meet every target') }}</small></h3>
           <article class="optimizer-result ui-card is-flat" :class="`result-group-${resultGroup(result)}`">
@@ -1147,10 +1205,14 @@ onBeforeUnmount(cancelSolve)
             <p v-else>{{ tx('当前没有设置硬性生存门槛；如需兼顾高难承伤，请在“高级战斗条件”填写基准单次伤害、最低 HP、最低减伤或存活次数。', 'No hard survival threshold is set. For difficult encounters, enter a base incoming hit, minimum HP, minimum defense, or required surviving hits under Advanced Combat Conditions.') }}</p>
           </section>
           <section class="result-final-levels">
-            <header><strong>{{ selectedRoute ? tx('固定路线达成情况', 'Fixed Route Completion') : !combatMode ? tx('目标技能达成', 'Target Skill Completion') : tx('关键技能最终等级', 'Final Key Skill Levels') }}</strong><span>{{ tx('最终技能等级', 'Final Skill Levels') }}</span></header>
-            <div v-if="selectedRoute && routeFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: routeFulfilment(result).complete }"><strong>{{ routeFulfilment(result).complete ? tx('12 槽路线要求全部达到', 'All 12-slot route requirements met') : tx('仍有路线等级缺口', 'Route levels are still short') }}</strong><span v-for="item in routeFulfilment(result).rows" :key="item.traitId" :class="{ met: item.met }">{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em></span></div>
-            <div v-else-if="!combatMode && targetFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: targetFulfilment(result).complete }"><strong>{{ targetFulfilment(result).complete ? tx('已按顺序达到全部目标', 'All targets met in order') : tx(`按顺序完成前 ${targetFulfilment(result).completedPrefix} 项；第 ${targetFulfilment(result).completedPrefix + 1} 项还缺等级`, `First ${targetFulfilment(result).completedPrefix} met; target #${targetFulfilment(result).completedPrefix + 1} is short`) }}</strong><span v-for="(item, targetIndex) in targetFulfilment(result).rows" :key="item.name" :class="[item.state, { met: item.met }]"><i>#{{ targetIndex + 1 }}</i>{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em><small v-if="item.state === 'blocked'">{{ tx(`缺 Lv${item.missing}`, `Short Lv${item.missing}`) }}</small><small v-else-if="item.state === 'waiting'">{{ tx('等待前序', 'After earlier targets') }}</small></span></div>
+            <header><strong>{{ optimizerIntent === 'auto' && selectedRoute ? tx('固定路线达成情况', 'Fixed Route Completion') : !combatMode ? tx('目标技能达成', 'Target Skill Completion') : tx('关键技能最终等级', 'Final Key Skill Levels') }}</strong><span>{{ tx('最终技能等级', 'Final Skill Levels') }}</span></header>
+            <div v-if="optimizerIntent === 'auto' && selectedRoute && routeFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: routeFulfilment(result).complete }"><strong>{{ routeFulfilment(result).complete ? tx('12 槽路线要求全部达到', 'All 12-slot route requirements met') : tx('仍有路线等级缺口', 'Route levels are still short') }}</strong><span v-for="item in routeFulfilment(result).rows" :key="item.traitId" :class="{ met: item.met }">{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em></span></div>
+            <div v-else-if="!combatMode && targetFulfilment(result).rows.length" class="target-fulfilment" :class="{ complete: targetFulfilment(result).complete }"><strong>{{ targetFulfilment(result).complete ? tx('已按顺序达到全部目标', 'All targets met in order') : tx(`按顺序完成前 ${targetFulfilment(result).completedPrefix} 项；第 ${targetFulfilment(result).completedPrefix + 1} 项还缺等级`, `First ${targetFulfilment(result).completedPrefix} met; target #${targetFulfilment(result).completedPrefix + 1} is short`) }}</strong><span v-for="(item, targetIndex) in targetFulfilment(result).rows" :key="item.name" :class="[item.state, { met: item.met }]"><i>#{{ targetIndex + 1 }}</i><span class="target-name">{{ item.name }} <b>Lv{{ item.actual }}</b><em>/ Lv{{ item.target }}</em></span><small v-if="item.sources.length" class="target-source-line">{{ targetSourceText(item) }}</small><small v-if="item.state === 'blocked'">{{ tx(`缺 Lv${item.missing}`, `Short Lv${item.missing}`) }}</small><small v-else-if="item.state === 'waiting'">{{ tx('等待前序', 'After earlier targets') }}</small></span></div>
             <div v-else class="result-level-preview"><span v-for="total in visibleResultTotals(result)" :key="total.traitId || total.displayName"><small>{{ total.displayName }}</small><b>Lv{{ total.effective }}</b></span></div>
+          </section>
+          <section v-if="changedEquipment(result).length" class="result-equipment-changes">
+            <header><strong>{{ tx('本方案会同步调整', 'Equipment Changes in This Plan') }}</strong><small>{{ tx('只回填草稿，保存前可逐项核对', 'Draft only; review each item before saving') }}</small></header>
+            <div><span v-for="item in changedEquipment(result)" :key="`${item.stage}:${item.label}`"><small>{{ item.stageLabel }}</small><b>{{ item.label }}</b></span></div>
           </section>
           <h4 class="slot-preview-title"><span>{{ tx('12 个因子槽预览', '12-Slot Sigil Preview') }}</span><small>{{ tx('缺少的实例会标为“待制造”；没有替换的槽保留当前因子。', 'Missing instances are marked “Create on Save”; unchanged slots keep their current sigils.') }}</small></h4>
           <div class="result-sigil-grid solution-slot-grid" :aria-label="tx('十二个因子槽预览', 'Twelve-slot sigil preview')">
@@ -1169,7 +1231,7 @@ onBeforeUnmount(cancelSolve)
             <div class="result-levels"><span v-for="total in localizedResultTotals(result)" :key="total.traitId || total.displayName"><small>{{ total.displayName }}</small><b>Lv{{ total.effective }}</b><em v-if="total.level > total.effective">+{{ total.level - total.effective }} {{ tx('溢出', 'overflow') }}</em></span></div>
             <p v-if="result.explanation" class="result-explanation"><b>{{ domainLabel(result.domain) }}</b> · {{ result.explanation.summary }}{{ language === 'en' ? `; ${result.explanation.limitationEn}` : `；${result.explanation.limitation}` }}<br><small>{{ language === 'en' ? result.explanation.inventoryReasonEn : result.explanation.inventoryReason }}</small></p>
           </details>
-          <div v-if="baseLoadout" class="optimizer-apply-row"><span>{{ tx('回填后会自动切回手动因子槽，右侧重新计算实际技能与加成；只有之后点击保存才会写入存档。', 'After filling, manual slots reopen and the right side recalculates actual skills and bonuses. The save changes only after you click Save.') }}</span><button type="button" class="ui-btn is-primary" @click="applyResult(result)">{{ tx('回填到当前配装草稿', 'Fill Current Draft') }}</button></div>
+          <div v-if="baseLoadout" class="optimizer-apply-row"><span>{{ tx('回填后会同步更新方案选中的武器、武器技能、祝福、召唤石和因子槽，右侧按游戏最终技能重新计算；只有之后点击保存才会写入存档。', 'Filling updates the selected weapon, weapon skills, wrightstone, summons, and sigil slots in the draft, then recalculates final in-game skills. The save changes only after you click Save.') }}</span><button type="button" class="ui-btn is-primary" @click="applyResult(result)">{{ tx('回填完整方案到草稿', 'Fill Full Plan into Draft') }}</button></div>
           </template>
           </article>
         </template>
@@ -1387,9 +1449,11 @@ onBeforeUnmount(cancelSolve)
 .result-final-levels > header span { color:var(--text-muted); font-size:12px; }
 .target-fulfilment { min-width:0; display:flex; flex-wrap:wrap; gap:5px; align-items:center; padding:7px 8px; border:1px solid rgba(151,91,37,.3); border-radius:6px; background:var(--warning-bg); }
 .target-fulfilment > strong { margin-right:auto; color:var(--warning-ink); font-size:var(--fs-xs); }
-.target-fulfilment > span { display:inline-flex; align-items:baseline; gap:3px; padding:3px 7px; border:1px solid rgba(151,91,37,.2); border-radius:var(--radius-pill); color:var(--warning-ink); background:rgba(255,255,255,.38); font-size:var(--fs-2xs); }
+.target-fulfilment > span { min-width:min(100%,260px); display:inline-flex; flex-wrap:wrap; align-items:baseline; gap:3px; padding:5px 8px; border:1px solid rgba(151,91,37,.2); border-radius:6px; color:var(--warning-ink); background:rgba(255,255,255,.38); font-size:var(--fs-2xs); }
 .target-fulfilment > span i { color:var(--text-muted); font-family:var(--font-data); font-size:10px; font-style:normal; }
 .target-fulfilment > span small { margin-left:3px; color:var(--warning-ink); font-size:10px; font-weight:700; }
+.target-fulfilment > span .target-name { min-width:0; }
+.target-fulfilment > span .target-source-line { flex:1 0 100%; margin:2px 0 0; color:var(--text-muted); font-size:10px; font-weight:500; line-height:1.35; }
 .target-fulfilment > span.waiting { border-style:dashed; color:var(--text-muted); background:rgba(255,255,255,.24); }
 .target-fulfilment > span b { font-family:var(--font-data); }
 .target-fulfilment > span em { color:var(--text-muted); font-style:normal; }
@@ -1399,6 +1463,14 @@ onBeforeUnmount(cancelSolve)
 .result-level-preview > span { min-width:0; display:flex; align-items:baseline; justify-content:space-between; gap:6px; padding:6px 8px; border:1px solid rgba(177,145,94,.22); border-radius:6px; background:rgba(255,255,255,.48); }
 .result-level-preview small { min-width:0; overflow:hidden; color:var(--text-secondary); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .result-level-preview b { flex:0 0 auto; color:var(--accent-hover); font-family:var(--font-data); font-size:13px; }
+.result-equipment-changes { min-width:0; display:grid; gap:7px; padding:9px 10px; border:1px solid var(--accent-border); border-radius:7px; background:var(--accent-soft); }
+.result-equipment-changes > header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.result-equipment-changes > header strong { color:var(--text-primary); font-size:14px; }
+.result-equipment-changes > header small { color:var(--text-muted); font-size:11px; }
+.result-equipment-changes > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:6px; }
+.result-equipment-changes > div span { min-width:0; display:grid; gap:2px; padding:6px 8px; border:1px solid rgba(177,145,94,.24); border-radius:6px; background:rgba(255,255,255,.5); }
+.result-equipment-changes > div small { color:var(--text-muted); font-size:10px; }
+.result-equipment-changes > div b { overflow:hidden; color:var(--text-secondary); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .slot-preview-title { min-width:0; display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:0; padding:2px 1px; }
 .slot-preview-title span { color:var(--text-primary); font-size:14px; }
 .slot-preview-title small { color:var(--text-muted); font-size:12px; font-weight:500; text-align:right; }

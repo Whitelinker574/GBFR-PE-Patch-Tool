@@ -42,6 +42,16 @@ test('worker messages are converted to cloneable plain data at the postMessage b
   assert.match(source, /worker\.postMessage\(createOptimizerWorkerMessage\(/)
 })
 
+test('target-skill flow uses the deployable equipment snapshot and shows combined skill sources', () => {
+  assert.match(source, /solveEquipmentAware:\s*true/)
+  assert.match(source, /sigilCandidates:\s*targetCandidates/)
+  assert.match(source, /mode:\s*'target'/)
+  assert.match(source, /targetSources/)
+  assert.match(source, /武器技能、武器祝福、召唤石与因子会一起凑目标/)
+  assert.match(source, /本方案会同步调整/)
+  assert.match(source, /回填完整方案到草稿/)
+})
+
 test('frame-verified routes use the linear twelve-slot assignment instead of the full backpack combat search', () => {
   assert.match(source, /solveFixedRoute:\s*true/)
   assert.match(source, /targets:\s*selectedRouteRequiredTargets\.value/)

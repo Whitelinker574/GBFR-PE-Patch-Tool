@@ -14,6 +14,7 @@ test('optimizer equipment payload becomes one editor draft without inventing res
     weaponSlotId: 17,
     weaponSkillHashes: ['01', '02', '03', '04', '05'],
     summonSlotIds: [4, 8, 12, 16],
+    summonEdits: [],
     masteryUnitId: 91,
     masteryHashes: ['AA', 'BB'],
   })
@@ -25,7 +26,18 @@ test('optimizer equipment payload fails closed when no deployable selection exis
     weaponSlotId: 0,
     weaponSkillHashes: [],
     summonSlotIds: [],
+    summonEdits: [],
     masteryUnitId: 0,
     masteryHashes: [],
   })
+})
+
+test('optimizer equipment draft preserves summon main-trait edit snapshots for one confirmed transaction', () => {
+  const summon = {
+    slotId: 4, expectUnitId: 44, expectTypeHash: 'AA', expectMainTraitHash: 'BB', expectMainTraitLevel: 1,
+    expectSubParamHash: 'CC', expectSubParamLevel: 2, expectRank: 3,
+    mainTraitHash: 'DD', mainTraitLevel: 30, subParamHash: 'CC', subParamLevel: 2, rank: 3,
+  }
+  const draft = optimizerEquipmentDraft({ applyPayload: { equipment: { summons: [summon] } } })
+  assert.deepEqual(draft.summonEdits, [summon])
 })

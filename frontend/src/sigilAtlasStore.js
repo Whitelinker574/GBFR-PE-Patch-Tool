@@ -3,12 +3,11 @@ import { GetSigilAtlasIndex } from '../wailsjs/go/backend/SigilGen.js'
 export function hydrateSigilAtlasIndex(index) {
   const traits = Array.isArray(index?.traits) ? index.traits : []
   const sigils = (Array.isArray(index?.sigils) ? index.sigils : []).map(entry => {
-    const indexes = Array.isArray(entry.secondaryTraitIndexes) ? entry.secondaryTraitIndexes : []
-    const levels = Array.isArray(entry.secondaryTraitMaxLevels) ? entry.secondaryTraitMaxLevels : []
-    if (indexes.length !== levels.length) {
-      throw new Error(`Invalid sigil atlas secondary trait arrays for ${entry.internalId || 'unknown sigil'}`)
-    }
-    const secondaryTraits = indexes.map((traitIndex, index) => {
+    const hydrateTraits = (indexes, levels, label) => {
+      if (indexes.length !== levels.length) {
+        throw new Error(`Invalid sigil atlas ${label} trait arrays for ${entry.internalId || 'unknown sigil'}`)
+      }
+      return indexes.map((traitIndex, index) => {
       if (!Number.isInteger(traitIndex) || traitIndex < 0 || traitIndex >= traits.length) {
         throw new Error(`Invalid sigil atlas trait index: ${traitIndex}`)
       }
@@ -18,14 +17,24 @@ export function hydrateSigilAtlasIndex(index) {
         throw new Error(`Invalid sigil atlas trait level: ${levels[index]}`)
       }
       return { ...trait, maxLevel }
-    })
+      })
+    }
+    const secondaryTraits = hydrateTraits(
+      Array.isArray(entry.secondaryTraitIndexes) ? entry.secondaryTraitIndexes : [],
+      Array.isArray(entry.secondaryTraitMaxLevels) ? entry.secondaryTraitMaxLevels : [],
+      'secondary',
+    )
     return {
       ...entry,
       secondaryTraits,
-      searchText: [entry.displayName, entry.primaryTraitName, entry.internalId, entry.hash, ...secondaryTraits.map(trait => trait.displayName)].filter(Boolean).join(' '),
+      searchText: [entry.displayName, entry.primaryTraitName, entry.internalId, entry.hash,
+        ...secondaryTraits.map(trait => trait.displayName)].filter(Boolean).join(' '),
     }
   })
-  return { dataVersion: index?.dataVersion || '', traits, sigils }
+  return {
+    dataVersion: index?.dataVersion || '', traits, sigils,
+    writableSecondaryTraits: Array.isArray(index?.writableSecondaryTraits) ? index.writableSecondaryTraits : [],
+  }
 }
 
 export function createSigilAtlasStore(loader = GetSigilAtlasIndex) {

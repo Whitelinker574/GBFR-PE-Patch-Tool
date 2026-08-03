@@ -729,11 +729,23 @@ func newLoadoutWeaponSkill(data *loadoutWeaponStatsFile, catalog *Catalog, weapo
 	hashString := hashText(hash)
 	traitID := data.TraitIDs[hashString]
 	name := ""
+	// Weapon-exclusive rows may deliberately share a generic catalog label
+	// with an older skill family.  The weapon table's verified name is the
+	// authoritative final-panel label (for example 浩劫新星, not 浩劫).
+	if verified, ok := weaponMemoryVerifiedSkills[hash]; ok {
+		if useChinese() {
+			name = verified.NameCN
+		} else {
+			name = verified.NameEN
+		}
+	}
 	if trait := catalog.LookupTraitByHash(hash); trait != nil {
 		if traitID == "" {
 			traitID = trait.InternalID
 		}
-		name = loadoutTraitDisplayName(catalog, hash)
+		if name == "" {
+			name = loadoutTraitDisplayName(catalog, hash)
+		}
 	}
 	values := loadTraitValues()
 	definition := values[traitID]

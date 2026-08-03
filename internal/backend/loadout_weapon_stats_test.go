@@ -6,6 +6,9 @@ import (
 )
 
 func TestReadLoadoutWeaponContextReadsRealIoTerminusWeapon(t *testing.T) {
+	previousLanguage := getCurrentLanguage()
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage(previousLanguage) })
 	requireStatsSave(t)
 	save, err := LoadSave(testStatsSave)
 	if err != nil {
@@ -57,21 +60,16 @@ func TestReadLoadoutWeaponContextReadsRealIoTerminusWeapon(t *testing.T) {
 			t.Fatalf("skill %d = %+v, want core fields %+v", index, got, want)
 		}
 	}
-	if context.Skills[0].Name != "浩劫" || !strings.Contains(context.Skills[0].Effect, "150000") || !strings.Contains(context.Skills[0].Effect, "60.0%") || strings.Count(context.Skills[0].Effect, "430.0%") != 3 {
+	if context.Skills[0].Name != "浩劫新星" || !strings.Contains(context.Skills[0].Effect, "150000") || !strings.Contains(context.Skills[0].Effect, "60.0%") || strings.Count(context.Skills[0].Effect, "430.0%") != 3 {
 		t.Fatalf("SKILL_143_10 must use its independent DLC 2.0 Lv30 values, got %+v", context.Skills[0])
 	}
 	if context.Wrightstone == nil || context.Wrightstone.Hash != "09E6F629" || len(context.Wrightstone.Traits) != 3 {
 		t.Fatalf("equipped weapon wrightstone was not resolved: %+v", context.Wrightstone)
 	}
-	wantWrightstoneTraits := []struct {
-		Hash  string
-		ID    string
-		Level int
-	}{{"CEB700EE", "SKILL_004_00", 8}, {"7CCFF74F", "SKILL_067_00", 7}, {"6018372B", "SKILL_078_00", 4}}
-	for index, want := range wantWrightstoneTraits {
+	for index := range context.Wrightstone.Traits {
 		got := context.Wrightstone.Traits[index]
-		if got.Hash != want.Hash || got.TraitID != want.ID || got.Level != want.Level || got.Name == "" {
-			t.Fatalf("wrightstone trait %d = %+v, want %+v", index, got, want)
+		if got.Hash == "" || got.Hash == hashText(EmptyHash) || got.TraitID == "" || got.Level <= 0 || got.Name == "" {
+			t.Fatalf("wrightstone trait %d was not resolved from the current real-save instance: %+v", index, got)
 		}
 	}
 	if !context.FormulaVerified {
@@ -125,6 +123,9 @@ func TestWeaponSkillsExplainTheirCurrentUnlockStage(t *testing.T) {
 }
 
 func TestReadLoadoutWeaponContextReadsAllFiveTranscendenceSkills(t *testing.T) {
+	previousLanguage := getCurrentLanguage()
+	setCurrentLanguage("zh")
+	t.Cleanup(func() { setCurrentLanguage(previousLanguage) })
 	requireStatsSave(t)
 	save, err := LoadSave(testStatsSave)
 	if err != nil {

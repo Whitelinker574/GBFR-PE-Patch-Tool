@@ -424,6 +424,25 @@ func TestDLCSummonRuntimeAliasesShareOneOfficialTraitIdentity(t *testing.T) {
 	}
 }
 
+func TestDLCRawValueRowsKeepCatalogTraitIdentity(t *testing.T) {
+	tests := []struct {
+		hash uint32
+		id   string
+	}{
+		{hash: 0x06719232, id: "MEMORY_TRAIT_06719232"},
+		{hash: 0x5559232F, id: "SKILL_178_02"},
+	}
+	for _, test := range tests {
+		bonuses := simulateTraits([]struct {
+			hash  uint32
+			level int
+		}{{test.hash, 16}}, map[uint32]string{test.hash: test.id})
+		if len(bonuses) != 1 || bonuses[0].TraitID != test.id || bonuses[0].RawLevel != 16 {
+			t.Fatalf("DLC trait 0x%08X lost catalog identity %s: %+v", test.hash, test.id, bonuses)
+		}
+	}
+}
+
 func TestRenderTraitEffectSeparatesAdjacentPlaceholderLabels(t *testing.T) {
 	def := &traitValueDef{
 		Format: "治疗药水+{0} 群疗药水+{1}\n强效药水+{2} 复活药水+{3}",

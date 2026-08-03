@@ -3,17 +3,22 @@ import { calculateDamageFormula, calculateIncomingDamage, damageCapDistance, REL
 function normalized(value) { return String(value || '').trim().toLocaleLowerCase() }
 
 function targetMap(targets) {
-  return new Map((targets || []).filter(item => item?.name).map(item => [normalized(item.name), {
+  const result = new Map((targets || []).filter(item => item?.name).map(item => [normalized(item.name), {
+    traitId: canonicalOptimizerTraitId(String(item.traitId || item.internalId || '')),
     name: item.name,
     weight: Math.max(1, Number(item.weight) || 1),
     cap: Math.max(1, Number(item.cap ?? item.targetLevel) || 65),
   }]))
+  result.byTraitId = new Map([...result.values()].filter(item => item.traitId).map(item => [item.traitId, item]))
+  return result
 }
 
 function contribution(candidate, targets) {
   const values = new Map()
   for (const trait of candidate.traits || []) {
-    const target = targets.get(normalized(trait.name))
+    const traitID = canonicalOptimizerTraitId(String(trait?.id || ''))
+    const target = (traitID ? targets.byTraitId?.get(traitID) : null)
+      || targets.get(normalized(trait.name))
     if (!target) continue
     values.set(target.name, (values.get(target.name) || 0) + Math.max(0, Number(trait.level) || 0))
   }
@@ -22,6 +27,38 @@ function contribution(candidate, targets) {
 
 function candidateKey(candidate) {
   return [candidate.name, ...(candidate.traits || []).map(item => `${item.name}:${item.level}`), candidate.slotId || 0].join('|')
+}
+
+// Target selection is broader than the sigil atlas. The in-game final skill
+// panel also contains weapon, bound Wrightstone, summon and permanent-source
+// traits, some of which have no constructible sigil shell at all.
+export function buildOptimizerTargetCatalog(atlas, snapshot = null) {
+  const byID = new Map()
+  const add = (trait, source = 'sigil') => {
+    const internalId = String(trait?.internalId || trait?.traitId || '').trim()
+    if (!internalId) return
+    const displayName = String(trait?.displayName || trait?.name || '').trim()
+    const sourceMaxLevel = Math.max(0, Number(trait?.sourceMaxLevel ?? trait?.maxLevel ?? trait?.level) || 0)
+    const previous = byID.get(internalId)
+    byID.set(internalId, {
+      ...(previous || {}),
+      ...trait,
+      internalId,
+      displayName: displayName || previous?.displayName || internalId,
+      sourceMaxLevel: Math.max(Number(previous?.sourceMaxLevel || 0), sourceMaxLevel),
+      sources: [...new Set([...(previous?.sources || []), source])],
+    })
+  }
+  for (const trait of atlas?.traits || []) add(trait, 'sigil')
+  for (const bonus of snapshot?.baseFixedBonuses || []) add(bonus, 'base')
+  for (const stage of snapshot?.stages || []) for (const option of stage.options || []) {
+    for (const bonus of option.fixedBonuses || []) add(bonus, stage.key || 'equipment')
+    for (const variant of option.variants || []) for (const bonus of variant.fixedBonuses || []) {
+      add(bonus, stage.key || 'equipment')
+    }
+  }
+  return [...byID.values()].sort((left, right) => left.displayName.localeCompare(right.displayName, 'zh-CN')
+    || left.internalId.localeCompare(right.internalId, 'en'))
 }
 
 function sigilAllowedForOwner(entry, ownerCode) {
@@ -34,16 +71,35 @@ function sigilAllowedForOwner(entry, ownerCode) {
 export function buildCatalogCandidates(atlas, targets, ownerCode = '') {
   const wanted = targetMap(targets)
   const exactSecondaryIDs = new Set((targets || []).map(item => String(item?.secondaryTraitId || '')).filter(Boolean))
+  // Character-exclusive traits are real sigil identities, not generic
+  // secondary rolls. Even if an incomplete/corrupt table row offers one as a
+  // secondary, manufacturing must keep the exclusive trait in the primary
+  // slot so the game icon and identity remain correct.
+  const characterExclusiveTraitIDs = new Set((atlas?.sigils || [])
+    .filter(item => item?.category === 'character_sigil')
+    .map(item => String(item?.primaryTraitId || ''))
+    .filter(Boolean))
   const result = []
   for (const entry of atlas?.sigils || []) {
     if (!entry.constructible) continue
     if (!sigilAllowedForOwner(entry, ownerCode)) continue
     const primaryRecord = (atlas?.traits || []).find(item => item.internalId === entry.primaryTraitId)
-    const primary = { id: entry.primaryTraitId, name: entry.primaryTraitName, level: entry.firstTraitMaxLevel || 0 }
-    const secondaryMatches = (entry.secondaryTraits || []).filter(item =>
+    const primaryFixed = primaryRecord?.factorBoostFixed === true
+    const primary = {
+      id: entry.primaryTraitId ? canonicalOptimizerTraitId(entry.primaryTraitId) : entry.primaryTraitId,
+      name: entry.primaryTraitName, level: entry.firstTraitMaxLevel || 0,
+      ...(primaryFixed ? { fixedLevel: true } : {}),
+    }
+    const naturalSecondaryIDs = new Set((entry.secondaryTraits || []).map(item => String(item?.internalId || '')))
+    const writableSecondaries = atlas?.writableSecondaryTraits?.length
+      ? atlas.writableSecondaryTraits
+      : (entry.secondaryTraits || [])
+    const legalSecondaries = writableSecondaries.filter(item =>
+      !characterExclusiveTraitIDs.has(String(item?.internalId || ''))
+      && canonicalOptimizerTraitId(String(item?.internalId || '')) !== canonicalOptimizerTraitId(String(entry.primaryTraitId || '')))
+    const secondaryMatches = legalSecondaries.filter(item =>
       wanted.has(normalized(item.displayName)) || exactSecondaryIDs.has(String(item.internalId || '')))
     const requiresSecondary = entry.supportsSecondaryTrait === true
-    const legalSecondaries = entry.secondaryTraits || []
     if (requiresSecondary && !legalSecondaries.length) continue
     const variants = requiresSecondary
       ? (secondaryMatches.length ? secondaryMatches : [legalSecondaries[0]])
@@ -65,8 +121,12 @@ export function buildCatalogCandidates(atlas, targets, ownerCode = '') {
         exactSecondaryTraitHash: secondary?.hash || '',
         characterSpecific: entry.category === 'character_sigil',
         allowedOwnerCodes: entry.allowedOwnerCodes || [],
-        tableExact: entry.tableExact === true,
-        traits: [primary, ...(secondary ? [{ id: secondary.internalId, name: secondary.displayName, level: secondary.maxLevel }] : [])],
+        naturalSecondary: !secondary || naturalSecondaryIDs.has(String(secondary.internalId || '')),
+        tableExact: entry.tableExact === true && (!secondary || naturalSecondaryIDs.has(String(secondary.internalId || ''))),
+        traits: [primary, ...(secondary ? [{
+          id: canonicalOptimizerTraitId(secondary.internalId), name: secondary.displayName, level: secondary.maxLevel,
+          ...(secondary.factorBoostFixed === true ? { fixedLevel: true } : {}),
+        }] : [])],
       }
       if (contribution(candidate, wanted).size) result.push(candidate)
     }
@@ -74,10 +134,12 @@ export function buildCatalogCandidates(atlas, targets, ownerCode = '') {
   return result.sort((a, b) => candidateKey(a).localeCompare(candidateKey(b), 'en'))
 }
 
-export function buildInventoryCandidates(sigils, targets, atlas = null) {
+export function buildInventoryCandidates(sigils, targets, atlas = null, { includeUnmatched = false } = {}) {
   const wanted = targetMap(targets)
-  const traitByHash = new Map((atlas?.traits || []).map(item => [String(item.hash || '').replace(/^0x/i, '').toUpperCase(), item.internalId]))
-  const traitByName = new Map((atlas?.traits || []).map(item => [normalized(item.displayName), item.internalId]))
+  const traitByHash = new Map((atlas?.traits || []).map(item => [String(item.hash || '').replace(/^0x/i, '').toUpperCase(), canonicalOptimizerTraitId(item.internalId)]))
+  const traitByName = new Map((atlas?.traits || []).map(item => [normalized(item.displayName), canonicalOptimizerTraitId(item.internalId)]))
+  const fixedTraitIDs = new Set((atlas?.traits || []).filter(item => item?.factorBoostFixed === true)
+    .map(item => canonicalOptimizerTraitId(item.internalId)))
   const sigilByHash = new Map((atlas?.sigils || []).map(item => [String(item.hash || '').replace(/^0x/i, '').toUpperCase(), item.internalId]))
   const traitId = (hash, name, explicit) => explicit || traitByHash.get(String(hash || '').replace(/^0x/i, '').toUpperCase()) || traitByName.get(normalized(name)) || ''
   return (sigils || []).filter(item => !item.missing).map(item => {
@@ -94,11 +156,11 @@ export function buildInventoryCandidates(sigils, targets, atlas = null) {
       secondaryTraitName: item.secondaryTraitName || '',
       secondaryTraitLevel: Number(item.secondaryTraitLevel || 0),
       traits: [
-        ...(item.primaryTraitName ? [{ id: primaryTraitId, name: item.primaryTraitName, level: item.primaryTraitLevel }] : []),
-        ...(item.secondaryTraitName ? [{ id: secondaryTraitId, name: item.secondaryTraitName, level: item.secondaryTraitLevel }] : []),
+        ...(item.primaryTraitName ? [{ id: primaryTraitId, name: item.primaryTraitName, level: item.primaryTraitLevel, ...(fixedTraitIDs.has(primaryTraitId) ? { fixedLevel: true } : {}) }] : []),
+        ...(item.secondaryTraitName ? [{ id: secondaryTraitId, name: item.secondaryTraitName, level: item.secondaryTraitLevel, ...(fixedTraitIDs.has(secondaryTraitId) ? { fixedLevel: true } : {}) }] : []),
       ],
     }
-  }).filter(candidate => contribution(candidate, wanted).size)
+  }).filter(candidate => includeUnmatched || contribution(candidate, wanted).size)
     .sort((a, b) => Number(a.slotId) - Number(b.slotId))
 }
 
@@ -427,11 +489,15 @@ function applySpecialTrait(metrics, traitId, level, scenario, traitLevels) {
 function traitLevelMap(picked, fixedBonuses = []) {
   const result = new Map()
   for (const bonus of fixedBonuses || []) {
-    if (bonus?.traitId && Number(bonus.level || 0) > 0) result.set(String(bonus.traitId), (result.get(String(bonus.traitId)) || 0) + Number(bonus.level))
+    const id = canonicalOptimizerTraitId(String(bonus?.traitId || ''))
+    if (id && Number(bonus.level || 0) > 0) result.set(id, (result.get(id) || 0) + Number(bonus.level))
   }
+  const factorBoost = Math.max(0, ...((fixedBonuses || []).filter(bonus => canonicalOptimizerTraitId(String(bonus?.traitId || '')) === 'SKILL_113_00')
+    .map(bonus => Number(bonus.level || 0))))
   for (const candidate of picked || []) for (const trait of candidate.traits || []) {
-    const id = String(trait.id || '')
-    if (id && Number(trait.level || 0) > 0) result.set(id, (result.get(id) || 0) + Number(trait.level))
+    const id = canonicalOptimizerTraitId(String(trait.id || ''))
+    const level = Number(trait.level || 0)
+    if (id && level > 0) result.set(id, (result.get(id) || 0) + level + (trait.fixedLevel ? 0 : factorBoost))
   }
   return result
 }
@@ -439,7 +505,7 @@ function traitLevelMap(picked, fixedBonuses = []) {
 function fixedTraitLevelMap(fixedBonuses = []) {
   const result = new Map()
   for (const bonus of fixedBonuses || []) {
-    const id = String(bonus?.traitId || '')
+    const id = canonicalOptimizerTraitId(String(bonus?.traitId || ''))
     const level = Number(bonus?.level || 0)
     if (id && level > 0) result.set(id, (result.get(id) || 0) + level)
   }
@@ -538,7 +604,7 @@ function evaluateCombatTraitLevels(levels, scenario) {
   const minimumDefense = Math.max(0, Number(scenario.minimumDefense || 0))
   const requiredHits = Math.max(0, Number(scenario.surviveHits || 0))
   const missingRequiredTraits = (scenario.requiredTraitTargets || []).map(item => {
-    const traitId = String(item?.traitId || '')
+    const traitId = canonicalOptimizerTraitId(String(item?.traitId || ''))
     const targetLevel = Math.max(0, Number(item?.targetLevel || 0))
     const currentLevel = Math.max(0, Number(levels.get(traitId) || 0))
     return { traitId, targetLevel, currentLevel, missingLevel: Math.max(0, targetLevel - currentLevel) }
@@ -1071,8 +1137,10 @@ function equipmentDiffs(snapshot, equipment) {
   const stages = [...new Set(equipment.map(item => item.stage))]
   return stages.map(stage => {
     const before = Array.isArray(base[stage]) ? base[stage].map(String) : (base[stage] ? [String(base[stage])] : [])
-    const after = equipment.filter(item => item.stage === stage).map(item => String(item.id))
-    return { stage, before, after, changed: before.join('|') !== after.join('|') }
+    const selected = equipment.filter(item => item.stage === stage)
+    const after = selected.map(item => String(item.id))
+    const variantChanged = selected.some(item => item.variantId && Array.isArray(item.applyPayload?.weaponSkillHashes))
+    return { stage, before, after, changed: before.join('|') !== after.join('|') || variantChanged }
   }).filter(item => item.changed)
 }
 
@@ -1217,6 +1285,388 @@ function enumerateSigilSelections(candidates, count, budget = equipmentExactStat
   return { selections: result.rows, exact: result.exact, exploredStates: result.visited }
 }
 
+function targetSourceStageRank(stage) {
+  if (stage === 'base') return -1
+  if (stage === 'sigils') return 10
+  return EQUIPMENT_STAGE_ORDER[stage] ?? 9
+}
+
+function targetPlanRows(snapshot, equipment, sigils) {
+  const base = (snapshot.baseFixedBonuses || []).map((bonus, index) => ({
+    id: `base:${bonus.traitId || bonus.name}:${index}`,
+    label: '',
+    stage: 'base',
+    traits: [{ id: String(bonus.traitId || ''), name: String(bonus.name || bonus.traitId || ''), level: Number(bonus.level || 0) }],
+  }))
+  const factorBoost = targetFactorBoost(snapshot, equipment)
+  return [
+    ...base,
+    ...equipment.map(item => ({ ...equipmentOptionCandidate(item, item.stage), label: item.label || item.id })),
+    ...sigils.map(item => ({
+      ...item,
+      stage: 'sigils',
+      label: item.name || item.id,
+      traits: (item.traits || []).map(trait => ({
+        ...trait,
+        level: Number(trait.level || 0) + (trait.fixedLevel || trait.factorBoostApplied ? 0 : factorBoost),
+      })),
+    })),
+  ]
+}
+
+function targetFactorBoost(snapshot, equipment) {
+  return Math.max(0, ...[
+    ...(snapshot.baseFixedBonuses || []),
+    ...equipment.flatMap(item => item.fixedBonuses || []),
+  ].filter(bonus => canonicalOptimizerTraitId(String(bonus?.traitId || '')) === 'SKILL_113_00').map(bonus => Number(bonus.level || 0)))
+}
+
+function targetBoostedSigilCandidates(snapshot, equipment, candidates) {
+  const factorBoost = targetFactorBoost(snapshot, equipment)
+  if (factorBoost <= 0) return candidates || []
+  return (candidates || []).map(candidate => ({
+    ...candidate,
+    traits: (candidate.traits || []).map(trait => ({
+      ...trait,
+      level: Number(trait.level || 0) + (trait.fixedLevel ? 0 : factorBoost),
+      factorBoostApplied: !trait.fixedLevel,
+    })),
+  }))
+}
+
+function targetPlanSummary(snapshot, equipment, sigils, targets) {
+  const wanted = targetMap(targets)
+  const rows = targetPlanRows(snapshot, equipment, sigils)
+  const totals = [...wanted.values()].map(target => {
+    const level = rows.reduce((sum, row) => sum + Number(contribution(row, wanted).get(target.name) || 0), 0)
+    return { ...target, level, effective: Math.min(target.cap, level) }
+  })
+  const targetSources = [...wanted.values()].map(target => ({
+    traitId: target.traitId,
+    name: target.name,
+    targetLevel: target.cap,
+    sources: rows.map(row => ({
+      stage: row.stage,
+      label: row.stage === 'base' ? '' : (row.label || row.name || row.id),
+      level: Number(contribution(row, wanted).get(target.name) || 0),
+    })).filter(item => item.level > 0)
+      .sort((left, right) => targetSourceStageRank(left.stage) - targetSourceStageRank(right.stage)
+        || String(left.label).localeCompare(String(right.label), 'zh-CN')),
+  }))
+  return { totals, targetSources }
+}
+
+function equipmentTargetVector(snapshot, equipment, targets) {
+  return targetPlanSummary(snapshot, equipment, [], targets).totals.map(item => item.effective)
+}
+
+function equipmentTargetRank(snapshot, targets, equipment) {
+  return {
+    equipment,
+    levels: equipmentTargetVector(snapshot, equipment, targets),
+    changes: equipmentDiffs(snapshot, equipment).length,
+    signature: equipmentPlanSignature(equipment, []),
+  }
+}
+
+function compareEquipmentTargetRanks(targets, left, right) {
+  const orderedTargets = [...targetMap(targets).values()]
+  return compareOrderedLevels(left.levels, right.levels, orderedTargets)
+    || left.changes - right.changes
+    || left.signature.localeCompare(right.signature, 'en')
+}
+
+function equipmentTargetShortlist(snapshot, targets, selections, limit) {
+  const size = Math.max(1, Math.floor(Number(limit) || 1))
+  if (selections.length <= size) return selections.slice().map(equipment => equipmentTargetRank(snapshot, targets, equipment))
+    .sort((left, right) => compareEquipmentTargetRanks(targets, left, right)).map(item => item.equipment)
+  const best = []
+  const trimAt = Math.max(size + 1, size * 4)
+  for (const equipment of selections) {
+    best.push(equipmentTargetRank(snapshot, targets, equipment))
+    if (best.length >= trimAt) {
+      best.sort((left, right) => compareEquipmentTargetRanks(targets, left, right))
+      best.length = size
+    }
+  }
+  return best.sort((left, right) => compareEquipmentTargetRanks(targets, left, right)).slice(0, size).map(item => item.equipment)
+}
+
+function evaluateTargetEquipmentPlan(snapshot, equipment, sigils, scenario, exact, exploredStates) {
+  const { totals, targetSources } = targetPlanSummary(snapshot, equipment, sigils, scenario.targets || [])
+  const score = totals.reduce((sum, item) => sum + Number(item.effective || 0) * Number(item.weight || 1), 0)
+  const unresolvedAtoms = [...new Set([...equipment, ...sigils].flatMap(item => item.unresolvedAtoms || []).map(String))]
+    .sort((left, right) => left.localeCompare(right, 'en'))
+  return {
+    score,
+    exact,
+    method: exact ? 'equipment-target-exact' : 'equipment-target-budgeted',
+    exploredStates,
+    equipment,
+    sigils,
+    picked: sigils,
+    totals,
+    targetSources,
+    coverageScores: { lowScore: score, highScore: score },
+    unresolvedAtoms,
+    applyPayload: equipmentApplyPayload(snapshot, equipment, sigils),
+    equipmentDiffs: equipmentDiffs(snapshot, equipment),
+    evidence: {
+      schemaVersion: snapshot.schemaVersion,
+      dataVersion: snapshot.dataVersion || '',
+      formulaVersion: snapshot.formulaVersion || '',
+      inputHash: snapshot.inputHash || '',
+      tableHash: snapshot.tableHash || '',
+      catalogHash: snapshot.catalogHash || '',
+    },
+  }
+}
+
+function compareTargetEquipmentPlans(left, right, targets) {
+  const orderedTargets = [...targetMap(targets).values()]
+  const ordered = compareOrderedLevels(resultOrderedLevels(left, orderedTargets), resultOrderedLevels(right, orderedTargets), orderedTargets)
+  if (ordered) return ordered
+  const overflow = result => (result.totals || []).reduce((sum, item) => sum + Math.max(0, Number(item.level || 0) - Number(item.cap || 0)), 0)
+  const overflowDelta = overflow(left) - overflow(right)
+  if (overflowDelta) return overflowDelta
+  const constructionDelta = constructedCount(left.picked) - constructedCount(right.picked)
+  if (constructionDelta) return constructionDelta
+  return Number(right.score || 0) - Number(left.score || 0)
+    || (left.equipmentDiffs || []).length - (right.equipmentDiffs || []).length
+    || left.picked.length - right.picked.length
+    || equipmentPlanSignature(left.equipment, left.sigils).localeCompare(equipmentPlanSignature(right.equipment, right.sigils), 'en')
+}
+
+function writableTargetHashIndex(candidates) {
+  const byTraitId = new Map()
+  const byName = new Map()
+  const add = (traitId, name, hash) => {
+    const normalizedHash = String(hash || '').replace(/^0x/i, '').toUpperCase()
+    if (!normalizedHash) return
+    const canonicalId = canonicalOptimizerTraitId(String(traitId || ''))
+    if (canonicalId && !byTraitId.has(canonicalId)) byTraitId.set(canonicalId, normalizedHash)
+    const normalizedName = normalized(name)
+    if (normalizedName && !byName.has(normalizedName)) byName.set(normalizedName, normalizedHash)
+  }
+  for (const candidate of candidates || []) {
+    add(candidate?.primaryTraitId || candidate?.traits?.[0]?.id, candidate?.primaryTraitName || candidate?.traits?.[0]?.name,
+      candidate?.exactPrimaryTraitHash || candidate?.traits?.[0]?.hash)
+    add(candidate?.secondaryTraitId || candidate?.traits?.[1]?.id, candidate?.secondaryTraitName || candidate?.traits?.[1]?.name,
+      candidate?.exactSecondaryTraitHash || candidate?.traits?.[1]?.hash)
+  }
+  return { byTraitId, byName }
+}
+
+function summonEditedEquipment(domain, equipment, targets, sigilCandidates) {
+  const editable = equipment.filter(item => item.stage === 'summons' && item?.applyPayload?.editableMainTrait === true)
+    .slice().sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
+  if (!editable.length) return null
+  const hashes = writableTargetHashIndex(sigilCandidates)
+  const withoutEditable = equipment.filter(item => !editable.includes(item))
+  const boostedSigils = targetBoostedSigilCandidates(domain, withoutEditable, sigilCandidates)
+  const baseline = targetPlanSummary(domain, withoutEditable, [], targets).totals
+  const wanted = targetMap(targets)
+  const ranked = targets.map((target, index) => {
+    const traitId = canonicalOptimizerTraitId(String(target.traitId || ''))
+    const hash = hashes.byTraitId.get(traitId) || hashes.byName.get(normalized(target.name)) || ''
+    const residual = Math.max(0, Number(target.cap || 0) - Number(baseline[index]?.level || 0))
+    let maxPerFactor = 0
+    let hasPairedRow = false
+    for (const candidate of boostedSigils) {
+      const values = contribution(candidate, wanted)
+      const value = Number(values.get(target.name) || 0)
+      if (value <= 0) continue
+      maxPerFactor = Math.max(maxPerFactor, value)
+      if ([...values.entries()].some(([name, level]) => name !== target.name && Number(level || 0) > 0)) hasPairedRow = true
+    }
+    const factorSlots = residual > 0 && maxPerFactor > 0 ? Math.ceil(residual / maxPerFactor) : 0
+    return { target, index, hash, residual, factorSlots, singleOnly: maxPerFactor > 0 && !hasPairedRow }
+  }).filter(item => item.hash && item.residual > 0 && item.factorSlots > 0)
+    .sort((left, right) => right.factorSlots - left.factorSlots
+      || Number(right.singleOnly) - Number(left.singleOnly)
+      || left.index - right.index)
+    .slice(0, editable.length)
+  if (!ranked.length) return null
+
+  const replacement = new Map()
+  for (let index = 0; index < ranked.length; index++) {
+    const source = editable[index]
+    const choice = ranked[index]
+    replacement.set(source, {
+      ...source,
+      variantId: `target:${choice.target.traitId || choice.target.name}`,
+      label: `${source.label || source.id} · ${choice.target.name} Lv${choice.residual}`,
+      fixedBonuses: [{ traitId: choice.target.traitId, name: choice.target.name, level: choice.residual }],
+      applyPayload: {
+        ...(source.applyPayload || {}),
+        mainTraitHash: choice.hash,
+        mainTraitLevel: choice.residual,
+      },
+    })
+  }
+  return equipment.map(item => replacement.get(item) || item)
+}
+
+function completeTargetSigilSlots(domain, equipment, picked, candidates, scenario, slotCount) {
+  const limit = Math.max(0, Math.floor(Number(slotCount || 0)))
+  const selected = (picked || []).slice(0, limit)
+  if (selected.length >= limit) return selected
+
+  const usedSlots = new Set(selected.filter(item => item.source === 'inventory')
+    .map(item => Number(item.slotId || 0)).filter(Boolean))
+  const baseRank = new Map((scenario.baseSigils || []).map((item, index) => [Number(item?.slotId || 0), index]))
+  let available = (scenario.fillerSigils || candidates || []).filter(item => item?.source === 'inventory'
+    && Number(item?.slotId || 0) > 0 && !usedSlots.has(Number(item.slotId)))
+  const wanted = targetMap(scenario.targets || [])
+  const boostedBySlot = new Map(targetBoostedSigilCandidates(domain, equipment, available)
+    .map(item => [Number(item.slotId), item]))
+  const metrics = (baseTotals, candidate) => {
+    const values = contribution(boostedBySlot.get(Number(candidate.slotId)) || candidate, wanted)
+    let completedPrefix = 0
+    let deficit = 0
+    let overflow = 0
+    for (let index = 0; index < baseTotals.length; index++) {
+      const level = Number(baseTotals[index].level || 0) + Number(values.get(baseTotals[index].name) || 0)
+      const cap = Number(baseTotals[index].cap || 0)
+      if (index === completedPrefix && level >= cap) completedPrefix++
+      deficit += Math.max(0, cap - level)
+      overflow += Math.max(0, level - cap)
+    }
+    return { completedPrefix, deficit, overflow }
+  }
+
+  while (selected.length < limit && available.length) {
+    const baseTotals = targetPlanSummary(domain, equipment, selected, scenario.targets || []).totals
+    const ranked = available.map(candidate => ({ candidate, ...metrics(baseTotals, candidate) }))
+      .sort((left, right) => right.completedPrefix - left.completedPrefix
+        || left.deficit - right.deficit
+        || left.overflow - right.overflow
+        || Number(right.candidate.retained === true) - Number(left.candidate.retained === true)
+        || (baseRank.get(Number(left.candidate.slotId)) ?? Number.MAX_SAFE_INTEGER) - (baseRank.get(Number(right.candidate.slotId)) ?? Number.MAX_SAFE_INTEGER)
+        || candidateKey(left.candidate).localeCompare(candidateKey(right.candidate), 'en'))
+    const choice = ranked[0].candidate
+    selected.push(choice)
+    usedSlots.add(Number(choice.slotId))
+    available = available.filter(item => Number(item.slotId) !== Number(choice.slotId))
+  }
+  return selected
+}
+
+function trimConstructedTargetLevels(domain, equipment, sigils, scenario) {
+  const wanted = targetMap(scenario.targets || [])
+  const baseline = targetPlanSummary(domain, equipment, [], scenario.targets || []).totals
+  const current = new Map(baseline.map(item => [item.name, Number(item.level || 0)]))
+  const factorBoost = targetFactorBoost(domain, equipment)
+
+  return (sigils || []).map(candidate => {
+    const editable = candidate?.source !== 'inventory'
+    const next = { ...candidate, traits: (candidate.traits || []).map(trait => ({ ...trait })) }
+    for (let index = 0; index < next.traits.length; index++) {
+      const trait = next.traits[index]
+      const traitID = canonicalOptimizerTraitId(String(trait?.id || ''))
+      const target = (traitID ? wanted.byTraitId?.get(traitID) : null) || wanted.get(normalized(trait.name))
+      if (!target) continue
+      const boost = trait.fixedLevel ? 0 : factorBoost
+      const storedKey = index === 0 ? 'primaryLevel' : 'secondaryLevel'
+      const stored = Math.max(0, Number(next[storedKey] ?? (Number(trait.level || 0) - (trait.factorBoostApplied ? boost : 0))) || 0)
+      let effective = stored + boost
+      const remaining = Math.max(0, Number(target.cap || 0) - Number(current.get(target.name) || 0))
+      if (editable && effective > remaining) {
+        const desiredStored = remaining - boost
+        if (desiredStored >= 1) {
+          next[storedKey] = desiredStored
+          effective = remaining
+          trait.level = effective
+          trait.factorBoostApplied = boost > 0
+        }
+      }
+      current.set(target.name, Number(current.get(target.name) || 0) + effective)
+    }
+    return next
+  })
+}
+
+function solveEquipmentTargetSuggestions(domain, equipmentRows, sigilCandidates, sigilSlotCount, limit, scenario) {
+  const targets = [...targetMap(scenario.targets || []).values()]
+  if (!targets.length || !equipmentRows.selections.length) return []
+
+  const baseLimit = Math.max(80, Math.min(2000, Math.max(1, Number(limit) || 10) * 40))
+  const baseSelections = equipmentRows.selections.length > baseLimit
+    ? equipmentTargetShortlist(domain, targets, equipmentRows.selections, baseLimit)
+    : equipmentRows.selections
+  let variantsExact = baseSelections.length === equipmentRows.selections.length
+  const expanded = []
+  outer: for (const equipment of baseSelections) {
+    for (const variant of expandEquipmentVariants(equipment)) {
+      if (expanded.length >= equipmentExactStateLimit) {
+        variantsExact = false
+        break outer
+      }
+      expanded.push(variant)
+    }
+  }
+  const equipmentLimit = Math.max(80, Math.min(800, Math.max(1, Number(limit) || 10) * 24))
+  const equipmentSelections = equipmentTargetShortlist(domain, targets, expanded, equipmentLimit)
+  if (equipmentSelections.length < expanded.length) variantsExact = false
+
+  const ranked = []
+  let sigilExact = true
+  let exploredStates = Number(equipmentRows.exploredStates || 0) + expanded.length
+  for (const equipment of equipmentSelections) {
+    const evaluateSelection = selectedEquipment => {
+      const equipmentTotals = targetPlanSummary(domain, selectedEquipment, [], targets).totals
+      const remaining = targets.map((target, index) => ({
+        ...target,
+        cap: Math.max(0, Number(target.cap || 0) - Number(equipmentTotals[index]?.level || 0)),
+      })).filter(target => target.cap > 0)
+      const solvingCandidates = targetBoostedSigilCandidates(domain, selectedEquipment, sigilCandidates)
+      const plans = remaining.length
+        ? solveRanked(solvingCandidates, remaining, Math.max(0, Number(sigilSlotCount || 0)), Math.max(1, Math.min(4, Number(limit) || 10)), true)
+        : [{ picked: [], exact: true, exploredStates: 1 }]
+      if (!plans.length) plans.push({ picked: [], exact: true, exploredStates: 1 })
+      const results = []
+      for (const plan of plans) {
+        sigilExact = sigilExact && plan.exact !== false
+        exploredStates += Number(plan.exploredStates || 0)
+        const result = evaluateTargetEquipmentPlan(domain, selectedEquipment, plan.picked || [], scenario,
+          equipmentRows.exact && variantsExact && plan.exact !== false, exploredStates)
+        ranked.push(result)
+        results.push(result)
+      }
+      return results
+    }
+    const originalResults = evaluateSelection(equipment)
+    const originalComplete = originalResults.some(result => result.totals.every(item => Number(item.effective || 0) >= Number(item.cap || 0)))
+    if (!originalComplete) {
+      const editedEquipment = summonEditedEquipment(domain, equipment, targets, sigilCandidates)
+      if (editedEquipment) evaluateSelection(editedEquipment)
+    }
+  }
+
+  const completionLimit = Math.max(40, Math.min(120, Math.max(1, Number(limit) || 10) * 8))
+  const completed = ranked.sort((left, right) => compareTargetEquipmentPlans(left, right, targets))
+    .slice(0, completionLimit)
+    .map(result => {
+      const finalSigils = completeTargetSigilSlots(domain, result.equipment, result.sigils, sigilCandidates, scenario, sigilSlotCount)
+      const exactLevelSigils = trimConstructedTargetLevels(domain, result.equipment, finalSigils, scenario)
+      return evaluateTargetEquipmentPlan(domain, result.equipment, exactLevelSigils, scenario, result.exact, result.exploredStates)
+    })
+  const unique = new Map()
+  for (const result of completed.sort((left, right) => compareTargetEquipmentPlans(left, right, targets))) {
+    const signature = equipmentPlanSignature(result.equipment, result.sigils)
+    if (!unique.has(signature)) unique.set(signature, result)
+  }
+  const limited = [...unique.values()].slice(0, Math.max(1, Number(limit) || 10))
+  const primary = limited[0] || null
+  return limited.map((result, index) => ({
+    ...result,
+    exact: result.exact && sigilExact,
+    domain: result.domain || scenario.domain || domain.domain,
+    rank: index + 1,
+    explanation: resultExplanation(result, { ...scenario, slotCount: sigilSlotCount }, primary),
+  }))
+}
+
 // Solves the complete versioned equipment domain. Small domains are exhausted
 // and checked against the same combat evaluator used by the UI. Large domains
 // stop at an explicit state budget and are labelled budgeted; unresolved atoms
@@ -1224,6 +1674,9 @@ function enumerateSigilSelections(candidates, count, budget = equipmentExactStat
 export function solveEquipmentAwareSuggestions({ snapshot, sigilCandidates = [], sigilSlotCount = 12, limit = 10, scenario = {} }) {
   const domain = normalizedEquipmentSnapshot(snapshot)
   const equipmentRows = enumerateEquipmentSelections(domain.stages)
+  if (scenario.mode === 'target' || (!scenario.mode && Array.isArray(scenario.targets) && scenario.targets.length)) {
+    return solveEquipmentTargetSuggestions(domain, equipmentRows, sigilCandidates, sigilSlotCount, limit, scenario)
+  }
   const remainingBudget = Math.max(1, Math.floor(equipmentExactStateLimit / Math.max(1, equipmentRows.selections.length)))
   const sigilRows = enumerateSigilSelections(sigilCandidates, Math.max(0, Math.floor(Number(sigilSlotCount || 0))), remainingBudget)
   const hasVariants = equipmentRows.selections.some(selection => selection.some(item => item.variants?.length))
@@ -1479,7 +1932,14 @@ function solveGreedyOnce(candidates, targets, slotCount, excludedFirstId = '', p
 function solveOrderedGreedyRanked(candidates, targets, slotCount, limit, preferOwned = false) {
   const primary = solveGreedyOnce(candidates, targets, slotCount, '', preferOwned)
   const variants = [primary]
-  const rankedIds = [...new Set([...(primary.picked || []).map(item => item.id), ...(candidates || []).map(item => item.id)])].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'en'))
+  // Explore the choices that actually consumed the primary plan first. Sorting
+  // the whole catalog before applying the small fallback budget meant a large
+  // atlas could spend every variant on unrelated IDs and never reconsider the
+  // greedy slot that blocked a better dual-trait packing.
+  const rankedIds = [...new Set([
+    ...(primary.picked || []).map(item => item.id),
+    ...(candidates || []).map(item => item.id).sort((a, b) => String(a).localeCompare(String(b), 'en')),
+  ])].filter(Boolean)
   for (const id of rankedIds.slice(0, Math.max(0, limit * 2 - 1))) variants.push(solveGreedyOnce(candidates, targets, slotCount, id, preferOwned))
   return variants
 }
