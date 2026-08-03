@@ -380,8 +380,8 @@ func optimizerWeaponSkillVariants(weapon *LoadoutWeaponContext, traitIDs map[uin
 		// Large five-slot products are represented within a fixed IPC budget.
 		// First cover every legal option in every slot, then spend the remaining
 		// budget on deterministic pairwise combinations. This prevents an early
-		// DFS prefix from hiding later-stage skills such as 因子强化 Lv2 or a
-		// weapon-specific damage-cap trait from the target catalog.
+		// DFS prefix from hiding later-stage, weapon-specific skills such as
+		// 超凡奥秘 or a dedicated damage-cap trait from the target catalog.
 		baseline := make([]choice, len(groups))
 		for index := range groups {
 			baseline[index] = groups[index][0]

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"sort"
 	"strings"
 	"testing"
 )
@@ -252,6 +253,57 @@ func TestFirstWeaponTableRowForBasePrefersTheLeastAwakenedVariant(t *testing.T) 
 	if !ok || got.Key != "FFFFFFFF" {
 		t.Fatalf("fallback row = %+v, %v; want the variant with the fewest awakened skills", got, ok)
 	}
+}
+
+func TestEveryTerminusWeaponFullAwakeningKeepsFactorBoosterAtLevelOne(t *testing.T) {
+	data, err := loadLoadoutWeaponStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const factorBoosterHash = uint32(0x57E8A93F)
+	verified := make(map[uint32]bool, len(terminusWeaponHashes))
+	for rowKey, row := range data.Weapons {
+		candidates := []string{rowKey, row.WeaponID, row.WeaponID2}
+		var terminusBase uint32
+		for _, candidate := range candidates {
+			hash, parseErr := ParseHashHex(candidate)
+			if parseErr != nil {
+				continue
+			}
+			if base, ok := awakeningWeaponAliases[hash]; ok {
+				hash = base
+			}
+			if terminusWeaponHashes[hash] {
+				terminusBase = hash
+				break
+			}
+		}
+		if terminusBase == 0 {
+			continue
+		}
+		for slot, traitText := range row.AwakeningSkillHashes {
+			traitHash, ok := parseWeaponSkillHash(traitText)
+			if !ok || traitHash != factorBoosterHash {
+				continue
+			}
+			level := weaponSkillLevel(data.SkillLevels[row.AwakeningSkillLevelKeys[slot]], 6, 10)
+			if level != 1 {
+				t.Fatalf("Terminus weapon %08X full-awakening Factor Booster = Lv%d, want Lv1 (row %s slot %d)", terminusBase, level, rowKey, slot+1)
+			}
+			verified[terminusBase] = true
+		}
+	}
+	if len(verified) != len(terminusWeaponHashes) {
+		missing := make([]string, 0)
+		for hash := range terminusWeaponHashes {
+			if !verified[hash] {
+				missing = append(missing, hashText(hash))
+			}
+		}
+		sort.Strings(missing)
+		t.Fatalf("verified %d/%d Terminus weapons; missing full-awakening Factor Booster rows: %v", len(verified), len(terminusWeaponHashes), missing)
+	}
+	t.Logf("verified all %d Terminus weapons: full-awakening Factor Booster remains Lv1", len(verified))
 }
 
 func TestReadLoadoutWeaponContextFallsBackToBaseAndAwakeningSkillsWithoutTranscendence(t *testing.T) {

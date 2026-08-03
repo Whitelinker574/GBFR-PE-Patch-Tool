@@ -230,7 +230,6 @@ func TestEveryMaxStageWeaponSkillIsResolvableAndReachableByOptimizer(t *testing.
 		t.Fatal(err)
 	}
 	traitIDs := traitHashMapWithRawKeys(catalog)
-	levelTwoFactorBoosts := 0
 	checkedWeapons := 0
 	for rowKey, row := range data.Weapons {
 		complete := true
@@ -280,17 +279,11 @@ func TestEveryMaxStageWeaponSkillIsResolvableAndReachableByOptimizer(t *testing.
 				if !reachable[skillKey{hash: canonicalTraitValueID(traitID), level: option.Level}] {
 					t.Fatalf("weapon %s group %s skill %s Lv%d is parsed but absent from optimizer variants", rowKey, group, skill.Name, option.Level)
 				}
-				if hash == 0x57E8A93F && option.Level == 2 {
-					levelTwoFactorBoosts++
-				}
 			}
 		}
 	}
 	if checkedWeapons == 0 {
 		t.Fatal("no five-slot transcendence weapons were checked")
 	}
-	if levelTwoFactorBoosts == 0 {
-		t.Fatal("max-stage weapon table exposed no 因子强化 Lv2 rows")
-	}
-	t.Logf("checked %d weapon rows; verified %d 因子强化 Lv2 max-stage options", checkedWeapons, levelTwoFactorBoosts)
+	t.Logf("checked %d weapon rows; every weapon-specific max-stage option is resolvable and optimizer-reachable", checkedWeapons)
 }
