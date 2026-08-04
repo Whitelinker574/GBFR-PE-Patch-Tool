@@ -358,7 +358,7 @@ function summonSubOption(hash) {
   return summonCatalog.value.subParams.find(option => hashHex(option.hash) === normalized) || null
 }
 function summonMainLevelLimit(draft) {
-  return Math.min(15, Math.max(0, Number(summonMainOption(draft?.mainTraitHash)?.maxLevel || 0)))
+  return Math.max(0, Number(summonMainOption(draft?.mainTraitHash)?.maxLevel || 0))
 }
 function summonSubLevelLimit(draft) {
   return Math.min(9, Math.max(0, Number(summonSubOption(draft?.subParamHash)?.maxLevel || 0)))

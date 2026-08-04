@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"unsafe"
 )
 
@@ -49,6 +50,8 @@ func monsterEnhanceCaveSize(id string) uintptr {
 		return 192
 	case "overdrive_state":
 		return 128
+	case "od_rate":
+		return 96
 	case "inventory_set_45":
 		return 32
 	case "monster_hp", "monster_stun":
@@ -312,6 +315,55 @@ func (a *App) monsterEnhanceHookMarked(point *monsterPatchPoint, entry []byte) b
 	}
 	record := monsterEnhanceOwnedPatch{Cave: cave, CaveSize: monsterEnhanceCaveSize(point.ID)}
 	return record.CaveSize != 0 && a.verifyMonsterEnhanceCaveMarker(record) == nil
+}
+
+func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPatchPoint, entry []byte) error {
+	if point == nil || !a.monsterEnhanceHookMarked(point, entry) {
+		return fmt.Errorf("%s不是本工具可识别的 Hook", point.Name)
+	}
+	target := a.moduleBase + point.RVA
+	cave, _ := monsterEnhanceRelJumpTarget(target, entry)
+	record := monsterEnhanceOwnedPatch{
+		OwnerToken: ownerToken,
+		Target:     target,
+		Original:   append([]byte(nil), point.Original...),
+		Patched:    append([]byte(nil), entry...),
+		Cave:       cave,
+		CaveSize:   monsterEnhanceCaveSize(point.ID),
+	}
+	if point.ID == "monster_damage_new" {
+		// The party-damage command installs a second player-pointer hook. Its
+		// 2.0.3 target and seven original bytes are version-locked just like the
+		// main entry, so a restarted UI can restore both halves atomically.
+		if !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+			return fmt.Errorf("%s的旧版辅助 Hook 缺少可恢复的版本化地址，请先重启游戏", point.Name)
+		}
+		const auxiliaryRVA203 = uintptr(0x2607DDE)
+		auxOriginal := []byte{0x48, 0x81, 0xC1, 0x50, 0x01, 0x00, 0x00}
+		auxTarget := a.moduleBase + auxiliaryRVA203
+		auxEntry, err := a.readMonsterEnhanceEntry(auxTarget, len(auxOriginal))
+		if err != nil {
+			return fmt.Errorf("读取%s辅助 Hook 失败: %w", point.Name, err)
+		}
+		auxCave, ok := monsterEnhanceRelJumpTarget(auxTarget, auxEntry)
+		if !ok {
+			return fmt.Errorf("%s辅助 Hook 不是完整的 rel32 跳转: %s", point.Name, bytesToHex(auxEntry))
+		}
+		auxMarker := monsterEnhanceOwnedPatch{Cave: auxCave, CaveSize: 96}
+		if err := a.verifyMonsterEnhanceCaveMarker(auxMarker); err != nil {
+			return fmt.Errorf("%s辅助 Hook 所有权标记无效: %w", point.Name, err)
+		}
+		record.AuxTarget = auxTarget
+		record.AuxOriginal = auxOriginal
+		record.AuxPatched = append([]byte(nil), auxEntry...)
+		record.AuxCave = auxCave
+		record.AuxCaveSize = 96
+	}
+	if a.monsterEnhanceOwned == nil {
+		a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)
+	}
+	a.monsterEnhanceOwned[point.ID] = record
+	return nil
 }
 
 func (a *App) restoreMonsterEnhanceOwned(ownerToken, id string, forceAllOwners bool) error {

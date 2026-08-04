@@ -491,6 +491,12 @@
       "displayName": "分歧",
       "maxLevel": 15,
       "displayNameEn": "Divergence"
+    },
+    {
+      "hash": "0xB6E31F76",
+      "displayName": "不动（非天然）",
+      "maxLevel": 30,
+      "displayNameEn": "Firm Stance (Non-Natural)"
     }
   ]
 }

@@ -109,7 +109,7 @@ func TestValidateSummonTraitChangeRejectsCrossPoolCombination(t *testing.T) {
 	}
 	found := false
 	for hash := range catalog.main {
-		if !containsSummonRuleHash(rule.MainTraitHashes, hash) {
+		if hash != 0xB6E31F76 && !containsSummonRuleHash(rule.MainTraitHashes, hash) {
 			draft.MainTraitHash = hash
 			found = true
 			break
@@ -120,6 +120,15 @@ func TestValidateSummonTraitChangeRejectsCrossPoolCombination(t *testing.T) {
 	}
 	if err := validateSummonTraitChange(catalog, draft, existing); err == nil || !strings.Contains(err.Error(), "天然词池") {
 		t.Fatalf("cross-pool main trait was not rejected: %v", err)
+	}
+}
+
+func TestValidateSummonTraitChangeAllowsExplicitFirmStanceSupplement(t *testing.T) {
+	catalog, existing, draft := auditedSummonTraitStates(t)
+	draft.MainTraitHash = 0xB6E31F76
+	draft.MainTraitLevel = 30
+	if err := validateSummonTraitChange(catalog, draft, existing); err != nil {
+		t.Fatalf("Firm Stance Lv30 supplement was rejected: %v", err)
 	}
 }
 

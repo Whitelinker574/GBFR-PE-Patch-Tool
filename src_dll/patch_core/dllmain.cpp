@@ -379,7 +379,12 @@ static const lm_byte_t kMonsterDamageNewExpected[] = {
 static const lm_byte_t kStunExpected[] = { 0xC5, 0xFA, 0x58, 0x86, 0x60, 0x08, 0x00, 0x00 };
 static const lm_byte_t kMonsterDamageExpected[] = { 0x81, 0xBE, 0xD4, 0x00, 0x00, 0x00, 0x00, 0xE1, 0xF5, 0x05 };
 static const lm_byte_t kInventorySet45Expected[] = { 0x41, 0x01, 0x76, 0x04, 0x4C, 0x89, 0xE1 };
-static const lm_byte_t kOverdriveExpected[] = { 0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03, 0x0F, 0x84, 0xC7, 0x00, 0x00, 0x00 };
+static const lm_byte_t kOverdriveExpected[] = { 0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03 };
+static const lm_byte_t kOdRateExpected[] = {
+    0x80, 0x79, 0x50, 0x00, 0x74, 0x13, 0x48, 0x03, 0x51, 0x18,
+    0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x48, 0x0F, 0x43,
+    0xC2, 0x48, 0x89, 0x41, 0x18, 0xC3,
+};
 
 static const PatchPoint kMonsterPatches[] = {
     { "monster_hp", L"monster hp", 0x1F7A820, kMonsterHpExpected, sizeof(kMonsterHpExpected), nullptr, true },
@@ -387,6 +392,7 @@ static const PatchPoint kMonsterPatches[] = {
     { "monster_damage", L"monster damage", 0x1FBDEB4, kMonsterDamageExpected, sizeof(kMonsterDamageExpected), nullptr, true },
     { "monster_stun", L"monster stun", 0xB29128, kStunExpected, sizeof(kStunExpected), nullptr, true },
     { "overdrive_state", L"overdrive state", 0x22CB316, kOverdriveExpected, sizeof(kOverdriveExpected), nullptr, true },
+    { "od_rate", L"od gauge rate", 0x22C5E50, kOdRateExpected, sizeof(kOdRateExpected), nullptr, true },
     { "inventory_set_45", L"inventory set 45", 0x356621, kInventorySet45Expected, sizeof(kInventorySet45Expected), nullptr, true },
 };
 
@@ -535,6 +541,42 @@ static bool PatchBytes(lm_address_t target, const lm_byte_t* patch, lm_size_t si
 }
 
 static const lm_byte_t kMonsterCaveMarker[] = { 'G', 'B', 'F', 'R', 'M', 'H', '0', '3' };
+
+static lm_address_t MonsterPatchRva203(const char* id)
+{
+    if (strcmp(id, "monster_hp") == 0) return 0x1F74710;
+    if (strcmp(id, "monster_damage_new") == 0) return 0x1F74700;
+    if (strcmp(id, "monster_stun") == 0) return 0xB228A8;
+    if (strcmp(id, "overdrive_state") == 0) return 0x22C5986;
+    if (strcmp(id, "od_rate") == 0) return 0x22C5E50;
+    return LM_ADDRESS_BAD;
+}
+
+static lm_size_t MonsterPatchCaveSize(const char* id)
+{
+    if (strcmp(id, "monster_damage_new") == 0) return 512;
+    if (strcmp(id, "monster_damage") == 0) return 192;
+    if (strcmp(id, "overdrive_state") == 0) return 128;
+    if (strcmp(id, "od_rate") == 0) return 96;
+    if (strcmp(id, "inventory_set_45") == 0) return 32;
+    if (strcmp(id, "monster_hp") == 0 || strcmp(id, "monster_stun") == 0) return 128;
+    return 0;
+}
+
+static bool IsMarkedMonsterHook(lm_address_t target, const char* id)
+{
+    lm_byte_t entry[5]{};
+    if (LM_ReadMemory(target, entry, sizeof(entry)) != sizeof(entry) || entry[0] != 0xE9) return false;
+    int32_t delta = 0;
+    memcpy(&delta, entry + 1, sizeof(delta));
+    const int64_t cave64 = static_cast<int64_t>(target) + 5 + delta;
+    const lm_size_t caveSize = MonsterPatchCaveSize(id);
+    if (cave64 <= 0 || caveSize < sizeof(kMonsterCaveMarker)) return false;
+    lm_byte_t marker[sizeof(kMonsterCaveMarker)]{};
+    const lm_address_t markerAddress = static_cast<lm_address_t>(cave64) + caveSize - sizeof(marker);
+    return LM_ReadMemory(markerAddress, marker, sizeof(marker)) == sizeof(marker) &&
+        BytesEqual(marker, kMonsterCaveMarker, sizeof(marker));
+}
 static HMODULE g_patchCoreModule = nullptr;
 static std::atomic<bool> g_patchCoreCanUnload{ true };
 
@@ -1205,6 +1247,87 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     if (!PatchBytes(target, jmp, sizeof(jmp)))
     {
         swprintf_s(message, messageSize, L"hook write failed: overdrive state");
+        return false;
+    }
+    return true;
+}
+
+static bool PatchOdRateHook(lm_address_t target, wchar_t* message, size_t messageSize)
+{
+    const float scale = ReadScale();
+    lm_address_t cave = AllocNear(target, 96);
+    if (cave == LM_ADDRESS_BAD)
+    {
+        swprintf_s(message, messageSize, L"alloc near failed: od gauge rate");
+        return false;
+    }
+
+    lm_byte_t code[64]{};
+    size_t i = 0;
+    code[i++] = 0x80; code[i++] = 0x79; code[i++] = 0x50; code[i++] = 0x00;
+    size_t jzDisp = i; code[i++] = 0x74; code[i++] = 0x00;
+    code[i++] = 0xF3; code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x2A; code[i++] = 0xC2;
+    code[i++] = 0xF3; code[i++] = 0x0F; code[i++] = 0x59; code[i++] = 0x05;
+    size_t scaleDisp = i; i += 4;
+    code[i++] = 0xF3; code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x2C; code[i++] = 0xD0;
+    code[i++] = 0x48; code[i++] = 0x03; code[i++] = 0x51; code[i++] = 0x18;
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0xFF; code[i++] = 0xFF; code[i++] = 0xFF; code[i++] = 0xFF;
+    code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x43; code[i++] = 0xC2;
+    code[i++] = 0x48; code[i++] = 0x89; code[i++] = 0x41; code[i++] = 0x18;
+    size_t retOffset = i;
+    code[i++] = 0xC3;
+    size_t scaleOffset = i;
+    memcpy(code + i, &scale, sizeof(scale)); i += sizeof(scale);
+    code[jzDisp + 1] = static_cast<lm_byte_t>(retOffset - (jzDisp + 2));
+
+    int64_t scaleDelta = static_cast<int64_t>(cave + scaleOffset) - static_cast<int64_t>(cave + scaleDisp + 4);
+    if (scaleDelta < INT32_MIN || scaleDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"scale out of range: od gauge rate");
+		VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    int32_t relScale = static_cast<int32_t>(scaleDelta);
+    memcpy(code + scaleDisp, &relScale, sizeof(relScale));
+    if (LM_WriteMemory(cave, code, i) != i)
+    {
+        swprintf_s(message, messageSize, L"cave write failed: od gauge rate");
+		VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    if (!StampMonsterCave(cave, 96, message, messageSize))
+	{
+		VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+		return false;
+	}
+
+    lm_byte_t jump[sizeof(kOdRateExpected)]{ 0xE9 };
+    memset(jump + 5, 0x90, sizeof(jump) - 5);
+    int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
+    if (hookDelta < INT32_MIN || hookDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"hook out of range: od gauge rate");
+		VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    int32_t rel = static_cast<int32_t>(hookDelta);
+    memcpy(jump + 1, &rel, sizeof(rel));
+    if (!PatchBytes(target, jump, sizeof(jump)))
+    {
+        swprintf_s(message, messageSize, L"hook write failed: od gauge rate");
+		// PatchBytes can fail after the write when its readback or protection
+		// restore fails. Never release a cave while the entry may already jump
+		// into it. First prove the original entry, or restore and re-read it.
+		lm_byte_t actual[sizeof(jump)]{};
+		bool originalProven = LM_ReadMemory(target, actual, sizeof(actual)) == sizeof(actual) &&
+			BytesEqual(actual, kOdRateExpected, sizeof(actual));
+		if (!originalProven && BytesEqual(actual, jump, sizeof(actual)))
+		{
+			PatchBytes(target, kOdRateExpected, sizeof(kOdRateExpected));
+			originalProven = LM_ReadMemory(target, actual, sizeof(actual)) == sizeof(actual) &&
+				BytesEqual(actual, kOdRateExpected, sizeof(actual));
+		}
+		if (originalProven) VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
         return false;
     }
     return true;
@@ -4595,7 +4718,46 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
         ++selected;
 
 		lm_address_t resolvedRva = point.rva;
-		if (strcmp(point.id, "inventory_set_45") == 0)
+		bool resolvedKnownEntry = false;
+		const lm_address_t rva203 = MonsterPatchRva203(point.id);
+		const lm_address_t knownRvas[] = { point.rva, rva203 };
+		for (const lm_address_t candidate : knownRvas)
+		{
+			if (candidate == LM_ADDRESS_BAD || (candidate == point.rva && resolvedKnownEntry)) continue;
+			lm_byte_t candidateBytes[32]{};
+			if (point.size > sizeof(candidateBytes)) continue;
+			const lm_address_t candidateTarget = module.base + candidate;
+			if (LM_ReadMemory(candidateTarget, candidateBytes, point.size) != point.size) continue;
+			if (BytesEqual(candidateBytes, point.expected, point.size) ||
+				(point.hook && IsMarkedMonsterHook(candidateTarget, point.id)))
+			{
+				resolvedRva = candidate;
+				resolvedKnownEntry = true;
+				break;
+			}
+		}
+		const char* signature = nullptr;
+		lm_address_t signatureOffset = 0;
+		if (strcmp(point.id, "monster_hp") == 0)
+			signature = "48 8B 41 10 45 31 C9 48 29 D0 4C 0F 43 C8 B8 01 00 00 00 49 0F 47 C1 45 85 C0 49 0F 44 C1 48 89 41 10 C3";
+		else if (strcmp(point.id, "monster_damage_new") == 0)
+		{
+			signature = "48 89 51 18 48 89 51 10 C3 CC CC CC CC CC CC CC 48 89 51 18 C3 CC CC CC CC CC CC CC CC CC CC CC 48 89 51 10 C3";
+			signatureOffset = 0x20;
+		}
+		else if (strcmp(point.id, "monster_stun") == 0)
+			signature = "C5 FA 58 86 60 ?? ?? ?? C5 FA 5D 86 64 ?? ?? ?? C5 FA 11 86 60 ?? ?? ??";
+		else if (strcmp(point.id, "overdrive_state") == 0)
+			signature = "8B 46 10 83 F8 03 0F 84 ?? ?? ?? ?? 83 F8 01 0F 84 ?? ?? ?? ??";
+		else if (strcmp(point.id, "od_rate") == 0)
+			signature = "80 79 50 00 74 13 48 03 51 18";
+
+		if (!resolvedKnownEntry && signature != nullptr)
+		{
+			const lm_address_t match = FindUniqueSignature(signature, module);
+			if (match != LM_ADDRESS_BAD) resolvedRva = match + signatureOffset - module.base;
+		}
+		else if (strcmp(point.id, "inventory_set_45") == 0)
 		{
 			// This shared inventory/material instruction moved in 2.0.3. Resolve
 			// only between the two audited RVAs and still require the complete
@@ -4638,8 +4800,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 		}
 
 		lm_address_t target = module.base + resolvedRva;
-        lm_byte_t current[16]{};
-        if (point.size > sizeof(current) || LM_ReadMemory(target, current, point.size) != point.size)
+        std::vector<lm_byte_t> current(point.size);
+        if (LM_ReadMemory(target, current.data(), point.size) != point.size)
         {
             swprintf_s(message, messageSize, L"read failed: %s at +%llX", point.name, static_cast<unsigned long long>(resolvedRva));
             return false;
@@ -4650,13 +4812,13 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             ++already;
             continue;
         }
-        if (!point.hook && BytesEqual(current, point.patch, point.size))
+        if (!point.hook && BytesEqual(current.data(), point.patch, point.size))
         {
             ++already;
             continue;
         }
 
-        if (!BytesEqual(current, point.expected, point.size))
+        if (!BytesEqual(current.data(), point.expected, point.size))
         {
             swprintf_s(message, messageSize, L"unexpected bytes: %s at +%llX", point.name, static_cast<unsigned long long>(resolvedRva));
             return false;
@@ -4679,6 +4841,10 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             else if (strcmp(point.id, "overdrive_state") == 0)
             {
                 if (!PatchOverdriveHook(target, message, messageSize)) return false;
+            }
+            else if (strcmp(point.id, "od_rate") == 0)
+            {
+                if (!PatchOdRateHook(target, message, messageSize)) return false;
             }
             else if (strcmp(point.id, "inventory_set_45") == 0)
             {

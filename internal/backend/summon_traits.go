@@ -2,6 +2,13 @@ package backend
 
 import "fmt"
 
+func summonMainTraitSafetyLimit(hash uint32) uint32 {
+	if hash == 0xB6E31F76 {
+		return summonFirmStanceMaxLevel
+	}
+	return summonMainTraitSafetyMaxLevel
+}
+
 // SummonTraitState is the save/runtime-neutral summon trait payload. Offline
 // loadout edits deliberately keep TypeHash unchanged and only persist
 // 1458/1459/1460.
@@ -47,8 +54,8 @@ func validateSummonTraitChange(catalog *summonStatCatalog, draft, existing Summo
 
 	if main, ok := catalog.main[draft.MainTraitHash]; ok && main.MaxLevel > 0 {
 		limit := uint32(main.MaxLevel)
-		if limit > summonMainTraitSafetyMaxLevel {
-			limit = summonMainTraitSafetyMaxLevel
+		if safetyLimit := summonMainTraitSafetyLimit(draft.MainTraitHash); limit > safetyLimit {
+			limit = safetyLimit
 		}
 		if draft.MainTraitLevel > limit {
 			return fmt.Errorf("summon main trait 0x%08X level %d exceeds natural/safety limit %d", draft.MainTraitHash, draft.MainTraitLevel, limit)

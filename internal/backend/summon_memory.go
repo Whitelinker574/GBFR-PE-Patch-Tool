@@ -23,6 +23,7 @@ const (
 	// independent safety ceilings so malformed or replaced catalog data cannot
 	// expand the writable runtime range.
 	summonMainTraitSafetyMaxLevel uint32 = 15
+	summonFirmStanceMaxLevel      uint32 = 30
 	summonSubParamSafetyMaxLevel  uint32 = 9
 )
 

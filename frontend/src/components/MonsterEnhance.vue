@@ -6,7 +6,7 @@ import { nextRuntimeAcquireRequestID, queueRuntimeLeaseRelease, releaseRuntimeLe
 const emit = defineEmits(['status'])
 const RUNTIME_LEASE_SCOPE = 'monster-enhance'
 
-const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage_new: '1', crocodile_damage: '1', sba_chain_timer: '3' }
+const defaultMultipliers = { monster_hp: '1', monster_stun: '1', monster_damage_new: '1', crocodile_damage: '1', od_rate: '1', sba_chain_timer: '3' }
 const sessionMultipliers = window.gbfrMonsterEnhanceMultipliers || (window.gbfrMonsterEnhanceMultipliers = { ...defaultMultipliers })
 
 const loading = ref(false)
@@ -86,7 +86,7 @@ async function disconnect() {
 }
 
 function needsMultiplier(item) {
-  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage_new' || item.id === 'crocodile_damage' || item.id === 'sba_chain_timer'
+  return item.id === 'monster_hp' || item.id === 'monster_stun' || item.id === 'monster_damage_new' || item.id === 'crocodile_damage' || item.id === 'od_rate' || item.id === 'sba_chain_timer'
 }
 
 function needsOverdriveState(item) {
@@ -102,6 +102,7 @@ function multiplierHint(item) {
   if (item.id === 'monster_stun') return '输入 10 = 怪物10倍昏厥条'
   if (item.id === 'monster_damage_new') return '输入 32 = 当前队伍承受的怪物伤害 32 倍'
   if (item.id === 'crocodile_damage') return '输入 10 = 鳄鱼10倍血'
+	if (item.id === 'od_rate') return '输入 2 = OD 槽积累与减少速度 2 倍；0.5 = 一半'
   if (item.id === 'sba_chain_timer') return '游戏默认 3 秒'
   return ''
 }

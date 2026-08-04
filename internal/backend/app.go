@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.14"
+	appVersion  = "v2.0.15"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -133,6 +133,10 @@ type App struct {
 	// this App instance. Exact entry bytes, rel32 cave and an in-cave marker are
 	// retained until restoration succeeds, so detach can fail closed and retry.
 	monsterEnhanceOwned map[string]monsterEnhanceOwnedPatch
+	// monsterEnhanceResolved pins each unique AOB result for the connected
+	// process. A live hook replaces the signature bytes, so status/restore must
+	// keep using the preflight address until detach clears the process state.
+	monsterEnhanceResolved map[string]uintptr
 	// runtimePatchPatchLeases owns only independently verified direct patches. The
 	// process identity and exact bytes make every record a retryable recovery
 	// lease; runtimePatchPatchOrder preserves reverse installation order on detach.
@@ -1478,6 +1482,7 @@ func (a *App) charaDetachLocked() error {
 	a.currencyCaveAddr = 0
 	a.currencyOriginal = nil
 	a.monsterEnhanceOwned = nil
+	a.monsterEnhanceResolved = nil
 	a.runtimePatchPatchLeases = nil
 	a.runtimePatchPatchOrder = nil
 	a.runtimeSpatialGravityLease = nil
@@ -3144,6 +3149,10 @@ type monsterPatchPoint struct {
 	Candidate         bool
 	EvidenceNote      string
 	UnavailableReason string
+	AOB               string
+	AOBOffset         uintptr
+	RVA203            uintptr
+	Only203           bool
 }
 
 var monsterPatchPoints = []monsterPatchPoint{
@@ -3170,6 +3179,8 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Original:  []byte{0x48, 0x8B, 0x41, 0x10, 0x45, 0x31, 0xC9},
 		Hook:      true,
 		Available: true,
+		AOB:       "48 8B 41 10 45 31 C9 48 29 D0 4C 0F 43 C8 B8 01 00 00 00 49 0F 47 C1 45 85 C0 49 0F 44 C1 48 89 41 10 C3",
+		RVA203:    0x1F74710,
 	},
 	{
 		ID:           "monster_damage_new",
@@ -3180,6 +3191,9 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Available:    true,
 		Candidate:    true,
 		EvidenceNote: "2.0.2 EXE 入口、安装回读和恢复已验证；全队受击范围与倍率效果仍待多人实机样本。",
+		AOB:          "48 89 51 18 48 89 51 10 C3 CC CC CC CC CC CC CC 48 89 51 18 C3 CC CC CC CC CC CC CC CC CC CC CC 48 89 51 10 C3",
+		AOBOffset:    0x20,
+		RVA203:       0x1F74700,
 	},
 	{
 		ID:                "monster_damage",
@@ -3204,14 +3218,31 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Original:  []byte{0xC5, 0xFA, 0x58, 0x86, 0x60, 0x08, 0x00, 0x00},
 		Hook:      true,
 		Available: true,
+		AOB:       "C5 FA 58 86 60 ?? ?? ?? C5 FA 5D 86 64 ?? ?? ?? C5 FA 11 86 60 ?? ?? ??",
+		RVA203:    0xB228A8,
 	},
 	{
 		ID:        "overdrive_state",
 		Name:      "怪物 Overdrive 状态",
 		RVA:       0x22CB316,
-		Original:  []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03, 0x0F, 0x84, 0xC7, 0x00, 0x00, 0x00},
+		Original:  []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03},
 		Hook:      true,
 		Available: true,
+		AOB:       "8B 46 10 83 F8 03 0F 84 ?? ?? ?? ?? 83 F8 01 0F 84 ?? ?? ?? ??",
+		RVA203:    0x22C5986,
+	},
+	{
+		ID:           "od_rate",
+		Name:         "Overdrive 槽变化倍率",
+		RVA:          0x22C5E50,
+		Original:     []byte{0x80, 0x79, 0x50, 0x00, 0x74, 0x13, 0x48, 0x03, 0x51, 0x18, 0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x48, 0x0F, 0x43, 0xC2, 0x48, 0x89, 0x41, 0x18, 0xC3},
+		Hook:         true,
+		Available:    true,
+		Candidate:    true,
+		EvidenceNote: "2.0.3 唯一入口与原字节已核对；倍率写入、回读和恢复链路已覆盖，具体战斗节奏请按需调节。",
+		AOB:          "80 79 50 00 74 13 48 03 51 18 48 C7 C0 FF FF FF FF 48 0F 43 C2 48 89 41 18 C3",
+		RVA203:       0x22C5E50,
+		Only203:      true,
 	},
 	{
 		ID:        "inventory_set_45",
@@ -3254,6 +3285,68 @@ var monsterPatchPoints = []monsterPatchPoint{
 	},
 }
 
+func (a *App) resolveMonsterPatchPoint(point *monsterPatchPoint) error {
+	if point == nil || !point.Available || point.ID == "inventory_set_45" {
+		return nil
+	}
+	if target := a.monsterEnhanceResolved[point.ID]; target != 0 {
+		point.RVA = target - a.moduleBase
+		return nil
+	}
+	remember := func(target uintptr) error {
+		current, err := a.readMonsterEnhanceEntry(target, len(point.Original))
+		if err != nil {
+			return err
+		}
+		point.RVA = target - a.moduleBase
+		if !bytesEqual(current, point.Original) && !a.monsterEnhanceHookMarked(point, current) {
+			return fmt.Errorf("%s定位命中但原字节不符: %s", point.Name, bytesToHex(current))
+		}
+		if a.monsterEnhanceResolved == nil {
+			a.monsterEnhanceResolved = make(map[string]uintptr)
+		}
+		a.monsterEnhanceResolved[point.ID] = target
+		point.RVA = target - a.moduleBase
+		return nil
+	}
+	if point.Only203 && !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+		return fmt.Errorf("%s仅支持已验证的游戏 2.0.3 可执行文件", point.Name)
+	}
+	knownRVA := point.RVA
+	if strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) && point.RVA203 != 0 {
+		knownRVA = point.RVA203
+	}
+	// Resolve the audited per-version address first. Unlike an entry AOB, this
+	// remains usable after our rel32 jump has replaced the original bytes and
+	// therefore lets a restarted UI recognize and safely restore its own cave.
+	if knownRVA != 0 {
+		if err := remember(a.moduleBase + knownRVA); err == nil {
+			return nil
+		}
+	}
+	if point.AOB != "" {
+		pattern, err := parseRuntimePatchPattern(point.AOB)
+		if err != nil {
+			return fmt.Errorf("解析%s定位特征失败: %w", point.Name, err)
+		}
+		mask := make([]bool, len(pattern.Mask))
+		for index, value := range pattern.Mask {
+			mask[index] = value == 0xFF
+		}
+		match, err := a.scanPatternUnique(pattern.Values, mask, point.Name)
+		if err == nil {
+			return remember(match + point.AOBOffset)
+		}
+		// Keep the audited 2.0.2 RVA as a compatibility fallback, but only
+		// when every original byte still matches.
+		if fallbackErr := remember(a.moduleBase + knownRVA); fallbackErr == nil {
+			return nil
+		}
+		return err
+	}
+	return remember(a.moduleBase + point.RVA)
+}
+
 func (a *App) MonsterEnhanceGetStatus() (MonsterEnhanceResult, error) {
 	if err := a.acquireGameProcessLease(); err != nil {
 		return MonsterEnhanceResult{}, err
@@ -3261,6 +3354,9 @@ func (a *App) MonsterEnhanceGetStatus() (MonsterEnhanceResult, error) {
 	defer a.procMu.Unlock()
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
+	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), runtimePatchMonitorText("怪物增强", "Monster enhancement")); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
 	return a.readMonsterEnhanceStatus("")
 }
 
@@ -3271,6 +3367,9 @@ func (a *App) MonsterEnhanceGetStatusOwned(token string) (MonsterEnhanceResult, 
 	defer a.procMu.Unlock()
 	a.runtimePatchMu.Lock()
 	defer a.runtimePatchMu.Unlock()
+	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), runtimePatchMonitorText("怪物增强", "Monster enhancement")); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
 	return a.readMonsterEnhanceStatus("")
 }
 
@@ -3327,6 +3426,15 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	if pointID != "all" && point == nil {
 		return MonsterEnhanceResult{}, fmt.Errorf("未知怪物增强项目: %s", id)
 	}
+	if err := a.verifyRuntimePatchExecutableLocked(
+		a.currentProcessInstance(),
+		runtimePatchMonitorText("怪物增强", "Monster enhancement"),
+	); err != nil {
+		return MonsterEnhanceResult{}, err
+	}
+	if point != nil && point.Only203 && !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+		return MonsterEnhanceResult{}, fmt.Errorf("%s仅支持已验证的游戏 2.0.3 可执行文件", point.Name)
+	}
 	if point != nil && !point.Available {
 		reason := point.UnavailableReason
 		if reason == "" {
@@ -3355,17 +3463,16 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			return MonsterEnhanceResult{}, err
 		}
 	}
+	if point != nil && point.ID != "inventory_set_45" {
+		if err := a.resolveMonsterPatchPoint(point); err != nil {
+			return MonsterEnhanceResult{}, err
+		}
+	}
 	if err := validateMonsterPatchValue(point, enabled, hpMultiplier); err != nil {
 		return MonsterEnhanceResult{}, err
 	}
 
 	if enabled {
-		if err := a.verifyRuntimePatchExecutableLocked(
-			a.currentProcessInstance(),
-			runtimePatchMonitorText("怪物增强", "Monster enhancement"),
-		); err != nil {
-			return MonsterEnhanceResult{}, err
-		}
 		if pointID == "all" {
 			return MonsterEnhanceResult{}, fmt.Errorf("怪物增强批量 Hook 无法证明逐项所有权，请分别开启需要的功能")
 		}
@@ -3437,10 +3544,18 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			if err != nil {
 				return MonsterEnhanceResult{}, fmt.Errorf("读取%s失败: %w", point.Name, err)
 			}
-			if !bytesEqual(current, point.Original) {
+			if point.Hook && a.monsterEnhanceHookMarked(point, current) {
+				if err := a.adoptMonsterEnhanceMarkedHook(ownerToken, point, current); err != nil {
+					return MonsterEnhanceResult{}, fmt.Errorf("恢复上次运行留下的%s失败: %w", point.Name, err)
+				}
+				record = a.monsterEnhanceOwned[pointID]
+				owned = true
+			} else if !bytesEqual(current, point.Original) {
 				return MonsterEnhanceResult{}, fmt.Errorf("%s不是本页面拥有的 Patch，已拒绝覆盖: %s", point.Name, bytesToHex(current))
 			}
-			return a.readMonsterEnhanceStatus("")
+			if !owned {
+				return a.readMonsterEnhanceStatus("")
+			}
 		}
 		if record.OwnerToken != ownerToken {
 			return MonsterEnhanceResult{}, fmt.Errorf("%s由另一个运行时页面持有", point.Name)
@@ -3494,12 +3609,37 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 	items := make([]MonsterEnhanceItem, 0, len(monsterPatchPoints))
 	for _, catalogPoint := range monsterPatchPoints {
 		point := catalogPoint
+		if point.Only203 && !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+			items = append(items, MonsterEnhanceItem{
+				ID:                point.ID,
+				Name:              point.Name,
+				RVA:               uint64(point.RVA),
+				Available:         false,
+				Candidate:         point.Candidate,
+				EvidenceNote:      point.EvidenceNote,
+				UnavailableReason: "仅支持已验证的游戏 2.0.3 可执行文件",
+			})
+			continue
+		}
 		if point.ID == "inventory_set_45" {
 			addr, err := a.locateMaterialConsumeLocked()
 			if err != nil {
 				return MonsterEnhanceResult{}, err
 			}
 			point.RVA = addr - a.moduleBase
+		} else if point.Available {
+			if err := a.resolveMonsterPatchPoint(&point); err != nil {
+				items = append(items, MonsterEnhanceItem{
+					ID:                point.ID,
+					Name:              point.Name,
+					RVA:               uint64(point.RVA),
+					Available:         false,
+					Candidate:         point.Candidate,
+					EvidenceNote:      point.EvidenceNote,
+					UnavailableReason: err.Error(),
+				})
+				continue
+			}
 		}
 		current := make([]byte, len(point.Original))
 		addr := a.moduleBase + point.RVA
@@ -3577,7 +3717,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 	}
 	invalidNumber := math.IsNaN(value) || math.IsInf(value, 0)
 	switch point.ID {
-	case "monster_hp", "monster_stun", "monster_damage", "monster_damage_new", "crocodile_damage":
+	case "monster_hp", "monster_stun", "monster_damage", "monster_damage_new", "crocodile_damage", "od_rate":
 		if invalidNumber || value <= 0 || value > 9999 {
 			return fmt.Errorf("怪物倍率请输入 0 到 9999 之间的数值")
 		}
@@ -3598,7 +3738,7 @@ func validateMonsterPatchValue(point *monsterPatchPoint, enabled bool, value flo
 }
 
 func monsterPatchNeedsArgument(id string) bool {
-	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "monster_damage_new" || id == "crocodile_damage" || id == "overdrive_state"
+	return id == "monster_hp" || id == "monster_stun" || id == "monster_damage" || id == "monster_damage_new" || id == "crocodile_damage" || id == "overdrive_state" || id == "od_rate"
 }
 
 func monsterPatchActivity(available, patched int) (injected, allEnabled bool) {

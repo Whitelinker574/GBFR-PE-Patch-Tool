@@ -49,8 +49,8 @@ func TestSummonMainSkillCatalogCoverageIsExplicit(t *testing.T) {
 	if err := json.Unmarshal(summonSkillsJSON, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Skills) != 82 {
-		t.Fatalf("summon main-skill denominator = %d, want local summon_lot/summon_preset pool of 82", len(payload.Skills))
+	if len(payload.Skills) != 83 {
+		t.Fatalf("summon main-skill denominator = %d, want 82 natural skills plus Firm Stance", len(payload.Skills))
 	}
 	catalog, err := LoadCatalog()
 	if err != nil {
@@ -84,8 +84,8 @@ func TestSummonMainSkillCatalogCoverageIsExplicit(t *testing.T) {
 			t.Errorf("summon main skill %s returned neither an effect nor a warning: %+v", skill.Hash, bonuses[0])
 		}
 	}
-	if resolved != 82 || warned != 0 {
-		t.Fatalf("summon main-skill coverage = resolved %d, warned %d; want 82 authoritative effects and no unresolved pool entries", resolved, warned)
+	if resolved != 83 || warned != 0 {
+		t.Fatalf("summon main-skill coverage = resolved %d, warned %d; want 83 authoritative effects and no unresolved entries", resolved, warned)
 	}
 	t.Logf("summon main-skill coverage: total=%d authoritativeEffects=%d explicitWarnings=%d", len(payload.Skills), resolved, warned)
 }

@@ -7,8 +7,8 @@ import (
 )
 
 func TestSummonMainTraitSafetyCeilingMatchesLocalCurve(t *testing.T) {
-	if summonMainTraitSafetyMaxLevel != 15 {
-		t.Fatalf("summon main-trait safety ceiling = %d, want per-stone local summon_curve maximum 15", summonMainTraitSafetyMaxLevel)
+	if summonMainTraitSafetyLimit(0xB6E31F76) != 30 || summonMainTraitSafetyLimit(0x50079A1C) != 15 {
+		t.Fatalf("summon main-trait ceilings must be Firm Stance=30 and natural default=15")
 	}
 }
 
@@ -45,8 +45,8 @@ func TestSummonMainSkillCatalogMatchesLocal202Pool(t *testing.T) {
 	if err := json.Unmarshal(summonSkillsJSON, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Skills) != len(want) {
-		t.Fatalf("summon main-skill catalog has %d rows, want the 82 skills referenced by local summon_lot + summon_preset", len(payload.Skills))
+	if len(payload.Skills) != len(want)+1 {
+		t.Fatalf("summon main-skill catalog has %d rows, want 82 natural skills plus Firm Stance", len(payload.Skills))
 	}
 	seen := make(map[uint32]struct{}, len(payload.Skills))
 	for _, skill := range payload.Skills {
@@ -55,11 +55,12 @@ func TestSummonMainSkillCatalogMatchesLocal202Pool(t *testing.T) {
 			t.Errorf("invalid hash %q: %v", skill.Hash, err)
 			continue
 		}
-		if _, ok := want[hash]; !ok {
-			t.Errorf("catalog contains non-summon trait/item hash 0x%08X (%s)", hash, skill.DisplayName)
-		}
-		if skill.MaxLevel != 15 {
-			t.Errorf("summon main trait 0x%08X has per-stone max %d, want local summon_curve cap 15", hash, skill.MaxLevel)
+		if _, ok := want[hash]; ok {
+			if skill.MaxLevel != 15 {
+				t.Errorf("natural summon trait 0x%08X has per-stone max %d, want local summon_curve cap 15", hash, skill.MaxLevel)
+			}
+		} else if hash != 0xB6E31F76 || skill.MaxLevel != 30 {
+			t.Errorf("unexpected supplemental summon trait 0x%08X max %d (%s)", hash, skill.MaxLevel, skill.DisplayName)
 		}
 		if _, duplicate := seen[hash]; duplicate {
 			t.Errorf("catalog contains duplicate hash 0x%08X", hash)

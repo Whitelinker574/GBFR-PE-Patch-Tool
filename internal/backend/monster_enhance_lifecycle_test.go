@@ -183,6 +183,9 @@ func TestEmbeddedPatchCoreCarriesMonsterHookOwnershipMarker(t *testing.T) {
 	if !bytes.Contains(patchCoreDLL, []byte("monster_damage_new")) {
 		t.Fatal("embedded patch_core.dll was not rebuilt with the party-wide monster damage command")
 	}
+	if !bytes.Contains(patchCoreDLL, []byte("od_rate")) {
+		t.Fatal("embedded patch_core.dll was not rebuilt with the OD gauge-rate command")
+	}
 }
 
 func TestMonsterPatchCatalogOnlyEnablesVerifiedCurrentLayouts(t *testing.T) {
@@ -192,6 +195,7 @@ func TestMonsterPatchCatalogOnlyEnablesVerifiedCurrentLayouts(t *testing.T) {
 		"monster_damage_new": true,
 		"monster_stun":       true,
 		"overdrive_state":    true,
+		"od_rate":            true,
 		"inventory_set_45":   true,
 	}
 	for _, point := range monsterPatchPoints {
@@ -212,8 +216,69 @@ func TestMonsterPatchCatalogOnlyEnablesVerifiedCurrentLayouts(t *testing.T) {
 		t.Fatalf("monster stun layout is not the v1.8.6/current-EXE layout: %+v", stun)
 	}
 	overdrive := findMonsterPatchPoint("overdrive_state")
-	if overdrive.RVA != 0x22CB316 || !bytes.Equal(overdrive.Original, []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03, 0x0F, 0x84, 0xC7, 0x00, 0x00, 0x00}) {
+	if overdrive.RVA != 0x22CB316 || !bytes.Equal(overdrive.Original, []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03}) {
 		t.Fatalf("overdrive layout is not the v1.8.6/current-EXE layout: %+v", overdrive)
+	}
+	odRate := findMonsterPatchPoint("od_rate")
+	if odRate == nil || !bytes.Equal(odRate.Original, []byte{0x80, 0x79, 0x50, 0x00, 0x74, 0x13, 0x48, 0x03, 0x51, 0x18, 0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x48, 0x0F, 0x43, 0xC2, 0x48, 0x89, 0x41, 0x18, 0xC3}) {
+		t.Fatalf("OD gauge-rate patch is missing its verified entry: %+v", odRate)
+	}
+}
+
+func TestMonsterEnhanceRestartResolvesAndRestoresMarked203Hook(t *testing.T) {
+	current := windows.CurrentProcess()
+	page, err := virtualAllocRemote(current, 0x2000, windows.PAGE_EXECUTE_READWRITE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hProcess, err := windows.OpenProcess(windows.PROCESS_ALL_ACCESS, false, uint32(os.Getpid()))
+	if err != nil {
+		_ = virtualFreeRemote(current, page)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		windows.CloseHandle(hProcess)
+		if err := virtualFreeRemote(current, page); err != nil {
+			t.Errorf("free restart recovery page: %v", err)
+		}
+	})
+
+	catalog := findMonsterPatchPoint("monster_hp")
+	point := *catalog
+	target := page
+	cave := page + 0x400
+	patch, err := makeRelJump(target, cave, len(point.Original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCodeMemory(current, target, patch); err != nil {
+		t.Fatal(err)
+	}
+	marker := monsterEnhanceCaveMarkerAddress(cave, monsterEnhanceCaveSize(point.ID))
+	if err := writeProcessMemory(current, marker, unsafe.Pointer(&monsterEnhanceCaveMarker[0]), uintptr(len(monsterEnhanceCaveMarker))); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{
+		hProcess:                   hProcess,
+		moduleBase:                 target - point.RVA203,
+		runtimePatchVerifiedDigest: game203ExecutableSHA256,
+	}
+	if err := app.resolveMonsterPatchPoint(&point); err != nil {
+		t.Fatalf("resolve marked 2.0.3 hook after restart: %v", err)
+	}
+	if point.RVA != point.RVA203 || len(app.monsterEnhanceResolved) != 1 {
+		t.Fatalf("restart resolution = RVA %#x cache %#v, want %#x", point.RVA, app.monsterEnhanceResolved, point.RVA203)
+	}
+	entry := readOverLimitDetachTestBytes(t, target, len(point.Original))
+	if err := app.adoptMonsterEnhanceMarkedHook("restart-owner", &point, entry); err != nil {
+		t.Fatalf("adopt marked 2.0.3 hook: %v", err)
+	}
+	if err := app.restoreMonsterEnhanceOwned("restart-owner", point.ID, false); err != nil {
+		t.Fatalf("restore adopted 2.0.3 hook: %v", err)
+	}
+	if got := readOverLimitDetachTestBytes(t, target, len(point.Original)); !bytes.Equal(got, point.Original) {
+		t.Fatalf("restored restart hook = % X, want % X", got, point.Original)
 	}
 }
 
@@ -297,7 +362,7 @@ func TestFailedMonsterDamageEnableRollsBackAuxiliaryPlayerHook(t *testing.T) {
 
 func TestMonsterEnhanceLiveInstallRestore(t *testing.T) {
 	if os.Getenv("GBFR_RUN_MONSTER_INTEGRATION") != "1" {
-		t.Skip("set GBFR_RUN_MONSTER_INTEGRATION=1 with GBFR 2.0.2 running")
+		t.Skip("set GBFR_RUN_MONSTER_INTEGRATION=1 with the verified GBFR 2.0.3 executable running")
 	}
 	app := NewApp()
 	info, err := app.CharaAcquire(1)
@@ -319,6 +384,7 @@ func TestMonsterEnhanceLiveInstallRestore(t *testing.T) {
 		{id: "monster_damage_new", pointID: "monster_damage_new", value: 1},
 		{id: "monster_stun", pointID: "monster_stun", value: 1},
 		{id: "overdrive_state", pointID: "overdrive_state", value: 9},
+		{id: "od_rate", pointID: "od_rate", value: 1},
 		{id: "overdrive_state_empty_once", pointID: "overdrive_state", value: 0, applyOnce: true},
 	} {
 		t.Run(test.id, func(t *testing.T) {

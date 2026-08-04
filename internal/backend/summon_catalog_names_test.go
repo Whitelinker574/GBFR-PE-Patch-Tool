@@ -41,7 +41,7 @@ func TestSummonOptionsSelectOfficialLanguageCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(zh.Types) != 189 || len(zh.Traits) != 82 || len(zh.SubParams) != 22 {
+	if len(zh.Types) != 189 || len(zh.Traits) != 83 || len(zh.SubParams) != 22 {
 		t.Fatalf("unexpected Chinese summon catalog sizes: %d/%d/%d", len(zh.Types), len(zh.Traits), len(zh.SubParams))
 	}
 	find := func(options []SummonOption, hash uint32) string {
@@ -60,6 +60,7 @@ func TestSummonOptionsSelectOfficialLanguageCatalog(t *testing.T) {
 		{en.Traits, 0x0DE887A0, "Celestial Nyx"},
 		{en.SubParams, 0x00D171E0, "Critical Hit Rate (Low · Max 20%)"},
 		{zh.Traits, 0x0DE887A0, "天星之炼"},
+		{zh.Traits, 0xB6E31F76, "不动（非天然）"},
 	}
 	for _, check := range checks {
 		if got := find(check.options, check.hash); got != check.want {

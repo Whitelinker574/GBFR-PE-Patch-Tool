@@ -95,19 +95,21 @@ func validateSummonNaturalChange(draft, existing SummonTraitState) error {
 	mainUnchanged := sameType && draft.MainTraitHash == existing.MainTraitHash && draft.MainTraitLevel == existing.MainTraitLevel
 	subUnchanged := sameType && draft.SubParamHash == existing.SubParamHash && draft.SubParamLevel == existing.SubParamLevel
 	legacyUnchanged := mainUnchanged && subUnchanged
+	const supplementalFirmStanceHash = uint32(0xB6E31F76)
+	supplementalMain := draft.MainTraitHash == supplementalFirmStanceHash
 	if legacyUnchanged {
 		// Rank is a separate saved field. A real 103-record save proves it does
 		// not equal the summon rarity tier, so changing Rank must not be checked
 		// against Tier/TierIndex.
 		return nil
 	}
-	if !mainUnchanged && !containsSummonRuleHash(rule.MainTraitHashes, draft.MainTraitHash) {
+	if !mainUnchanged && !supplementalMain && !containsSummonRuleHash(rule.MainTraitHashes, draft.MainTraitHash) {
 		return fmt.Errorf("主加护 0x%08X 不在召唤石 0x%08X 的天然词池", draft.MainTraitHash, draft.TypeHash)
 	}
 	if !subUnchanged && !containsSummonRuleHash(rule.SubParamHashes, draft.SubParamHash) {
 		return fmt.Errorf("副词条 0x%08X 不在召唤石 0x%08X 的天然词池", draft.SubParamHash, draft.TypeHash)
 	}
-	if !mainUnchanged && !containsSummonRuleLevel(rule.MainTraitLevels, draft.MainTraitLevel) {
+	if !mainUnchanged && !supplementalMain && !containsSummonRuleLevel(rule.MainTraitLevels, draft.MainTraitLevel) {
 		return fmt.Errorf("主加护等级 %d 不在召唤石 0x%08X 的天然等级集合", draft.MainTraitLevel, draft.TypeHash)
 	}
 	if !subUnchanged && !containsSummonRuleLevel(rule.SubParamLevels, draft.SubParamLevel) {

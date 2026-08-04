@@ -18,7 +18,7 @@ func TestSummonSaveAndRuntimeUseIdenticalOptions(t *testing.T) {
 	if !reflect.DeepEqual(runtimeOptions, saveOptions) {
 		t.Fatal("summon save and runtime option tables diverged")
 	}
-	if len(runtimeOptions.Types) != 189 || len(runtimeOptions.Traits) != 82 || len(runtimeOptions.SubParams) != 22 || len(runtimeOptions.Rules) != 189 {
+	if len(runtimeOptions.Types) != 189 || len(runtimeOptions.Traits) != 83 || len(runtimeOptions.SubParams) != 22 || len(runtimeOptions.Rules) != 189 {
 		t.Fatalf("unexpected summon catalog sizes: types=%d traits=%d sub=%d rules=%d", len(runtimeOptions.Types), len(runtimeOptions.Traits), len(runtimeOptions.SubParams), len(runtimeOptions.Rules))
 	}
 }
