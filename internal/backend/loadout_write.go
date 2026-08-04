@@ -701,8 +701,8 @@ func prepareLoadoutSigilNatural(cat *Catalog, draft LoadoutConstructedSigil) (*p
 		hasSecondary: supportsGeneratedPlusSigil(sigil), flags: NormalSigilFlags,
 	}
 	if item.SecondaryTraitID == "" {
-		if requiresCharacterSigilSecondary(sigil) {
-			return nil, fmt.Errorf("角色因子「%s」必须使用本地 2.0.2 gem/lot 白名单中的副词条，不能留空", item.SigilName)
+		if requiresFixedSigilSecondary(sigil) {
+			return nil, fmt.Errorf("固定组合因子「%s」必须保留游戏记录中的副词条，不能留空", item.SigilName)
 		}
 		if item.SecondaryLevel != 0 {
 			return nil, fmt.Errorf("未选择副词条时副词条等级必须为 0")

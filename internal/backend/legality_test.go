@@ -15,7 +15,7 @@ func TestSigilLegalityAllowsSynthesisTableSecondaryWithWarning(t *testing.T) {
 	var sigil *SigilDef
 	for i := range catalog.Sigils {
 		candidate := &catalog.Sigils[i]
-		if supportsGeneratedPlusSigil(candidate) && !requiresCharacterSigilSecondary(candidate) {
+		if supportsGeneratedPlusSigil(candidate) && !requiresFixedSigilSecondary(candidate) {
 			sigil = candidate
 			break
 		}
@@ -402,7 +402,7 @@ func TestSigilLevelsBeyondUsualReferenceRemainWritable(t *testing.T) {
 	var sigil *SigilDef
 	for index := range catalog.Sigils {
 		candidate := &catalog.Sigils[index]
-		if catalog.IsSigilConstructible(candidate) && !requiresCharacterSigilSecondary(candidate) {
+		if catalog.IsSigilConstructible(candidate) && !requiresFixedSigilSecondary(candidate) {
 			sigil = candidate
 			break
 		}

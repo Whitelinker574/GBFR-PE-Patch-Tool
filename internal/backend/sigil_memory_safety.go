@@ -122,8 +122,8 @@ func isEmptySigilMemoryTrait(hash uint32) bool {
 func validateSigilMemorySecondary(catalog *Catalog, sigil *SigilDef, update SigilMemoryUpdate) error {
 	empty := isEmptySigilMemoryTrait(update.SecondaryTraitHash)
 	if empty {
-		if requiresCharacterSigilSecondary(sigil) {
-			return fmt.Errorf("角色因子 %s 必须使用本地 2.0.2 gem/lot 白名单中的副词条，不能留空", displaySigilName(sigil))
+		if requiresFixedSigilSecondary(sigil) {
+			return fmt.Errorf("固定组合因子 %s 必须保留游戏记录中的副词条，不能留空", displaySigilName(sigil))
 		}
 		if update.SecondaryTraitLevel != 0 {
 			return fmt.Errorf("副词条为空时等级必须为 0")

@@ -74,6 +74,7 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 	}
 	tableBacked := 0
 	supplemental := 0
+	questOnly := 0
 	for index := range catalog.Sigils {
 		sigil := &catalog.Sigils[index]
 		if strings.Contains(sigil.Source, "fresh local 2.0.2 gem.tbl") {
@@ -82,9 +83,12 @@ func TestSigilCatalogMatchesFreshLocal202TableEvidence(t *testing.T) {
 		if strings.EqualFold(derefStr(sigil.Category), "dlc_supplement") {
 			supplemental++
 		}
+		if strings.EqualFold(derefStr(sigil.Category), "quest_reward") {
+			questOnly++
+		}
 	}
-	if tableBacked != len(evidence.Rows) || supplemental != 33 || len(catalog.Sigils) != tableBacked+supplemental {
-		t.Fatalf("catalog rows=%d, generated table-backed=%d, locked 2.0.2 supplemental=%d; want 222/189/33", len(catalog.Sigils), tableBacked, supplemental)
+	if tableBacked != len(evidence.Rows) || supplemental != 33 || questOnly != 1 || len(catalog.Sigils) != tableBacked+supplemental+questOnly {
+		t.Fatalf("catalog rows=%d, generated table-backed=%d, locked 2.0.2 supplemental=%d, verified quest-only=%d; want 223/189/33/1", len(catalog.Sigils), tableBacked, supplemental, questOnly)
 	}
 	for _, row := range evidence.Rows {
 		if row.Status != "verified" {

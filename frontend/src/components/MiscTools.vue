@@ -310,7 +310,7 @@ function setCurrency(item) {
   if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
   if (String(currencyInputs[item.id] ?? '').trim() === '') { emit('status', '数值不能为空', 'error'); return }
   const value = Number(currencyInputs[item.id])
-  if (!Number.isInteger(value) || value < 0 || value > 999) { emit('status', '药水请输入 0 到 999 之间的整数', 'error'); return }
+  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
   currencyLoading.value = true
   CurrencySetOneOwned(connectionOwnerToken, item.id, value)
     .then((updated) => {
@@ -350,7 +350,7 @@ function setPotion(item) {
   if (!connected.value) { emit('status', '请先连接游戏进程', 'error'); return }
   if (String(potionInputs[item.id] ?? '').trim() === '') { emit('status', '数值不能为空', 'error'); return }
   const value = Number(potionInputs[item.id])
-  if (!Number.isInteger(value) || value < 0 || value > 2147483647) { emit('status', '请输入 0 到 2147483647 之间的整数', 'error'); return }
+  if (!Number.isInteger(value) || value < 0 || value > 999) { emit('status', '药水请输入 0 到 999 之间的整数', 'error'); return }
   potionLoading.value = true
   PotionSetOneOwned(connectionOwnerToken, item.id, value)
     .then((updated) => {

@@ -146,6 +146,64 @@ func TestPotentGreensPlusUsesLocal202GemPrimary(t *testing.T) {
 	}
 }
 
+func TestRolandQuestPotentGreensPursuitUsesItsFixedGameRecord(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigil, err := catalog.RequireSigil("GEEN_151_94")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sigil.Hash != "0x97CF485D" {
+		t.Fatalf("GEEN_151_94 hash = %s; want 0x97CF485D", sigil.Hash)
+	}
+	if sigil.PrimaryTraitID != "SKILL_023_00" {
+		t.Fatalf("GEEN_151_94 primary = %s; want Potent Greens SKILL_023_00", sigil.PrimaryTraitID)
+	}
+	if len(sigil.AllowedSecondaryTraitIDs) != 1 || sigil.AllowedSecondaryTraitIDs[0] != "SKILL_151_00" {
+		t.Fatalf("GEEN_151_94 secondary pool = %v; want fixed Supplementary DMG SKILL_151_00", sigil.AllowedSecondaryTraitIDs)
+	}
+	if !catalog.IsSigilConstructible(sigil) {
+		t.Fatal("Roland quest Potent Greens + Supplementary DMG record must be constructible")
+	}
+
+	questItem := QueueItem{
+		SigilID: "GEEN_151_94", Level: 15,
+		PrimaryTraitID: "SKILL_023_00", PrimaryLevel: 15,
+		SecondaryTraitID: "SKILL_151_00", SecondaryLevel: 15,
+		Quantity: 1,
+	}
+	report, err := (&SigilGen{catalog: catalog}).CheckLegality(questItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != LegalityLegal || !report.Writable {
+		t.Fatalf("Roland quest combination must be naturally legal and writable: %+v", report)
+	}
+	defaultSecondary, err := (&SigilGen{catalog: catalog}).GetDefaultSecondaryTrait("GEEN_151_94")
+	if err != nil || defaultSecondary == nil || defaultSecondary.InternalID != "SKILL_151_00" {
+		t.Fatalf("Roland quest factor default secondary = %+v, err=%v; want Supplementary DMG", defaultSecondary, err)
+	}
+	prepared, err := prepareLoadoutSigil(catalog, LoadoutConstructedSigil{Index: 0, Item: questItem})
+	if err != nil {
+		t.Fatalf("loadout editor rejected the quest-only factor: %v", err)
+	}
+	if prepared == nil || prepared.sigilHash != 0x97CF485D || prepared.primaryHash != 0xCAC6AFF2 || prepared.secondaryHash != 0x57AB5B10 {
+		t.Fatalf("quest-only factor prepared the wrong hashes: %+v", prepared)
+	}
+
+	nonNatural := questItem
+	nonNatural.SecondaryTraitID = "SKILL_000_00"
+	report, err = (&SigilGen{catalog: catalog}).CheckLegality(nonNatural)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != LegalityForced || !report.Writable {
+		t.Fatalf("non-natural quest shell secondary must warn but remain writable: %+v", report)
+	}
+}
+
 func TestFearlessDriveNaturalSecondaryAndWritableAlternatives(t *testing.T) {
 	gen := NewSigilGen()
 	compatible, err := gen.GetCompatibleSecondaryTraits("GEEN_114_90")

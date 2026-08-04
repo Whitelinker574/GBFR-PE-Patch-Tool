@@ -113,6 +113,7 @@ func loadCatalog() (*Catalog, error) {
 	}
 	c.Traits = traits.Traits
 	appendDLCSupplementCatalog(c)
+	appendQuestRewardSupplementCatalog(c)
 
 	rules, err := loadJSON[RuleFile]("data/secondary-trait-rules.json")
 	if err != nil {
@@ -279,10 +280,12 @@ func supportsGeneratedPlusSigil(sigil *SigilDef) bool {
 	return sigil != nil && sigil.SupportsSecondaryTrait != nil && *sigil.SupportsSecondaryTrait
 }
 
-func requiresCharacterSigilSecondary(sigil *SigilDef) bool {
-	return sigil != nil &&
-		strings.EqualFold(derefStr(sigil.Category), "character_sigil") &&
-		len(sigil.AllowedSecondaryTraitIDs) > 0
+func requiresFixedSigilSecondary(sigil *SigilDef) bool {
+	if sigil == nil || len(sigil.AllowedSecondaryTraitIDs) == 0 {
+		return false
+	}
+	category := derefStr(sigil.Category)
+	return strings.EqualFold(category, "character_sigil") || strings.EqualFold(category, "quest_reward")
 }
 
 func hasUnverifiedSigilNotes(notes string) bool {

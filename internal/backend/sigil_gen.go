@@ -719,19 +719,25 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	if err != nil {
 		return item, LegalityReport{}, err
 	}
+	primaryNaturalMax := 15
+	if primaryTrait.InternalID == sigil.PrimaryTraitID {
+		if levels, levelErr := sg.catalog.RequirePrimaryTraitLevels(sigil); levelErr == nil {
+			primaryNaturalMax = highestLevel(naturalSigilLevelsForDefinition(sigil, levels), primaryNaturalMax)
+		}
+	}
 	primaryWritableMax := effectCurveMax(primaryLevels, 15)
+	// Potent Greens uses a one-step effect curve while its real factor record
+	// stores and displays Slv 15. Do not mislabel that natural representation
+	// as an over-curve write; other short curves still warn normally.
+	if primaryTrait.InternalID == "SKILL_023_00" && primaryNaturalMax > primaryWritableMax {
+		primaryWritableMax = primaryNaturalMax
+	}
 	if item.PrimaryLevel > primaryWritableMax {
 		reasons = append(reasons, fmt.Sprintf("主特性 %s 的等级 %d 高于效果曲线参考 %d；仍按所选值写入", item.PrimaryTraitName, item.PrimaryLevel, primaryWritableMax))
 	}
 	if primaryTrait.InternalID != sigil.PrimaryTraitID {
 		report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("主特性「%s」不是因子「%s」在 2.0.2 表中的固定主特性", item.PrimaryTraitName, item.SigilName))
 		return item, report, nil
-	}
-	primaryNaturalMax := 15
-	if primaryTrait.InternalID == sigil.PrimaryTraitID {
-		if levels, levelErr := sg.catalog.RequirePrimaryTraitLevels(sigil); levelErr == nil {
-			primaryNaturalMax = highestLevel(naturalSigilLevelsForDefinition(sigil, levels), primaryNaturalMax)
-		}
 	}
 	if item.PrimaryLevel < 1 || item.PrimaryLevel > primaryNaturalMax {
 		reasons = append(reasons, fmt.Sprintf("主特性等级 %d 偏离目录自然范围 1 到 %d", item.PrimaryLevel, primaryNaturalMax))
@@ -740,8 +746,8 @@ func (sg *SigilGen) normalizeQueueItem(item QueueItem) (QueueItem, LegalityRepor
 	if item.SecondaryTraitID == "" {
 		item.SecondaryTraitName = ""
 		item.SecondaryLevel = 0
-		if requiresCharacterSigilSecondary(sigil) {
-			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("角色因子「%s」必须使用 2.0.2 表中的固定副特性", item.SigilName))
+		if requiresFixedSigilSecondary(sigil) {
+			report := newLegalityReport(LegalityImpossible, false, fmt.Sprintf("固定组合因子「%s」必须保留游戏记录中的副特性", item.SigilName))
 			return item, report, nil
 		}
 	} else {

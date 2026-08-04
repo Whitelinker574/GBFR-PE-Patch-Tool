@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.14.md`](RELEASE_NOTES_v2.0.14.md) | v2.0.14 货币、药水校验与任务专属万能药因子修复 |
 | [`RELEASE_NOTES_v2.0.13.md`](RELEASE_NOTES_v2.0.13.md) | v2.0.13 按技能配装合并武器、祝福与召唤石来源 |
 | [`RELEASE_NOTES_v2.0.12.md`](RELEASE_NOTES_v2.0.12.md) | v2.0.12 正式启用「碧蓝幻想：Relink 空域工坊」名称 |
 | [`RELEASE_NOTES_v2.0.11.md`](RELEASE_NOTES_v2.0.11.md) | v2.0.11 外部、迁移和缺记录存档的配装武器归属回退修复 |

@@ -9,6 +9,19 @@ test('blank runtime values are rejected before numeric conversion', () => {
   assert.equal((source.match(/trim\(\) === ''/g) || []).length, 2)
 })
 
+test('currency and potion editors keep their own numeric ranges and error copy', () => {
+  const currencyHandler = source.match(/function setCurrency\(item\) \{([\s\S]*?)\n\}/)?.[1] || ''
+  const potionHandler = source.match(/function setPotion\(item\) \{([\s\S]*?)\n\}/)?.[1] || ''
+
+  assert.match(currencyHandler, /value > 2147483647/)
+  assert.match(currencyHandler, /请输入 0 到 2147483647 之间的整数/)
+  assert.doesNotMatch(currencyHandler, /药水请输入/)
+
+  assert.match(potionHandler, /value > 999/)
+  assert.match(potionHandler, /药水请输入 0 到 999 之间的整数/)
+  assert.doesNotMatch(potionHandler, /2147483647/)
+})
+
 test('runtime tools consume shared page, panel, toolbar, tabs, controls and cards', () => {
   assert.match(source, /class="root ui-page is-wide ui-page-stack"/)
   assert.match(source, /class="section ui-card ui-panel"/)
