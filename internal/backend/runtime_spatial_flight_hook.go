@@ -497,7 +497,7 @@ func (a *App) syncRuntimeSpatialFlightHookLocked(owner string, binding runtimeSp
 	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), runtimePatchMonitorText("角色悬空飞行同帧 Hook", "Character flight same-frame hook")); err != nil {
 		return err
 	}
-	entry := a.moduleBase + runtimeSpatialFlightHookRVA
+	entry := a.moduleBase + runtimeSpatialFlightRVAForLayout(binding.Layout)
 	original := make([]byte, runtimeSpatialFlightHookSize)
 	if err := readProcessMemory(a.hProcess, entry, unsafe.Pointer(&original[0]), uintptr(len(original))); err != nil {
 		return err

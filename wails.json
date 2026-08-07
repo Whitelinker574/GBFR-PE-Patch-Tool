@@ -13,8 +13,8 @@
   "info": {
     "companyName": "Whitelinker574",
     "productName": "碧蓝幻想：Relink 空域工坊",
-    "productVersion": "2.0.15",
+    "productVersion": "2.0.16",
     "copyright": "Community tool for personal save management",
-    "comments": "Granblue Fantasy: Relink 2.0.3 save, loadout, and sharing utility with guarded legacy runtime features"
+    "comments": "Granblue Fantasy: Relink 2.0.4 save, loadout, sharing, and guarded runtime utility"
   }
 }

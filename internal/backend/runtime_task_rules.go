@@ -35,6 +35,20 @@ var (
 	}
 )
 
+func taskScoreRVAForDigest(digest string) uintptr {
+	if strings.EqualFold(digest, game204ExecutableSHA256) {
+		return 0x1FDA2D9
+	}
+	return taskScoreMultiplierRVA
+}
+
+func taskSideQuestRVAForDigest(index int, digest string) uintptr {
+	if strings.EqualFold(digest, game204ExecutableSHA256) {
+		return taskSideQuestSpecs[index].RVA + 0xFA0
+	}
+	return taskSideQuestSpecs[index].RVA
+}
+
 type taskSideQuestSiteSpec struct {
 	Label    string
 	RVA      uintptr
@@ -125,8 +139,8 @@ func (a *App) setTaskRuleOwned(token string, enabled bool, kind string, install 
 		if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "任务规则增强"); err != nil {
 			return TaskRulesStatus{}, err
 		}
-		if !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
-			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 可执行文件")
+		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
+			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件")
 		}
 	}
 	a.runtimePatchMu.Lock()
@@ -211,7 +225,7 @@ func (a *App) enableTaskScoreMultiplierLocked(ownerToken string, multiplier floa
 		OwnerToken: ownerToken, Process: a.currentProcessInstance(), State: runtimePatchPatchRecovery,
 		Multiplier: multiplier,
 		Sites: []runtimePatchPatchSiteLease{{
-			Address: address, RVA: uint64(taskScoreMultiplierRVA),
+			Address: address, RVA: uint64(taskScoreRVAForDigest(a.runtimePatchVerifiedDigest)),
 			Original: append([]byte(nil), taskScoreOriginal...), Patch: patch,
 		}},
 		Caves: []uintptr{cave},
@@ -254,7 +268,7 @@ func (a *App) enableTaskSideQuestAutoCompleteLocked(ownerToken string) error {
 			return jumpErr
 		}
 		sites[index] = runtimePatchPatchSiteLease{
-			Address: addresses[index], RVA: uint64(spec.RVA),
+			Address: addresses[index], RVA: uint64(taskSideQuestRVAForDigest(index, a.runtimePatchVerifiedDigest)),
 			Original: append([]byte(nil), spec.Original...), Patch: patch,
 		}
 	}
@@ -291,12 +305,12 @@ func (a *App) installTaskRuleLeaseLocked(lease *taskRuleLease, label string) err
 }
 
 func (a *App) readTaskRulesStatusLocked(ownerToken string) (TaskRulesStatus, error) {
-	available := strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256)
+	available := isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest)
 	status := TaskRulesStatus{
 		ScoreMultiplier: emptyTaskRuleFeatureStatus(available, 2,
-			"2.0.3 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
+			"2.0.3 / 2.0.4 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
 		SideQuestAutoComplete: emptyTaskRuleFeatureStatus(available, 0,
-			"2.0.3 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
+			"2.0.3 / 2.0.4 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
 	}
 	var joined error
 	if readErr := a.readOneTaskRuleLeaseLocked(ownerToken, a.taskScoreMultiplierLease, &status.ScoreMultiplier); readErr != nil {
@@ -314,7 +328,7 @@ func emptyTaskRuleFeatureStatus(available bool, multiplier float64, note string)
 		CurrentBytes: make([]string, 0), EvidenceNote: note,
 	}
 	if !available {
-		status.Error = "仅支持已验证的游戏 2.0.3 可执行文件"
+		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
 	}
 	return status
 }
@@ -447,7 +461,7 @@ func (a *App) locateTaskScoreMultiplierLocked() (uintptr, error) {
 	if a.taskScoreMultiplierAddr != 0 {
 		return a.taskScoreMultiplierAddr, nil
 	}
-	address, err := locateTaskRuleSiteLocked(a, taskScoreAOB, "任务分数倍率", taskScoreMultiplierRVA, taskScoreOriginal)
+	address, err := locateTaskRuleSiteLocked(a, taskScoreAOB, "任务分数倍率", taskScoreRVAForDigest(a.runtimePatchVerifiedDigest), taskScoreOriginal)
 	if err != nil {
 		return 0, err
 	}
@@ -461,7 +475,7 @@ func (a *App) locateTaskSideQuestSitesLocked() ([]uintptr, error) {
 	}
 	addresses := make([]uintptr, len(taskSideQuestSpecs))
 	for index, spec := range taskSideQuestSpecs {
-		address, err := locateTaskRuleSiteLocked(a, spec.AOB, spec.Label, spec.RVA, spec.Original)
+		address, err := locateTaskRuleSiteLocked(a, spec.AOB, spec.Label, taskSideQuestRVAForDigest(index, a.runtimePatchVerifiedDigest), spec.Original)
 		if err != nil {
 			return nil, err
 		}

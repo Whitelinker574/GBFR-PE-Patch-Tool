@@ -15,10 +15,18 @@ const (
 )
 
 var (
-	summonDurationOriginal = []byte{0xC5, 0xFA, 0x10, 0x15, 0x19, 0x95, 0xAB, 0x07}
-	summonDurationAOB      = "C5 FA 10 15 ?? ?? ?? ?? C5 EA 59 15 ?? ?? ?? ?? C5 F2 58 CA C5 FA 11 8B F4 1E 00 00 C5 F8 2E C1 76 0A"
-	summonDurationMarker   = []byte("GBFRSD01")
+	summonDurationOriginal    = []byte{0xC5, 0xFA, 0x10, 0x15, 0x19, 0x95, 0xAB, 0x07}
+	summonDuration204Original = []byte{0xC5, 0xFA, 0x10, 0x15, 0x99, 0xA7, 0xAB, 0x07}
+	summonDurationAOB         = "C5 FA 10 15 ?? ?? ?? ?? C5 EA 59 15 ?? ?? ?? ?? C5 F2 58 CA C5 FA 11 8B F4 1E 00 00 C5 F8 2E C1 76 0A"
+	summonDurationMarker      = []byte("GBFRSD01")
 )
+
+func summonDurationOriginalForDigest(digest string) []byte {
+	if strings.EqualFold(digest, game204ExecutableSHA256) {
+		return append([]byte(nil), summonDuration204Original...)
+	}
+	return append([]byte(nil), summonDurationOriginal...)
+}
 
 type SummonDurationRequest struct {
 	Enabled            bool    `json:"enabled"`
@@ -77,8 +85,8 @@ func (a *App) SummonDurationSetOwned(token string, request SummonDurationRequest
 		if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "召唤持续时间"); err != nil {
 			return emptySummonDurationStatus(), err
 		}
-		if !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
-			return emptySummonDurationStatus(), errors.New("召唤持续时间仅支持已验证的游戏 2.0.3 可执行文件")
+		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
+			return emptySummonDurationStatus(), errors.New("召唤持续时间仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件")
 		}
 	}
 	a.runtimePatchMu.Lock()
@@ -132,7 +140,7 @@ func validateSummonDurationRequest(request SummonDurationRequest) error {
 func emptySummonDurationStatus() SummonDurationStatus {
 	return SummonDurationStatus{
 		DurationMultiplier: 2,
-		EvidenceNote:       "2.0.3 召唤持续时间递减入口已锁定；倍率与无限持续共用同一可恢复 Hook。",
+		EvidenceNote:       "2.0.3 / 2.0.4 召唤持续时间递减入口已锁定；倍率与无限持续共用同一可恢复 Hook。",
 	}
 }
 
@@ -145,7 +153,8 @@ func (a *App) enableSummonDurationLocked(ownerToken string, request SummonDurati
 	if err != nil {
 		return fmt.Errorf("分配召唤持续时间代码洞失败: %w", err)
 	}
-	code, err := buildSummonDurationCave(cave, address, request)
+	original := summonDurationOriginalForDigest(a.runtimePatchVerifiedDigest)
+	code, err := buildSummonDurationCaveWithOriginal(cave, address, request, original)
 	if err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
@@ -160,11 +169,11 @@ func (a *App) enableSummonDurationLocked(ownerToken string, request SummonDurati
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return errors.Join(errors.New("召唤持续时间代码洞写后回读失败"), err)
 	}
-	if err := validateSummonDurationCaveBytes(cave, address, currentCave, request); err != nil {
+	if err := validateSummonDurationCaveBytesWithOriginal(cave, address, currentCave, request, original); err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
 	}
-	patch, err := makeRelJump(address, cave, len(summonDurationOriginal))
+	patch, err := makeRelJump(address, cave, len(original))
 	if err != nil {
 		_ = virtualFreeRemote(a.hProcess, cave)
 		return err
@@ -174,7 +183,7 @@ func (a *App) enableSummonDurationLocked(ownerToken string, request SummonDurati
 		Request: request, CaveAddr: cave,
 		Site: runtimePatchPatchSiteLease{
 			Address: address, RVA: uint64(summonDurationRVA),
-			Original: append([]byte(nil), summonDurationOriginal...), Patch: patch,
+			Original: append([]byte(nil), original...), Patch: patch,
 		},
 	}
 	a.summonDurationLease = lease
@@ -198,9 +207,9 @@ func (a *App) enableSummonDurationLocked(ownerToken string, request SummonDurati
 
 func (a *App) readSummonDurationStatusLocked(ownerToken string) (SummonDurationStatus, error) {
 	status := emptySummonDurationStatus()
-	status.Available = strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256)
+	status.Available = isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest)
 	if !status.Available {
-		status.Error = "仅支持已验证的游戏 2.0.3 可执行文件"
+		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
 		return status, nil
 	}
 	lease := a.summonDurationLease
@@ -236,7 +245,7 @@ func (a *App) readSummonDurationStatusLocked(ownerToken string) (SummonDurationS
 	if err != nil {
 		return status, err
 	}
-	if err := validateSummonDurationCaveBytes(lease.CaveAddr, lease.Site.Address, cave, lease.Request); err != nil {
+	if err := validateSummonDurationCaveBytesWithOriginal(lease.CaveAddr, lease.Site.Address, cave, lease.Request, lease.Site.Original); err != nil {
 		status.Error = appendRuntimePatchStatusError(status.Error, "代码洞所有权校验失败: "+err.Error())
 	}
 	status.Enabled = lease.State == runtimePatchPatchEnabled && entryOwned && status.Error == ""
@@ -291,11 +300,12 @@ func (a *App) locateSummonDurationLocked() (uintptr, error) {
 	if got := address - a.moduleBase; got != summonDurationRVA {
 		return 0, fmt.Errorf("召唤持续时间 RVA=0x%X，预期 0x%X", got, summonDurationRVA)
 	}
-	current, err := runtimePatchProcessMemory{handle: a.hProcess}.ReadCode(address, len(summonDurationOriginal))
+	original := summonDurationOriginalForDigest(a.runtimePatchVerifiedDigest)
+	current, err := runtimePatchProcessMemory{handle: a.hProcess}.ReadCode(address, len(original))
 	if err != nil {
 		return 0, err
 	}
-	if !bytes.Equal(current, summonDurationOriginal) {
+	if !bytes.Equal(current, original) {
 		return 0, fmt.Errorf("召唤持续时间原字节不匹配: %s", bytesToHex(current))
 	}
 	a.summonDurationAddr = address
@@ -303,12 +313,19 @@ func (a *App) locateSummonDurationLocked() (uintptr, error) {
 }
 
 func buildSummonDurationCave(cave, entry uintptr, request SummonDurationRequest) ([]byte, error) {
+	return buildSummonDurationCaveWithOriginal(cave, entry, request, summonDurationOriginal)
+}
+
+func buildSummonDurationCaveWithOriginal(cave, entry uintptr, request SummonDurationRequest, original []byte) ([]byte, error) {
 	if err := validateSummonDurationRequest(request); err != nil {
 		return nil, err
 	}
+	if len(original) != len(summonDurationOriginal) || !bytes.Equal(original[:4], summonDurationOriginal[:4]) {
+		return nil, errors.New("召唤持续时间原指令版本无效")
+	}
 	code := make([]byte, 0, summonDurationCaveSize)
-	code = append(code, summonDurationOriginal...)
-	originalTarget := uintptr(int64(entry+8) + int64(int32(binary.LittleEndian.Uint32(summonDurationOriginal[4:8]))))
+	code = append(code, original...)
+	originalTarget := uintptr(int64(entry+8) + int64(int32(binary.LittleEndian.Uint32(original[4:8]))))
 	newDisp := int64(originalTarget) - int64(cave+8)
 	if newDisp < math.MinInt32 || newDisp > math.MaxInt32 {
 		return nil, errors.New("召唤持续时间原始常量超出代码洞 RIP 相对寻址范围")
@@ -320,7 +337,7 @@ func buildSummonDurationCave(cave, entry uintptr, request SummonDurationRequest)
 		code = append(code, 0xF3, 0x0F, 0x5E, 0x15, 0, 0, 0, 0) // divss xmm2,[rip+factor]
 	}
 	jumpOffset := len(code)
-	jump, err := makeRelJump(cave+uintptr(jumpOffset), entry+uintptr(len(summonDurationOriginal)), 5)
+	jump, err := makeRelJump(cave+uintptr(jumpOffset), entry+uintptr(len(original)), 5)
 	if err != nil {
 		return nil, err
 	}
@@ -343,10 +360,14 @@ func buildSummonDurationCave(cave, entry uintptr, request SummonDurationRequest)
 }
 
 func validateSummonDurationCaveBytes(cave, entry uintptr, code []byte, request SummonDurationRequest) error {
-	if len(code) < summonDurationCaveSize || !bytes.Equal(code[:4], summonDurationOriginal[:4]) {
+	return validateSummonDurationCaveBytesWithOriginal(cave, entry, code, request, summonDurationOriginal)
+}
+
+func validateSummonDurationCaveBytesWithOriginal(cave, entry uintptr, code []byte, request SummonDurationRequest, original []byte) error {
+	if len(original) != len(summonDurationOriginal) || len(code) < summonDurationCaveSize || !bytes.Equal(code[:4], original[:4]) {
 		return errors.New("召唤持续时间代码洞过短或原指令不匹配")
 	}
-	originalTarget := uintptr(int64(entry+8) + int64(int32(binary.LittleEndian.Uint32(summonDurationOriginal[4:8]))))
+	originalTarget := uintptr(int64(entry+8) + int64(int32(binary.LittleEndian.Uint32(original[4:8]))))
 	relocatedTarget := uintptr(int64(cave+8) + int64(int32(binary.LittleEndian.Uint32(code[4:8]))))
 	if relocatedTarget != originalTarget {
 		return errors.New("召唤持续时间原指令 RIP 目标不匹配")
@@ -367,7 +388,7 @@ func validateSummonDurationCaveBytes(cave, entry uintptr, code []byte, request S
 			return errors.New("召唤持续时间倍率地址不匹配")
 		}
 	}
-	if code[jumpOffset] != 0xE9 || relJumpTarget(cave+uintptr(jumpOffset), code[jumpOffset:jumpOffset+5]) != entry+uintptr(len(summonDurationOriginal)) {
+	if code[jumpOffset] != 0xE9 || relJumpTarget(cave+uintptr(jumpOffset), code[jumpOffset:jumpOffset+5]) != entry+uintptr(len(original)) {
 		return errors.New("召唤持续时间代码洞回跳地址不匹配")
 	}
 	return nil

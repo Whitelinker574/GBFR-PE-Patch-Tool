@@ -161,14 +161,31 @@ func TestResolveConfluxTimerSitesUsesPinnedManagerPointer(t *testing.T) {
 	pointer := make([]byte, 8)
 	binary.LittleEndian.PutUint64(pointer, uint64(manager))
 	memory := &fakeConfluxTimerMemory{data: map[uintptr][]byte{
-		moduleBase + confluxTimerManagerPointerRVA: pointer,
+		moduleBase + confluxTimerManagerPointerRVA202: pointer,
 	}}
-	sites, err := resolveConfluxTimerSites(memory, moduleBase)
+	sites, err := resolveConfluxTimerSites(memory, moduleBase, confluxTimerManagerPointerRVA202)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sites.Manager != manager || sites.Config != manager+confluxTimerConfigOffset || sites.Mode != manager+confluxTimerModeOffset || sites.Active != manager+confluxTimerActiveOffset {
 		t.Fatalf("unexpected timer sites: %+v", sites)
+	}
+}
+
+func TestConfluxTimerManagerPointerRVASelectsGame204Layout(t *testing.T) {
+	got, err := confluxTimerManagerPointerRVAForDigest(game204ExecutableSHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != confluxTimerManagerPointerRVA204 {
+		t.Fatalf("2.0.4 manager pointer RVA=0x%X, want 0x%X", got, confluxTimerManagerPointerRVA204)
+	}
+	legacy, err := confluxTimerManagerPointerRVAForDigest(runtimePatchCatalogGameSHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy != confluxTimerManagerPointerRVA202 {
+		t.Fatalf("2.0.2 manager pointer RVA=0x%X, want 0x%X", legacy, confluxTimerManagerPointerRVA202)
 	}
 }
 
@@ -180,17 +197,17 @@ func TestReconcileConfluxTimerLeaseHandlesManagerReplacement(t *testing.T) {
 	binary.LittleEndian.PutUint64(pointer, uint64(newManager))
 	newSites := confluxTimerSites{Manager: newManager, Config: newManager + confluxTimerConfigOffset, Mode: newManager + confluxTimerModeOffset, Active: newManager + confluxTimerActiveOffset}
 	memory := &fakeConfluxTimerMemory{data: map[uintptr][]byte{
-		moduleBase + confluxTimerManagerPointerRVA: pointer,
+		moduleBase + confluxTimerManagerPointerRVA202: pointer,
 		newSites.Config: encodeConfluxTimerValues(confluxTimerOriginalValues),
 	}}
 	lease := &confluxTimerLease{Sites: confluxTimerSites{Manager: oldManager}, State: confluxTimerLeaseEnabled}
-	reconciled, sites, retired, err := reconcileConfluxTimerLease(memory, moduleBase, lease)
+	reconciled, sites, retired, err := reconcileConfluxTimerLease(memory, moduleBase, confluxTimerManagerPointerRVA202, lease)
 	if err != nil || !retired || reconciled != nil || sites.Manager != newManager {
 		t.Fatalf("default replacement manager was not retired safely: lease=%+v sites=%+v retired=%v err=%v", reconciled, sites, retired, err)
 	}
 
 	memory.data[newSites.Config] = encodeConfluxTimerValues(confluxTimerFastValues)
-	reconciled, _, retired, err = reconcileConfluxTimerLease(memory, moduleBase, lease)
+	reconciled, _, retired, err = reconcileConfluxTimerLease(memory, moduleBase, confluxTimerManagerPointerRVA202, lease)
 	if err != nil || retired || reconciled == nil || reconciled.Sites.Manager != newManager || reconciled.State != confluxTimerLeaseEnabled {
 		t.Fatalf("fast replacement manager was not rebound safely: lease=%+v retired=%v err=%v", reconciled, retired, err)
 	}
@@ -199,7 +216,7 @@ func TestReconcileConfluxTimerLeaseHandlesManagerReplacement(t *testing.T) {
 	fast := encodeConfluxTimerValues(confluxTimerFastValues)
 	copy(mixed[:4], fast[:4])
 	memory.data[newSites.Config] = mixed
-	if _, _, _, err := reconcileConfluxTimerLease(memory, moduleBase, lease); !errors.Is(err, errLiveMemoryRollbackUnproven) {
+	if _, _, _, err := reconcileConfluxTimerLease(memory, moduleBase, confluxTimerManagerPointerRVA202, lease); !errors.Is(err, errLiveMemoryRollbackUnproven) {
 		t.Fatalf("mixed replacement manager was not rejected: %v", err)
 	}
 }

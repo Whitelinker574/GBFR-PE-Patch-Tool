@@ -167,6 +167,31 @@ func TestRuntimePatchExpectedOriginalBytesSelectsKnown203RIPDisplacements(t *tes
 	}
 }
 
+func TestRuntimePatchExpectedOriginalBytesSelectsKnown204RIPDisplacements(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	seen := 0
+	for _, feature := range catalog.Features {
+		for _, site := range feature.Sites {
+			expected204, compatible := runtimePatch204OriginalBytes[site.Symbol]
+			if !compatible {
+				continue
+			}
+			seen++
+			got := runtimePatchExpectedOriginalBytes(site, runtimePatchLocalGame204SHA256)
+			if !bytes.Equal(got, expected204) || bytes.Equal(got, site.ExpectedOriginalBytes) {
+				t.Fatalf("%s 2.0.4 original=% X, want version variant % X", site.Symbol, got, expected204)
+			}
+			got[0] ^= 0xff
+			if bytes.Equal(got, runtimePatch204OriginalBytes[site.Symbol]) {
+				t.Fatalf("%s returned shared 2.0.4 original-byte storage", site.Symbol)
+			}
+		}
+	}
+	if seen != 4 {
+		t.Fatalf("2.0.4 RuntimePatch original-byte variants=%d, want 4", seen)
+	}
+}
+
 func TestRuntimePatchCatalogContainsInfiniteLinkTime(t *testing.T) {
 	catalog := readRuntimePatchCatalogFile(t)
 	var feature *RuntimePatchFeature

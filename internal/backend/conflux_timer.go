@@ -6,21 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 const (
-	confluxTimerManagerPointerRVA         = uintptr(0x07C23E38)
-	confluxTimerConfigOffset              = uintptr(0x2DA4)
-	confluxTimerModeOffset                = uintptr(0x2DE0)
-	confluxTimerActiveOffset              = uintptr(0x346C)
-	confluxTimerConfigFloats              = 12
-	confluxTimerConfigBytes               = confluxTimerConfigFloats * 4
-	confluxTimerActiveBytes               = 8
-	confluxTimerEndlessMode       uint32  = 1
-	confluxTimerFastSeconds       float32 = 2
+	confluxTimerManagerPointerRVA202         = uintptr(0x07C23E38)
+	confluxTimerManagerPointerRVA204         = uintptr(0x07C22078)
+	confluxTimerConfigOffset                 = uintptr(0x2DA4)
+	confluxTimerModeOffset                   = uintptr(0x2DE0)
+	confluxTimerActiveOffset                 = uintptr(0x346C)
+	confluxTimerConfigFloats                 = 12
+	confluxTimerConfigBytes                  = confluxTimerConfigFloats * 4
+	confluxTimerActiveBytes                  = 8
+	confluxTimerEndlessMode          uint32  = 1
+	confluxTimerFastSeconds          float32 = 2
 )
 
 var (
@@ -168,8 +170,19 @@ func addConfluxTimerOffset(base, offset uintptr) (uintptr, error) {
 	return result, nil
 }
 
-func resolveConfluxTimerSites(memory confluxTimerMemory, moduleBase uintptr) (confluxTimerSites, error) {
-	pointerAddress, err := addConfluxTimerOffset(moduleBase, confluxTimerManagerPointerRVA)
+func confluxTimerManagerPointerRVAForDigest(digest string) (uintptr, error) {
+	switch {
+	case strings.EqualFold(digest, game204ExecutableSHA256):
+		return confluxTimerManagerPointerRVA204, nil
+	case strings.EqualFold(digest, game203ExecutableSHA256), strings.EqualFold(digest, runtimePatchCatalogGameSHA256):
+		return confluxTimerManagerPointerRVA202, nil
+	default:
+		return 0, legacyRuntimeExecutableError("极沌空域快速等待", digest)
+	}
+}
+
+func resolveConfluxTimerSites(memory confluxTimerMemory, moduleBase, managerPointerRVA uintptr) (confluxTimerSites, error) {
+	pointerAddress, err := addConfluxTimerOffset(moduleBase, managerPointerRVA)
 	if err != nil {
 		return confluxTimerSites{}, err
 	}
@@ -196,8 +209,8 @@ func resolveConfluxTimerSites(memory confluxTimerMemory, moduleBase uintptr) (co
 	return confluxTimerSites{Manager: manager, Config: config, Mode: mode, Active: active}, nil
 }
 
-func reconcileConfluxTimerLease(memory confluxTimerMemory, moduleBase uintptr, lease *confluxTimerLease) (*confluxTimerLease, confluxTimerSites, bool, error) {
-	currentSites, err := resolveConfluxTimerSites(memory, moduleBase)
+func reconcileConfluxTimerLease(memory confluxTimerMemory, moduleBase, managerPointerRVA uintptr, lease *confluxTimerLease) (*confluxTimerLease, confluxTimerSites, bool, error) {
+	currentSites, err := resolveConfluxTimerSites(memory, moduleBase, managerPointerRVA)
 	if err != nil {
 		if errors.Is(err, errConfluxTimerNotReady) {
 			return nil, confluxTimerSites{}, true, nil
@@ -383,8 +396,12 @@ func (a *App) ConfluxTimerGetStatusOwned(token string) (ConfluxTimerStatus, erro
 
 func (a *App) readConfluxTimerStatusOwnedLocked(token string, process processInstanceID) (ConfluxTimerStatus, error) {
 	memory := confluxTimerProcessMemory{handle: a.hProcess}
+	managerPointerRVA, err := confluxTimerManagerPointerRVAForDigest(a.runtimePatchVerifiedDigest)
+	if err != nil {
+		return ConfluxTimerStatus{Verified: true, Error: err.Error()}, nil
+	}
 	if lease := a.confluxTimerLease; lease != nil && runtimeOwnerTokenMatches(lease.OwnerToken, token) && sameProcessInstance(lease.Process, process) {
-		reconciled, currentSites, retired, reconcileErr := reconcileConfluxTimerLease(memory, a.moduleBase, lease)
+		reconciled, currentSites, retired, reconcileErr := reconcileConfluxTimerLease(memory, a.moduleBase, managerPointerRVA, lease)
 		if reconcileErr != nil {
 			return ConfluxTimerStatus{Verified: true, Owned: true, Error: reconcileErr.Error()}, nil
 		}
@@ -406,7 +423,7 @@ func (a *App) readConfluxTimerStatusOwnedLocked(token string, process processIns
 		}
 		return status, nil
 	}
-	sites, err := resolveConfluxTimerSites(memory, a.moduleBase)
+	sites, err := resolveConfluxTimerSites(memory, a.moduleBase, managerPointerRVA)
 	if err != nil {
 		return ConfluxTimerStatus{Verified: true, Error: err.Error()}, nil
 	}
@@ -451,14 +468,21 @@ func (a *App) ConfluxTimerSetEnabledOwned(token string, enabled bool) (ConfluxTi
 			return ConfluxTimerStatus{}, err
 		}
 	}
+	if !enabled && a.confluxTimerLease == nil && !sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
+		return ConfluxTimerStatus{Error: "尚未校验游戏版本；点击“验证并读取”后再使用"}, nil
+	}
 	memory := confluxTimerProcessMemory{handle: a.hProcess}
+	managerPointerRVA, managerPointerErr := confluxTimerManagerPointerRVAForDigest(a.runtimePatchVerifiedDigest)
+	if managerPointerErr != nil {
+		return ConfluxTimerStatus{}, managerPointerErr
+	}
 	if !enabled {
 		lease := a.confluxTimerLease
 		if lease == nil {
 			if !sameProcessInstance(a.runtimePatchVerifiedProcess, process) {
 				return ConfluxTimerStatus{Error: "尚未校验游戏版本；点击“验证并读取”后再使用"}, nil
 			}
-			sites, err := resolveConfluxTimerSites(memory, a.moduleBase)
+			sites, err := resolveConfluxTimerSites(memory, a.moduleBase, managerPointerRVA)
 			if err != nil {
 				return ConfluxTimerStatus{Error: err.Error()}, nil
 			}
@@ -467,7 +491,7 @@ func (a *App) ConfluxTimerSetEnabledOwned(token string, enabled bool) (ConfluxTi
 		if !runtimeOwnerTokenMatches(lease.OwnerToken, token) || !sameProcessInstance(lease.Process, process) {
 			return ConfluxTimerStatus{}, errRuntimeOwnerLeaseStale
 		}
-		reconciled, currentSites, retired, err := reconcileConfluxTimerLease(memory, a.moduleBase, lease)
+		reconciled, currentSites, retired, err := reconcileConfluxTimerLease(memory, a.moduleBase, managerPointerRVA, lease)
 		if err != nil {
 			a.poisonCurrentLiveMemoryWrites()
 			return ConfluxTimerStatus{}, err
@@ -485,13 +509,13 @@ func (a *App) ConfluxTimerSetEnabledOwned(token string, enabled bool) (ConfluxTi
 			return ConfluxTimerStatus{}, err
 		}
 		a.confluxTimerLease = nil
-		sites, resolveErr := resolveConfluxTimerSites(memory, a.moduleBase)
+		sites, resolveErr := resolveConfluxTimerSites(memory, a.moduleBase, managerPointerRVA)
 		if resolveErr != nil {
 			return ConfluxTimerStatus{Error: resolveErr.Error()}, nil
 		}
 		return readConfluxTimerStatus(memory, sites, false)
 	}
-	sites, err := resolveConfluxTimerSites(memory, a.moduleBase)
+	sites, err := resolveConfluxTimerSites(memory, a.moduleBase, managerPointerRVA)
 	if err != nil {
 		return ConfluxTimerStatus{}, err
 	}
@@ -506,7 +530,7 @@ func (a *App) ConfluxTimerSetEnabledOwned(token string, enabled bool) (ConfluxTi
 		if !runtimeOwnerTokenMatches(lease.OwnerToken, token) || !sameProcessInstance(lease.Process, process) {
 			return ConfluxTimerStatus{}, errRuntimeOwnerLeaseStale
 		}
-		reconciled, currentSites, retired, reconcileErr := reconcileConfluxTimerLease(memory, a.moduleBase, lease)
+		reconciled, currentSites, retired, reconcileErr := reconcileConfluxTimerLease(memory, a.moduleBase, managerPointerRVA, lease)
 		if reconcileErr != nil {
 			a.poisonCurrentLiveMemoryWrites()
 			return ConfluxTimerStatus{}, reconcileErr
@@ -564,7 +588,11 @@ func (a *App) restoreConfluxTimerOwnedLocked(owner string, force bool) error {
 		return errors.Join(fmt.Errorf("极沌空域计时器属于已替换的游戏进程"), errLiveMemoryRollbackUnproven)
 	}
 	memory := confluxTimerProcessMemory{handle: a.hProcess}
-	reconciled, _, retired, err := reconcileConfluxTimerLease(memory, a.moduleBase, lease)
+	managerPointerRVA, managerPointerErr := confluxTimerManagerPointerRVAForDigest(a.runtimePatchVerifiedDigest)
+	if managerPointerErr != nil {
+		return managerPointerErr
+	}
+	reconciled, _, retired, err := reconcileConfluxTimerLease(memory, a.moduleBase, managerPointerRVA, lease)
 	if err != nil {
 		a.poisonCurrentLiveMemoryWrites()
 		return err

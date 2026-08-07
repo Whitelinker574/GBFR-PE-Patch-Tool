@@ -1,6 +1,12 @@
-# Game 2.0.3 compatibility and implementation status
+# Game 2.0.4 compatibility and implementation status
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
+
+## Game 2.0.4 compatibility
+
+The local Steam 2.0.4 update replaces the executable but leaves the project-used `data.i` byte-identical to 2.0.3. The shared runtime boundary now recognizes the exact 2.0.4 SHA-256 and selects explicit 2.0.4 layouts rather than applying a blanket offset. All 83 runtime catalog sites and all 36 native-companion signatures uniquely match the local executable; version-specific original bytes, fixed globals, free-consumption paths, task rules, summon duration, character panels, current-weapon capture, monster controls, spatial hooks, camera, audio, virtual sigils, and QOL have corresponding 2.0.4 evidence. Standalone boundaries outside that catalog are also pinned: the task-reward hook uniquely resolves its manager slot, and the Conflux timer uses the cross-version-proven 2.0.4 manager pointer rather than the 2.0.2 address.
+
+This is executable and lifecycle compatibility evidence, not a substitute for gameplay acceptance. A running 2.0.4 process was not available during this pass, so quest-result effects, save/restart readback, scene transitions, and long-running multi-hook combinations remain field checks. The official 2.0.4 fix specifically targets a Fatebreaker save made on the Grandcypher deck; copied samples from that path are still needed to verify the tool's read/write/reopen behavior against the repaired game loader.
 
 ## v2.0.11 external-save loadout recovery
 

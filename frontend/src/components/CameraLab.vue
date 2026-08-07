@@ -107,7 +107,7 @@ onActivated(() => { void refresh() })
         <h2>{{ tx('城镇镜头距离与滚轮', 'Town Camera Distance & Zoom') }}</h2>
         <p>{{ tx('从角色近景到远景观察，直接选择一种镜头体验；最大距离也可能改变战斗默认视距，仍可随时恢复。', 'Choose a camera experience from close character detail to a distant view. Maximum distance may also affect the default battle view and can always be restored.') }}</p>
       </div>
-      <div class="camera-boundary"><b>{{ tx('只在确认匹配 2.0.2 / 2.0.3 时开启', 'Enabled Only After a 2.0.2 / 2.0.3 Match') }}</b><span>{{ tx('无法确认游戏版本时不会写入；停用后恢复开启前的数值', 'Nothing is written if the game version cannot be verified; disabling restores the values from before activation') }}</span></div>
+      <div class="camera-boundary"><b>{{ tx('只在确认匹配 2.0.2 / 2.0.3 / 2.0.4 时开启', 'Enabled Only After a 2.0.2 / 2.0.3 / 2.0.4 Match') }}</b><span>{{ tx('无法确认游戏版本时不会写入；停用后恢复开启前的数值', 'Nothing is written if the game version cannot be verified; disabling restores the values from before activation') }}</span></div>
     </section>
 
     <section class="camera-setup">

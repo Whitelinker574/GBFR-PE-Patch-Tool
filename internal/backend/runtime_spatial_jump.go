@@ -48,11 +48,23 @@ func cloneRuntimeSpatialJumpLease(lease runtimePatchPatchLease) *runtimePatchPat
 	return &cloned
 }
 
-func runtimeSpatialJumpAddresses(moduleBase uintptr) (uintptr, uintptr, error) {
-	if moduleBase == 0 || moduleBase > ^uintptr(0)-runtimeSpatialJumpCheckRVA {
+func runtimeSpatialJumpRVAs(layout runtimeGameLayout) (uintptr, uintptr, bool) {
+	switch layout.Version {
+	case "2.0.3":
+		return runtimeSpatialJumpGateRVA, runtimeSpatialJumpCheckRVA, true
+	case "2.0.4":
+		return runtimeSpatialJumpGateRVA + 0xFA0, runtimeSpatialJumpCheckRVA + 0xFA0, true
+	default:
+		return 0, 0, false
+	}
+}
+
+func runtimeSpatialJumpAddresses(moduleBase uintptr, layout runtimeGameLayout) (uintptr, uintptr, error) {
+	gateRVA, checkRVA, ok := runtimeSpatialJumpRVAs(layout)
+	if !ok || moduleBase == 0 || moduleBase > ^uintptr(0)-checkRVA {
 		return 0, 0, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃入口地址无效", "The continuous-jump addresses are invalid"))
 	}
-	return moduleBase + runtimeSpatialJumpGateRVA, moduleBase + runtimeSpatialJumpCheckRVA, nil
+	return moduleBase + gateRVA, moduleBase + checkRVA, nil
 }
 
 func validateRuntimeSpatialJumpLease(lease runtimePatchPatchLease, owner string, process processInstanceID, moduleBase uintptr) error {
@@ -62,13 +74,25 @@ func validateRuntimeSpatialJumpLease(lease runtimePatchPatchLease, owner string,
 	if err := validateRuntimePatchOwnedLease(lease, owner, process); err != nil {
 		return err
 	}
-	gate, check, err := runtimeSpatialJumpAddresses(moduleBase)
+	var layout runtimeGameLayout
+	for _, candidate := range runtimeGameLayouts {
+		gateRVA, checkRVA, ok := runtimeSpatialJumpRVAs(candidate)
+		if ok && lease.Sites[0].RVA == uint64(gateRVA) && lease.Sites[1].RVA == uint64(checkRVA) {
+			layout = candidate
+			break
+		}
+	}
+	gateRVA, checkRVA, ok := runtimeSpatialJumpRVAs(layout)
+	if !ok {
+		return errors.Join(fmt.Errorf("continuous-jump recovery lease has an unknown game layout"), errLiveMemoryRollbackUnproven)
+	}
+	gate, check, err := runtimeSpatialJumpAddresses(moduleBase, layout)
 	if err != nil {
 		return err
 	}
 	expected := []runtimePatchPatchSiteLease{
-		{Address: gate, RVA: uint64(runtimeSpatialJumpGateRVA), Original: runtimeSpatialJumpGateOriginal, Patch: runtimeSpatialJumpGatePatch},
-		{Address: check, RVA: uint64(runtimeSpatialJumpCheckRVA), Original: runtimeSpatialJumpCheckOriginal, Patch: runtimeSpatialJumpCheckPatch},
+		{Address: gate, RVA: uint64(gateRVA), Original: runtimeSpatialJumpGateOriginal, Patch: runtimeSpatialJumpGatePatch},
+		{Address: check, RVA: uint64(checkRVA), Original: runtimeSpatialJumpCheckOriginal, Patch: runtimeSpatialJumpCheckPatch},
 	}
 	for index := range expected {
 		actual := lease.Sites[index]
@@ -81,10 +105,11 @@ func validateRuntimeSpatialJumpLease(lease runtimePatchPatchLease, owner string,
 }
 
 func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, moduleEnd uintptr, layout runtimeGameLayout) ([]runtimePatchPatchSiteLease, error) {
-	if layout.Version != "2.0.3" {
-		return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3"))
+	_, _, ok := runtimeSpatialJumpRVAs(layout)
+	if !ok {
+		return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 / 2.0.4 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3/2.0.4"))
 	}
-	gate, check, err := runtimeSpatialJumpAddresses(moduleBase)
+	gate, check, err := runtimeSpatialJumpAddresses(moduleBase, layout)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +142,7 @@ func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, modul
 		}
 		context, err := memory.ReadCode(definition.address-definition.contextBack, len(definition.context))
 		if err != nil || !bytes.Equal(context, definition.context) {
-			return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃入口上下文与 2.0.3 动作函数不一致", "The continuous-jump context does not match the 2.0.3 action function"))
+			return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃入口上下文与当前 2.0.3 / 2.0.4 动作函数不一致", "The continuous-jump context does not match the current 2.0.3/2.0.4 action function"))
 		}
 		sites = append(sites, runtimePatchPatchSiteLease{
 			Address: definition.address, RVA: uint64(definition.address - moduleBase),
@@ -129,17 +154,21 @@ func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, modul
 
 func readRuntimeSpatialJumpStatus(memory runtimePatchMemory, moduleBase uintptr, process processInstanceID, owner string, lease *runtimePatchPatchLease, layout runtimeGameLayout) RuntimeSpatialJumpStatus {
 	status := RuntimeSpatialJumpStatus{
-		OwnerLeaseID: owner, RVAs: []uint64{uint64(runtimeSpatialJumpGateRVA), uint64(runtimeSpatialJumpCheckRVA)},
+		OwnerLeaseID: owner, RVAs: []uint64{},
 		CurrentBytes: []string{"", ""}, PID: process.PID, ProcessCreated: process.Created,
 		GameVersion: layout.Version, Source: "game_runtime_continuous_jump_" + layout.Version,
 	}
-	gate, check, err := runtimeSpatialJumpAddresses(moduleBase)
+	gateRVA, checkRVA, ok := runtimeSpatialJumpRVAs(layout)
+	if ok {
+		status.RVAs = []uint64{uint64(gateRVA), uint64(checkRVA)}
+	}
+	gate, check, err := runtimeSpatialJumpAddresses(moduleBase, layout)
 	if err != nil {
 		status.Error = err.Error()
 		return status
 	}
-	if layout.Version != "2.0.3" {
-		status.Error = runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3")
+	if !ok {
+		status.Error = runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 / 2.0.4 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3/2.0.4")
 		return status
 	}
 	if lease != nil {

@@ -123,7 +123,7 @@ func updateRuntimeSpatialAerialRecovery(state runtimeSpatialFlightAnchorState, m
 }
 
 func resolveRuntimeSpatialFlightBinding(memory runtimePatchPartyMemory, moduleBase uintptr, layout runtimeGameLayout) (runtimeSpatialFlightBinding, error) {
-	if memory == nil || moduleBase == 0 || !isKnownRuntimeGameLayout(layout) || layout.Version != "2.0.3" {
+	if memory == nil || moduleBase == 0 || !isKnownRuntimeGameLayout(layout) || (layout.Version != "2.0.3" && layout.Version != "2.0.4") {
 		return runtimeSpatialFlightBinding{}, fmt.Errorf("%s", runtimePatchMonitorText("当前游戏布局没有经过悬空飞行验证", "The current game layout is not verified for hover flight"))
 	}
 	root, err := verifyRuntimePatchPartyPointerSignatureForLayout(memory, moduleBase, layout)
@@ -150,7 +150,7 @@ func resolveRuntimeSpatialFlightBinding(memory runtimePatchPartyMemory, moduleBa
 	if !ok {
 		return runtimeSpatialFlightBinding{}, fmt.Errorf("ExFall subobject address overflow")
 	}
-	if err := validateRuntimeSpatialExFall(memory, moduleBase, controller); err != nil {
+	if err := validateRuntimeSpatialExFall(memory, moduleBase, controller, layout); err != nil {
 		return runtimeSpatialFlightBinding{}, err
 	}
 	transformRoot, err := readRuntimePatchPointer(memory, entity+runtimePatchPartyTransformRootOffset)
@@ -189,7 +189,7 @@ func validateRuntimeSpatialFlightBinding(memory runtimePatchPartyMemory, binding
 	if !ok || controller != binding.Controller {
 		return fmt.Errorf("%s", runtimePatchMonitorText("飞行期间 ExFall 子对象已经变化，请等待重新绑定", "The ExFall subobject changed during flight; wait for rebinding"))
 	}
-	if err := validateRuntimeSpatialExFall(memory, binding.ModuleBase, binding.Controller); err != nil {
+	if err := validateRuntimeSpatialExFall(memory, binding.ModuleBase, binding.Controller, binding.Layout); err != nil {
 		return err
 	}
 	transformRoot, err := readRuntimePatchPointer(memory, binding.Entity+runtimePatchPartyTransformRootOffset)
@@ -203,7 +203,14 @@ func validateRuntimeSpatialFlightBinding(memory runtimePatchPartyMemory, binding
 	return nil
 }
 
-func validateRuntimeSpatialExFall(memory runtimePatchPartyMemory, moduleBase, controller uintptr) error {
+func runtimeSpatialFlightRVAForLayout(layout runtimeGameLayout) uintptr {
+	if layout.Version == "2.0.4" {
+		return runtimeSpatialExFallFloorQueryRVA + 0xFA0
+	}
+	return runtimeSpatialExFallFloorQueryRVA
+}
+
+func validateRuntimeSpatialExFall(memory runtimePatchPartyMemory, moduleBase, controller uintptr, layout runtimeGameLayout) error {
 	if memory == nil || moduleBase == 0 || controller == 0 {
 		return fmt.Errorf("invalid ExFall validation parameters")
 	}
@@ -212,9 +219,9 @@ func validateRuntimeSpatialExFall(memory runtimePatchPartyMemory, moduleBase, co
 		return fmt.Errorf("%s", runtimePatchMonitorText("角色 ExFall vtable 不可用", "The character ExFall vtable is unavailable"))
 	}
 	floorQuery, err := readRuntimePatchPointer(memory, vtable+runtimeSpatialExFallFloorQuerySlot)
-	want, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimeSpatialExFallFloorQueryRVA)
+	want, ok := checkedRuntimePatchMonitorAddress(moduleBase, runtimeSpatialFlightRVAForLayout(layout))
 	if err != nil || !ok || floorQuery != want {
-		return fmt.Errorf("%s", runtimePatchMonitorText("角色 ExFall 落地查询入口与 2.0.3 布局不匹配", "The character ExFall floor-query entry does not match the 2.0.3 layout"))
+		return fmt.Errorf("%s", runtimePatchMonitorText("角色 ExFall 落地查询入口与当前 2.0.3 / 2.0.4 布局不匹配", "The character ExFall floor-query entry does not match the current 2.0.3/2.0.4 layout"))
 	}
 	return nil
 }

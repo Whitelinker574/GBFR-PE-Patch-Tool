@@ -109,7 +109,7 @@ test('experimental runtime integrations are absent from the stable page', () => 
 test('continuous challenge is a stable owned mission action', () => {
   assert.match(source, /InfiniteChallengeGetStatusOwned/)
   assert.match(source, /InfiniteChallengeSetEnabledOwned/)
-  assert.match(source, /连续挑战[\s\S]*2\.0\.3 唯一 AOB · 三字节补丁 · 写后回读/)
+  assert.match(source, /连续挑战[\s\S]*2\.0\.3 \/ 2\.0\.4 唯一 AOB · 三字节补丁 · 写后回读/)
   assert.match(source, /infiniteChallengeStatus\.owned/)
 })
 

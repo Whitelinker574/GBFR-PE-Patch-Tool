@@ -552,6 +552,16 @@ static lm_address_t MonsterPatchRva203(const char* id)
     return LM_ADDRESS_BAD;
 }
 
+static lm_address_t MonsterPatchRva204(const char* id)
+{
+    if (strcmp(id, "monster_hp") == 0) return 0x1F756B0;
+    if (strcmp(id, "monster_damage_new") == 0) return 0x1F756A0;
+    if (strcmp(id, "monster_stun") == 0) return 0xB23848;
+    if (strcmp(id, "overdrive_state") == 0) return 0x22C6926;
+    if (strcmp(id, "od_rate") == 0) return 0x22C6DF0;
+    return LM_ADDRESS_BAD;
+}
+
 static lm_size_t MonsterPatchCaveSize(const char* id)
 {
     if (strcmp(id, "monster_damage_new") == 0) return 512;
@@ -1785,6 +1795,7 @@ struct VirtualSigilRuntimeLayout
 static constexpr VirtualSigilRuntimeLayout kVirtualSigilRuntimeLayouts[] = {
     { L"2.0.2", 0x00A25484, 0x00A26096, 0x00A260AE, 0x00A260F0, 0x00A2C610, 0x07C20940, 0x07C24980 },
     { L"2.0.3", 0x00A1EBE4, 0x00A1F7F6, 0x00A1F80E, 0x00A1F850, 0x00A25D70, 0x07C1D900, 0x07C21940 },
+    { L"2.0.4", 0x00A1FB84, 0x00A20796, 0x00A207AE, 0x00A207F0, 0x00A26D10, 0x07C1EB80, 0x07C22BC0 },
 };
 static constexpr int kNativeSigilSlots = 13;
 static constexpr int kMainGemCapacity = 5100;
@@ -2209,7 +2220,7 @@ static_assert(sizeof(WeaponRuntimeSkillEntry) == 8);
 using WeaponTraitAggregationFunction = void(*)(uintptr_t, uintptr_t, uintptr_t);
 using ApplyWeaponTraitFunction = void(*)(uint32_t, uintptr_t, uint32_t, uint32_t, uint32_t);
 static constexpr uint32_t kWeaponRuntimeMaxEntries = 2048;
-static constexpr lm_address_t kWeaponRuntimeStatusManagerRva203 = 0x07C21940;
+static constexpr lm_address_t kWeaponRuntimeStatusManagerRvas[] = { 0x07C21940, 0x07C22BC0 };
 static SRWLOCK g_weaponRuntimeLock = SRWLOCK_INIT;
 static std::array<WeaponRuntimeSkillEntry, kWeaponRuntimeMaxEntries> g_weaponRuntimeSkills{};
 static size_t g_weaponRuntimeSkillCount = 0;
@@ -2270,28 +2281,34 @@ static bool ResolveLocalWeaponStatusUnsafe(uintptr_t status, uintptr_t weapon)
         !MemoryRegionAllows(status + 0x5B60, sizeof(uint32_t), false) ||
         !MemoryRegionAllows(status + 0x5EAC, sizeof(int32_t), false) ||
         !MemoryRegionAllows(weapon, 8, false) || *reinterpret_cast<int32_t*>(status + 0x5EAC) != 1) return false;
-    uintptr_t global = g_weaponRuntimeModuleBase + kWeaponRuntimeStatusManagerRva203;
-    if (!MemoryRegionAllows(global, sizeof(uintptr_t), false)) return false;
-    uintptr_t manager = *reinterpret_cast<uintptr_t*>(global);
-    if (!manager || !MemoryRegionAllows(manager + 0xA58, 4, false) ||
-        !MemoryRegionAllows(manager + 0xA40, sizeof(uintptr_t), false) ||
-        !MemoryRegionAllows(manager + 0xA30, sizeof(uintptr_t), false)) return false;
-    uint32_t mask = *reinterpret_cast<uint32_t*>(manager + 0xA58);
-    if (mask > 0xFFFF || ((mask + 1) & mask) != 0) return false;
-    uintptr_t table = *reinterpret_cast<uintptr_t*>(manager + 0xA40);
-    uintptr_t sentinel = *reinterpret_cast<uintptr_t*>(manager + 0xA30);
-    if (!table || !sentinel) return false;
-    uintptr_t bucket = table + static_cast<uintptr_t>((kLocalPlayerStatusKey & mask) * 0x10u);
-    if (!MemoryRegionAllows(bucket, 0x10, false)) return false;
-    uintptr_t last = *reinterpret_cast<uintptr_t*>(bucket);
-    uintptr_t node = *reinterpret_cast<uintptr_t*>(bucket + 8);
-    for (int step = 0; step < 256 && node && node != sentinel; ++step)
+    for (const lm_address_t managerRva : kWeaponRuntimeStatusManagerRvas)
     {
-        if (!MemoryRegionAllows(node, 0x38, false)) return false;
-        if (*reinterpret_cast<uint32_t*>(node + 0x10) == kLocalPlayerStatusKey)
-            return *reinterpret_cast<uintptr_t*>(node + 0x30) == status;
-        if (node == last) break;
-        node = *reinterpret_cast<uintptr_t*>(node + 8);
+        uintptr_t global = g_weaponRuntimeModuleBase + managerRva;
+        if (!MemoryRegionAllows(global, sizeof(uintptr_t), false)) continue;
+        uintptr_t manager = *reinterpret_cast<uintptr_t*>(global);
+        if (!manager || !MemoryRegionAllows(manager + 0xA58, 4, false) ||
+            !MemoryRegionAllows(manager + 0xA40, sizeof(uintptr_t), false) ||
+            !MemoryRegionAllows(manager + 0xA30, sizeof(uintptr_t), false)) continue;
+        uint32_t mask = *reinterpret_cast<uint32_t*>(manager + 0xA58);
+        if (mask > 0xFFFF || ((mask + 1) & mask) != 0) continue;
+        uintptr_t table = *reinterpret_cast<uintptr_t*>(manager + 0xA40);
+        uintptr_t sentinel = *reinterpret_cast<uintptr_t*>(manager + 0xA30);
+        if (!table || !sentinel) continue;
+        uintptr_t bucket = table + static_cast<uintptr_t>((kLocalPlayerStatusKey & mask) * 0x10u);
+        if (!MemoryRegionAllows(bucket, 0x10, false)) continue;
+        uintptr_t last = *reinterpret_cast<uintptr_t*>(bucket);
+        uintptr_t node = *reinterpret_cast<uintptr_t*>(bucket + 8);
+        for (int step = 0; step < 256 && node && node != sentinel; ++step)
+        {
+            if (!MemoryRegionAllows(node, 0x38, false)) break;
+            if (*reinterpret_cast<uint32_t*>(node + 0x10) == kLocalPlayerStatusKey)
+            {
+                if (*reinterpret_cast<uintptr_t*>(node + 0x30) == status) return true;
+                break;
+            }
+            if (node == last) break;
+            node = *reinterpret_cast<uintptr_t*>(node + 8);
+        }
     }
     return false;
 }
@@ -4720,7 +4737,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 		lm_address_t resolvedRva = point.rva;
 		bool resolvedKnownEntry = false;
 		const lm_address_t rva203 = MonsterPatchRva203(point.id);
-		const lm_address_t knownRvas[] = { point.rva, rva203 };
+		const lm_address_t rva204 = MonsterPatchRva204(point.id);
+		const lm_address_t knownRvas[] = { point.rva, rva203, rva204 };
 		for (const lm_address_t candidate : knownRvas)
 		{
 			if (candidate == LM_ADDRESS_BAD || (candidate == point.rva && resolvedKnownEntry)) continue;

@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.16.md`](RELEASE_NOTES_v2.0.16.md) | v2.0.16 游戏 2.0.4 运行时与本地功能适配 |
 | [`RELEASE_NOTES_v2.0.15.md`](RELEASE_NOTES_v2.0.15.md) | v2.0.15 2.0.3 怪物增强、OD 槽倍率与召唤石“不动”补充 |
 | [`RELEASE_NOTES_v2.0.14.md`](RELEASE_NOTES_v2.0.14.md) | v2.0.14 货币、药水校验与任务专属万能药因子修复 |
 | [`RELEASE_NOTES_v2.0.13.md`](RELEASE_NOTES_v2.0.13.md) | v2.0.13 按技能配装合并武器、祝福与召唤石来源 |

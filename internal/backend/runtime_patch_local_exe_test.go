@@ -16,6 +16,8 @@ const (
 	runtimePatchLocalGame202Size   = int64(123522016)
 	runtimePatchLocalGame203SHA256 = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
 	runtimePatchLocalGame203Size   = int64(123506656)
+	runtimePatchLocalGame204SHA256 = "F827F3C13CAA90B290FAB2FE7E28165A80448FDE0A3F7A96D79DAC6B8343FF2A"
+	runtimePatchLocalGame204Size   = int64(123512288)
 )
 
 type runtimePatchLocalExecutableSection struct {
@@ -211,6 +213,45 @@ func TestRuntimePatchCatalogMatchesLocalGame203(t *testing.T) {
 	}
 	if got, want := strings.Join(missing, ","), ""; got != want {
 		t.Errorf("2.0.3 missing sites=%q, want %q", got, want)
+	}
+}
+
+func TestRuntimePatchCatalogMatchesLocalGame204(t *testing.T) {
+	path := os.Getenv("GBFR_GAME_EXE_204_TEST")
+	if path == "" {
+		t.Skip("set GBFR_GAME_EXE_204_TEST to verify the locally supplied game 2.0.4 executable")
+	}
+	if err := verifyRuntimePatchLocalGameIdentityExact(path, runtimePatchLocalGame204Size, runtimePatchLocalGame204SHA256); err != nil {
+		t.Fatalf("verify local game 2.0.4 identity: %v", err)
+	}
+	sections, err := readRuntimePatchLocalExecutableSections(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := decodeRuntimePatchCatalog(runtimePatchCatalogJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, feature := range catalog.Features {
+		for siteIndex, catalogSite := range feature.Sites {
+			site, err := runtimePatchSiteForExecutable(catalogSite, runtimePatchLocalGame204SHA256)
+			if err != nil {
+				t.Fatalf("%s site[%d]: resolve 2.0.4 definition: %v", feature.ID, siteIndex, err)
+			}
+			pattern, err := parseRuntimePatchPattern(site.AOB)
+			if err != nil {
+				t.Fatalf("%s site[%d]: parse AOB: %v", feature.ID, siteIndex, err)
+			}
+			matches := findRuntimePatchLocalPatternMatches(sections, pattern)
+			if len(matches) != 1 {
+				t.Errorf("%s site[%d]: matches=%s, want one", feature.ID, siteIndex, formatRuntimePatchLocalMatchLocations(matches))
+				continue
+			}
+			actual := runtimePatchLocalBytesAtRVA(sections, matches[0].rva+uint32(site.Offset), len(site.EnableBytes))
+			if !bytes.Equal(actual, site.ExpectedOriginalBytes) {
+				t.Errorf("%s site[%d] 2.0.4 original=% X, expected=% X at RVA 0x%X", feature.ID, siteIndex, actual, site.ExpectedOriginalBytes, matches[0].rva+uint32(site.Offset))
+			}
+		}
 	}
 }
 

@@ -43,7 +43,7 @@ const runtimeCatalog = computed(() => {
     resources: [
       ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
-      ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3 专用'],
+      ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3 / 2.0.4'],
       ['库存素材扣减保护', '只处理通用库存的负向素材增量，保留正向获得', '兼容路径'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
@@ -398,10 +398,10 @@ onBeforeUnmount(() => {
       <div class="memory-card compatibility-note ui-card ui-panel is-compact">
         <div class="memory-header">
           <span class="memory-title">实时修改与离线编辑</span>
-          <span class="memory-hint">GAME 2.0.3 功能边界</span>
+          <span class="memory-hint">GAME 2.0.3 / 2.0.4 功能边界</span>
         </div>
         <div class="memory-info">
-          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.3 已复核特征动态定位，实时写入后立即回读。</span>
+          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.3 / 2.0.4 已复核特征动态定位，实时写入后立即回读。</span>
           <span>药水、免费消费和库存扣减保护在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。</span>
           <span>实时数值需要让游戏正常触发一次保存；游戏运行时不要同时离线修改同一存档。</span>
         </div>
@@ -454,7 +454,7 @@ onBeforeUnmount(() => {
           <div class="memory-header">
             <span class="memory-title">免费制作、交易与升级</span>
             <span class="info-dot" title="11 条消费路径作为一个整体启用、回读和恢复；任一入口不匹配都会拒绝开启。">!</span>
-            <span class="memory-hint">2.0.3 专用 · 11 站点原子补丁</span>
+            <span class="memory-hint">2.0.3 / 2.0.4 · 11 站点原子补丁</span>
           </div>
           <p class="feature-help">用途：让制作、商店交易、武器与养成升级不再扣除所需货币和材料。它不会增加任务奖励，也不会改变拾取数量；需要奖励翻倍请使用掉落与锻造规则。</p>
           <div class="memory-info">
@@ -508,8 +508,8 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled && infiniteChallengeStatus.owned }">
           <div class="memory-header">
             <span class="memory-title">连续挑战</span>
-            <span class="info-dot" title="使用 GAME 2.0.3 已核对的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
-            <span class="memory-hint">2.0.3 唯一 AOB · 三字节补丁 · 写后回读</span>
+            <span class="info-dot" title="使用 GAME 2.0.3 / 2.0.4 已核对的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
+            <span class="memory-hint">2.0.3 / 2.0.4 唯一 AOB · 三字节补丁 · 写后回读</span>
           </div>
           <p class="feature-help">用途：完成挑战后保持当前挑战次数，便于连续重复。进入挑战前开启，用完后立即恢复默认。</p>
           <div class="memory-info">

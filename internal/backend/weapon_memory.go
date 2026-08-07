@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"unsafe"
 )
@@ -32,6 +33,13 @@ var (
 	weaponMemoryMarker      = []byte("GBFRWPM3")
 	weaponMemoryLifecycleMu sync.Mutex
 )
+
+func weaponMemoryRuntimeIdentity(digest string) (hookRVA, saveRVA uintptr, version string) {
+	if strings.EqualFold(digest, game204ExecutableSHA256) {
+		return 0x415212C, 0x797E00, "2.0.4"
+	}
+	return weaponMemoryHookRVA, weaponMemorySaveRVA, "2.0.3"
+}
 
 type weaponMemoryVerifiedSkill struct {
 	NameCN   string
@@ -232,7 +240,8 @@ func (a *App) scanWeaponMemoryLocked() (WeaponMemoryStatus, error) {
 	if a.hProcess == 0 || a.moduleBase == 0 {
 		return WeaponMemoryStatus{}, fmt.Errorf("未连接游戏进程")
 	}
-	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, weaponMemoryHookRVA)
+	hookRVA, _, _ := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
+	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, hookRVA)
 	if !ok {
 		return WeaponMemoryStatus{}, fmt.Errorf("武器实时编辑入口地址溢出")
 	}
@@ -243,7 +252,7 @@ func (a *App) scanWeaponMemoryLocked() (WeaponMemoryStatus, error) {
 	original := isWeaponMemoryGuard(guard, false)
 	hooked := isWeaponMemoryGuard(guard, true)
 	if !original && !hooked {
-		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3", bytesToHex(guard))
+		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3 / 2.0.4", bytesToHex(guard))
 	}
 	a.weaponMemoryHookAddr = addr
 	if original {
@@ -308,18 +317,19 @@ func (a *App) WeaponMemoryAcquire(requestID uint64) (WeaponMemoryStatus, error) 
 }
 
 func (a *App) resolveWeaponSaveFunction203Locked() (uintptr, error) {
-	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, weaponMemorySaveRVA)
+	_, saveRVA, _ := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
+	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, saveRVA)
 	if !ok {
 		return 0, fmt.Errorf("武器保存函数地址溢出")
 	}
 	actual := make([]byte, len(gameSaveFunctionPrologue))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&actual[0]), uintptr(len(actual))); err != nil {
-		return 0, fmt.Errorf("读取 GAME 2.0.3 武器保存函数失败: %w", err)
+		return 0, fmt.Errorf("读取 GAME 2.0.3 / 2.0.4 武器保存函数失败: %w", err)
 	}
 	if !bytes.Equal(actual, gameSaveFunctionPrologue) {
-		return 0, fmt.Errorf("GAME 2.0.3 武器保存函数签名不匹配: %s", bytesToHex(actual))
+		return 0, fmt.Errorf("GAME 2.0.3 / 2.0.4 武器保存函数签名不匹配: %s", bytesToHex(actual))
 	}
-	if err := a.validateRemoteFunctionStart(addr, "GAME 2.0.3 武器保存函数"); err != nil {
+	if err := a.validateRemoteFunctionStart(addr, "GAME 2.0.3 / 2.0.4 武器保存函数"); err != nil {
 		return 0, err
 	}
 	a.itemSaveFunctionAddr = addr
@@ -571,7 +581,7 @@ func (a *App) readWeaponMemoryStatusLocked() (WeaponMemoryStatus, error) {
 	if !hooked && !isWeaponMemoryOriginal(current) {
 		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常: %s", bytesToHex(current))
 	}
-	status := newWeaponMemoryStatus(true, hooked, a.weaponMemoryHookAddr, a.moduleBase, current)
+	status := newWeaponMemoryStatus(true, hooked, a.weaponMemoryHookAddr, a.moduleBase, current, a.runtimePatchVerifiedDigest)
 	if !hooked {
 		return status, nil
 	}
@@ -644,11 +654,12 @@ func decodeWeaponMemorySkills(window []byte) []WeaponMemorySkillStatus {
 	return result
 }
 
-func newWeaponMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr, current []byte) WeaponMemoryStatus {
+func newWeaponMemoryStatus(found, hooked bool, hookAddr, moduleBase uintptr, current []byte, digest string) WeaponMemoryStatus {
+	_, saveRVA, sourceVersion := weaponMemoryRuntimeIdentity(digest)
 	return WeaponMemoryStatus{
 		Found: found, Hooked: hooked, Address: uint64(hookAddr), RVA: uint64(hookAddr - moduleBase),
-		SaveRVA: uint64(weaponMemorySaveRVA), CurrentBytes: bytesToHex(current),
-		CaptureSource: "game-2.0.3-current-selected-weapon", SourceVersion: "2.0.3",
+		SaveRVA: uint64(saveRVA), CurrentBytes: bytesToHex(current),
+		CaptureSource: "game-" + sourceVersion + "-current-selected-weapon", SourceVersion: sourceVersion,
 		Skills: make([]WeaponMemorySkillStatus, 0, weaponMemoryPhysicalSlotCount),
 	}
 }

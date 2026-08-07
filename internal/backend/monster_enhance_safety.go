@@ -335,12 +335,15 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 		// The party-damage command installs a second player-pointer hook. Its
 		// 2.0.3 target and seven original bytes are version-locked just like the
 		// main entry, so a restarted UI can restore both halves atomically.
-		if !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
 			return fmt.Errorf("%s的旧版辅助 Hook 缺少可恢复的版本化地址，请先重启游戏", point.Name)
 		}
-		const auxiliaryRVA203 = uintptr(0x2607DDE)
+		auxiliaryRVA := uintptr(0x2607DDE)
+		if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) {
+			auxiliaryRVA = 0x2608D7E
+		}
 		auxOriginal := []byte{0x48, 0x81, 0xC1, 0x50, 0x01, 0x00, 0x00}
-		auxTarget := a.moduleBase + auxiliaryRVA203
+		auxTarget := a.moduleBase + auxiliaryRVA
 		auxEntry, err := a.readMonsterEnhanceEntry(auxTarget, len(auxOriginal))
 		if err != nil {
 			return fmt.Errorf("读取%s辅助 Hook 失败: %w", point.Name, err)

@@ -22,8 +22,10 @@ import (
 const (
 	naturalDropGameVersion                  = "2.0.2"
 	naturalDropGame203Version               = "2.0.3"
+	naturalDropGame204Version               = "2.0.4"
 	naturalDropGame202ExecutableSize        = int64(123522016)
 	naturalDropGame203ExecutableSize        = int64(123506656)
+	naturalDropGame204ExecutableSize        = int64(123512288)
 	naturalDropModID                        = "gbfr.codex.natural-drop-lab"
 	naturalDropForcedWeight          uint32 = 1_000_000
 	naturalDropLowWeight             uint32 = 1
@@ -687,6 +689,8 @@ func naturalDropGameIdentity(path string) (version, digest string, err error) {
 		return naturalDropGameVersion, digest, nil
 	case info.Size() == naturalDropGame203ExecutableSize && strings.EqualFold(digest, game203ExecutableSHA256):
 		return naturalDropGame203Version, digest, nil
+	case info.Size() == naturalDropGame204ExecutableSize && strings.EqualFold(digest, game204ExecutableSHA256):
+		return naturalDropGame204Version, digest, nil
 	default:
 		return "", digest, fmt.Errorf("游戏程序版本不匹配（大小 %d，SHA-256 %s）", info.Size(), digest)
 	}
@@ -719,6 +723,8 @@ func naturalDropManifestIdentitySupported(version, digest string) bool {
 	case version == naturalDropGameVersion && strings.EqualFold(digest, runtimePatchCatalogGameSHA256):
 		return true
 	case version == naturalDropGame203Version && strings.EqualFold(digest, game203ExecutableSHA256):
+		return true
+	case version == naturalDropGame204Version && strings.EqualFold(digest, game204ExecutableSHA256):
 		return true
 	default:
 		return false

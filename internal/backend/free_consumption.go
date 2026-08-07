@@ -73,6 +73,18 @@ var (
 	}
 )
 
+var freeConsumption204RVAs = [...]uintptr{
+	0x41D21E7, 0x3E9971A, 0x31E71F, 0x31E744, 0x41D339C, 0x41CAC7E,
+	0x35B3E9, 0x35B9E4, 0x1BC6861, 0x400ABC, 0x41CA899,
+}
+
+func freeConsumptionRVAForDigest(index int, digest string) uintptr {
+	if strings.EqualFold(digest, game204ExecutableSHA256) && index >= 0 && index < len(freeConsumption204RVAs) {
+		return freeConsumption204RVAs[index]
+	}
+	return freeConsumptionSites[index].RVA
+}
+
 type freeConsumptionSiteSpec struct {
 	Label    string
 	RVA      uintptr
@@ -127,9 +139,9 @@ func (a *App) FreeConsumptionSetEnabledOwned(token string, enabled bool) (FreeCo
 		if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "免费制作、交易和升级"); err != nil {
 			return emptyFreeConsumptionStatus(), err
 		}
-		if !strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) {
+		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
 			status := emptyFreeConsumptionStatus()
-			status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 可执行文件"
+			status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
 			return status, errors.New(status.Error)
 		}
 	}
@@ -157,7 +169,7 @@ func emptyFreeConsumptionStatus() FreeConsumptionStatus {
 	return FreeConsumptionStatus{
 		RVAs:         make([]uint64, 0),
 		CurrentBytes: make([]string, 0),
-		EvidenceNote: "2.0.3 的 11 条制作、交易和升级消费路径已锁定；默认关闭，开启后作为一个整体安装和恢复。",
+		EvidenceNote: "2.0.3 / 2.0.4 的 11 条制作、交易和升级消费路径已锁定；默认关闭，开启后作为一个整体安装和恢复。",
 	}
 }
 
@@ -195,7 +207,7 @@ func (a *App) enableFreeConsumptionLocked(ownerToken string) (FreeConsumptionSta
 			}
 		}
 		sites[index] = runtimePatchPatchSiteLease{
-			Address: addresses[index], RVA: uint64(spec.RVA),
+			Address: addresses[index], RVA: uint64(freeConsumptionRVAForDigest(index, a.runtimePatchVerifiedDigest)),
 			Original: append([]byte(nil), spec.Original...), Patch: patch,
 		}
 	}
@@ -245,9 +257,9 @@ func (a *App) enableFreeConsumptionLocked(ownerToken string) (FreeConsumptionSta
 
 func (a *App) readFreeConsumptionStatusLocked(ownerToken string) (FreeConsumptionStatus, error) {
 	status := emptyFreeConsumptionStatus()
-	status.Available = strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256)
+	status.Available = isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest)
 	if !status.Available {
-		status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 可执行文件"
+		status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
 		return status, nil
 	}
 	lease := a.freeConsumptionLease
@@ -340,8 +352,9 @@ func (a *App) locateFreeConsumptionSitesLocked() ([]uintptr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if got := address - a.moduleBase; got != spec.RVA {
-			return nil, fmt.Errorf("免费消费站点 %c RVA=0x%X，预期 0x%X", 'A'+rune(index), got, spec.RVA)
+		expectedRVA := freeConsumptionRVAForDigest(index, a.runtimePatchVerifiedDigest)
+		if got := address - a.moduleBase; got != expectedRVA {
+			return nil, fmt.Errorf("免费消费站点 %c RVA=0x%X，预期 0x%X", 'A'+rune(index), got, expectedRVA)
 		}
 		current, err := runtimePatchProcessMemory{handle: a.hProcess}.ReadCode(address, len(spec.Original))
 		if err != nil {

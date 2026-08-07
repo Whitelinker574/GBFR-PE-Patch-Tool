@@ -15,6 +15,7 @@ const (
 	runtimePatchCatalogGameVersion     = "2.0.2"
 	runtimePatchCatalogGameSHA256      = "63340832BCF731FBC97796F686B05C988418E83D451D4A49B2244A85D00E297F"
 	game203ExecutableSHA256            = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
+	game204ExecutableSHA256            = "F827F3C13CAA90B290FAB2FE7E28165A80448FDE0A3F7A96D79DAC6B8343FF2A"
 	runtimePatchCatalogFeatureCount    = 60
 	runtimePatchDamageCapConflictName  = "damage-cap-display"
 	stableReleaseCandidateWriteEnabled = true
@@ -86,6 +87,13 @@ var runtimePatch203OriginalBytes = map[string][]byte{
 	"GBFR_PATCH_035_1": {0xC5, 0xFA, 0x59, 0x0D, 0xE4, 0xFA, 0x03, 0x02},
 }
 
+var runtimePatch204OriginalBytes = map[string][]byte{
+	"GBFR_PATCH_060_1": {0xC5, 0xFA, 0x59, 0x05, 0x44, 0xD4, 0x30, 0x05},
+	"GBFR_PATCH_014_1": {0xC5, 0xFA, 0x59, 0x0D, 0x8E, 0xFD, 0xA7, 0x02},
+	"GBFR_PATCH_028_1": {0xC5, 0xFA, 0x59, 0x0D, 0x2A, 0x61, 0x31, 0x05},
+	"GBFR_PATCH_035_1": {0xC5, 0xFA, 0x59, 0x0D, 0x44, 0xFB, 0x03, 0x02},
+}
+
 type runtimePatchSiteVariant struct {
 	AOB    string
 	Offset int
@@ -103,6 +111,11 @@ var runtimePatch203SiteVariants = map[string]runtimePatchSiteVariant{
 }
 
 func runtimePatchExpectedOriginalBytes(site RuntimePatchSite, executableDigest string) []byte {
+	if strings.EqualFold(executableDigest, game204ExecutableSHA256) {
+		if bytes204, exists := runtimePatch204OriginalBytes[site.Symbol]; exists {
+			return append([]byte(nil), bytes204...)
+		}
+	}
 	if strings.EqualFold(executableDigest, game203ExecutableSHA256) {
 		if bytes203, exists := runtimePatch203OriginalBytes[site.Symbol]; exists {
 			return append([]byte(nil), bytes203...)
@@ -113,13 +126,13 @@ func runtimePatchExpectedOriginalBytes(site RuntimePatchSite, executableDigest s
 
 func runtimePatchSiteForExecutable(site RuntimePatchSite, executableDigest string) (RuntimePatchSite, error) {
 	resolved := site
-	if !strings.EqualFold(executableDigest, game203ExecutableSHA256) {
+	if !strings.EqualFold(executableDigest, game203ExecutableSHA256) && !strings.EqualFold(executableDigest, game204ExecutableSHA256) {
 		return resolved, nil
 	}
 	if variant, exists := runtimePatch203SiteVariants[site.Symbol]; exists {
 		pattern, err := parseRuntimePatchPattern(variant.AOB)
 		if err != nil {
-			return RuntimePatchSite{}, fmt.Errorf("parse RuntimePatch 2.0.3 variant %s: %w", site.Symbol, err)
+			return RuntimePatchSite{}, fmt.Errorf("parse RuntimePatch 2.0.3/2.0.4 variant %s: %w", site.Symbol, err)
 		}
 		resolved.AOB = canonicalRuntimePatchAOB(pattern)
 		resolved.Offset = variant.Offset

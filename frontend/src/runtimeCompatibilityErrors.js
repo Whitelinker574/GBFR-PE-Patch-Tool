@@ -1,5 +1,5 @@
 const compatibilityCode = /^\[(GBFR_RUNTIME_UNKNOWN_EXE)\]\s*/u
-const legacyUnknownBuildBoundary = /^(.*?)仅支持已识别的游戏 2\.0\.2 \/ 2\.0\.3 可执行文件；当前游戏版本不会连接或写入$/u
+const legacyUnknownBuildBoundary = /^(.*?)仅支持已识别的游戏 2\.0\.2 \/ 2\.0\.3(?: \/ 2\.0\.4)? 可执行文件；当前游戏版本不会连接或写入$/u
 
 function featureLabel(value) {
   const source = String(value || '').trim()
@@ -15,7 +15,7 @@ export function translateRuntimeCompatibilityError(value, locale = 'zh') {
 
   const match = display.match(legacyUnknownBuildBoundary)
   if (coded?.[1] === 'GBFR_RUNTIME_UNKNOWN_EXE' || match) {
-    return `${featureLabel(match?.[1])} supports the recognized game 2.0.2 and 2.0.3 executables. This unknown game build will not be connected to or modified.`
+    return `${featureLabel(match?.[1])} supports the recognized game 2.0.2, 2.0.3, and 2.0.4 executables. This unknown game build will not be connected to or modified.`
   }
   return display
 }
