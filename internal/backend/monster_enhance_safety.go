@@ -77,6 +77,30 @@ func (a *App) prepareMonsterDamageAuxiliaryHook() (*monsterEnhanceAuxPreflight, 
 	return &monsterEnhanceAuxPreflight{Target: target, Original: original, CaveSize: 96}, nil
 }
 
+var odRateInlineOriginal = []byte{
+	0x48, 0x03, 0x7E, 0x18, 0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
+	0xFF, 0x48, 0x0F, 0x43, 0xC7, 0x48, 0x89, 0x46, 0x18,
+}
+
+func (a *App) prepareOdRateInlineAuxiliaryHook() (*monsterEnhanceAuxPreflight, error) {
+	if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
+		return nil, fmt.Errorf("巴布类首领 OD 辅助路径仅支持已验证的游戏 2.0.3 / 2.0.4")
+	}
+	rva := uintptr(0x2B3E7DE)
+	if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) {
+		rva = 0x2B3F77E
+	}
+	target := a.moduleBase + rva
+	original, err := a.readMonsterEnhanceEntry(target, len(odRateInlineOriginal))
+	if err != nil {
+		return nil, fmt.Errorf("读取巴布类首领 OD 辅助路径失败: %w", err)
+	}
+	if !bytesEqual(original, odRateInlineOriginal) {
+		return nil, fmt.Errorf("巴布类首领 OD 辅助路径原字节不符: %s", bytesToHex(original))
+	}
+	return &monsterEnhanceAuxPreflight{Target: target, Original: original, CaveSize: 128}, nil
+}
+
 func monsterEnhanceCaveMarkerAddress(cave, caveSize uintptr) uintptr {
 	if cave == 0 || caveSize < uintptr(len(monsterEnhanceCaveMarker)) {
 		return 0
@@ -361,6 +385,27 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 		record.AuxPatched = append([]byte(nil), auxEntry...)
 		record.AuxCave = auxCave
 		record.AuxCaveSize = 96
+	} else if point.ID == "od_rate" {
+		auxiliary, err := a.prepareOdRateInlineAuxiliaryHook()
+		if err != nil {
+			return err
+		}
+		auxEntry, err := a.readMonsterEnhanceEntry(auxiliary.Target, len(auxiliary.Original))
+		if err != nil {
+			return fmt.Errorf("读取%s辅助 Hook 失败: %w", point.Name, err)
+		}
+		auxCave, ok := monsterEnhanceRelJumpTarget(auxiliary.Target, auxEntry)
+		if !ok {
+			return fmt.Errorf("%s辅助 Hook 不是完整的 rel32 跳转: %s", point.Name, bytesToHex(auxEntry))
+		}
+		if err := a.verifyMonsterEnhanceCaveMarker(monsterEnhanceOwnedPatch{Cave: auxCave, CaveSize: auxiliary.CaveSize}); err != nil {
+			return fmt.Errorf("%s辅助 Hook 所有权标记无效: %w", point.Name, err)
+		}
+		record.AuxTarget = auxiliary.Target
+		record.AuxOriginal = append([]byte(nil), auxiliary.Original...)
+		record.AuxPatched = append([]byte(nil), auxEntry...)
+		record.AuxCave = auxCave
+		record.AuxCaveSize = auxiliary.CaveSize
 	}
 	if a.monsterEnhanceOwned == nil {
 		a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)

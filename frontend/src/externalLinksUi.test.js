@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const readRoot = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('release metadata uses v2.0.16 consistently', () => {
-  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.16"/)
-  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.16')
-  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.16')
-  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.16')
+test('release metadata uses v2.0.17 consistently', () => {
+  assert.match(readRoot('internal/backend/app.go'), /appVersion\s*=\s*"v2\.0\.17"/)
+  assert.equal(JSON.parse(readRoot('frontend/package.json')).version, '2.0.17')
+  assert.equal(JSON.parse(readRoot('frontend/package-lock.json')).version, '2.0.17')
+  assert.equal(JSON.parse(readRoot('wails.json')).info.productVersion, '2.0.17')
 })
 
 test('application and evidence content links only to this repository', () => {

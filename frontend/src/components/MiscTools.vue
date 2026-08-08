@@ -41,7 +41,7 @@ const activeRuntimeGroup = ref('resources')
 const runtimeCatalog = computed(() => {
   const catalogs = {
     resources: [
-      ['实时货币编辑', '金币、MSP、高级炼成点数与共鸣点数（RP）', '已适配'],
+      ['实时货币编辑', '金币、MSP、高级炼成点数、共鸣点数（RP）与极沌空域 CP', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
       ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3 / 2.0.4'],
       ['库存素材扣减保护', '只处理通用库存的负向素材增量，保留正向获得', '兼容路径'],
@@ -401,7 +401,7 @@ onBeforeUnmount(() => {
           <span class="memory-hint">GAME 2.0.3 / 2.0.4 功能边界</span>
         </div>
         <div class="memory-info">
-          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用 2.0.3 / 2.0.4 已复核特征动态定位，实时写入后立即回读。</span>
+          <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用已复核资源入口；极沌空域 CP 使用独立的 2.0.4 特征定位。实时写入后都会立即回读。</span>
           <span>药水、免费消费和库存扣减保护在游戏运行时使用；添加具体物品、素材和武器仍放在“养成编辑（离线）”。</span>
           <span>实时数值需要让游戏正常触发一次保存；游戏运行时不要同时离线修改同一存档。</span>
         </div>
@@ -413,7 +413,7 @@ onBeforeUnmount(() => {
             <span class="memory-title">实时货币编辑</span>
             <span class="memory-hint">AOB 捕获玩家结构 · 写入后回读</span>
           </div>
-          <p class="feature-help">用途：实时修改金币、MSP、高级炼成点数和共鸣点数（RP）。首次连接后若没有读数，请在游戏内打开主菜单或让资源发生一次变化。</p>
+          <p class="feature-help">用途：实时修改金币、MSP、高级炼成点数、共鸣点数（RP）和极沌空域 CP。CP 只会在对应模式初始化后出现；其他资源首次没有读数时，请打开游戏主菜单或让资源发生一次变化。</p>
           <div class="currency-grid">
             <div v-for="item in currencies" :key="item.id" class="currency-row">
               <div class="currency-name">{{ item.name }}</div>

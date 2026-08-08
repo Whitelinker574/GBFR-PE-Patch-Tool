@@ -385,6 +385,10 @@ static const lm_byte_t kOdRateExpected[] = {
     0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x48, 0x0F, 0x43,
     0xC2, 0x48, 0x89, 0x41, 0x18, 0xC3,
 };
+static const lm_byte_t kOdRateInlineExpected[] = {
+    0x48, 0x03, 0x7E, 0x18, 0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF,
+    0xFF, 0x48, 0x0F, 0x43, 0xC7, 0x48, 0x89, 0x46, 0x18,
+};
 
 static const PatchPoint kMonsterPatches[] = {
     { "monster_hp", L"monster hp", 0x1F7A820, kMonsterHpExpected, sizeof(kMonsterHpExpected), nullptr, true },
@@ -1026,17 +1030,37 @@ static bool PatchMonsterDamageNewHook(lm_address_t target, wchar_t* message, siz
     }
     code[i++] = 0xEB; size_t jmpRestore = i++;                                                      // jmp restore
     size_t scaleOffset = i;
-    code[i++] = 0x4C; code[i++] = 0x8B; code[i++] = 0x59; code[i++] = 0x10;                         // mov r11,[rcx+10]
-    code[i++] = 0x4D; code[i++] = 0x89; code[i++] = 0xD9;                                           // mov r9,r11
-    code[i++] = 0x49; code[i++] = 0x39; code[i++] = 0xD3;                                           // cmp r11,rdx
-    code[i++] = 0x72; size_t jbRestore = i++;                                                       // jb restore (healing)
+    // Preserve the game's lethal and forced-1HP edge decisions. Scaling the
+    // already clamped value would otherwise turn a protected hit into death.
+    code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xFA; code[i++] = 0x01;                         // cmp rdx,1
+    code[i++] = 0x76; size_t jbeEdgeRestore = i++;                                                  // jbe restore (0 or 1: game edge value)
+    code[i++] = 0x4C; code[i++] = 0x8B; code[i++] = 0x49; code[i++] = 0x10;                         // mov r9,[rcx+10] ; old hp
+    code[i++] = 0x49; code[i++] = 0x39; code[i++] = 0xD1;                                           // cmp r9,rdx
+    code[i++] = 0x72; size_t jbHealRestore = i++;                                                   // jb restore (healing)
+    code[i++] = 0x4D; code[i++] = 0x89; code[i++] = 0xEB;                                           // mov r11,r13 ; true damage from caller
+    code[i++] = 0x4D; code[i++] = 0x85; code[i++] = 0xDB;                                           // test r11,r11
+    code[i++] = 0x7F; size_t jgUseR13 = i++;                                                        // jg use r13
+    // R13<=0 for environmental/periodic damage: derive the linear delta from
+    // the HP transition instead of feeding a stale register into the scale.
+    code[i++] = 0x4D; code[i++] = 0x89; code[i++] = 0xCB;                                           // mov r11,r9
     code[i++] = 0x49; code[i++] = 0x29; code[i++] = 0xD3;                                           // sub r11,rdx
+    code[i++] = 0x4D; code[i++] = 0x85; code[i++] = 0xDB;                                           // test r11,r11
+    code[i++] = 0x7E; size_t jleNoDamageRestore = i++;                                              // jle restore
+    size_t useR13Offset = i;
     code[i++] = 0xF3; code[i++] = 0x49; code[i++] = 0x0F; code[i++] = 0x2A; code[i++] = 0xC3;       // cvtsi2ss xmm0,r11
     code[i++] = 0xF3; code[i++] = 0x41; code[i++] = 0x0F; code[i++] = 0x59; code[i++] = 0x42; code[i++] = 0x08; // mulss xmm0,[r10+8]
     code[i++] = 0xF3; code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x2C; code[i++] = 0xC0;       // cvttss2si rax,xmm0
+    code[i++] = 0x48; code[i++] = 0x85; code[i++] = 0xC0;                                           // test rax,rax
+    code[i++] = 0x7F; size_t jgScaled = i++;                                                        // jg scaled
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x01; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00; // mov rax,1
+    size_t scaledOffset = i;
     code[i++] = 0x49; code[i++] = 0x39; code[i++] = 0xC1;                                           // cmp r9,rax
-    code[i++] = 0x4C; code[i++] = 0x0F; code[i++] = 0x42; code[i++] = 0xC8;                         // cmovb r9,rax
+    code[i++] = 0x76; size_t jbeZero = i++;                                                         // jbe zero
     code[i++] = 0x49; code[i++] = 0x29; code[i++] = 0xC1;                                           // sub r9,rax
+    code[i++] = 0xEB; size_t jmpWrite = i++;                                                        // jmp write
+    size_t zeroOffset = i;
+    code[i++] = 0x4D; code[i++] = 0x31; code[i++] = 0xC9;                                           // xor r9,r9
+    size_t writeOffset = i;
     code[i++] = 0x4C; code[i++] = 0x89; code[i++] = 0xCA;                                           // mov rdx,r9
     size_t restoreOffset = i;
     code[i++] = 0x0F; code[i++] = 0x10; code[i++] = 0x04; code[i++] = 0x24;                         // movups xmm0,[rsp]
@@ -1056,7 +1080,13 @@ static bool PatchMonsterDamageNewHook(lm_address_t target, wchar_t* message, siz
     code[jzRestore] = static_cast<lm_byte_t>(restoreOffset - (jzRestore + 1));
     code[jzDisabled] = static_cast<lm_byte_t>(restoreOffset - (jzDisabled + 1));
     code[jmpRestore] = static_cast<lm_byte_t>(restoreOffset - (jmpRestore + 1));
-    code[jbRestore] = static_cast<lm_byte_t>(restoreOffset - (jbRestore + 1));
+    code[jbeEdgeRestore] = static_cast<lm_byte_t>(restoreOffset - (jbeEdgeRestore + 1));
+    code[jbHealRestore] = static_cast<lm_byte_t>(restoreOffset - (jbHealRestore + 1));
+    code[jleNoDamageRestore] = static_cast<lm_byte_t>(restoreOffset - (jleNoDamageRestore + 1));
+    code[jgUseR13] = static_cast<lm_byte_t>(useR13Offset - (jgUseR13 + 1));
+    code[jgScaled] = static_cast<lm_byte_t>(scaledOffset - (jgScaled + 1));
+    code[jbeZero] = static_cast<lm_byte_t>(zeroOffset - (jbeZero + 1));
+    code[jmpWrite] = static_cast<lm_byte_t>(writeOffset - (jmpWrite + 1));
 
     if (LM_WriteMemory(cave, code, i) != i)
     {
@@ -1257,6 +1287,85 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     if (!PatchBytes(target, jmp, sizeof(jmp)))
     {
         swprintf_s(message, messageSize, L"hook write failed: overdrive state");
+        return false;
+    }
+    return true;
+}
+
+static bool PatchOdRateHookInline(lm_address_t target, wchar_t* message, size_t messageSize)
+{
+    const float scale = ReadScale();
+    lm_address_t cave = AllocNear(target, 128);
+    if (cave == LM_ADDRESS_BAD)
+    {
+        swprintf_s(message, messageSize, L"alloc near failed: od gauge rate (inline)");
+        return false;
+    }
+
+    lm_byte_t code[80]{};
+    size_t i = 0;
+    code[i++] = 0x80; code[i++] = 0x7E; code[i++] = 0x50; code[i++] = 0x00; // cmp byte ptr [rsi+50],0
+    size_t jzDisp = i; code[i++] = 0x74; code[i++] = 0x00;
+    code[i++] = 0xF3; code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x2A; code[i++] = 0xC7; // cvtsi2ss xmm0,rdi
+    code[i++] = 0xF3; code[i++] = 0x0F; code[i++] = 0x59; code[i++] = 0x05;
+    size_t scaleDisp = i; i += 4;
+    code[i++] = 0xF3; code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x2C; code[i++] = 0xF8; // cvttss2si rdi,xmm0
+    code[i++] = 0x48; code[i++] = 0x03; code[i++] = 0x7E; code[i++] = 0x18;
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0xFF; code[i++] = 0xFF; code[i++] = 0xFF; code[i++] = 0xFF;
+    code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x43; code[i++] = 0xC7;
+    code[i++] = 0x48; code[i++] = 0x89; code[i++] = 0x46; code[i++] = 0x18;
+    size_t epilogueOffset = i;
+    code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xC4; code[i++] = 0x20;
+    code[i++] = 0x5B; code[i++] = 0x5F; code[i++] = 0x5E; code[i++] = 0xC3;
+    size_t scaleOffset = i;
+    memcpy(code + i, &scale, sizeof(scale)); i += sizeof(scale);
+    code[jzDisp + 1] = static_cast<lm_byte_t>(epilogueOffset - (jzDisp + 2));
+
+    int64_t scaleDelta = static_cast<int64_t>(cave + scaleOffset) - static_cast<int64_t>(cave + scaleDisp + 4);
+    if (scaleDelta < INT32_MIN || scaleDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"scale out of range: od gauge rate (inline)");
+        VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    int32_t relScale = static_cast<int32_t>(scaleDelta);
+    memcpy(code + scaleDisp, &relScale, sizeof(relScale));
+    if (LM_WriteMemory(cave, code, i) != i)
+    {
+        swprintf_s(message, messageSize, L"cave write failed: od gauge rate (inline)");
+        VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    if (!StampMonsterCave(cave, 128, message, messageSize))
+    {
+        VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+
+    lm_byte_t jump[sizeof(kOdRateInlineExpected)]{ 0xE9 };
+    memset(jump + 5, 0x90, sizeof(jump) - 5);
+    int64_t hookDelta = static_cast<int64_t>(cave) - static_cast<int64_t>(target + 5);
+    if (hookDelta < INT32_MIN || hookDelta > INT32_MAX)
+    {
+        swprintf_s(message, messageSize, L"hook out of range: od gauge rate (inline)");
+        VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
+        return false;
+    }
+    int32_t rel = static_cast<int32_t>(hookDelta);
+    memcpy(jump + 1, &rel, sizeof(rel));
+    if (!PatchBytes(target, jump, sizeof(jump)))
+    {
+        swprintf_s(message, messageSize, L"hook write failed: od gauge rate (inline)");
+        lm_byte_t actual[sizeof(jump)]{};
+        bool originalProven = LM_ReadMemory(target, actual, sizeof(actual)) == sizeof(actual) &&
+            BytesEqual(actual, kOdRateInlineExpected, sizeof(actual));
+        if (!originalProven && BytesEqual(actual, jump, sizeof(actual)))
+        {
+            PatchBytes(target, kOdRateInlineExpected, sizeof(kOdRateInlineExpected));
+            originalProven = LM_ReadMemory(target, actual, sizeof(actual)) == sizeof(actual) &&
+                BytesEqual(actual, kOdRateInlineExpected, sizeof(actual));
+        }
+        if (originalProven) VirtualFree(reinterpret_cast<LPVOID>(cave), 0, MEM_RELEASE);
         return false;
     }
     return true;
@@ -4863,6 +4972,25 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             else if (strcmp(point.id, "od_rate") == 0)
             {
                 if (!PatchOdRateHook(target, message, messageSize)) return false;
+                const lm_address_t inlineRvas[] = { 0x2B3E7DE, 0x2B3F77E };
+                lm_address_t inlineTarget = LM_ADDRESS_BAD;
+                for (const lm_address_t inlineRva : inlineRvas)
+                {
+                    lm_byte_t original[sizeof(kOdRateInlineExpected)]{};
+                    const lm_address_t candidate = module.base + inlineRva;
+                    if (LM_ReadMemory(candidate, original, sizeof(original)) == sizeof(original) &&
+                        BytesEqual(original, kOdRateInlineExpected, sizeof(original)))
+                    {
+                        inlineTarget = candidate;
+                        break;
+                    }
+                }
+                if (inlineTarget == LM_ADDRESS_BAD)
+                {
+                    swprintf_s(message, messageSize, L"inline OD path did not match the verified 2.0.3 / 2.0.4 entries");
+                    return false;
+                }
+                if (!PatchOdRateHookInline(inlineTarget, message, messageSize)) return false;
             }
             else if (strcmp(point.id, "inventory_set_45") == 0)
             {

@@ -55,11 +55,13 @@ func TestCurrencyFieldsMatchDLC202CT(t *testing.T) {
 	want := map[string]struct {
 		name   string
 		offset uintptr
+		aob    bool
 	}{
-		"rupies":      {name: "金币", offset: 0x30},
-		"transmarvel": {name: "高级炼成点数", offset: 0x34},
-		"msp":         {name: "MSP", offset: 0x98},
-		"rp":          {name: "共鸣点数（RP）", offset: 0x9C},
+		"rupies":          {name: "金币", offset: 0x30},
+		"transmarvel":     {name: "高级炼成点数", offset: 0x34},
+		"msp":             {name: "MSP", offset: 0x98},
+		"rp":              {name: "共鸣点数（RP）", offset: 0x9C},
+		"cp_extreme_void": {name: "CP（极沌空域）", offset: 0x24, aob: true},
 	}
 	if len(currencyDefs) != len(want) {
 		t.Fatalf("currency definitions = %d, want %d", len(currencyDefs), len(want))
@@ -75,20 +77,27 @@ func TestCurrencyFieldsMatchDLC202CT(t *testing.T) {
 		if def.Name != expected.name {
 			t.Fatalf("%s name = %q, want %q", def.ID, def.Name, expected.name)
 		}
+		if def.AOB != expected.aob {
+			t.Fatalf("%s AOB = %v, want %v", def.ID, def.AOB, expected.aob)
+		}
 	}
 }
 
-func TestCurrencyInputLookupAcceptsLegacyCPAliasWithoutPublishingIt(t *testing.T) {
-	for _, inputID := range []string{"rp", "cp", " cp "} {
+func TestCurrencyInputLookupKeepsRPAndCPIndependent(t *testing.T) {
+	rp, ok := lookupCurrencyDef("rp")
+	if !ok || rp.ID != "rp" || rp.Offset != 0x9C || rp.AOB {
+		t.Fatalf("RP lookup = %+v, %v", rp, ok)
+	}
+	for _, inputID := range []string{"cp", " cp ", "cp_extreme_void"} {
 		def, ok := lookupCurrencyDef(inputID)
 		if !ok {
 			t.Fatalf("lookupCurrencyDef(%q) did not resolve", inputID)
 		}
-		if def.ID != "rp" || def.Name != "共鸣点数（RP）" || def.Offset != 0x9C {
-			t.Fatalf("lookupCurrencyDef(%q) = %+v, want canonical RP definition", inputID, def)
+		if def.ID != "cp_extreme_void" || def.Name != "CP（极沌空域）" || def.Offset != 0x24 || !def.AOB {
+			t.Fatalf("lookupCurrencyDef(%q) = %+v, want independent CP definition", inputID, def)
 		}
 	}
 	if _, ok := lookupCurrencyDef("CP"); ok {
-		t.Fatal("legacy alias must remain the exact backend input id cp")
+		t.Fatal("CP alias must remain the exact backend input id cp")
 	}
 }

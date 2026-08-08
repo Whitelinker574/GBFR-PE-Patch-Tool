@@ -131,13 +131,13 @@ func countCallsSelector(body *ast.BlockStmt, receiver, method string) int {
 	return count
 }
 
-func TestCurrencySetOneRevalidatesRootAndValueAfterBackup(t *testing.T) {
+func TestCurrencySetOneRevalidatesAddressAndValueAfterBackup(t *testing.T) {
 	body := currencyAppFunctionBodies(t)["currencySetOneLocked"]
 	if body == nil {
 		t.Fatal("missing currencySetOneLocked")
 	}
-	if got := countCallsSelector(body, "a", "currencyRoot"); got < 2 {
-		t.Fatalf("CurrencySetOne must read the inventory root before and after the slow backup, calls=%d", got)
+	if got := countCallsSelector(body, "a", "currencyAddress"); got < 2 {
+		t.Fatalf("CurrencySetOne must resolve the selected resource address before and after the slow backup, calls=%d", got)
 	}
 	if got := countCallsIdent(body, "readProcessMemory"); got < 2 {
 		t.Fatalf("CurrencySetOne must snapshot and re-read the target value before writing, calls=%d", got)

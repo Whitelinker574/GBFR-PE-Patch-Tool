@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.16"
+	appVersion  = "v2.0.17"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -813,6 +813,22 @@ type currencyDef struct {
 	ID     string
 	Name   string
 	Offset uintptr
+	AOB    bool
+}
+
+// 2.0.4: cmp ecx,0xCC633BF8; jne; mov rax,[rip+disp]; mov ecx,[rax+0x24].
+// CP uses a separate object and must never be aliased to the RP field in the
+// ordinary captured resource structure.
+var cpStorePattern = []byte{
+	0x81, 0xF9, 0xF8, 0x3B, 0x63, 0xCC, 0x75, 0x21,
+	0x48, 0x8B, 0x05, 0, 0, 0, 0,
+	0x8B, 0x48, 0x24,
+}
+
+var cpStoreMask = []bool{
+	true, true, true, true, true, true, true, true,
+	true, true, true, false, false, false, false,
+	true, true, true,
 }
 
 var currencyDefs = []currencyDef{
@@ -820,12 +836,13 @@ var currencyDefs = []currencyDef{
 	{ID: "transmarvel", Name: "高级炼成点数", Offset: 0x34},
 	{ID: "msp", Name: "MSP", Offset: 0x98},
 	{ID: "rp", Name: "共鸣点数（RP）", Offset: 0x9C},
+	{ID: "cp_extreme_void", Name: "CP（极沌空域）", Offset: 0x24, AOB: true},
 }
 
 func lookupCurrencyDef(id string) (currencyDef, bool) {
 	id = strings.TrimSpace(id)
 	if id == "cp" {
-		id = "rp"
+		id = "cp_extreme_void"
 	}
 	for _, def := range currencyDefs {
 		if def.ID == id {
@@ -842,9 +859,29 @@ type potionDef struct {
 	Offsets []uintptr
 }
 
-var potionDefs = []potionDef{
-	{ID: "revive", Name: "复活药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x38}},
-	{ID: "group_chat", Name: "群疗药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x18}},
+func potionDefsForRuntimeVersion(version string) ([]potionDef, error) {
+	switch strings.TrimSpace(version) {
+	case "2.0.2", "2.0.3":
+		return []potionDef{
+			{ID: "revive", Name: "复活药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x38}},
+			{ID: "group_chat", Name: "群疗药水", RVA: 0x071B69B8, Offsets: []uintptr{0x28, 0x8, 0x8, 0x18, 0x18}},
+		}, nil
+	case "2.0.4":
+		return []potionDef{
+			{ID: "revive", Name: "复活药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD84}},
+			{ID: "group_chat", Name: "群疗药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD64}},
+		}, nil
+	default:
+		return nil, fmt.Errorf("当前游戏版本 %q 没有经过药水指针链验证", version)
+	}
+}
+
+func (a *App) currentPotionDefsLocked() ([]potionDef, error) {
+	layout, err := detectRuntimeGameLayout(remoteRuntimePatchPartyMemory{app: a}, a.moduleBase)
+	if err != nil {
+		return nil, fmt.Errorf("无法识别当前游戏版本，已拒绝猜测药水地址: %w", err)
+	}
+	return potionDefsForRuntimeVersion(layout.Version)
 }
 
 const maximumPlausiblePotionSnapshot = int32(999)
@@ -1641,11 +1678,41 @@ func (a *App) currencyAddress(def currencyDef) (uintptr, error) {
 	if a.hProcess == 0 || a.moduleBase == 0 {
 		return 0, fmt.Errorf("未连接游戏进程")
 	}
+	if def.AOB {
+		return a.cpAddress()
+	}
 	base, err := a.currencyRoot()
 	if err != nil {
 		return 0, err
 	}
 	return base + def.Offset, nil
+}
+
+func (a *App) cpAddress() (uintptr, error) {
+	sigAddr, err := a.scanPatternUnique(cpStorePattern, cpStoreMask, "极沌空域 CP 存储引用")
+	if err != nil {
+		return 0, err
+	}
+	var displacement int32
+	if err := readProcessMemory(a.hProcess, sigAddr+11, unsafe.Pointer(&displacement), unsafe.Sizeof(displacement)); err != nil {
+		return 0, fmt.Errorf("读取极沌空域 CP 存储引用失败: %w", err)
+	}
+	store64 := int64(sigAddr) + 15 + int64(displacement)
+	if store64 <= 0 {
+		return 0, fmt.Errorf("极沌空域 CP 存储引用地址无效")
+	}
+	store := uintptr(store64)
+	var object uintptr
+	if err := readProcessMemory(a.hProcess, store, unsafe.Pointer(&object), unsafe.Sizeof(object)); err != nil {
+		return 0, fmt.Errorf("读取极沌空域 CP 指针失败: %w", err)
+	}
+	if object == 0 {
+		return 0, fmt.Errorf("极沌空域 CP 尚未初始化，请进入对应模式后刷新")
+	}
+	if object > ^uintptr(0)-0x24 {
+		return 0, fmt.Errorf("极沌空域 CP 地址溢出")
+	}
+	return object + 0x24, nil
 }
 
 func (a *App) readCurrency(def currencyDef) (CurrencyInfo, error) {
@@ -1700,6 +1767,9 @@ func (a *App) currencyGetAllLocked() ([]CurrencyInfo, error) {
 	for _, def := range currencyDefs {
 		info, err := a.readCurrency(def)
 		if err != nil {
+			if def.AOB {
+				continue
+			}
 			return nil, err
 		}
 		result = append(result, info)
@@ -1745,11 +1815,10 @@ func (a *App) currencySetOneLocked(id string, value int) (CurrencyInfo, error) {
 	if !ok {
 		return CurrencyInfo{}, fmt.Errorf("未知货币: %s", strings.TrimSpace(requestedID))
 	}
-	root, err := a.currencyRoot()
+	addr, err := a.currencyAddress(def)
 	if err != nil {
 		return CurrencyInfo{}, err
 	}
-	addr := root + def.Offset
 	var originalValue int32
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&originalValue), unsafe.Sizeof(originalValue)); err != nil {
 		return CurrencyInfo{}, fmt.Errorf("读取%s写入前原值失败: %w", def.Name, err)
@@ -1757,12 +1826,11 @@ func (a *App) currencySetOneLocked(id string, value int) (CurrencyInfo, error) {
 	if err := snapshotBeforeLiveSaveChange(def.Name + "写入前自动备份"); err != nil {
 		return CurrencyInfo{}, fmt.Errorf("自动备份失败，已取消写入: %w", err)
 	}
-	confirmedRoot, err := a.currencyRoot()
+	confirmedAddr, err := a.currencyAddress(def)
 	if err != nil {
-		return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s资源根指针失败: %w", def.Name, err)
+		return CurrencyInfo{}, fmt.Errorf("自动备份后复核%s地址失败: %w", def.Name, err)
 	}
-	confirmedAddr := confirmedRoot + def.Offset
-	if confirmedRoot != root || confirmedAddr != addr {
+	if confirmedAddr != addr {
 		return CurrencyInfo{}, fmt.Errorf("自动备份期间%s资源结构已重建，请刷新后重试", def.Name)
 	}
 	var confirmedValue int32
@@ -1898,8 +1966,12 @@ func (a *App) PotionGetAllOwned(token string) ([]PotionInfo, error) {
 }
 
 func (a *App) potionGetAllLocked() ([]PotionInfo, error) {
-	result := make([]PotionInfo, 0, len(potionDefs))
-	for _, def := range potionDefs {
+	defs, err := a.currentPotionDefsLocked()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]PotionInfo, 0, len(defs))
+	for _, def := range defs {
 		info, err := a.readPotion(def)
 		if err != nil {
 			return nil, err
@@ -1942,7 +2014,11 @@ func (a *App) potionSetOneLocked(id string, value int) (PotionInfo, error) {
 	if value < 0 || value > int(maximumPlausiblePotionSnapshot) {
 		return PotionInfo{}, fmt.Errorf("请输入 0 到 %d 之间的整数", maximumPlausiblePotionSnapshot)
 	}
-	for _, def := range potionDefs {
+	defs, err := a.currentPotionDefsLocked()
+	if err != nil {
+		return PotionInfo{}, err
+	}
+	for _, def := range defs {
 		if def.ID != id {
 			continue
 		}
@@ -3492,6 +3568,11 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		var auxiliary *monsterEnhanceAuxPreflight
 		if point != nil && (point.ID == "monster_damage" || point.ID == "monster_damage_new") {
 			auxiliary, err = a.prepareMonsterDamageAuxiliaryHook()
+			if err != nil {
+				return MonsterEnhanceResult{}, err
+			}
+		} else if point != nil && point.ID == "od_rate" {
+			auxiliary, err = a.prepareOdRateInlineAuxiliaryHook()
 			if err != nil {
 				return MonsterEnhanceResult{}, err
 			}

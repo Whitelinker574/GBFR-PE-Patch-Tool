@@ -216,6 +216,7 @@ func TestGame204MonsterEnhanceSites(t *testing.T) {
 		{name: "monster stun", aob: "C5 FA 58 86 60 ?? ?? ?? C5 FA 5D 86 64 ?? ?? ?? C5 FA 11 86 60 ?? ?? ??", matchRVA: 0xB23848, original: []byte{0xC5, 0xFA, 0x58, 0x86, 0x60, 0x08, 0x00, 0x00}},
 		{name: "overdrive state", aob: "8B 46 10 83 F8 03 0F 84 ?? ?? ?? ?? 83 F8 01 0F 84 ?? ?? ?? ??", matchRVA: 0x22C6926, original: []byte{0x8B, 0x46, 0x10, 0x83, 0xF8, 0x03}},
 		{name: "OD gauge rate", aob: "80 79 50 00 74 13 48 03 51 18 48 C7 C0 FF FF FF FF 48 0F 43 C2 48 89 41 18 C3", matchRVA: 0x22C6DF0, original: []byte{0x80, 0x79, 0x50, 0x00, 0x74, 0x13, 0x48, 0x03, 0x51, 0x18, 0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x48, 0x0F, 0x43, 0xC2, 0x48, 0x89, 0x41, 0x18, 0xC3}},
+		{name: "OD gauge rate inline boss path", aob: "48 03 7E 18 48 C7 C0 FF FF FF FF 48 0F 43 C7 48 89 46 18", matchRVA: 0x2B3F77E, original: append([]byte(nil), odRateInlineOriginal...)},
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
@@ -226,4 +227,15 @@ func TestGame204MonsterEnhanceSites(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGame204ExtremeVoidCPStoreSite(t *testing.T) {
+	_, sections := loadLocalGame204Sections(t)
+	requireLocalGame204Pattern(
+		t,
+		sections,
+		"81 F9 F8 3B 63 CC 75 21 48 8B 05 ?? ?? ?? ?? 8B 48 24",
+		0x41AAF89,
+		nil,
+	)
 }
