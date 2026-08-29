@@ -309,7 +309,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="ui-actions"><button type="button" class="ui-btn is-primary" :disabled="loading || Boolean(hookOwnerToken)" @click="enable">{{ status.hooked && !hookOwnerToken ? text('重新接管并恢复读取', 'Reclaim Weapon Capture') : text('启用当前武器读取', 'Enable Weapon Capture') }}</button><button type="button" class="ui-btn" :disabled="loading || !status.hooked" @click="pollStatus(false)">{{ text('刷新当前武器', 'Refresh Current Weapon') }}</button><button type="button" class="ui-btn is-ghost" :disabled="loading || !status.hooked || !hookOwnerToken" @click="disable">{{ text('停止并恢复游戏指令', 'Stop and Restore Game Instruction') }}</button></div>
       <p class="ui-notice" aria-live="polite">{{ liveMessage }}</p>
-      <p class="ui-hint">{{ text('默认关闭。读取开启期间请停留在游戏武器列表；切页不会关闭，只有手动停止、F12、断开或退出才恢复。只会在已核对的 2.0.3 / 2.0.4 安装 Hook。', 'Off by default. Stay in the in-game weapon list while capture is active. Changing pages does not stop it; manual stop, F12, disconnect, or app exit restores it. The hook is installed only on verified 2.0.3 / 2.0.4 builds.') }}</p>
+      <p class="ui-hint">{{ text('默认关闭。读取开启期间请停留在游戏武器列表；切页不会关闭，只有手动停止、F12、断开或退出才恢复。只会在已核对的 2.0.3–2.0.5 安装 Hook。', 'Off by default. Stay in the in-game weapon list while capture is active. Changing pages does not stop it; manual stop, F12, disconnect, or app exit restores it. The hook is installed only on verified 2.0.3–2.0.5 builds.') }}</p>
     </section>
 
     <section class="editor-card ui-card">

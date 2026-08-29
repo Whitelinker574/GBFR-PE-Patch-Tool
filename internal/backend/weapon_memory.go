@@ -35,6 +35,9 @@ var (
 )
 
 func weaponMemoryRuntimeIdentity(digest string) (hookRVA, saveRVA uintptr, version string) {
+	if strings.EqualFold(digest, game205ExecutableSHA256) {
+		return 0x41528FC, 0x798020, "2.0.5"
+	}
 	if strings.EqualFold(digest, game204ExecutableSHA256) {
 		return 0x415212C, 0x797E00, "2.0.4"
 	}
@@ -252,7 +255,7 @@ func (a *App) scanWeaponMemoryLocked() (WeaponMemoryStatus, error) {
 	original := isWeaponMemoryGuard(guard, false)
 	hooked := isWeaponMemoryGuard(guard, true)
 	if !original && !hooked {
-		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3 / 2.0.4", bytesToHex(guard))
+		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3 / 2.0.4 / 2.0.5", bytesToHex(guard))
 	}
 	a.weaponMemoryHookAddr = addr
 	if original {
@@ -324,12 +327,12 @@ func (a *App) resolveWeaponSaveFunction203Locked() (uintptr, error) {
 	}
 	actual := make([]byte, len(gameSaveFunctionPrologue))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&actual[0]), uintptr(len(actual))); err != nil {
-		return 0, fmt.Errorf("读取 GAME 2.0.3 / 2.0.4 武器保存函数失败: %w", err)
+		return 0, fmt.Errorf("读取 GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数失败: %w", err)
 	}
 	if !bytes.Equal(actual, gameSaveFunctionPrologue) {
-		return 0, fmt.Errorf("GAME 2.0.3 / 2.0.4 武器保存函数签名不匹配: %s", bytesToHex(actual))
+		return 0, fmt.Errorf("GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数签名不匹配: %s", bytesToHex(actual))
 	}
-	if err := a.validateRemoteFunctionStart(addr, "GAME 2.0.3 / 2.0.4 武器保存函数"); err != nil {
+	if err := a.validateRemoteFunctionStart(addr, "GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数"); err != nil {
 		return 0, err
 	}
 	a.itemSaveFunctionAddr = addr

@@ -36,6 +36,9 @@ var (
 )
 
 func taskScoreRVAForDigest(digest string) uintptr {
+	if strings.EqualFold(digest, game205ExecutableSHA256) {
+		return 0x1FDA459
+	}
 	if strings.EqualFold(digest, game204ExecutableSHA256) {
 		return 0x1FDA2D9
 	}
@@ -43,6 +46,9 @@ func taskScoreRVAForDigest(digest string) uintptr {
 }
 
 func taskSideQuestRVAForDigest(index int, digest string) uintptr {
+	if strings.EqualFold(digest, game205ExecutableSHA256) {
+		return []uintptr{0xBAC90C, 0xBAC262}[index]
+	}
 	if strings.EqualFold(digest, game204ExecutableSHA256) {
 		return taskSideQuestSpecs[index].RVA + 0xFA0
 	}
@@ -139,8 +145,8 @@ func (a *App) setTaskRuleOwned(token string, enabled bool, kind string, install 
 		if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "任务规则增强"); err != nil {
 			return TaskRulesStatus{}, err
 		}
-		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件")
+		if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
 		}
 	}
 	a.runtimePatchMu.Lock()
@@ -305,12 +311,12 @@ func (a *App) installTaskRuleLeaseLocked(lease *taskRuleLease, label string) err
 }
 
 func (a *App) readTaskRulesStatusLocked(ownerToken string) (TaskRulesStatus, error) {
-	available := isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest)
+	available := isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest)
 	status := TaskRulesStatus{
 		ScoreMultiplier: emptyTaskRuleFeatureStatus(available, 2,
-			"2.0.3 / 2.0.4 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
+			"2.0.3 / 2.0.4 / 2.0.5 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
 		SideQuestAutoComplete: emptyTaskRuleFeatureStatus(available, 0,
-			"2.0.3 / 2.0.4 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
+			"2.0.3 / 2.0.4 / 2.0.5 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
 	}
 	var joined error
 	if readErr := a.readOneTaskRuleLeaseLocked(ownerToken, a.taskScoreMultiplierLease, &status.ScoreMultiplier); readErr != nil {
@@ -328,7 +334,7 @@ func emptyTaskRuleFeatureStatus(available bool, multiplier float64, note string)
 		CurrentBytes: make([]string, 0), EvidenceNote: note,
 	}
 	if !available {
-		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
+		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
 	}
 	return status
 }

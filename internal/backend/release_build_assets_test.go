@@ -241,7 +241,7 @@ func TestPatchCoreSourceClosesVerifiedMonsterSafetyIssues(t *testing.T) {
 		`0x1FBDEB4`,
 		`0xB29128`,
 		`0x22CB316`,
-		`const lm_address_t candidates[] = { 0x356621, 0x34F8F1 }`,
+		`const lm_address_t candidates[] = { 0x356621, 0x34F8F1, 0x34F8C1 }`,
 		`41 01 76 04 4C 89 E1 E8 ?? ?? ?? ?? 41 8B 0C 24 31 C0 85 C9 0F 4F C1`,
 		`kStableReleaseCandidateMonsterDamageEnabled = true`,
 		`kStableReleaseVirtualSigilsEnabled = true`,

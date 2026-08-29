@@ -17,11 +17,15 @@ const (
 var (
 	summonDurationOriginal    = []byte{0xC5, 0xFA, 0x10, 0x15, 0x19, 0x95, 0xAB, 0x07}
 	summonDuration204Original = []byte{0xC5, 0xFA, 0x10, 0x15, 0x99, 0xA7, 0xAB, 0x07}
+	summonDuration205Original = []byte{0xC5, 0xFA, 0x10, 0x15, 0x19, 0xAA, 0xAB, 0x07}
 	summonDurationAOB         = "C5 FA 10 15 ?? ?? ?? ?? C5 EA 59 15 ?? ?? ?? ?? C5 F2 58 CA C5 FA 11 8B F4 1E 00 00 C5 F8 2E C1 76 0A"
 	summonDurationMarker      = []byte("GBFRSD01")
 )
 
 func summonDurationOriginalForDigest(digest string) []byte {
+	if strings.EqualFold(digest, game205ExecutableSHA256) {
+		return append([]byte(nil), summonDuration205Original...)
+	}
 	if strings.EqualFold(digest, game204ExecutableSHA256) {
 		return append([]byte(nil), summonDuration204Original...)
 	}
@@ -85,8 +89,8 @@ func (a *App) SummonDurationSetOwned(token string, request SummonDurationRequest
 		if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "召唤持续时间"); err != nil {
 			return emptySummonDurationStatus(), err
 		}
-		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-			return emptySummonDurationStatus(), errors.New("召唤持续时间仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件")
+		if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+			return emptySummonDurationStatus(), errors.New("召唤持续时间仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
 		}
 	}
 	a.runtimePatchMu.Lock()
@@ -140,7 +144,7 @@ func validateSummonDurationRequest(request SummonDurationRequest) error {
 func emptySummonDurationStatus() SummonDurationStatus {
 	return SummonDurationStatus{
 		DurationMultiplier: 2,
-		EvidenceNote:       "2.0.3 / 2.0.4 召唤持续时间递减入口已锁定；倍率与无限持续共用同一可恢复 Hook。",
+		EvidenceNote:       "2.0.3 / 2.0.4 / 2.0.5 召唤持续时间递减入口已锁定；倍率与无限持续共用同一可恢复 Hook。",
 	}
 }
 
@@ -207,9 +211,9 @@ func (a *App) enableSummonDurationLocked(ownerToken string, request SummonDurati
 
 func (a *App) readSummonDurationStatusLocked(ownerToken string) (SummonDurationStatus, error) {
 	status := emptySummonDurationStatus()
-	status.Available = isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest)
+	status.Available = isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest)
 	if !status.Available {
-		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
+		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
 		return status, nil
 	}
 	lease := a.summonDurationLease

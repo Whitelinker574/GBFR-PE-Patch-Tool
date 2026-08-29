@@ -174,6 +174,8 @@ func confluxTimerManagerPointerRVAForDigest(digest string) (uintptr, error) {
 	switch {
 	case strings.EqualFold(digest, game204ExecutableSHA256):
 		return confluxTimerManagerPointerRVA204, nil
+	case strings.EqualFold(digest, game205ExecutableSHA256):
+		return 0x7C222F8, nil
 	case strings.EqualFold(digest, game203ExecutableSHA256), strings.EqualFold(digest, runtimePatchCatalogGameSHA256):
 		return confluxTimerManagerPointerRVA202, nil
 	default:

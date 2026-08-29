@@ -4,6 +4,8 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.18.md`](RELEASE_NOTES_v2.0.18.md) | v2.0.18 游戏 2.0.5 文件、数据表与运行时适配 |
+| [`GAME_UPDATE_2.0.5_RESEARCH.md`](GAME_UPDATE_2.0.5_RESEARCH.md) | 2.0.5 官方改动、上游迁移及本机文件差分证据 |
 | [`RELEASE_NOTES_v2.0.17.md`](RELEASE_NOTES_v2.0.17.md) | v2.0.17 药水、极沌空域 CP 与怪物战斗规则修复 |
 | [`RELEASE_NOTES_v2.0.16.md`](RELEASE_NOTES_v2.0.16.md) | v2.0.16 游戏 2.0.4 运行时与本地功能适配 |
 | [`RELEASE_NOTES_v2.0.15.md`](RELEASE_NOTES_v2.0.15.md) | v2.0.15 2.0.3 怪物增强、OD 槽倍率与召唤石“不动”补充 |

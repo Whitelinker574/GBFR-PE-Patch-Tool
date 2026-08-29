@@ -1,6 +1,9 @@
 package backend
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPotionDefsFollowDetectedRuntimeLayout(t *testing.T) {
 	tests := []struct {
@@ -28,6 +31,9 @@ func TestPotionDefsFollowDetectedRuntimeLayout(t *testing.T) {
 	}
 	if _, err := potionDefsForRuntimeVersion("unknown"); err == nil {
 		t.Fatal("unknown runtime version must not fall back to a guessed potion pointer chain")
+	}
+	if _, err := potionDefsForRuntimeVersion("2.0.5"); err == nil || !strings.Contains(err.Error(), "免费制作、交易与升级") {
+		t.Fatalf("2.0.5 potion guidance=%v", err)
 	}
 }
 

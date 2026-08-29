@@ -54,6 +54,8 @@ func runtimeSpatialJumpRVAs(layout runtimeGameLayout) (uintptr, uintptr, bool) {
 		return runtimeSpatialJumpGateRVA, runtimeSpatialJumpCheckRVA, true
 	case "2.0.4":
 		return runtimeSpatialJumpGateRVA + 0xFA0, runtimeSpatialJumpCheckRVA + 0xFA0, true
+	case "2.0.5":
+		return 0x1FA11CA, 0x1FA11FC, true
 	default:
 		return 0, 0, false
 	}
@@ -107,7 +109,7 @@ func validateRuntimeSpatialJumpLease(lease runtimePatchPatchLease, owner string,
 func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, moduleEnd uintptr, layout runtimeGameLayout) ([]runtimePatchPatchSiteLease, error) {
 	_, _, ok := runtimeSpatialJumpRVAs(layout)
 	if !ok {
-		return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 / 2.0.4 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3/2.0.4"))
+		return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃已完成 GAME 2.0.3 / 2.0.4 / 2.0.5 双入口标定", "Continuous jump is calibrated for GAME 2.0.3/2.0.4/2.0.5"))
 	}
 	gate, check, err := runtimeSpatialJumpAddresses(moduleBase, layout)
 	if err != nil {
@@ -142,7 +144,7 @@ func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, modul
 		}
 		context, err := memory.ReadCode(definition.address-definition.contextBack, len(definition.context))
 		if err != nil || !bytes.Equal(context, definition.context) {
-			return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃入口上下文与当前 2.0.3 / 2.0.4 动作函数不一致", "The continuous-jump context does not match the current 2.0.3/2.0.4 action function"))
+			return nil, fmt.Errorf("%s", runtimePatchMonitorText("连续跳跃入口上下文与当前 2.0.3 / 2.0.4 / 2.0.5 动作函数不一致", "The continuous-jump context does not match the current 2.0.3/2.0.4/2.0.5 action function"))
 		}
 		sites = append(sites, runtimePatchPatchSiteLease{
 			Address: definition.address, RVA: uint64(definition.address - moduleBase),
@@ -168,7 +170,7 @@ func readRuntimeSpatialJumpStatus(memory runtimePatchMemory, moduleBase uintptr,
 		return status
 	}
 	if !ok {
-		status.Error = runtimePatchMonitorText("连续跳跃目前只完成 GAME 2.0.3 / 2.0.4 双入口标定", "Continuous jump is currently calibrated only for GAME 2.0.3/2.0.4")
+		status.Error = runtimePatchMonitorText("连续跳跃已完成 GAME 2.0.3 / 2.0.4 / 2.0.5 双入口标定", "Continuous jump is calibrated for GAME 2.0.3/2.0.4/2.0.5")
 		return status
 	}
 	if lease != nil {

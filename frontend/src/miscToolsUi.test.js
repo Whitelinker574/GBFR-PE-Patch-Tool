@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const source = readFileSync(new URL('./components/MiscTools.vue', import.meta.url), 'utf8')
+const progression = readFileSync(new URL('./components/ProgressionEditor.vue', import.meta.url), 'utf8')
 const scopedStyle = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
 
 test('blank runtime values are rejected before numeric conversion', () => {
@@ -20,6 +21,15 @@ test('currency and potion editors keep their own numeric ranges and error copy',
   assert.match(potionHandler, /value > 999/)
   assert.match(potionHandler, /药水请输入 0 到 999 之间的整数/)
   assert.doesNotMatch(potionHandler, /2147483647/)
+})
+
+test('game 2.0.5 uses the new natural MSP cap without turning it into a hard write limit', () => {
+  assert.match(source, /item\?\.id === 'msp' \? 9999999 : 2147483647/)
+  assert.match(source, /currencyNaturalMax\(item\)[\s\S]*?自然上限/)
+  assert.match(source, /value > 2147483647/)
+  assert.match(progression, /mastery:\s*9999999/)
+  assert.match(progression, /resources\.mastery=9999999[\s\S]*?自然上限/)
+  assert.match(progression, /max="999999999"/)
 })
 
 test('runtime tools consume shared page, panel, toolbar, tabs, controls and cards', () => {
@@ -109,7 +119,7 @@ test('experimental runtime integrations are absent from the stable page', () => 
 test('continuous challenge is a stable owned mission action', () => {
   assert.match(source, /InfiniteChallengeGetStatusOwned/)
   assert.match(source, /InfiniteChallengeSetEnabledOwned/)
-  assert.match(source, /连续挑战[\s\S]*2\.0\.3 \/ 2\.0\.4 唯一 AOB · 三字节补丁 · 写后回读/)
+  assert.match(source, /连续挑战[\s\S]*2\.0\.3–2\.0\.5 唯一 AOB · 三字节补丁 · 写后回读/)
   assert.match(source, /infiniteChallengeStatus\.owned/)
 })
 

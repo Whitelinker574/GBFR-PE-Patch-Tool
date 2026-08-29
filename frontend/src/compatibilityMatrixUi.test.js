@@ -5,10 +5,10 @@ import test from 'node:test'
 const source = readFileSync(new URL('./components/PatchTool.vue', import.meta.url), 'utf8')
 
 test('version compatibility reports current pages and runtime evidence', () => {
-  assert.match(source, /游戏 2\.0\.4 静态数据[\s\S]*?已核对[\s\S]*?data\.i 与 2\.0\.3 的大小和 SHA-256 完全一致/)
-  assert.match(source, /静态与离线流程[\s\S]*?数据已核对[\s\S]*?2\.0\.4 特定甲板存档修复仍需真实存档重启回读/)
-  assert.match(source, /游戏 2\.0\.4 实时功能[\s\S]*?已迁移 · 实验边界[\s\S]*?识别 2\.0\.2 \/ 2\.0\.3 \/ 2\.0\.4/)
-  assert.match(source, /天然掉落 data\.i 部署[\s\S]*?2\.0\.4 可部署/)
+  assert.match(source, /游戏 2\.0\.5 静态数据[\s\S]*?已核对[\s\S]*?仅 reward_point 与 skillboard_effect_action_parts 改变/)
+  assert.match(source, /静态与离线流程[\s\S]*?数据已核对[\s\S]*?MSP 自然上限更新为 9,999,999/)
+  assert.match(source, /游戏 2\.0\.5 实时功能[\s\S]*?已迁移 · 实验边界[\s\S]*?识别 2\.0\.2–2\.0\.5/)
+  assert.match(source, /天然掉落 data\.i 部署[\s\S]*?2\.0\.5 可部署/)
   assert.match(source, /存档修改页面[\s\S]*?8\s*\/\s*8[\s\S]*?双存档对比复制/)
   assert.match(source, /游戏内即时编辑[\s\S]*?5\s*\/\s*5[\s\S]*?均需启动并连接游戏/)
   assert.match(source, /配装采集与复刻[\s\S]*?2\s*\/\s*2[\s\S]*?点击开启后持续后台运行/)
@@ -18,9 +18,9 @@ test('version compatibility reports current pages and runtime evidence', () => {
   assert.match(source, /运行时补丁覆盖[\s\S]*?60\s*已接入\s*\/\s*4\s*待证据/)
   assert.match(source, /60\s*功能\s*\/\s*83\s*站点\s*\/\s*81\s*AOB/)
   assert.match(source, /DLC\s*2\.0\.2\s*增量审计[\s\S]*?现场修复/)
-  assert.match(source, /真实游戏进程\s*E2E[\s\S]*?等待 2\.0\.4 现场复核[\s\S]*?镜头、音频、虚拟因子、空间移动和存档重启回读/)
-  assert.match(source, /baselineVersion:\s*'游戏 2\.0\.4（静态与离线）'/)
-  assert.match(source, /实时布局、内置 Hook 与 data\.i 事务已完成 2\.0\.4 适配[\s\S]*?欢迎实际使用并反馈问题/)
+  assert.match(source, /真实游戏进程\s*E2E[\s\S]*?2\.0\.5 只读连接通过[\s\S]*?任务内镜头、音频、虚拟因子和空间移动/)
+  assert.match(source, /baselineVersion:\s*'游戏 2\.0\.5（静态与运行时）'/)
+  assert.match(source, /2\.0\.5 同时更新 EXE 与 data\.i[\s\S]*?不使用统一地址偏移/)
 })
 
 test('version compatibility exposes exact icon coverage', () => {

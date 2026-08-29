@@ -329,7 +329,7 @@ const toolNavigationModes = Object.freeze({
 
 const toolMeta = {
   home: {
-    group: 'home', title: '首页', eyebrow: '功能入口', status: '游戏 2.0.4', tone: 'stable',
+    group: 'home', title: '首页', eyebrow: '功能入口', status: '游戏 2.0.5', tone: 'stable',
     description: '从目标出发选择功能，常用养成、实时工具和记录编辑都从这里进入。',
     usage: [], caution: '',
   },
@@ -390,9 +390,9 @@ const toolMeta = {
     speaker: '玛琪拉菲菈', note: '写入后旧记录会失效。回到游戏里重新选中目标，再继续。',
   },
   weaponMemory: {
-    group: 'memory', title: '武器技能即时编辑', eyebrow: '游戏内当前武器', status: '实时 · 2.0.3 / 2.0.4', tone: 'live',
+    group: 'memory', title: '武器技能即时编辑', eyebrow: '游戏内当前武器', status: '实时 · 2.0.3–2.0.5', tone: 'live',
     description: '读取游戏武器列表中当前高亮的武器，直接修改记录里真实存在的五个技能槽；支持添加、替换、清空和调整等级。',
-    usage: ['启动 2.0.3 或 2.0.4 游戏并打开武器列表', '启用读取后高亮目标武器，核对武器编号和五槽', '预览变更后一次写入；页面会保存、回读并恢复捕获指令'],
+    usage: ['启动已适配的 2.0.3–2.0.5 游戏并打开武器列表', '启用读取后高亮目标武器，核对武器编号和五槽', '预览变更后一次写入；页面会保存、回读并恢复捕获指令'],
     caution: '武器记录只有五个物理技能槽，不会虚构第六槽；写入不连带修改武器等级、觉醒、祝福或角色配装。非常规组合可能被游戏规范化。',
     speaker: '莉莉丝', note: '先看清当前武器，再决定赋予它怎样的力量。五个槽位，一个都不要写错。',
   },
@@ -426,7 +426,7 @@ const toolMeta = {
   },
   spatialTools: {
     group: 'runtimeTools', title: '坐标与移动工具', eyebrow: '单机空间操作', status: '可用 · 实验', tone: 'calibrate',
-    description: '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W/A/S/D；连续跳跃使用 2.0.3 / 2.0.4 双站点补丁与原生跳跃输入。',
+    description: '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W/A/S/D；连续跳跃使用 2.0.3–2.0.5 双站点补丁与原生跳跃输入。',
     usage: ['进入离线或单机内容并连接游戏', '点击“起飞并悬停”，方向键移动，PageUp / PageDown 升降，松开升降键保持高度', '点击“降落并关闭”恢复自然重力；F12、断开或退出会恢复本工具管理的补丁'],
     caution: '不会再修改导致动作异常的模型 setter。高级坐标微调只用于传送校准；当前连续跳跃不是穿墙或相机相对飞行。',
     speaker: '泽塔', note: '先记下原点，再移动。没有碰撞证据的能力，不会冒充穿墙。',
@@ -488,43 +488,43 @@ const toolMeta = {
     speaker: '兰斯洛特', note: '先确认写入哪一侧，再逐条挑选。变更单核对无误后，一次写入就够了。',
   },
   naturalDrop: {
-    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2 / 2.0.3 / 2.0.4 可用 · 实验', tone: 'calibrate',
+    group: 'tools', title: '掉落与锻造规则（游戏文件）', eyebrow: 'data.i 模组 · 自动备份', status: '2.0.2–2.0.5 可用 · 实验', tone: 'calibrate',
     description: '修改游戏实际读取的掉落与锻造表：可添加 Transmarvel 因子、召唤石、祝福石和普通物品，不会直接向存档背包添加物品。',
     usage: ['完全退出游戏并选择游戏程序', '从应用内置的 2.0.2 目录搜索内容，填写数量或权重并加入待部署清单', '核对清单后部署；停用时恢复应用创建的游戏文件备份'],
     caution: '十一张 2.0.2 精确表已随应用内嵌并校验，不需要自行解包；普通物品会加入“无尽模式·锻造师奖励池”。发现同表冲突时会停止，避免覆盖其他模组。',
     speaker: '加兰查', note: '先确认战利品来自正确的原表，再把每一格分清。撞上别的模组时，别硬冲。',
   },
   audioMixer: {
-    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2 / 2.0.3 / 2.0.4 可用 · 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '角色语音混音台', eyebrow: 'Wwise · 内置运行时', status: '2.0.2–2.0.5 可用 · 实验', tone: 'calibrate',
     description: '分别调低或静音各角色后续播放的语音，也能调整界面音效；不会替换游戏音频文件。',
     usage: ['启动游戏并在本页确认已连接', '调整角色或界面音量，可先保存为本机预设', '点击“开启音频运行时”；之后保存会立即更新当前游戏'],
     caution: '只处理能够明确归属的语音事件，未知和共享事件保持原音；点击“停用并恢复”会移除本工具的音频 Hook。',
     speaker: '冈达葛萨', note: '每一道声音都该有自己的分量。认不准的事件，就让它保持原样！',
   },
   camera: {
-    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2 / 2.0.3 / 2.0.4 可用 · 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '城镇镜头工坊', eyebrow: '镜头 · 内置运行时', status: '2.0.2–2.0.5 可用 · 实验', tone: 'calibrate',
     description: '调整城镇镜头能拉多远、看向角色的高度，以及每格滚轮缩放多少；战斗镜头不会改变。',
     usage: ['启动游戏并在本页确认已连接', '选择默认或舒适预设，也可手动调三个参数', '点击“开启镜头运行时”；之后保存会立即更新当前游戏'],
     caution: '只影响城镇镜头；点击“停用并恢复”会还原开启前的镜头值和本工具安装的 Hook。',
     speaker: '索恩', note: '先看准距离和高度；顶部显示常驻后，切页也不会停。',
   },
   virtualSigils: {
-    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2 / 2.0.3 / 2.0.4 可用 · 实验', tone: 'calibrate',
+    group: 'runtimeTools', title: '虚拟因子槽', eyebrow: '运行时配装 · 内置 Hook', status: '2.0.2–2.0.5 可用 · 实验', tone: 'calibrate',
     description: '让运行中角色额外读取 1 至 8 颗真实库存因子；它不会扩展存档的 12 个物理槽，也不会把虚拟槽写进存档。',
     usage: ['选择存档、角色和真实未装备因子实例', '核对 1 至 8 个虚拟槽后开启内置运行时', '切角色或场景后查看状态与实际效果；需要结束时点击停用并恢复相关 Hook'],
     caution: '同一真实实例只能占一个虚拟槽。跨角色、切场景、同角色队友和多 Hook 组合请按实际玩法测试并反馈，异常时先 F12 紧急停止。',
     speaker: '菲迪埃尔', note: '额外的力量不必刻进存档。把每一个真实实例认清，换了世界也不会把别人的力量拿错。',
   },
 	runtimeQOL: {
-		group: 'runtimeTools', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2 / 2.0.3 / 2.0.4 内置运行时', tone: 'live',
+		group: 'runtimeTools', title: '显示与房间工具', eyebrow: '界面显示 · 房间号 · 编队', status: '2.0.2–2.0.5 内置运行时', tone: 'live',
 		description: '集中开启显示精度、房间 ID、主线队长替换、普通任务等级同步和重镶返还；后两项保留实验提示，但入口不会被隐藏。',
 		usage: ['启动游戏', '选择需要的便利功能和显示精度', '开启后正常游玩；F12 可紧急恢复'],
 		caution: '所有入口都会在启用前校验版本、原字节和唯一匹配；实验项的任务结果和背包增量仍需自行核对，F12 可以恢复。',
 		speaker: '夏洛特', note: '实验开关可以先试，但记得核对任务和背包；F12 可以恢复。',
 	},
   compatibility: {
-    group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: '2.0.4 分层适配', tone: 'calibrate',
-    description: '查看游戏 2.0.4 的离线与实时功能适配情况；这里不修改游戏或存档。',
+    group: 'tools', title: '版本适配', eyebrow: '版本检测与功能状态', status: '2.0.5 分层适配', tone: 'calibrate',
+    description: '查看游戏 2.0.5 的离线数据、运行时入口和现场验证情况；这里不修改游戏或存档。',
     usage: ['检查是否有新的工具版本', '确认已识别正确的游戏 EXE', '查看各功能的已适配、实验或未开放状态'],
     caution: '“已识别”只代表版本和文件匹配，不代表尚未完成的实机功能已经验证。',
     speaker: '罗兰', note: '先看工具版本、游戏文件和适配状态。修东西之前，总得弄清哪里不对。',
@@ -563,15 +563,15 @@ const navigation = computed(() => [
 const compatibilityCopy = computed(() => language.value === 'zh' ? {
   manualFile: '可在游戏文件维护页手动选择',
   baseline: '适配基线',
-  baselineVersion: '游戏 2.0.4（静态与离线）',
-    baselineSummary: '2,116 张核心表和 332 份角色/战斗配置逐字节一致。',
-  baselineBoundary: '2.0.4 仅替换 EXE，data.i 与 2.0.3 逐字节一致；实时布局、内置 Hook 与 data.i 事务已完成 2.0.4 适配，欢迎实际使用并反馈问题',
+  baselineVersion: '游戏 2.0.5（静态与运行时）',
+    baselineSummary: '2,120 份 system/table 中仅 2 份变化；11 张掉落部署输入表逐字节不变。',
+  baselineBoundary: '2.0.5 同时更新 EXE 与 data.i；任务 MSP 奖励和菲迪埃尔动作参数已按新表核对，运行时入口逐项迁移，不使用统一地址偏移。',
   featureKicker: '功能适配',
   featureTitle: '当前实现与验证边界',
   featureHint: '只展示能由代码、测试与锁定游戏数据证明的状态。',
   resourceKicker: '资源适配',
   resourceTitle: '官方图标映射',
-  resourceHint: '图标目录在 2.0.3 核心表差分中未变；缺口保持显式，不用相似图片伪装。',
+  resourceHint: '2.0.5 未修改角色、因子、祝福、召唤石、武器和图标相关表；缺口继续保持显式。',
   scope: '范围',
   status: '状态',
   evidence: '证据与边界',
@@ -583,15 +583,15 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 } : {
   manualFile: 'Select it manually on the Game File Maintenance page',
   baseline: 'Compatibility Baseline',
-  baselineVersion: 'Game 2.0.4 (static and offline)',
-    baselineSummary: '2,116 core tables and 332 character/combat configs are byte-identical.',
-  baselineBoundary: 'Game 2.0.4 replaced only the executable while data.i is byte-identical to 2.0.3. Live layouts, integrated hooks, and data.i transactions are adapted for 2.0.4; please test them in normal use and report any issues',
+  baselineVersion: 'Game 2.0.5 (static and runtime)',
+    baselineSummary: 'Only 2 of 2,120 system/table files changed; all 11 drop-deployment input tables are byte-identical.',
+  baselineBoundary: 'Game 2.0.5 updates both the EXE and data.i. Quest MSP rewards and Fediel action parameters were checked from the new tables, while runtime entries were migrated individually instead of using a blanket offset.',
   featureKicker: 'Feature Compatibility',
   featureTitle: 'Current implementation and validation boundary',
   featureHint: 'Only states supported by code, tests, and locked game data are shown.',
   resourceKicker: 'Asset Compatibility',
   resourceTitle: 'Official icon mapping',
-  resourceHint: 'The icon catalogs are unchanged in the 2.0.3 core-table diff; gaps stay explicit instead of using look-alike art.',
+  resourceHint: 'Game 2.0.5 does not change the character, sigil, wrightstone, summon, weapon, or icon tables; existing gaps remain explicit.',
   scope: 'Scope',
   status: 'Status',
   evidence: 'Evidence and boundary',
@@ -603,10 +603,10 @@ const compatibilityCopy = computed(() => language.value === 'zh' ? {
 })
 
 const compatibilityRows = computed(() => language.value === 'zh' ? [
-  { scope: '游戏 2.0.4 静态数据', status: '已核对', tone: 'ok', detail: '本机更新只替换游戏 EXE；data.i 与 2.0.3 的大小和 SHA-256 完全一致，因子、祝福、召唤石、掉落、武器与规则目录继续复用同一真值' },
-  { scope: '静态与离线流程', status: '数据已核对', tone: 'ok', detail: '内置目录、配装编辑与优化、配装 JSON、短码、二维码、分享图和 Logs 继续使用未变化的数据；2.0.4 特定甲板存档修复仍需真实存档重启回读' },
-  { scope: '游戏 2.0.4 实时功能', status: '已迁移 · 实验边界', tone: 'flow', detail: '共享连接入口识别 2.0.2 / 2.0.3 / 2.0.4；60 功能的 83 个补丁站点、固定布局和内置 DLL 签名均按 2.0.4 重新核对' },
-  { scope: '天然掉落 data.i 部署', status: '2.0.4 可部署', tone: 'flow', detail: '内置表与 2.0.4 EXE 身份已核对，目标 data.i 与 2.0.3 完全一致；事务日志、原子替换和恢复已适配 2.0.4，欢迎使用后反馈问题' },
+  { scope: '游戏 2.0.5 静态数据', status: '已核对', tone: 'ok', detail: '重新解包 2,120 份 system/table：仅 reward_point 与 skillboard_effect_action_parts 改变；角色、因子、祝福、召唤石、武器和图标表保持不变' },
+  { scope: '静态与离线流程', status: '数据已核对', tone: 'ok', detail: 'MSP 自然上限更新为 9,999,999；任务奖励新基数和菲迪埃尔两行动作参数已记录，其他配装、短码、二维码、分享图与 Logs 数据无需重建' },
+  { scope: '游戏 2.0.5 实时功能', status: '已迁移 · 实验边界', tone: 'flow', detail: '共享连接入口识别 2.0.2–2.0.5；83 个目录站点和 36 条内置 DLL AOB 在本机 2.0.5 EXE 中逐项唯一核对' },
+  { scope: '天然掉落 data.i 部署', status: '2.0.5 可部署', tone: 'flow', detail: '11 张实际写入表与旧基线逐字节一致；2.0.5 EXE 和新 data.i 索引身份已加入事务、原子替换与恢复校验' },
   { scope: '存档修改页面', status: '8 / 8', tone: 'ok', detail: '配装预设、因子、物品与武器、祝福、召唤石存档、角色次数、任务与称号记录、双存档对比复制' },
   { scope: '游戏内即时编辑', status: '5 / 5', tone: 'flow', detail: '因子、祝福石、召唤石、上限突破与当前会话资源；均需启动并连接游戏' },
   { scope: '配装采集与复刻', status: '2 / 2', tone: 'flow', detail: '队友配装检测按点击开启后持续后台运行；十二因子录制与复刻使用实时捕获' },
@@ -614,15 +614,15 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: '实时只读诊断', status: '2 / 2', tone: 'ok', detail: '选中物品查看与角色公式采样需要连接游戏，但不会修改进程数据或存档' },
   { scope: '游戏文件与设置', status: '4 页已接入', tone: 'ok', detail: '掉落与锻造规则、版本适配、游戏文件维护、语言与显示' },
   { scope: '运行时补丁覆盖', status: '60 已接入 / 4 待证据', tone: 'ok', detail: '59 个双版本验证目录功能和 1 个 EXE 锁定候选项已接入；另有 4 个候选项因缺少充分字段或实机证据，仍未作为可用开关暴露' },
-  { scope: '运行时补丁目录', status: '60 / 83 / 81', tone: 'ok', detail: '60 功能 / 83 站点 / 81 AOB；按 2.0.2 / 2.0.3 / 2.0.4 EXE 选择严格签名、版本化原字节与唯一命中证据' },
+  { scope: '运行时补丁目录', status: '60 / 83 / 81', tone: 'ok', detail: '60 功能 / 83 站点 / 81 AOB；按 2.0.2–2.0.5 EXE 选择严格签名、版本化原字节与唯一命中证据' },
   { scope: 'DLC 2.0.2 增量审计', status: '58 稳定项 + 1 EXE 候选 + 1 现场修复', tone: 'ok', detail: '新增刀上舞自身眩晕移除候选；祝福石捕获与自动完美格挡连招修复继续使用独立版本守卫和写后回读' },
   { scope: '当前维护增量', status: '2 / 2 已验证', tone: 'ok', detail: '称号搜索支持拼音；连续挑战使用唯一特征码、三字节补丁与写后回读' },
-  { scope: '真实游戏进程 E2E', status: '等待 2.0.4 现场复核', tone: 'flow', detail: '2.0.4 EXE 的静态入口、原字节、唯一签名与构建测试已通过；需要运行游戏才能完成镜头、音频、虚拟因子、空间移动和存档重启回读' },
+  { scope: '真实游戏进程 E2E', status: '2.0.5 只读连接通过', tone: 'flow', detail: '本机 2.0.5 进程已通过严格只读身份、角色面板守卫及共享管理器回读；任务内镜头、音频、虚拟因子和空间移动仍由实际游玩反馈覆盖' },
 ] : [
-  { scope: 'Game 2.0.4 static data', status: 'Verified', tone: 'ok', detail: 'The local update replaced only the executable. data.i has the exact same size and SHA-256 as 2.0.3, so sigil, wrightstone, summon, drop, weapon, and rule catalogs retain the same source of truth' },
-  { scope: 'Static and offline flows', status: 'Data verified', tone: 'ok', detail: 'Embedded catalogs, loadout editing and optimization, JSON, short codes, QR import, share images, and Logs use unchanged data. The 2.0.4 deck-save recovery path still needs a real save/restart readback' },
-  { scope: 'Game 2.0.4 live features', status: 'Migrated · experimental boundary', tone: 'flow', detail: 'The shared attach boundary recognizes 2.0.2, 2.0.3, and 2.0.4. All 83 patch sites, fixed layouts, and integrated-DLL signatures were rechecked against 2.0.4' },
-  { scope: 'Natural-drop data.i deployment', status: 'Deployable on 2.0.4', tone: 'flow', detail: 'The embedded tables and 2.0.4 executable identity are verified, and the target data.i is byte-identical to 2.0.3. Journaling, atomic replacement, and restoration are adapted for 2.0.4; please report any issues found in normal use' },
+  { scope: 'Game 2.0.5 static data', status: 'Verified', tone: 'ok', detail: 'A fresh extraction of 2,120 system/table files found changes only in reward_point and skillboard_effect_action_parts. Character, sigil, wrightstone, summon, weapon, and icon tables are unchanged' },
+  { scope: 'Static and offline flows', status: 'Data verified', tone: 'ok', detail: 'The natural MSP cap is now 9,999,999. New quest reward bases and two Fediel action values are recorded; loadouts, short codes, QR, share images, and Logs need no catalog rebuild' },
+  { scope: 'Game 2.0.5 live features', status: 'Migrated · experimental boundary', tone: 'flow', detail: 'The shared attach boundary recognizes 2.0.2–2.0.5. All 83 catalog sites and 36 integrated-DLL AOBs were individually checked against the local 2.0.5 executable' },
+  { scope: 'Natural-drop data.i deployment', status: 'Deployable on 2.0.5', tone: 'flow', detail: 'All 11 tables actually written by this feature are byte-identical. The 2.0.5 executable and new data.i index identity are covered by journaling, atomic replacement, and restoration checks' },
   { scope: 'Save editing pages', status: '8 / 8', tone: 'ok', detail: 'Loadout presets, sigils, items and weapons, wrightstones, summon saves, character counts, quest and title records, and two-save copying' },
   { scope: 'In-game live editing', status: '5 / 5', tone: 'flow', detail: 'Sigils, wrightstones, summons, overmastery, and current-session resources all require the running game' },
   { scope: 'Loadout capture and restore', status: '2 / 2', tone: 'flow', detail: 'Party detection starts only on click and then runs in the background; 12-sigil recording and restore use live capture' },
@@ -630,10 +630,10 @@ const compatibilityRows = computed(() => language.value === 'zh' ? [
   { scope: 'Live read-only diagnostics', status: '2 / 2', tone: 'ok', detail: 'Selected-item viewing and formula sampling require the running game but do not alter process data or saves' },
   { scope: 'Game files and settings', status: '4 pages integrated', tone: 'ok', detail: 'Drop and crafting rules, version compatibility, game-file maintenance, and language/display' },
   { scope: 'Runtime patch coverage', status: '60 integrated / 4 pending', tone: 'ok', detail: '59 dual-version verified catalog features and 1 executable-locked candidate are integrated; 4 other candidates remain hidden until field or layout evidence is sufficient' },
-  { scope: 'Runtime patch catalog', status: '60 / 83 / 81', tone: 'ok', detail: '60 features / 83 sites / 81 AOBs select strict signatures, versioned original bytes, and unique-hit evidence for the 2.0.2, 2.0.3, or 2.0.4 executable' },
+  { scope: 'Runtime patch catalog', status: '60 / 83 / 81', tone: 'ok', detail: '60 features / 83 sites / 81 AOBs select strict signatures, versioned original bytes, and unique-hit evidence for the 2.0.2–2.0.5 executables' },
   { scope: 'DLC 2.0.2 delta audit', status: '58 stable + 1 EXE candidate + 1 field fix', tone: 'ok', detail: 'The Glass Cannon self-stun removal candidate was added; wrightstone capture and the auto-perfect-guard combo fix keep their independent version guards and writeback' },
   { scope: 'Current maintenance delta', status: '2 / 2 verified', tone: 'ok', detail: 'Title search supports pinyin; continuous challenges use a unique signature, three-byte patch, and writeback verification' },
-  { scope: 'Real game-process E2E', status: '2.0.4 field recheck pending', tone: 'flow', detail: 'Static entries, original bytes, unique signatures, and builds pass for the 2.0.4 executable. Camera, audio, virtual sigils, spatial movement, and save/restart readback require the running game' },
+  { scope: 'Real game-process E2E', status: '2.0.5 read-only attach passed', tone: 'flow', detail: 'The local 2.0.5 process passed strict read-only identity, character-panel guards, and manager-pointer reads. In-quest camera, audio, virtual sigils, and spatial movement remain covered by normal play feedback' },
 ])
 
 const iconCoverageRows = computed(() => language.value === 'zh' ? [
@@ -961,7 +961,7 @@ function showStatus(message, type) {
       <div class="titlebar-brand">
         <span class="brand-glyph">✦</span>
         <span class="titlebar-title">碧蓝幻想：Relink 空域工坊</span>
-        <span class="build-chip">GAME 2.0.4</span>
+        <span class="build-chip">GAME 2.0.5</span>
         <span class="build-chip release-build">v2.0.16</span>
       </div>
       <div v-if="naturalDropRecovery.blocked || showCTFeatureStatus || activeRuntimeCompanions.length" class="titlebar-runtime-sessions" style="--wails-draggable:no-drag">
@@ -1048,7 +1048,7 @@ function showStatus(message, type) {
           <div class="sidebar-mascot-say"><b>{{ currentMeta.speaker }}</b><p>{{ currentMeta.note }}</p></div>
         </div>
         <div class="sidebar-foot">
-          <div class="target-row"><span class="target-dot"></span><div><strong>{{ language === 'en' ? 'Current Compatibility' : '当前适配版本' }}</strong><small>{{ language === 'en' ? 'Relink 2.0.4 · live layouts and offline tables are integrated' : 'Relink 2.0.4 · 实时布局与离线表已集成' }}</small></div></div>
+          <div class="target-row"><span class="target-dot"></span><div><strong>{{ language === 'en' ? 'Current Compatibility' : '当前适配版本' }}</strong><small>{{ language === 'en' ? 'Relink 2.0.5 · live layouts and changed game tables are integrated' : 'Relink 2.0.5 · 实时布局与变更游戏表已集成' }}</small></div></div>
           <a href="https://github.com/Whitelinker574/GBFR-PE-Patch-Tool" target="_blank" rel="noreferrer">项目仓库 ↗</a>
         </div>
       </aside>

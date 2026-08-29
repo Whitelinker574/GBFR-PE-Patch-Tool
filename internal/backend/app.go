@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.17"
+	appVersion  = "v2.0.18"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -871,6 +871,8 @@ func potionDefsForRuntimeVersion(version string) ([]potionDef, error) {
 			{ID: "revive", Name: "复活药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD84}},
 			{ID: "group_chat", Name: "群疗药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD64}},
 		}, nil
+	case "2.0.5":
+		return nil, fmt.Errorf("游戏 2.0.5 不再使用未经验证的副本药水直写链；需要持续使用药水时请开启“免费制作、交易与升级”")
 	default:
 		return nil, fmt.Errorf("当前游戏版本 %q 没有经过药水指针链验证", version)
 	}
@@ -3229,6 +3231,7 @@ type monsterPatchPoint struct {
 	AOBOffset         uintptr
 	RVA203            uintptr
 	RVA204            uintptr
+	RVA205            uintptr
 	Only203           bool
 }
 
@@ -3259,6 +3262,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		AOB:       "48 8B 41 10 45 31 C9 48 29 D0 4C 0F 43 C8 B8 01 00 00 00 49 0F 47 C1 45 85 C0 49 0F 44 C1 48 89 41 10 C3",
 		RVA203:    0x1F74710,
 		RVA204:    0x1F756B0,
+		RVA205:    0x1F758A0,
 	},
 	{
 		ID:           "monster_damage_new",
@@ -3273,6 +3277,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		AOBOffset:    0x20,
 		RVA203:       0x1F74700,
 		RVA204:       0x1F756A0,
+		RVA205:       0x1F75890,
 	},
 	{
 		ID:                "monster_damage",
@@ -3300,6 +3305,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		AOB:       "C5 FA 58 86 60 ?? ?? ?? C5 FA 5D 86 64 ?? ?? ?? C5 FA 11 86 60 ?? ?? ??",
 		RVA203:    0xB228A8,
 		RVA204:    0xB23848,
+		RVA205:    0xB231D8,
 	},
 	{
 		ID:        "overdrive_state",
@@ -3311,6 +3317,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		AOB:       "8B 46 10 83 F8 03 0F 84 ?? ?? ?? ?? 83 F8 01 0F 84 ?? ?? ?? ??",
 		RVA203:    0x22C5986,
 		RVA204:    0x22C6926,
+		RVA205:    0x22C6B06,
 	},
 	{
 		ID:           "od_rate",
@@ -3320,10 +3327,11 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Hook:         true,
 		Available:    true,
 		Candidate:    true,
-		EvidenceNote: "2.0.3 / 2.0.4 唯一入口与原字节已核对；倍率写入、回读和恢复链路已覆盖，具体战斗节奏请按需调节。",
+		EvidenceNote: "2.0.3 / 2.0.4 / 2.0.5 唯一入口与原字节已核对；倍率写入、回读和恢复链路已覆盖，具体战斗节奏请按需调节。",
 		AOB:          "80 79 50 00 74 13 48 03 51 18 48 C7 C0 FF FF FF FF 48 0F 43 C2 48 89 41 18 C3",
 		RVA203:       0x22C5E50,
 		RVA204:       0x22C6DF0,
+		RVA205:       0x22C6FD0,
 		Only203:      true,
 	},
 	{
@@ -3391,8 +3399,8 @@ func (a *App) resolveMonsterPatchPoint(point *monsterPatchPoint) error {
 		point.RVA = target - a.moduleBase
 		return nil
 	}
-	if point.Only203 && !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件", point.Name)
+	if point.Only203 && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+		return fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件", point.Name)
 	}
 	knownRVA := point.RVA
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) && point.RVA203 != 0 {
@@ -3400,6 +3408,9 @@ func (a *App) resolveMonsterPatchPoint(point *monsterPatchPoint) error {
 	}
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) && point.RVA204 != 0 {
 		knownRVA = point.RVA204
+	}
+	if strings.EqualFold(a.runtimePatchVerifiedDigest, game205ExecutableSHA256) && point.RVA205 != 0 {
+		knownRVA = point.RVA205
 	}
 	// Resolve the audited per-version address first. Unlike an entry AOB, this
 	// remains usable after our rel32 jump has replaced the original bytes and
@@ -3517,8 +3528,8 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 	); err != nil {
 		return MonsterEnhanceResult{}, err
 	}
-	if point != nil && point.Only203 && !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return MonsterEnhanceResult{}, fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件", point.Name)
+	if point != nil && point.Only203 && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+		return MonsterEnhanceResult{}, fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件", point.Name)
 	}
 	if point != nil && !point.Available {
 		reason := point.UnavailableReason
@@ -3699,7 +3710,7 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 	items := make([]MonsterEnhanceItem, 0, len(monsterPatchPoints))
 	for _, catalogPoint := range monsterPatchPoints {
 		point := catalogPoint
-		if point.Only203 && !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
+		if point.Only203 && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
 			items = append(items, MonsterEnhanceItem{
 				ID:                point.ID,
 				Name:              point.Name,
@@ -3707,7 +3718,7 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 				Available:         false,
 				Candidate:         point.Candidate,
 				EvidenceNote:      point.EvidenceNote,
-				UnavailableReason: "仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件",
+				UnavailableReason: "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件",
 			})
 			continue
 		}

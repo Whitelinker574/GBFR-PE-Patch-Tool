@@ -53,17 +53,20 @@ func runtimeExecutableDigestForHandle(handle windows.Handle) (string, error) {
 }
 
 func legacyRuntimeExecutableError(featureName, digest string) error {
-	return fmt.Errorf("[%s] %s仅支持已识别的游戏 2.0.2 / 2.0.3 / 2.0.4 可执行文件；当前游戏版本不会连接或写入", runtimeUnknownExeErrorCode, featureName)
+	return fmt.Errorf("[%s] %s仅支持已识别的游戏 2.0.2 / 2.0.3 / 2.0.4 / 2.0.5 可执行文件；当前游戏版本不会连接或写入", runtimeUnknownExeErrorCode, featureName)
 }
 
 func isSupportedRuntimeExecutableDigest(digest string) bool {
 	return strings.EqualFold(digest, runtimePatchCatalogGameSHA256) ||
 		strings.EqualFold(digest, game203ExecutableSHA256) ||
-		strings.EqualFold(digest, game204ExecutableSHA256)
+		strings.EqualFold(digest, game204ExecutableSHA256) ||
+		strings.EqualFold(digest, game205ExecutableSHA256)
 }
 
-func isGame203Or204ExecutableDigest(digest string) bool {
-	return strings.EqualFold(digest, game203ExecutableSHA256) || strings.EqualFold(digest, game204ExecutableSHA256)
+func isGame203PlusExecutableDigest(digest string) bool {
+	return strings.EqualFold(digest, game203ExecutableSHA256) ||
+		strings.EqualFold(digest, game204ExecutableSHA256) ||
+		strings.EqualFold(digest, game205ExecutableSHA256)
 }
 
 func verifyLegacyRuntimeExecutableHandle(handle windows.Handle, featureName string) error {

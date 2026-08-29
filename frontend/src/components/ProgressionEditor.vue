@@ -225,7 +225,7 @@ function pickWeapon(weapon) {
   allowWeaponUnlockRisk.value = false
 }
 
-function maxResources() { resources.value = { rupees: 999999999, mastery: 999999999, commendations: 999999999 } }
+function maxResources() { resources.value = { rupees: 999999999, mastery: 9999999, commendations: 999999999 } }
 function maxWeapon() { weaponLevel.value = 150; weaponMirage.value = 99 }
 function maxWeaponProgression() {
   weaponLevel.value = 150
@@ -328,7 +328,7 @@ watch(weaponOwner, value => window.localStorage.setItem('gbfr.progression.weapon
     <section v-else-if="section === 'resources'" class="editor-card resource-grid ui-card ui-panel">
       <p class="offline-note">游戏运行中请优先使用“养成工坊 → 旅途实时助手”；这里只用于游戏已退出时的存档补救。</p>
       <label><span>金币</span><span class="number-combo"><input v-model.number="resources.rupees" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.rupees=999999999">最大</button></span></label>
-      <label><span>强化点数 MSP</span><span class="number-combo"><input v-model.number="resources.mastery" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.mastery=999999999">最大</button></span></label>
+      <label><span>强化点数 MSP</span><span class="number-combo"><input v-model.number="resources.mastery" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.mastery=9999999">自然上限</button></span></label>
       <label><span>达成章</span><span class="number-combo"><input v-model.number="resources.commendations" class="ui-input" type="number" min="0" max="999999999"><button class="ui-btn is-sm" @click="resources.commendations=999999999">最大</button></span></label>
       <button class="plain-btn wide subtle ui-btn is-subtle" @click="maxResources">三项全部设为最大</button>
       <button class="primary-btn wide ui-btn is-primary" :disabled="applying" @click="saveResources">{{ applying ? '写入并验证中…' : '保存三项资源' }}</button>

@@ -83,12 +83,14 @@ var odRateInlineOriginal = []byte{
 }
 
 func (a *App) prepareOdRateInlineAuxiliaryHook() (*monsterEnhanceAuxPreflight, error) {
-	if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return nil, fmt.Errorf("巴布类首领 OD 辅助路径仅支持已验证的游戏 2.0.3 / 2.0.4")
+	if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+		return nil, fmt.Errorf("巴布类首领 OD 辅助路径仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5")
 	}
 	rva := uintptr(0x2B3E7DE)
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) {
 		rva = 0x2B3F77E
+	} else if strings.EqualFold(a.runtimePatchVerifiedDigest, game205ExecutableSHA256) {
+		rva = 0x2B3F92E
 	}
 	target := a.moduleBase + rva
 	original, err := a.readMonsterEnhanceEntry(target, len(odRateInlineOriginal))
@@ -359,7 +361,7 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 		// The party-damage command installs a second player-pointer hook. Its
 		// 2.0.3 target and seven original bytes are version-locked just like the
 		// main entry, so a restarted UI can restore both halves atomically.
-		if !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
+		if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
 			return fmt.Errorf("%s的旧版辅助 Hook 缺少可恢复的版本化地址，请先重启游戏", point.Name)
 		}
 		auxiliaryRVA := uintptr(0x2607DDE)

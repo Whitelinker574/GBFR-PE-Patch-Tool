@@ -25,7 +25,7 @@ test('tool entry copy tells users what changes, how to apply it, and how to reco
   assert.match(shell, /runtime:\s*\{[\s\S]*?title:\s*'货币、素材与任务掉落'[\s\S]*?当前游戏会话/)
   assert.match(shell, /saveDiff:\s*\{[\s\S]*?不需要跳转到其他编辑页[\s\S]*?自动备份、原子写入并逐条回读/)
   assert.match(shell, /spatialTools:\s*\{[\s\S]*?status:\s*'可用 · 实验'[\s\S]*?方向键[\s\S]*?连续跳跃/)
-  assert.match(shell, /virtualSigils:\s*\{[\s\S]*?status:\s*'2\.0\.2 \/ 2\.0\.3 \/ 2\.0\.4 可用 · 实验'[\s\S]*?开启内置运行时/)
+  assert.match(shell, /virtualSigils:\s*\{[\s\S]*?status:\s*'2\.0\.2–2\.0\.5 可用 · 实验'[\s\S]*?开启内置运行时/)
   assert.doesNotMatch(shell, /virtualSigils:\s*\{[\s\S]*?稳定版仅预览\/恢复/)
 })
 
@@ -83,9 +83,9 @@ test('new shell copy has exact English translations instead of mixed-language fa
     '第二步 · 配置要新增的因子',
     '第四步 · 保存到当前存档',
     '第三步 · 写入当前因子',
-    '2.0.2 / 2.0.3 / 2.0.4 可用 · 实验',
+    '2.0.2–2.0.5 可用 · 实验',
     '可用 · 实验',
-    '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W\/A\/S\/D；连续跳跃使用 2.0.3 / 2.0.4 双站点补丁与原生跳跃输入。',
+    '读取坐标、保存书签、传送，并把方向键映射为游戏原生 W\/A\/S\/D；连续跳跃使用 2.0.3–2.0.5 双站点补丁与原生跳跃输入。',
     '让运行中角色额外读取 1 至 8 颗真实库存因子；它不会扩展存档的 12 个物理槽，也不会把虚拟槽写进存档。',
   ]) {
     assert.ok(uiTranslations[chinese], `missing exact translation for: ${chinese}`)

@@ -24,6 +24,7 @@ func TestRuntimePatchInfiniteLinkSignatureEvidence(t *testing.T) {
 		{name: "2.0.2", env: "GBFR_GAME_EXE_TEST", size: runtimePatchLocalGame202Size, sha256: runtimePatchLocalGame202SHA256, wantRVA: 0x19ABDC, wantBefore: []byte{0xC5, 0xFA, 0x59, 0x05, 0xB4, 0x95, 0x30, 0x05}},
 		{name: "2.0.3", env: "GBFR_GAME_EXE_203_TEST", size: runtimePatchLocalGame203Size, sha256: runtimePatchLocalGame203SHA256, wantRVA: 0x193CCC, wantBefore: []byte{0xC5, 0xFA, 0x59, 0x05, 0x44, 0xC4, 0x30, 0x05}},
 		{name: "2.0.4", env: "GBFR_GAME_EXE_204_TEST", size: runtimePatchLocalGame204Size, sha256: runtimePatchLocalGame204SHA256, wantRVA: 0x193CCC, wantBefore: []byte{0xC5, 0xFA, 0x59, 0x05, 0x44, 0xD4, 0x30, 0x05}},
+		{name: "2.0.5", env: "GBFR_GAME_EXE_205_TEST", size: runtimePatchLocalGame205Size, sha256: runtimePatchLocalGame205SHA256, wantRVA: 0x193CCC, wantBefore: []byte{0xC5, 0xFA, 0x59, 0x05, 0x44, 0xD4, 0x30, 0x05}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			path := os.Getenv(fixture.env)

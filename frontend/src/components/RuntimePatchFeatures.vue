@@ -999,7 +999,7 @@ function taskRuleDisabled(kind, action = 'apply') {
 
 function taskRuleProof(kind) {
   const status = taskRuleStatus(kind)
-  if (!connected.value) return tr('连接后校验 2.0.3 / 2.0.4 入口与原字节')
+  if (!connected.value) return tr('连接后校验 2.0.3 / 2.0.4 / 2.0.5 入口与原字节')
   if (status.rvas.length) return tr(`已回读 ${status.rvas.length} 个任务入口`)
   return tr('尚未写入，游戏保持默认')
 }
@@ -1229,7 +1229,7 @@ onBeforeUnmount(() => {
           <span>{{ tr('延长召唤效果在场时间，或设为无限持续；默认关闭；切换页面后继续生效。') }}</span>
         </div>
         <div class="tuning-tags">
-          <span class="ui-tag is-warn">{{ tr('2.0.3 / 2.0.4 · 实验') }}</span>
+          <span class="ui-tag is-warn">{{ tr('2.0.3 / 2.0.4 / 2.0.5 · 实验') }}</span>
           <span class="ui-tag" :class="summonDurationStatus.enabled ? 'is-ok' : summonDurationStatus.available ? 'is-info' : 'is-danger'">{{ summonDurationStateLabel() }}</span>
         </div>
       </header>
@@ -1252,7 +1252,7 @@ onBeforeUnmount(() => {
         </div>
 
         <p v-if="summonDurationStatus.error" class="feature-error ui-notice is-danger">{{ tr(summonDurationStatus.error) }}</p>
-        <div class="tuning-evidence"><span>{{ tr(summonDurationStatus.evidenceNote || '连接后校验 2.0.3 / 2.0.4 召唤持续时间入口和原字节。') }}</span><strong>{{ summonDurationStatus.enabled ? tr(summonDurationStatus.infinite ? '无限持续' : `${summonDurationStatus.durationMultiplier}×`) : tr('当前保持游戏默认') }}</strong></div>
+        <div class="tuning-evidence"><span>{{ tr(summonDurationStatus.evidenceNote || '连接后校验 2.0.3 / 2.0.4 / 2.0.5 召唤持续时间入口和原字节。') }}</span><strong>{{ summonDurationStatus.enabled ? tr(summonDurationStatus.infinite ? '无限持续' : `${summonDurationStatus.durationMultiplier}×`) : tr('当前保持游戏默认') }}</strong></div>
         <footer class="tuning-actions">
           <span class="feature-proof">{{ connected && summonDurationStatus.rva ? `RVA ${formatRVA(summonDurationStatus.rva)}` : tr('尚未写入，游戏保持默认') }}</span>
           <div class="ui-actions">
@@ -1319,7 +1319,7 @@ onBeforeUnmount(() => {
         <p v-if="combatTuningStatus.actionSpeed.error" class="feature-error ui-notice is-danger">{{ tr(combatTuningStatus.actionSpeed.error) }}</p>
 
         <div class="tuning-evidence">
-          <span>{{ tr(combatTuningStatus.actionSpeed.evidenceNote || '连接后校验 2.0.3 / 2.0.4 的人物动作字段入口；任何原字节不一致都会拒绝写入。') }}</span>
+          <span>{{ tr(combatTuningStatus.actionSpeed.evidenceNote || '连接后校验 2.0.3 / 2.0.4 / 2.0.5 的人物动作字段入口；任何原字节不一致都会拒绝写入。') }}</span>
           <strong>{{ tuningCurrentSetting('actionSpeed') }}</strong>
         </div>
 

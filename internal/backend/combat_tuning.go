@@ -238,7 +238,7 @@ func (a *App) CombatTuningSetChargeOwned(token string, request CombatChargeReque
 	return a.readCombatTuningStatusLocked(token)
 }
 
-// CombatTuningSetActionSpeedOwned installs or restores the 2.0.3/2.0.4
+// CombatTuningSetActionSpeedOwned installs or restores the 2.0.3+
 // per-character action-speed hook. It changes the actor action-time field and
 // never touches the process-wide game timescale.
 func (a *App) CombatTuningSetActionSpeedOwned(token string, request CombatActionSpeedRequest) (CombatTuningStatus, error) {
@@ -254,8 +254,8 @@ func (a *App) CombatTuningSetActionSpeedOwned(token string, request CombatAction
 	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "人物动作变速"); err != nil {
 		return CombatTuningStatus{}, err
 	}
-	if request.Enabled && !isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return CombatTuningStatus{}, errors.New("人物动作变速仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件")
+	if request.Enabled && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+		return CombatTuningStatus{}, errors.New("人物动作变速仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
 	}
 	if request.Enabled && !stableReleaseCombatTuningWriteEnabled {
 		return CombatTuningStatus{}, errors.New("人物动作变速在稳定版中保持禁用：仍缺少本机/全队范围的任务验收")
@@ -533,10 +533,10 @@ func (a *App) readCombatTuningFeatureLocked(ownerToken string, kind combatTuning
 		lease = a.combatTuningActionSpeedLease
 		specs = []combatTuningSiteSpec{combatActionSpeedSpec}
 		status.SpeedMultiplier = 1.5
-		status.EvidenceNote = "2.0.3 / 2.0.4 EXE 人物动作字段入口、唯一签名与恢复路径已核对；本机/全队作用范围和实际战斗节奏仍待任务实测。"
+		status.EvidenceNote = "2.0.3 / 2.0.4 / 2.0.5 EXE 人物动作字段入口、唯一签名与恢复路径已核对；本机/全队作用范围和实际战斗节奏仍待任务实测。"
 		if lease == nil && a.runtimePatchVerifiedDigest != "" &&
-			!isGame203Or204ExecutableDigest(a.runtimePatchVerifiedDigest) {
-			status.Error = "人物动作变速仅支持已验证的游戏 2.0.3 / 2.0.4 可执行文件"
+			!isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
+			status.Error = "人物动作变速仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
 			return status, nil
 		}
 		if lease == nil {

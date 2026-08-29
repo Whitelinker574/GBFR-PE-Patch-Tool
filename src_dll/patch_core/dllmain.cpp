@@ -566,6 +566,17 @@ static lm_address_t MonsterPatchRva204(const char* id)
     return LM_ADDRESS_BAD;
 }
 
+static lm_address_t MonsterPatchRva205(const char* id)
+{
+    if (strcmp(id, "monster_hp") == 0) return 0x1F758A0;
+    if (strcmp(id, "monster_damage_new") == 0) return 0x1F75890;
+    if (strcmp(id, "monster_stun") == 0) return 0xB231D8;
+    if (strcmp(id, "overdrive_state") == 0) return 0x22C6B06;
+    if (strcmp(id, "od_rate") == 0) return 0x22C6FD0;
+    if (strcmp(id, "inventory_set_45") == 0) return 0x34F8C1;
+    return LM_ADDRESS_BAD;
+}
+
 static lm_size_t MonsterPatchCaveSize(const char* id)
 {
     if (strcmp(id, "monster_damage_new") == 0) return 512;
@@ -1905,6 +1916,7 @@ static constexpr VirtualSigilRuntimeLayout kVirtualSigilRuntimeLayouts[] = {
     { L"2.0.2", 0x00A25484, 0x00A26096, 0x00A260AE, 0x00A260F0, 0x00A2C610, 0x07C20940, 0x07C24980 },
     { L"2.0.3", 0x00A1EBE4, 0x00A1F7F6, 0x00A1F80E, 0x00A1F850, 0x00A25D70, 0x07C1D900, 0x07C21940 },
     { L"2.0.4", 0x00A1FB84, 0x00A20796, 0x00A207AE, 0x00A207F0, 0x00A26D10, 0x07C1EB80, 0x07C22BC0 },
+    { L"2.0.5", 0x00A1F594, 0x00A201A6, 0x00A201BE, 0x00A20200, 0x00A26720, 0x07C1EE00, 0x07C22E40 },
 };
 static constexpr int kNativeSigilSlots = 13;
 static constexpr int kMainGemCapacity = 5100;
@@ -2329,7 +2341,7 @@ static_assert(sizeof(WeaponRuntimeSkillEntry) == 8);
 using WeaponTraitAggregationFunction = void(*)(uintptr_t, uintptr_t, uintptr_t);
 using ApplyWeaponTraitFunction = void(*)(uint32_t, uintptr_t, uint32_t, uint32_t, uint32_t);
 static constexpr uint32_t kWeaponRuntimeMaxEntries = 2048;
-static constexpr lm_address_t kWeaponRuntimeStatusManagerRvas[] = { 0x07C21940, 0x07C22BC0 };
+static constexpr lm_address_t kWeaponRuntimeStatusManagerRvas[] = { 0x07C21940, 0x07C22BC0, 0x07C22E40 };
 static SRWLOCK g_weaponRuntimeLock = SRWLOCK_INIT;
 static std::array<WeaponRuntimeSkillEntry, kWeaponRuntimeMaxEntries> g_weaponRuntimeSkills{};
 static size_t g_weaponRuntimeSkillCount = 0;
@@ -4387,6 +4399,7 @@ static bool InstallQOLFreeCaptain(const lm_module_t& module)
     static constexpr Layout layouts[] = {
         { 0x1CA7870, 0x3F105D0, 0x3F10410, 0x3F10240, 0x41E3F70, 0x7C24980, 0x7C23878 },
         { 0x1CA16D0, 0x3F0C500, 0x3F0C340, 0x3F0C170, 0x41DFEA0, 0x7C21940, 0x7C20838 },
+        { 0x1CA1F80, 0x3F0DC70, 0x3F0DAB0, 0x3F0D8E0, 0x41E1610, 0x7C22E40, 0x7C21D38 },
     };
     struct Entry { const char* signature; lm_address_t* target; lm_address_t detour; lm_address_t* original; lm_size_t* size; lm_byte_t* bytes; };
     Entry entries[] = {
@@ -4847,7 +4860,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 		bool resolvedKnownEntry = false;
 		const lm_address_t rva203 = MonsterPatchRva203(point.id);
 		const lm_address_t rva204 = MonsterPatchRva204(point.id);
-		const lm_address_t knownRvas[] = { point.rva, rva203, rva204 };
+		const lm_address_t rva205 = MonsterPatchRva205(point.id);
+		const lm_address_t knownRvas[] = { point.rva, rva203, rva204, rva205 };
 		for (const lm_address_t candidate : knownRvas)
 		{
 			if (candidate == LM_ADDRESS_BAD || (candidate == point.rva && resolvedKnownEntry)) continue;
@@ -4889,7 +4903,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 			// This shared inventory/material instruction moved in 2.0.3. Resolve
 			// only between the two audited RVAs and still require the complete
 			// seven original bytes before any write.
-			const lm_address_t candidates[] = { 0x356621, 0x34F8F1 };
+			const lm_address_t candidates[] = { 0x356621, 0x34F8F1, 0x34F8C1 };
 			bool found = false;
 			for (const lm_address_t candidate : candidates)
 			{
@@ -4972,7 +4986,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             else if (strcmp(point.id, "od_rate") == 0)
             {
                 if (!PatchOdRateHook(target, message, messageSize)) return false;
-                const lm_address_t inlineRvas[] = { 0x2B3E7DE, 0x2B3F77E };
+				const lm_address_t inlineRvas[] = { 0x2B3E7DE, 0x2B3F77E, 0x2B3F92E };
                 lm_address_t inlineTarget = LM_ADDRESS_BAD;
                 for (const lm_address_t inlineRva : inlineRvas)
                 {
@@ -4987,7 +5001,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
                 }
                 if (inlineTarget == LM_ADDRESS_BAD)
                 {
-                    swprintf_s(message, messageSize, L"inline OD path did not match the verified 2.0.3 / 2.0.4 entries");
+					swprintf_s(message, messageSize, L"inline OD path did not match the verified 2.0.3 / 2.0.4 / 2.0.5 entries");
                     return false;
                 }
                 if (!PatchOdRateHookInline(inlineTarget, message, messageSize)) return false;

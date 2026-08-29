@@ -107,7 +107,7 @@ refresh()
 <template>
   <div class="qol-lab ui-page-stack">
     <section class="qol-intro">
-      <div><p>INTEGRATED QOL RUNTIME · DLC 2.0.4</p><h2>{{ tx('游戏便利运行时', 'Game Convenience Runtime') }}</h2><span>{{ tx('把显示、联机信息、任务同步和编队便利集中到一个可恢复的内置运行时；无需外部加载器。', 'Keep display, session, quest-sync, and formation conveniences in one restorable built-in runtime without an external loader.') }}</span></div>
+      <div><p>INTEGRATED QOL RUNTIME · DLC 2.0.5</p><h2>{{ tx('游戏便利运行时', 'Game Convenience Runtime') }}</h2><span>{{ tx('把显示、联机信息、任务同步和编队便利集中到一个可恢复的内置运行时；无需外部加载器。', 'Keep display, session, quest-sync, and formation conveniences in one restorable built-in runtime without an external loader.') }}</span></div>
       <aside><b>{{ workspace?.recoveryRequired ? tx('需要恢复', 'Recovery required') : workspace?.active ? tx('运行中', 'Active') : tx('未开启', 'Inactive') }}</b><small>{{ workspace?.recoveryRequired ? runtimeCompanionMessage(workspace?.detail, language.value) : workspace?.active ? `PID ${workspace.pid}` : workspace?.gameRunning ? tx('游戏已启动，可以开启', 'Game detected and ready') : tx('请先启动游戏', 'Start the game first') }}</small></aside>
     </section>
 

@@ -56,6 +56,9 @@ func (a *App) currencyRoot() (uintptr, error) {
 
 func (a *App) validateCurrencyRoot(root uintptr) error {
 	for _, def := range currencyDefs {
+		if def.AOB {
+			continue
+		}
 		var value int32
 		if err := readProcessMemory(a.hProcess, root+def.Offset, unsafe.Pointer(&value), unsafe.Sizeof(value)); err != nil {
 			return fmt.Errorf("实时资源结构校验失败（%s）: %w", def.Name, err)

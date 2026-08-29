@@ -57,6 +57,17 @@ var runtimeGameLayouts = [...]runtimeGameLayout{
 		SaveFunctionRVA: 0x797E00, PartyCharaPowerRVA: 0x7C22CB8, SummonInventoryPtrRVA: 0x7C22188,
 		SpatialGravityRVA: 0x39D9DC4, InventoryMaterialRVA: 0x34F8F1,
 	},
+	{
+		Version:         "2.0.5",
+		PartyPointerRVA: 0x22CA490, PartySlotTableRVA: 0x7034CC0,
+		PartyHandleTableRVA: 0x7034C60, PartyEntityTableRVA: 0x701F948,
+		PartyHandleRootOffset: 0x58,
+		SelectedMaterialRVA:   0x3F49163, SelectedKeyItemRVA: 0x3F1DCBC,
+		SigilHookRVA: 0x33E3F7, WrightstoneHookRVA: 0x35AF54,
+		WeaponHookRVA:   0x41528FC,
+		SaveFunctionRVA: 0x798020, PartyCharaPowerRVA: 0x7C22F38, SummonInventoryPtrRVA: 0x7C22408,
+		SpatialGravityRVA: 0x39DA364, InventoryMaterialRVA: 0x34F8C1,
+	},
 }
 
 func isKnownRuntimeGameLayout(candidate runtimeGameLayout) bool {

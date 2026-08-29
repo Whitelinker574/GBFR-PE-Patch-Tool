@@ -180,6 +180,13 @@ func TestConfluxTimerManagerPointerRVASelectsGame204Layout(t *testing.T) {
 	if got != confluxTimerManagerPointerRVA204 {
 		t.Fatalf("2.0.4 manager pointer RVA=0x%X, want 0x%X", got, confluxTimerManagerPointerRVA204)
 	}
+	got205, err := confluxTimerManagerPointerRVAForDigest(game205ExecutableSHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got205 != 0x7C222F8 {
+		t.Fatalf("2.0.5 manager pointer RVA=0x%X, want 0x7C222F8", got205)
+	}
 	legacy, err := confluxTimerManagerPointerRVAForDigest(runtimePatchCatalogGameSHA256)
 	if err != nil {
 		t.Fatal(err)

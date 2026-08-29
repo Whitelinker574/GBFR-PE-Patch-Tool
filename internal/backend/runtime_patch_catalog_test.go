@@ -192,6 +192,31 @@ func TestRuntimePatchExpectedOriginalBytesSelectsKnown204RIPDisplacements(t *tes
 	}
 }
 
+func TestRuntimePatchExpectedOriginalBytesSelectsKnown205RIPDisplacements(t *testing.T) {
+	catalog := readRuntimePatchCatalogFile(t)
+	seen := 0
+	for _, feature := range catalog.Features {
+		for _, site := range feature.Sites {
+			expected205, compatible := runtimePatch205OriginalBytes[site.Symbol]
+			if !compatible {
+				continue
+			}
+			seen++
+			got := runtimePatchExpectedOriginalBytes(site, runtimePatchLocalGame205SHA256)
+			if !bytes.Equal(got, expected205) {
+				t.Fatalf("%s 2.0.5 original=% X, want version variant % X", site.Symbol, got, expected205)
+			}
+			got[0] ^= 0xff
+			if bytes.Equal(got, runtimePatch205OriginalBytes[site.Symbol]) {
+				t.Fatalf("%s returned shared 2.0.5 original-byte storage", site.Symbol)
+			}
+		}
+	}
+	if seen != 4 {
+		t.Fatalf("2.0.5 RuntimePatch original-byte variants=%d, want 4", seen)
+	}
+}
+
 func TestRuntimePatchCatalogContainsInfiniteLinkTime(t *testing.T) {
 	catalog := readRuntimePatchCatalogFile(t)
 	var feature *RuntimePatchFeature
@@ -239,6 +264,13 @@ func TestRuntimePatchSiteForExecutableSelectsKnown203SignatureVariants(t *testin
 		}
 		if resolved.AOB != canonicalRuntimePatchAOB(pattern) || resolved.Offset != variant.Offset {
 			t.Fatalf("%s resolved AOB/offset=%q/%d, want %q/%d", symbol, resolved.AOB, resolved.Offset, canonicalRuntimePatchAOB(pattern), variant.Offset)
+		}
+		resolved205, err := runtimePatchSiteForExecutable(catalogSite, runtimePatchLocalGame205SHA256)
+		if err != nil {
+			t.Fatalf("resolve 2.0.5 %s: %v", symbol, err)
+		}
+		if resolved205.AOB != canonicalRuntimePatchAOB(pattern) || resolved205.Offset != variant.Offset {
+			t.Fatalf("%s did not retain the verified 2.0.3+ signature on 2.0.5", symbol)
 		}
 		if !bytes.Equal(resolved.PatternValues, pattern.Values) || !bytes.Equal(resolved.PatternMasks, pattern.Mask) {
 			t.Fatalf("%s resolved pattern arrays do not match its AOB", symbol)
