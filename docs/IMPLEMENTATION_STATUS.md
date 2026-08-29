@@ -14,7 +14,7 @@ Loadout preview and write preflight now recover each of the 29 playable characte
 
 ## v2.0.10 game 2.0.3 additions
 
-The current-weapon editor captures the highlighted 2.0.3 weapon record, backs up the save before a write, updates exactly five persistent skill slots, and verifies the post-save memory window. Additional skills use a separate owned runtime aggregator bound to the selected weapon instead of overwriting the following weapon record. The catalog also names the observed `0x02D0B733` trait as `超凡技艺 / Unbound Technique` in both languages.
+The current-weapon editor verifies the executable before selecting its 2.0.3–2.0.5 layout, then captures the highlighted weapon record, backs up the save before a write, updates exactly five persistent skill slots, and verifies the post-save memory window. A full 23-byte unique AOB provides a guarded fallback when the fixed entry moves; the save function reuses the shared item-editor resolver. Additional skills use a separate owned runtime aggregator bound to the selected weapon instead of overwriting the following weapon record. The catalog also names the observed `0x02D0B733` trait as `超凡技艺 / Unbound Technique` in both languages.
 
 The spatial page now treats virtual-ground contact as the primary workflow: native WASD provides horizontal movement and PageUp/PageDown moves the accepted ground plane vertically. Continuous jump remains an independent option. The aerial-action variant is still experimental because repeated attacks, dodges, jumps, and action-state transitions do not yet form a stable general-purpose ground state.
 

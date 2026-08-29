@@ -14,6 +14,7 @@ func TestRuntimeItemLocatorPatternsAreCanonicalAndGuardTheirEntries(t *testing.T
 		{name: "inventory material", raw: runtimeInventoryMaterialAOB, prefix: materialConsumeOrig},
 		{name: "sigil hook", raw: runtimeSigilHookAOB, prefix: sigilMemoryOriginalBytes},
 		{name: "wrightstone hook", raw: runtimeWrightstoneHookAOB, prefix: wrightstoneMemoryOriginalBytes},
+		{name: "weapon hook", raw: runtimeWeaponHookAOB, prefix: weaponMemoryGuardBytes},
 		{name: "item save function", raw: runtimeItemSaveFunctionAOB, prefix: gameSaveFunctionPrologue},
 	}
 	for _, test := range tests {
@@ -54,6 +55,7 @@ func TestRuntimeItemLocatorPatternsMatchOneKnownSiteInLocalGame(t *testing.T) {
 		{name: "inventory material", raw: runtimeInventoryMaterialAOB, selectRVA: func(layout runtimeGameLayout) uintptr { return layout.InventoryMaterialRVA }},
 		{name: "sigil hook", raw: runtimeSigilHookAOB, selectRVA: func(layout runtimeGameLayout) uintptr { return layout.SigilHookRVA }},
 		{name: "wrightstone hook", raw: runtimeWrightstoneHookAOB, selectRVA: func(layout runtimeGameLayout) uintptr { return layout.WrightstoneHookRVA }},
+		{name: "weapon hook", raw: runtimeWeaponHookAOB, selectRVA: func(layout runtimeGameLayout) uintptr { return layout.WeaponHookRVA }},
 		{name: "item save function", raw: runtimeItemSaveFunctionAOB, selectRVA: func(layout runtimeGameLayout) uintptr { return layout.SaveFunctionRVA }},
 	}
 	for _, test := range tests {

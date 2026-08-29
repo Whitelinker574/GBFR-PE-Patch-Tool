@@ -41,7 +41,10 @@ func weaponMemoryRuntimeIdentity(digest string) (hookRVA, saveRVA uintptr, versi
 	if strings.EqualFold(digest, game204ExecutableSHA256) {
 		return 0x415212C, 0x797E00, "2.0.4"
 	}
-	return weaponMemoryHookRVA, weaponMemorySaveRVA, "2.0.3"
+	if strings.EqualFold(digest, game203ExecutableSHA256) {
+		return weaponMemoryHookRVA, weaponMemorySaveRVA, "2.0.3"
+	}
+	return 0, 0, ""
 }
 
 type weaponMemoryVerifiedSkill struct {
@@ -243,10 +246,12 @@ func (a *App) scanWeaponMemoryLocked() (WeaponMemoryStatus, error) {
 	if a.hProcess == 0 || a.moduleBase == 0 {
 		return WeaponMemoryStatus{}, fmt.Errorf("未连接游戏进程")
 	}
-	hookRVA, _, _ := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
-	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, hookRVA)
-	if !ok {
-		return WeaponMemoryStatus{}, fmt.Errorf("武器实时编辑入口地址溢出")
+	if err := a.verifyRuntimePatchExecutableLocked(a.currentProcessInstance(), "武器技能即时编辑"); err != nil {
+		return WeaponMemoryStatus{}, err
+	}
+	addr, err := a.resolveWeaponMemoryHookLocked()
+	if err != nil {
+		return WeaponMemoryStatus{}, err
 	}
 	guard := make([]byte, len(weaponMemoryGuardBytes))
 	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&guard[0]), uintptr(len(guard))); err != nil {
@@ -320,23 +325,7 @@ func (a *App) WeaponMemoryAcquire(requestID uint64) (WeaponMemoryStatus, error) 
 }
 
 func (a *App) resolveWeaponSaveFunction203Locked() (uintptr, error) {
-	_, saveRVA, _ := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
-	addr, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, saveRVA)
-	if !ok {
-		return 0, fmt.Errorf("武器保存函数地址溢出")
-	}
-	actual := make([]byte, len(gameSaveFunctionPrologue))
-	if err := readProcessMemory(a.hProcess, addr, unsafe.Pointer(&actual[0]), uintptr(len(actual))); err != nil {
-		return 0, fmt.Errorf("读取 GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数失败: %w", err)
-	}
-	if !bytes.Equal(actual, gameSaveFunctionPrologue) {
-		return 0, fmt.Errorf("GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数签名不匹配: %s", bytesToHex(actual))
-	}
-	if err := a.validateRemoteFunctionStart(addr, "GAME 2.0.3 / 2.0.4 / 2.0.5 武器保存函数"); err != nil {
-		return 0, err
-	}
-	a.itemSaveFunctionAddr = addr
-	return addr, nil
+	return a.resolveItemSaveFunctionLocked()
 }
 
 func (a *App) weaponMemoryEnableLocked() (WeaponMemoryStatus, error) {

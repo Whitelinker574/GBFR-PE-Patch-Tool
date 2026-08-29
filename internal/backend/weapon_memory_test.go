@@ -3,9 +3,54 @@ package backend
 import (
 	"bytes"
 	"encoding/binary"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
+
+func TestWeaponMemoryScanVerifiesExecutableBeforeChoosingVersionLayout(t *testing.T) {
+	source, err := os.ReadFile("weapon_memory.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(source)
+	start := strings.Index(body, "func (a *App) scanWeaponMemoryLocked()")
+	end := strings.Index(body[start:], "\nfunc (a *App) WeaponMemoryGetStatus")
+	if start < 0 || end < 0 {
+		t.Fatal("scanWeaponMemoryLocked body not found")
+	}
+	body = body[start : start+end]
+	verify := strings.Index(body, "verifyRuntimePatchExecutableLocked")
+	resolve := strings.Index(body, "resolveWeaponMemoryHookLocked")
+	if verify < 0 || resolve < 0 || verify > resolve {
+		t.Fatalf("weapon scan must verify the executable before choosing a versioned or AOB entry")
+	}
+}
+
+func TestWeaponMemoryLocatorFallsBackToUniqueFullGuard(t *testing.T) {
+	image := make([]byte, 4096)
+	image[0], image[1] = 'M', 'Z'
+	binary.LittleEndian.PutUint32(image[0x3C:0x40], 0x80)
+	copy(image[0x80:0x84], []byte{'P', 'E', 0, 0})
+	binary.LittleEndian.PutUint32(image[0xD0:0xD4], uint32(len(image)))
+	const relocatedOffset = 0x280
+	copy(image[relocatedOffset:], weaponMemoryGuardBytes)
+	base := uintptr(unsafe.Pointer(&image[0]))
+	app := &App{hProcess: windows.CurrentProcess(), moduleBase: base, runtimePatchVerifiedDigest: game205ExecutableSHA256}
+
+	got, err := app.resolveWeaponMemoryHookLocked()
+	runtime.KeepAlive(image)
+	if err != nil {
+		t.Fatalf("relocated unique weapon guard was rejected: %v", err)
+	}
+	if want := base + relocatedOffset; got != want {
+		t.Fatalf("weapon hook=0x%X, want relocated guard 0x%X", got, want)
+	}
+}
 
 func TestWeaponMemory203SignatureAndPhysicalOffsetsAreExact(t *testing.T) {
 	if weaponMemoryHookRVA != 0x415118C {

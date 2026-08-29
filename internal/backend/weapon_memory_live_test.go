@@ -33,7 +33,7 @@ func TestWeaponMemoryLiveReadOnly203(t *testing.T) {
 
 // This second opt-in probe installs only the pointer-capture Hook, confirms
 // ownership, restores the exact displaced bytes, and never calls Update.
-func TestWeaponMemoryLiveCaptureHookRestores203(t *testing.T) {
+func TestWeaponMemoryLiveCaptureHookRestoresSupportedGame(t *testing.T) {
 	if os.Getenv("GBFR_LIVE_WEAPON_CAPTURE_READONLY") != "1" {
 		t.Skip("set GBFR_LIVE_WEAPON_CAPTURE_READONLY=1 for the read-only Hook lifecycle probe")
 	}

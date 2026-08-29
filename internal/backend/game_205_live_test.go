@@ -70,4 +70,16 @@ func TestGame205LiveReadOnlyLayout(t *testing.T) {
 	if err := app.CharaRelease(info.OwnerToken); err != nil {
 		t.Fatalf("release normal 2.0.5 UI connection: %v", err)
 	}
+
+	weaponApp := NewApp()
+	weaponStatus, err := weaponApp.WeaponMemoryScan()
+	if err != nil {
+		t.Fatalf("scan 2.0.5 weapon focus entry: %v", err)
+	}
+	if !weaponStatus.Found || weaponStatus.Hooked || weaponStatus.SourceVersion != "2.0.5" || weaponStatus.RVA != uint64(layout.WeaponHookRVA) {
+		t.Fatalf("unexpected 2.0.5 weapon focus status: %+v", weaponStatus)
+	}
+	if err := weaponApp.CharaDetach(); err != nil {
+		t.Fatalf("detach 2.0.5 weapon scan: %v", err)
+	}
 }

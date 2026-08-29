@@ -13,6 +13,7 @@ const (
 	runtimeInventoryMaterialAOB = "41 01 76 04 4C 89 E1 E8 ?? ?? ?? ?? 41 8B 0C 24 31 C0 85 C9 0F 4F C1"
 	runtimeSigilHookAOB         = "31 C9 81 38 B0 E0 7A 88 0F 95 C1 31 D2 81 78 08 B0 E0 7A 88 0F 95 C2 01 ?? 31 ?? 83 FA 02 0F 93 C0 EB 02 31 C0 49 8B 4D 18"
 	runtimeWrightstoneHookAOB   = "48 89 D7 48 89 CE E8 ?? ?? ?? ?? 48 39 FE 74 4C 48 8D 4E 18 8B 47 18 39 01 74 07 89 01 E8 ?? ?? ?? ?? 8B 47 1C 39 46 1C"
+	runtimeWeaponHookAOB        = "48 89 D7 48 89 CE 83 7A 40 00 7E 67 48 8B 4E 50 48 85 C9 74 07 B2 01"
 	runtimeItemSaveFunctionAOB  = "55 48 83 EC 60 48 8D 6C 24 60 48 C7 45 F8 FE FF FF FF 48 8B 05 ?? ?? ?? ?? 48 85 C0"
 )
 
@@ -89,6 +90,24 @@ func (a *App) resolveWrightstoneMemoryHookLocked() (uintptr, error) {
 		wrightstoneMemoryOriginalBytes,
 		int(wrightstoneMemoryHookSize),
 		isWrightstoneMemoryJump,
+	)
+}
+
+func (a *App) resolveWeaponMemoryHookLocked() (uintptr, error) {
+	if a.weaponMemoryHookAddr != 0 {
+		return a.weaponMemoryHookAddr, nil
+	}
+	_, _, version := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
+	if version == "" {
+		return 0, fmt.Errorf("武器技能即时编辑仅支持已识别的 GAME 2.0.3 / 2.0.4 / 2.0.5")
+	}
+	return a.resolveRuntimeItemSite(
+		runtimeWeaponHookAOB,
+		"武器焦点入口",
+		func(layout runtimeGameLayout) uintptr { return layout.WeaponHookRVA },
+		weaponMemoryGuardBytes,
+		int(weaponMemoryHookSize),
+		isWeaponMemoryJump,
 	)
 }
 
