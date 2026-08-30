@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ApplySaveDiffTransfers, CloseSaveDiff, ExportFateEpisodeEvidence, ExportSaveDiffCSV, ExportSaveDiffJSON, FateEpisodeEditableInspect, FindSaveFiles, InfinityRuleCatalog, OpenSaveDiff, SaveDiffPage, SelectSaveDiffFile, WriteFateEpisodeFields } from '../../wailsjs/go/backend/App'
+import { ApplySaveDiffTransfers, CloseSaveDiff, ExportFateEpisodeEvidence, ExportSaveDiffCSV, ExportSaveDiffJSON, FateEpisodeEditableInspect, FindSaveFiles, InfinityRuleCatalog, OpenSaveDiff, RepairFateStoryArchives, SaveDiffPage, SelectSaveDiffFile, WriteFateEpisodeFields } from '../../wailsjs/go/backend/App'
 import { characterNamePairByPLID } from '../characterRoster.js'
 import { language } from '../i18n.js'
 
@@ -32,6 +32,8 @@ const fateLoading = ref(false)
 const fateExporting = ref(false)
 const fateWriting = ref(false)
 const fateWriteConfirmed = ref(false)
+const fateArchiveRepairing = ref(false)
+const fateArchiveRepairConfirmed = ref(false)
 const fateSelectedFields = ref(new Set())
 const fateSelectedCode = ref('')
 const infinityCatalog = ref(null)
@@ -107,6 +109,10 @@ const fateSelectedChanges = computed(() => fateEditableFields.value
   })))
 const fateSelectedEpisodeCount = computed(() => fateSelectedChanges.value.filter(change => change.field === 'episodeState').length)
 const fateSelectedMissionCount = computed(() => fateSelectedChanges.value.filter(change => change.field === 'missionState').length)
+const fateStoryArchives = computed(() => fateSnapshot.value?.storyArchives || [])
+const fateMissingArchives = computed(() => fateStoryArchives.value.filter(archive => archive.missing))
+const fateCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted).length)
+const fateUnlockedCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted && archive.unlocked).length)
 const infinityRulesByQuest = computed(() => {
   const groups = new Map()
   for (const rule of infinityCatalog.value?.rules || []) {
@@ -358,6 +364,7 @@ function fateFieldIdentity(field) {
 function clearFateSelection() {
   fateSelectedFields.value = new Set()
   fateWriteConfirmed.value = false
+  fateArchiveRepairConfirmed.value = false
 }
 function fateFieldNeedsWrite(field) {
   const target = Number(field?.allowedTargetValues?.[0] ?? field?.currentValue ?? 0) >>> 0
@@ -455,6 +462,27 @@ async function writeSelectedFate() {
     emit('status', String(error), 'error')
   } finally {
     fateWriting.value = false
+  }
+}
+async function repairMissingFateArchives() {
+  if (!fateMissingArchives.value.length || !fateArchiveRepairConfirmed.value || !fateSnapshot.value?.revision || fateArchiveRepairing.value) return
+  fateArchiveRepairing.value = true
+  try {
+    const result = await RepairFateStoryArchives({
+      path: fatePath.value,
+      expectedRevision: fateSnapshot.value.revision,
+      archiveIds: fateMissingArchives.value.map(archive => archive.archiveId),
+    })
+    const backup = result.backupPath ? tx(`；备份：${result.backupPath}`, `; backup: ${result.backupPath}`) : ''
+    emit('status', tx(
+      `已补全并回读 ${result.verified} 条命运篇章关联档案${backup}`,
+      `Repaired and verified ${result.verified} linked Fate archives${backup}`,
+    ), 'success')
+    await inspectFate()
+  } catch (error) {
+    emit('status', String(error), 'error')
+  } finally {
+    fateArchiveRepairing.value = false
   }
 }
 async function exportFateEvidence() {
@@ -612,6 +640,18 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
           <article class="ui-card ui-stat"><small>{{ tx('战斗篇章任务', 'Battle Missions') }}</small><strong>{{ fateStatus.missionCompleted }} / {{ fateStatus.missionTotal }}</strong><span>{{ tx('任务 ID 保持原值，只补完成状态', 'Mission IDs stay unchanged; only completion is raised') }}</span></article>
           <article class="ui-card ui-stat"><small>{{ tx('待完成', 'Remaining') }}</small><strong>{{ fateStatus.total - fateStatus.completed }}</strong><span>{{ fateComplete ? tx('当前记录已全部完成', 'All records are complete') : tx('可逐篇、按角色或全部补为完成', 'Complete individually, by character, or all at once') }}</span></article>
           <article class="ui-card ui-stat"><small>{{ tx('辅助记录', 'Auxiliary Rows') }}</small><strong>{{ fateStatus.auxiliaryPreserved }} / 5</strong><span>REMI · {{ tx('仅验证存在性', 'presence is validated only') }}</span></article>
+        </section>
+        <section class="fate-archive-repair ui-card" :class="{ 'has-missing': fateMissingArchives.length }" aria-live="polite">
+          <header>
+            <span><small>{{ tx('命运篇章关联档案', 'Linked Fate Archives') }}</small><strong>{{ fateMissingArchives.length ? tx(`发现 ${fateMissingArchives.length} 条缺失档案`, `${fateMissingArchives.length} linked archives are missing`) : tx('已完成篇章的档案状态正常', 'Completed Fate archives are consistent') }}</strong></span>
+            <b>{{ fateUnlockedCompletedArchiveCount }} / {{ fateCompletedArchiveCount }}</b>
+          </header>
+          <p>{{ tx('这里专门检查“已完成最终篇章但缺少档案”的情况。只补档案解锁位，不改篇章、任务、奖励或角色进度。', 'This checks for final Fate Episodes that are complete while their linked Lyria’s Journal archive remains locked. It repairs only the archive unlock flag; episodes, missions, rewards, and character progress are untouched.') }}</p>
+          <div v-if="fateMissingArchives.length" class="fate-archive-list">
+            <span v-for="archive in fateMissingArchives" :key="archive.archiveId"><b>{{ archive.characterCodes.map(fateCharacterName).join(' / ') }}</b><code>{{ archive.archiveId }}</code></span>
+          </div>
+          <label v-if="fateMissingArchives.length" class="transfer-confirm"><input v-model="fateArchiveRepairConfirmed" type="checkbox" /><span><b>{{ tx(`我确认补全以上 ${fateMissingArchives.length} 条缺失档案`, `I confirm repairing these ${fateMissingArchives.length} missing archives`) }}</b><small>{{ tx('写入前必须完全退出游戏；应用会自动备份、原子写入并重新打开回读。', 'The game must be fully closed. The app creates a backup, writes atomically, then reopens and verifies the save.') }}</small></span></label>
+          <button v-if="fateMissingArchives.length" type="button" class="ui-btn is-primary fate-archive-button" :disabled="!fateArchiveRepairConfirmed || fateArchiveRepairing" @click="repairMissingFateArchives">{{ fateArchiveRepairing ? tx('正在备份、补全并回读…', 'Backing Up, Repairing, and Verifying…') : tx('补全已完成篇章的缺失档案', 'Repair Missing Archives for Completed Episodes') }}</button>
         </section>
         <section class="fate-character-grid" :aria-label="tx('各角色命运篇章进度', 'Fate progress by character')">
           <button v-for="character in fateStatus.characters" :key="character.code" type="button" class="fate-character ui-card is-flat" :class="{ complete: character.completed === character.total, selected: character.code === selectedFateCharacter?.code }" @click="fateSelectedCode = character.code"><span><strong>{{ fateCharacterName(character.code) }}</strong><small>{{ character.code }}</small></span><b>{{ character.completed }}/{{ character.total }}</b></button>
@@ -772,6 +812,19 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
 .fate-save-slots { grid-column:1 / -1; padding-top:var(--space-2); border-top:1px solid var(--border-soft); }
 .fate-source .source-file { border:0; border-left:3px solid var(--border-strong); background:transparent; }
 .fate-summary { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.fate-archive-repair { min-width:0; display:grid; gap:var(--space-3); padding:var(--space-4); border-left:3px solid var(--success); }
+.fate-archive-repair.has-missing { border-left-color:var(--warning); }
+.fate-archive-repair > header { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); }
+.fate-archive-repair > header > span { min-width:0; display:grid; gap:3px; }
+.fate-archive-repair > header small,.fate-archive-repair > p { color:var(--text-muted); font-size:var(--fs-xs); }
+.fate-archive-repair > header strong { color:var(--text-primary); font-size:var(--fs-md); }
+.fate-archive-repair > header > b { color:var(--accent); font-family:var(--font-data); font-size:var(--fs-xl); white-space:nowrap; }
+.fate-archive-repair > p { margin:0; line-height:var(--lh-normal); }
+.fate-archive-list { min-width:0; display:flex; flex-wrap:wrap; gap:6px; }
+.fate-archive-list > span { display:flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-soft); }
+.fate-archive-list b { color:var(--text-primary); font-size:var(--fs-xs); }
+.fate-archive-list code { color:var(--text-muted); font-size:var(--fs-2xs); }
+.fate-archive-button { justify-self:end; }
 .fate-summary .ui-stat { min-width:0; padding:var(--space-3); border-top:2px solid var(--border-strong); }
 .fate-summary small,.fate-summary span { color:var(--text-muted); font-size:var(--fs-2xs); }
 .fate-summary strong { color:var(--text-primary); font-family:var(--font-data); font-size:var(--fs-xl); }

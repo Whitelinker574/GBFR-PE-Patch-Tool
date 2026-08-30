@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.20.md`](RELEASE_NOTES_v2.0.20.md) | v2.0.20 命运篇章关联档案补全 |
 | [`RELEASE_NOTES_v2.0.19.md`](RELEASE_NOTES_v2.0.19.md) | v2.0.19 武器技能即时编辑版本识别与自动定位修复 |
 | [`RELEASE_NOTES_v2.0.18.md`](RELEASE_NOTES_v2.0.18.md) | v2.0.18 游戏 2.0.5 文件、数据表与运行时适配 |
 | [`GAME_UPDATE_2.0.5_RESEARCH.md`](GAME_UPDATE_2.0.5_RESEARCH.md) | 2.0.5 官方改动、上游迁移及本机文件差分证据 |

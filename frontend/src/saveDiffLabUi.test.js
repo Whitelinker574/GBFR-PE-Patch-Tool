@@ -102,6 +102,16 @@ test('fate fields can be selected and written directly with explicit verificatio
   assert.doesNotMatch(source, /CompleteAllFateEpisodes|completeAllFate/)
 })
 
+test('completed Fate Episodes can repair only their missing linked archives', () => {
+  assert.match(source, /RepairFateStoryArchives/)
+  assert.match(source, /命运篇章关联档案/)
+  assert.match(source, /已完成最终篇章但缺少档案/)
+  assert.match(source, /fateMissingArchives/)
+  assert.match(source, /archiveIds:\s*fateMissingArchives\.value\.map/)
+  assert.match(source, /expectedRevision:\s*fateSnapshot\.value\.revision/)
+  assert.match(source, /只补档案解锁位，不改篇章、任务、奖励或角色进度/)
+})
+
 test('new laboratory controls use the shared themed segmented control', () => {
   const optimizer = readFileSync(new URL('./components/LoadoutOptimizer.vue', import.meta.url), 'utf8')
   const workshop = readFileSync(new URL('./components/LoadoutShareWorkshop.vue', import.meta.url), 'utf8')

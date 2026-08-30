@@ -44,6 +44,7 @@ type FateEpisodeEditableSnapshot struct {
 	Revision            string                     `json:"revision"`
 	Status              FateEpisodeStatus          `json:"status"`
 	Fields              []FateEpisodeEditableField `json:"fields"`
+	StoryArchives       []FateStoryArchiveStatus   `json:"storyArchives"`
 	FieldWriteVerified  bool                       `json:"fieldWriteVerified"`
 	GameEffectVerified  bool                       `json:"gameEffectVerified"`
 	RewardClaimVerified bool                       `json:"rewardClaimVerified"`
@@ -184,10 +185,18 @@ func inspectFateEpisodeEditable(path string) (*FateEpisodeEditableSnapshot, erro
 	if err != nil {
 		return nil, err
 	}
+	archiveVector, err := requireFateStoryArchiveVector(save)
+	if err != nil {
+		return nil, err
+	}
+	storyArchives, err := inspectFateStoryArchives(layout, archiveVector)
+	if err != nil {
+		return nil, err
+	}
 	status := layout.status
 	status.Path = absolute
 	return &FateEpisodeEditableSnapshot{
-		Path: absolute, Revision: fateEpisodeRevision(raw), Status: status, Fields: fields,
+		Path: absolute, Revision: fateEpisodeRevision(raw), Status: status, Fields: fields, StoryArchives: storyArchives,
 		FieldWriteVerified: false, GameEffectVerified: false, RewardClaimVerified: false,
 	}, nil
 }
