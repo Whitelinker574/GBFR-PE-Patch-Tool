@@ -3,11 +3,69 @@ package backend
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestFateCompletedMissionRequestPreservesNonBinaryState(t *testing.T) {
+	for _, value := range []uint32{1, 2, 3, 30} {
+		t.Run(fmt.Sprint(value), func(t *testing.T) {
+			fixture := prepareFateEpisodeWritableFixture(t)
+			save, err := LoadSave(fixture.work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			layout, err := inspectFateEpisodeLayout(save)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const missionID = uint32(0x00301029)
+			index, _, err := missionStateIndex(layout, missionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := layout.missionStates.SetUint32At(index, value); err != nil {
+				t.Fatal(err)
+			}
+			if err := save.FixChecksums(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(fixture.work, save.data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			before := append([]byte(nil), save.data...)
+			snapshot, err := (&App{}).FateEpisodeEditableInspect(fixture.work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range snapshot.Fields {
+				if field.Field == fateEpisodeMissionField && field.MissionID == missionID && field.AllowedTargetValues[0] != value {
+					t.Fatalf("inspection attempts to normalise completed state: %+v", field)
+				}
+			}
+			result, err := (&App{}).WriteFateEpisodeFields(FateEpisodeFieldWriteRequest{
+				Path: fixture.work, ExpectedRevision: snapshot.Revision,
+				Changes: []FateEpisodeFieldChange{{Field: fateEpisodeMissionField, MissionID: missionID, ExpectedValue: value, TargetValue: 1}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Changed != 0 || result.BackupPath != "" || len(result.Readback) != 1 || result.Readback[0].Value != value {
+				t.Fatalf("completion request was not a preserving no-op: %+v", result)
+			}
+			after, err := os.ReadFile(fixture.work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("already complete mission request changed save bytes")
+			}
+		})
+	}
+}
 
 type fateEpisodeWritableFixture struct {
 	work      string

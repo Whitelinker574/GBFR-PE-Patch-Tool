@@ -45,6 +45,7 @@ type FateEpisodeEditableSnapshot struct {
 	Status              FateEpisodeStatus          `json:"status"`
 	Fields              []FateEpisodeEditableField `json:"fields"`
 	StoryArchives       []FateStoryArchiveStatus   `json:"storyArchives"`
+	UncheckedArchives   []FateUncheckedArchive     `json:"uncheckedArchives"`
 	FieldWriteVerified  bool                       `json:"fieldWriteVerified"`
 	GameEffectVerified  bool                       `json:"gameEffectVerified"`
 	RewardClaimVerified bool                       `json:"rewardClaimVerified"`
@@ -156,10 +157,14 @@ func fateEpisodeEditableFields(layout *fateEpisodeLayout) ([]FateEpisodeEditable
 		if err != nil {
 			return nil, err
 		}
+		target := uint32(1)
+		if state > 0 {
+			target = state
+		}
 		fields = append(fields, FateEpisodeEditableField{
 			Field: fateEpisodeMissionField, MissionID: missionID,
 			MissionCode: fmt.Sprintf("%08X", missionID), VectorIndex: index,
-			CurrentValue: state, AllowedTargetValues: []uint32{1},
+			CurrentValue: state, AllowedTargetValues: []uint32{target},
 		})
 	}
 	if len(fields) != fateEpisodeMaxFieldChanges {
@@ -197,6 +202,7 @@ func inspectFateEpisodeEditable(path string) (*FateEpisodeEditableSnapshot, erro
 	status.Path = absolute
 	return &FateEpisodeEditableSnapshot{
 		Path: absolute, Revision: fateEpisodeRevision(raw), Status: status, Fields: fields, StoryArchives: storyArchives,
+		UncheckedArchives:  fateUncheckedArchives(layout),
 		FieldWriteVerified: false, GameEffectVerified: false, RewardClaimVerified: false,
 	}, nil
 }
@@ -328,6 +334,11 @@ func resolveFateEpisodeChanges(layout *fateEpisodeLayout, changes []FateEpisodeF
 			seen[identity] = struct{}{}
 			if current != change.ExpectedValue {
 				return nil, fmt.Errorf("命运篇章任务 %08X 当前值已从 %d 变为 %d；请重新检查后再写入", change.MissionID, change.ExpectedValue, current)
+			}
+			// Older UIs submitted 1 even for completed states such as 2 or 3.
+			// Treat that completion request as a no-op, preserving the raw value.
+			if current > 0 && change.TargetValue == 1 {
+				change.TargetValue = current
 			}
 			if change.TargetValue != current && !(current == 0 && change.TargetValue == 1) {
 				return nil, fmt.Errorf("命运篇章任务 %08X 只允许从 0 写入已验证的完成值 1", change.MissionID)

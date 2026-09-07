@@ -71,6 +71,7 @@ type FateEpisodeCharacterStatus struct {
 }
 
 type FateEpisodeStatus struct {
+	Missions           []FateEpisodeMissionStatus   `json:"missions"`
 	Path               string                       `json:"path"`
 	DataVersion        string                       `json:"dataVersion"`
 	Completed          int                          `json:"completed"`
@@ -79,6 +80,14 @@ type FateEpisodeStatus struct {
 	MissionTotal       int                          `json:"missionTotal"`
 	AuxiliaryPreserved int                          `json:"auxiliaryPreserved"`
 	Characters         []FateEpisodeCharacterStatus `json:"characters"`
+}
+
+type FateEpisodeMissionStatus struct {
+	MissionID   uint32 `json:"missionId"`
+	MissionCode string `json:"missionCode"`
+	VectorIndex int    `json:"vectorIndex"`
+	State       uint32 `json:"state"`
+	Completed   bool   `json:"completed"`
 }
 
 type FateEpisodeWriteResult struct {
@@ -94,15 +103,20 @@ type FateEpisodeWriteResult struct {
 }
 
 type FateEpisodeEvidenceExport struct {
-	SchemaVersion      int                          `json:"schemaVersion"`
-	DataVersion        string                       `json:"dataVersion"`
-	GeneratedAt        string                       `json:"generatedAt"`
-	Completed          int                          `json:"completed"`
-	Total              int                          `json:"total"`
-	MissionCompleted   int                          `json:"missionCompleted"`
-	MissionTotal       int                          `json:"missionTotal"`
-	AuxiliaryPreserved int                          `json:"auxiliaryPreserved"`
-	Characters         []FateEpisodeCharacterStatus `json:"characters"`
+	AppVersion          string                         `json:"appVersion"`
+	Missions            []FateEpisodeMissionStatus     `json:"missions"`
+	StoryArchives       []FateStoryArchiveStatus       `json:"storyArchives,omitempty"`
+	UncheckedArchives   []FateUncheckedArchive         `json:"uncheckedArchives,omitempty"`
+	ArchiveObservations []FateArchiveVectorObservation `json:"archiveObservations,omitempty"`
+	SchemaVersion       int                            `json:"schemaVersion"`
+	DataVersion         string                         `json:"dataVersion"`
+	GeneratedAt         string                         `json:"generatedAt"`
+	Completed           int                            `json:"completed"`
+	Total               int                            `json:"total"`
+	MissionCompleted    int                            `json:"missionCompleted"`
+	MissionTotal        int                            `json:"missionTotal"`
+	AuxiliaryPreserved  int                            `json:"auxiliaryPreserved"`
+	Characters          []FateEpisodeCharacterStatus   `json:"characters"`
 }
 
 type FateEpisodeEntryStatus struct {
@@ -373,6 +387,7 @@ func inspectFateEpisodeLayout(save *SaveData) (*fateEpisodeLayout, error) {
 	missionCatalog := fateMissionIDs()
 	seenMissions := make(map[uint32]struct{}, fateMissionCount)
 	missionTotal, missionCompleted := 0, 0
+	missionRows := make([]FateEpisodeMissionStatus, 0, fateMissionCount)
 	for index := 0; index < fateMissionVectorLength; index++ {
 		missionID, err := missionIDs.Uint32At(index)
 		if err != nil {
@@ -396,6 +411,10 @@ func inspectFateEpisodeLayout(save *SaveData) (*fateEpisodeLayout, error) {
 		}
 		seenMissions[missionID] = struct{}{}
 		missionTotal++
+		missionRows = append(missionRows, FateEpisodeMissionStatus{
+			MissionID: missionID, MissionCode: fmt.Sprintf("%08X", missionID),
+			VectorIndex: index, State: missionState, Completed: missionState > 0,
+		})
 		if missionState > 0 {
 			missionCompleted++
 		}
@@ -438,7 +457,7 @@ func inspectFateEpisodeLayout(save *SaveData) (*fateEpisodeLayout, error) {
 		characters = append(characters, character)
 	}
 	return &fateEpisodeLayout{
-		status:      FateEpisodeStatus{DataVersion: catalog.DataVersion, Completed: completed, Total: fateEpisodeCount, MissionCompleted: missionCompleted, MissionTotal: missionTotal, AuxiliaryPreserved: len(auxiliaryStates), Characters: characters},
+		status:      FateEpisodeStatus{DataVersion: catalog.DataVersion, Completed: completed, Total: fateEpisodeCount, MissionCompleted: missionCompleted, MissionTotal: missionTotal, AuxiliaryPreserved: len(auxiliaryStates), Characters: characters, Missions: missionRows},
 		stateByHash: stateByHash, missionIDs: missionIDs, missionStates: missionStates, auxiliaryStates: auxiliaryStates, placeholder: placeholder,
 	}, nil
 }
@@ -576,7 +595,8 @@ func fateEpisodeEvidenceJSON(status *FateEpisodeStatus, generatedAt time.Time) (
 		return nil, fmt.Errorf("命运篇章状态为空")
 	}
 	payload := FateEpisodeEvidenceExport{
-		SchemaVersion: 1, DataVersion: status.DataVersion, GeneratedAt: generatedAt.UTC().Format(time.RFC3339),
+		SchemaVersion: 2, AppVersion: appVersion, DataVersion: status.DataVersion, GeneratedAt: generatedAt.UTC().Format(time.RFC3339),
+		Missions:  append([]FateEpisodeMissionStatus(nil), status.Missions...),
 		Completed: status.Completed, Total: status.Total,
 		MissionCompleted: status.MissionCompleted, MissionTotal: status.MissionTotal,
 		AuxiliaryPreserved: status.AuxiliaryPreserved,
@@ -590,11 +610,7 @@ func fateEpisodeEvidenceJSON(status *FateEpisodeStatus, generatedAt time.Time) (
 }
 
 func (a *App) ExportFateEpisodeEvidence(path string) (string, error) {
-	status, err := a.FateEpisodeInspect(path)
-	if err != nil {
-		return "", err
-	}
-	data, err := fateEpisodeEvidenceJSON(status, time.Now())
+	data, err := fateArchiveEvidenceFromPath(path, time.Now())
 	if err != nil {
 		return "", err
 	}

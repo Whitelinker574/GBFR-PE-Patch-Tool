@@ -190,7 +190,8 @@ test('user-facing page titles omit historical source-version suffixes', () => {
   assert.match(patchTool, /patchQuest:\s*\{[\s\S]*?eyebrow:\s*'任务与便利'/)
   assert.match(patchTool, /baselineVersion:\s*'游戏 2\.0\.5（静态与运行时）'/)
   assert.doesNotMatch(homeJournal, /运行监测（[^）]*\d+\.\d+\.\d+[^）]*）/)
-  assert.match(appGo, /appVersion\s*=\s*"v2\.0\.19"/)
+  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+  assert.equal(appGo.match(/appVersion\s*=\s*"([^"]+)"/)?.[1], `v${version}`)
   assert.doesNotMatch(appGo, /appVersion\s*=\s*"[^"]*-(?:patch|preview)\d+"/i)
 })
 

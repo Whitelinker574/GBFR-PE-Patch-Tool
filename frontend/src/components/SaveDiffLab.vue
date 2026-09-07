@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ApplySaveDiffTransfers, CloseSaveDiff, ExportFateEpisodeEvidence, ExportSaveDiffCSV, ExportSaveDiffJSON, FateEpisodeEditableInspect, FindSaveFiles, InfinityRuleCatalog, OpenSaveDiff, RepairFateStoryArchives, SaveDiffPage, SelectSaveDiffFile, WriteFateEpisodeFields } from '../../wailsjs/go/backend/App'
 import { characterNamePairByPLID } from '../characterRoster.js'
 import { language } from '../i18n.js'
+import { fateFieldNeedsWrite } from '../fateWorkflow.js'
 
 const emit = defineEmits(['status'])
 const leftPath = ref('')
@@ -99,7 +100,7 @@ const fateMissionFieldByCode = computed(() => new Map(
     .map(field => [String(field.missionCode || '').toUpperCase().padStart(8, '0'), field]),
 ))
 const fateSelectedChanges = computed(() => fateEditableFields.value
-  .filter(field => fateSelectedFields.value.has(fateFieldIdentity(field)))
+  .filter(field => fateSelectedFields.value.has(fateFieldIdentity(field)) && fateFieldNeedsWrite(field))
   .map(field => ({
     field: field.field,
     episodeKey: field.episodeKey || '',
@@ -111,6 +112,7 @@ const fateSelectedEpisodeCount = computed(() => fateSelectedChanges.value.filter
 const fateSelectedMissionCount = computed(() => fateSelectedChanges.value.filter(change => change.field === 'missionState').length)
 const fateStoryArchives = computed(() => fateSnapshot.value?.storyArchives || [])
 const fateMissingArchives = computed(() => fateStoryArchives.value.filter(archive => archive.missing))
+const fateUncheckedArchives = computed(() => fateSnapshot.value?.uncheckedArchives || [])
 const fateCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted).length)
 const fateUnlockedCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted && archive.unlocked).length)
 const infinityRulesByQuest = computed(() => {
@@ -365,10 +367,6 @@ function clearFateSelection() {
   fateSelectedFields.value = new Set()
   fateWriteConfirmed.value = false
   fateArchiveRepairConfirmed.value = false
-}
-function fateFieldNeedsWrite(field) {
-  const target = Number(field?.allowedTargetValues?.[0] ?? field?.currentValue ?? 0) >>> 0
-  return Number(field?.currentValue || 0) >>> 0 !== target
 }
 function fateEpisodeFields(episode) {
   const fields = []
@@ -643,10 +641,16 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
         </section>
         <section class="fate-archive-repair ui-card" :class="{ 'has-missing': fateMissingArchives.length }" aria-live="polite">
           <header>
-            <span><small>{{ tx('命运篇章关联档案', 'Linked Fate Archives') }}</small><strong>{{ fateMissingArchives.length ? tx(`发现 ${fateMissingArchives.length} 条缺失档案`, `${fateMissingArchives.length} linked archives are missing`) : tx('已完成篇章的档案状态正常', 'Completed Fate archives are consistent') }}</strong></span>
+            <span><small>{{ tx('命运篇章关联档案', 'Linked Fate Archives') }}</small><strong>{{ fateMissingArchives.length ? tx(`发现 ${fateMissingArchives.length} 条缺失档案`, `${fateMissingArchives.length} linked archives are missing`) : tx('已检查范围内未发现缺失档案', 'No missing archives in the checked subset') }}</strong></span>
             <b>{{ fateUnlockedCompletedArchiveCount }} / {{ fateCompletedArchiveCount }}</b>
           </header>
           <p>{{ tx('这里专门检查“已完成最终篇章但缺少档案”的情况。只补档案解锁位，不改篇章、任务、奖励或角色进度。', 'This checks for final Fate Episodes that are complete while their linked Lyria’s Journal archive remains locked. It repairs only the archive unlock flag; episodes, missions, rewards, and character progress are untouched.') }}</p>
+          <details v-if="fateUncheckedArchives.length" class="technical-details">
+            <summary>{{ tx(`另有 ${fateUncheckedArchives.length} 条档案尚未检查（含菲迪埃尔）`, `${fateUncheckedArchives.length} more archives are not checked (including Fediel)`) }}</summary>
+            <p>{{ tx('这些角色的档案不在当前自动补全范围内。篇章显示完成，也不能据此判断档案已解锁。若仍缺少档案，请导出排查记录，记录会包含任务原始状态和档案相关字段。', 'These archives are outside the current automatic repair coverage. Completed episodes do not prove that their archives are unlocked. If an archive is missing, export diagnostic records containing raw mission states and archive-related fields.') }}</p>
+            <div class="fate-archive-list"><span v-for="archive in fateUncheckedArchives" :key="archive.archiveId"><b>{{ fateCharacterName(archive.characterCode) }}</b><code>{{ archive.archiveId }}</code></span></div>
+          </details>
+          <button v-if="fateUncheckedArchives.length" type="button" class="ui-btn fate-archive-button" :disabled="fateExporting" @click="exportFateEvidence">{{ tx('导出档案排查记录', 'Export Archive Diagnostics') }}</button>
           <div v-if="fateMissingArchives.length" class="fate-archive-list">
             <span v-for="archive in fateMissingArchives" :key="archive.archiveId"><b>{{ archive.characterCodes.map(fateCharacterName).join(' / ') }}</b><code>{{ archive.archiveId }}</code></span>
           </div>

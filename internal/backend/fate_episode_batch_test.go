@@ -26,7 +26,7 @@ func TestFateEpisodeEvidenceExportOmitsLocalSavePath(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.SchemaVersion != 1 || decoded.GeneratedAt != "2026-07-27T00:00:00Z" || len(decoded.Characters) != 1 {
+	if decoded.SchemaVersion != 2 || decoded.GeneratedAt != "2026-07-27T00:00:00Z" || len(decoded.Characters) != 1 {
 		t.Fatalf("unexpected evidence export: %+v", decoded)
 	}
 }
