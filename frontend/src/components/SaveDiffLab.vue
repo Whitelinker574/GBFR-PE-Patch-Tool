@@ -112,7 +112,6 @@ const fateSelectedEpisodeCount = computed(() => fateSelectedChanges.value.filter
 const fateSelectedMissionCount = computed(() => fateSelectedChanges.value.filter(change => change.field === 'missionState').length)
 const fateStoryArchives = computed(() => fateSnapshot.value?.storyArchives || [])
 const fateMissingArchives = computed(() => fateStoryArchives.value.filter(archive => archive.missing))
-const fateUncheckedArchives = computed(() => fateSnapshot.value?.uncheckedArchives || [])
 const fateCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted).length)
 const fateUnlockedCompletedArchiveCount = computed(() => fateStoryArchives.value.filter(archive => archive.finalCompleted && archive.unlocked).length)
 const infinityRulesByQuest = computed(() => {
@@ -645,12 +644,7 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
             <b>{{ fateUnlockedCompletedArchiveCount }} / {{ fateCompletedArchiveCount }}</b>
           </header>
           <p>{{ tx('这里专门检查“已完成最终篇章但缺少档案”的情况。只补档案解锁位，不改篇章、任务、奖励或角色进度。', 'This checks for final Fate Episodes that are complete while their linked Lyria’s Journal archive remains locked. It repairs only the archive unlock flag; episodes, missions, rewards, and character progress are untouched.') }}</p>
-          <details v-if="fateUncheckedArchives.length" class="technical-details">
-            <summary>{{ tx(`另有 ${fateUncheckedArchives.length} 条档案尚未检查（含菲迪埃尔）`, `${fateUncheckedArchives.length} more archives are not checked (including Fediel)`) }}</summary>
-            <p>{{ tx('这些角色的档案不在当前自动补全范围内。篇章显示完成，也不能据此判断档案已解锁。若仍缺少档案，请导出排查记录，记录会包含任务原始状态和档案相关字段。', 'These archives are outside the current automatic repair coverage. Completed episodes do not prove that their archives are unlocked. If an archive is missing, export diagnostic records containing raw mission states and archive-related fields.') }}</p>
-            <div class="fate-archive-list"><span v-for="archive in fateUncheckedArchives" :key="archive.archiveId"><b>{{ fateCharacterName(archive.characterCode) }}</b><code>{{ archive.archiveId }}</code></span></div>
-          </details>
-          <button v-if="fateUncheckedArchives.length" type="button" class="ui-btn fate-archive-button" :disabled="fateExporting" @click="exportFateEvidence">{{ tx('导出档案排查记录', 'Export Archive Diagnostics') }}</button>
+          <p>{{ tx('已覆盖全部 29 名角色的关联档案，包括菲迪埃尔。若缺少档案记录，会在空槽中补建；已有的已读状态保持不变。', 'Linked archives for all 29 characters are covered, including Fediel. Missing records are created in empty slots, and existing viewed flags are preserved.') }}</p>
           <div v-if="fateMissingArchives.length" class="fate-archive-list">
             <span v-for="archive in fateMissingArchives" :key="archive.archiveId"><b>{{ archive.characterCodes.map(fateCharacterName).join(' / ') }}</b><code>{{ archive.archiveId }}</code></span>
           </div>

@@ -2,7 +2,6 @@ package backend
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -18,28 +17,8 @@ type FateUncheckedArchive struct {
 	EpisodeCompleted bool   `json:"episodeCompleted"`
 }
 
-func fateUncheckedArchives(layout *fateEpisodeLayout) []FateUncheckedArchive {
-	rows := []FateUncheckedArchive{
-		{ArchiveID: "ARC_OTHER_061", CharacterCode: "PL1600"},
-		{ArchiveID: "ARC_OTHER_062", CharacterCode: "PL1700"},
-		{ArchiveID: "ARC_OTHER_063", CharacterCode: "PL2200"},
-		{ArchiveID: "ARC_OTHER_064", CharacterCode: "PL2300"},
-		{ArchiveID: "ARC_OTHER_065", CharacterCode: "PL2100"},
-		{ArchiveID: "ARC_OTHER_066", CharacterCode: "PL2600"},
-		{ArchiveID: "ARC_OTHER_067", CharacterCode: "PL2700"},
-		{ArchiveID: "ARC_OTHER_068", CharacterCode: "PL2800", MissionCode: "00301028", RequiredQuestID: "0040A301"},
-		{ArchiveID: "ARC_OTHER_069", CharacterCode: "PL2900", MissionCode: "00301029", RequiredQuestID: "0040A306"},
-		{ArchiveID: "ARC_OTHER_070", CharacterCode: "PL2400"},
-		{ArchiveID: "ARC_OTHER_071", CharacterCode: "PL2500"},
-	}
-	for index := range rows {
-		row := &rows[index]
-		row.EpisodeKey = fmt.Sprintf("FATE_%s_10", row.CharacterCode)
-		if entry := layout.stateByHash[gbfrHash32(row.EpisodeKey)]; entry != nil {
-			row.EpisodeCompleted = entry.Uint32() == fateCompletedState
-		}
-	}
-	return rows
+func fateUncheckedArchives(_ *fateEpisodeLayout) []FateUncheckedArchive {
+	return []FateUncheckedArchive{}
 }
 
 type FateArchiveVectorObservation struct {
@@ -49,23 +28,21 @@ type FateArchiveVectorObservation struct {
 }
 
 func fateArchiveVectorObservations(save *SaveData) []FateArchiveVectorObservation {
-	// Bounded, read-only candidate journal/progression vectors for paired-save
-	// comparison. No semantic claim or writer is derived from these samples.
-	definitions := []struct {
-		id    uint32
-		count int
-	}{
-		{2554, 200}, {2555, 200}, {2575, 512}, {2576, 512}, {2577, 1536}, {2578, 512},
-	}
+	definitions := []uint32{fateArchiveHashID, fateArchiveFlagsID}
 	rows := make([]FateArchiveVectorObservation, 0, len(definitions))
 	for _, definition := range definitions {
-		row := FateArchiveVectorObservation{IDType: definition.id}
-		entry, err := findVectorUnitFast(save, definition.id, 0, definition.count)
-		if err == nil && len(entry.Bytes()) == definition.count {
+		row := FateArchiveVectorObservation{IDType: definition}
+		entries, err := findUnitsByTypeFast(save, definition, fateArchiveRecordCount)
+		if err == nil {
 			row.Available = true
-			row.Values = make([]int, definition.count)
-			for index, value := range entry.Bytes() {
-				row.Values[index] = int(value)
+			row.Values = make([]int, fateArchiveRecordCount)
+			for _, entry := range entries {
+				if entry.UnitID >= fateArchiveRecordCount || entry.ValueCnt != 1 {
+					row.Available = false
+					row.Values = nil
+					break
+				}
+				row.Values[entry.UnitID] = int(entry.Uint32())
 			}
 		}
 		rows = append(rows, row)
@@ -96,7 +73,7 @@ func fateArchiveEvidenceFromPath(path string, at time.Time) ([]byte, error) {
 	}
 	payload.UncheckedArchives = fateUncheckedArchives(layout)
 	payload.ArchiveObservations = fateArchiveVectorObservations(save)
-	if vector, vectorErr := requireFateStoryArchiveVector(save); vectorErr == nil {
+	if vector, vectorErr := readFateArchiveRecords(save); vectorErr == nil {
 		payload.StoryArchives, err = inspectFateStoryArchives(layout, vector)
 		if err != nil {
 			return nil, err

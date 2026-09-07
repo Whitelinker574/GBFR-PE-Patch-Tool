@@ -190,7 +190,7 @@ func inspectFateEpisodeEditable(path string) (*FateEpisodeEditableSnapshot, erro
 	if err != nil {
 		return nil, err
 	}
-	archiveVector, err := requireFateStoryArchiveVector(save)
+	archiveVector, err := readFateArchiveRecords(save)
 	if err != nil {
 		return nil, err
 	}

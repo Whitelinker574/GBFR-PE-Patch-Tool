@@ -40,7 +40,7 @@ func TestFateArchiveDiagnosticsIncludesFedielAndExactMissionState(t *testing.T) 
 	if err := json.Unmarshal(raw, &evidence); err != nil {
 		t.Fatal(err)
 	}
-	if evidence.SchemaVersion != 2 || len(evidence.Missions) != 56 || len(evidence.UncheckedArchives) != 11 {
+	if evidence.SchemaVersion != 2 || len(evidence.Missions) != 56 || len(evidence.UncheckedArchives) != 0 || len(evidence.StoryArchives) != 29 {
 		t.Fatalf("incomplete evidence: schema %d, missions %d, unchecked %d", evidence.SchemaVersion, len(evidence.Missions), len(evidence.UncheckedArchives))
 	}
 	found := false
@@ -53,27 +53,22 @@ func TestFateArchiveDiagnosticsIncludesFedielAndExactMissionState(t *testing.T) 
 		t.Fatal("Fediel mission raw state lost")
 	}
 	found = false
-	for _, row := range evidence.UncheckedArchives {
-		if row.CharacterCode == "PL2900" {
-			found = row.ArchiveID == "ARC_OTHER_069" && row.EpisodeKey == "FATE_PL2900_10" && row.MissionCode == "00301029"
+	for _, row := range evidence.StoryArchives {
+		if row.ArchiveID == "ARC_OTHER_069" {
+			found = row.Recorded && row.RecordUnitID >= 0 && row.FinalEpisodeKeys[0] == "FATE_PL2900_10"
 		}
 	}
 	if !found {
-		t.Fatal("Fediel not explicitly unchecked")
-	}
-	for _, row := range evidence.StoryArchives {
-		if row.ArchiveID == "ARC_OTHER_069" {
-			t.Fatal("unverified Fediel archive reported as checked")
-		}
+		t.Fatal("native Fediel archive record missing from evidence")
 	}
 	if bytes.Contains(raw, []byte(`"path"`)) || bytes.Contains(raw, []byte("FateWriteFixture.dat")) {
 		t.Fatal("export leaked local path")
 	}
-	if len(evidence.ArchiveObservations) != 6 {
+	if len(evidence.ArchiveObservations) != 2 {
 		t.Fatal("candidate observations absent")
 	}
 	for _, row := range evidence.ArchiveObservations {
-		if !row.Available || len(row.Values) > 1536 {
+		if !row.Available || len(row.Values) != 100 || (row.IDType != 7901 && row.IDType != 7902) {
 			t.Fatalf("invalid observation: %d", row.IDType)
 		}
 	}

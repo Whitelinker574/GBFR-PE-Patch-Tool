@@ -4,6 +4,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [`RELEASE_NOTES_v2.0.22.md`](RELEASE_NOTES_v2.0.22.md) | v2.0.22 命运篇章档案实际解锁修复 |
 | [`RELEASE_NOTES_v2.0.21.md`](RELEASE_NOTES_v2.0.21.md) | v2.0.21 命运篇章完成判断与档案检查修正 |
 | [`RELEASE_NOTES_v2.0.20.md`](RELEASE_NOTES_v2.0.20.md) | v2.0.20 命运篇章关联档案补全 |
 | [`RELEASE_NOTES_v2.0.19.md`](RELEASE_NOTES_v2.0.19.md) | v2.0.19 武器技能即时编辑版本识别与自动定位修复 |
