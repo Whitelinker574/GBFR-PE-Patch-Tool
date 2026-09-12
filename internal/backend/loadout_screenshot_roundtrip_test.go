@@ -369,11 +369,11 @@ func TestFedielScreenshotTargetsRoundTripOnRealSaveCopy(t *testing.T) {
 			if mainHash := screenshotMapString(row, "mainTraitHash"); mainHash != "" {
 				summonEdits = append(summonEdits, LoadoutSummonInlineEdit{
 					SlotID: slotID, ExpectUnitID: screenshotMapUint32(row, "expectUnitId"),
-					ExpectTypeHash: screenshotMapString(row, "expectTypeHash"),
-					ExpectMainTraitHash: screenshotMapString(row, "expectMainTraitHash"),
+					ExpectTypeHash:       screenshotMapString(row, "expectTypeHash"),
+					ExpectMainTraitHash:  screenshotMapString(row, "expectMainTraitHash"),
 					ExpectMainTraitLevel: screenshotMapInt(row, "expectMainTraitLevel"),
-					ExpectSubParamHash: screenshotMapString(row, "expectSubParamHash"),
-					ExpectSubParamLevel: screenshotMapInt(row, "expectSubParamLevel"), ExpectRank: screenshotMapInt(row, "expectRank"),
+					ExpectSubParamHash:   screenshotMapString(row, "expectSubParamHash"),
+					ExpectSubParamLevel:  screenshotMapInt(row, "expectSubParamLevel"), ExpectRank: screenshotMapInt(row, "expectRank"),
 					MainTraitHash: mainHash, MainTraitLevel: screenshotMapInt(row, "mainTraitLevel"),
 					SubParamHash: screenshotMapString(row, "subParamHash"), SubParamLevel: screenshotMapInt(row, "subParamLevel"), Rank: screenshotMapInt(row, "rank"),
 				})
