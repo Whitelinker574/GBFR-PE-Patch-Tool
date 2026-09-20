@@ -17,6 +17,7 @@ const (
 	game203ExecutableSHA256            = "1BBBEC61AAB7F75FE328CF6BFE0247EBDBCEC6C404CEC12C032B8FFA41D22102"
 	game204ExecutableSHA256            = "F827F3C13CAA90B290FAB2FE7E28165A80448FDE0A3F7A96D79DAC6B8343FF2A"
 	game205ExecutableSHA256            = "7189B958FF0FE5238CEA28A2939FFDAD6E3A9ACB14DD274A9FCC8E7E275BD175"
+	game206ExecutableSHA256            = "4B3ACE0FD03DF5D3D08C6453E12DF2279C6259ABF7D2FB3622921FCBEA775145"
 	runtimePatchCatalogFeatureCount    = 60
 	runtimePatchDamageCapConflictName  = "damage-cap-display"
 	stableReleaseCandidateWriteEnabled = true
@@ -119,6 +120,11 @@ var runtimePatch203SiteVariants = map[string]runtimePatchSiteVariant{
 }
 
 func runtimePatchExpectedOriginalBytes(site RuntimePatchSite, executableDigest string) []byte {
+	if strings.EqualFold(executableDigest, game206ExecutableSHA256) {
+		if original, ok := runtimePatch206OriginalBytes[site.Symbol]; ok {
+			return append([]byte(nil), original...)
+		}
+	}
 	if strings.EqualFold(executableDigest, game205ExecutableSHA256) {
 		if bytes205, exists := runtimePatch205OriginalBytes[site.Symbol]; exists {
 			return append([]byte(nil), bytes205...)
@@ -141,7 +147,8 @@ func runtimePatchSiteForExecutable(site RuntimePatchSite, executableDigest strin
 	resolved := site
 	if !strings.EqualFold(executableDigest, game203ExecutableSHA256) &&
 		!strings.EqualFold(executableDigest, game204ExecutableSHA256) &&
-		!strings.EqualFold(executableDigest, game205ExecutableSHA256) {
+		!strings.EqualFold(executableDigest, game205ExecutableSHA256) &&
+		!strings.EqualFold(executableDigest, game206ExecutableSHA256) {
 		return resolved, nil
 	}
 	if variant, exists := runtimePatch203SiteVariants[site.Symbol]; exists {
@@ -155,7 +162,22 @@ func runtimePatchSiteForExecutable(site RuntimePatchSite, executableDigest strin
 		resolved.PatternMasks = append([]byte(nil), pattern.Mask...)
 	}
 	resolved.ExpectedOriginalBytes = runtimePatchExpectedOriginalBytes(site, executableDigest)
+	if strings.EqualFold(executableDigest, game206ExecutableSHA256) && site.Symbol == "GBFR_PATCH_054_11" {
+		pattern, err := parseRuntimePatchPattern("8B 80 98 00 00 00 C5 FA 10 8E 98 05 00 00 C5 E8 57 D2 C5 F8 2E CA 75")
+		if err != nil {
+			return RuntimePatchSite{}, err
+		}
+		resolved.AOB = canonicalRuntimePatchAOB(pattern)
+		resolved.PatternValues, resolved.PatternMasks = pattern.Values, pattern.Mask
+	}
 	return resolved, nil
+}
+
+var runtimePatch206OriginalBytes = map[string][]byte{
+	"GBFR_PATCH_060_1": {0xC5, 0xFA, 0x59, 0x05, 0x44, 0xE4, 0x30, 0x05},
+	"GBFR_PATCH_014_1": {0xC5, 0xFA, 0x59, 0x0D, 0x0E, 0x05, 0xA8, 0x02},
+	"GBFR_PATCH_028_1": {0xC5, 0xFA, 0x59, 0x0D, 0x2A, 0x71, 0x31, 0x05},
+	"GBFR_PATCH_035_1": {0xC5, 0xFA, 0x59, 0x0D, 0x14, 0x9A, 0x03, 0x02},
 }
 
 func decodeRuntimePatchCatalog(raw []byte) (*RuntimePatchCatalog, error) {

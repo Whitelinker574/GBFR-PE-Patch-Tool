@@ -536,7 +536,7 @@ func (a *App) readSigilMemoryStatus() (SigilMemoryStatus, error) {
 	if !hooked && !isSigilMemoryOriginal(buf) {
 		return SigilMemoryStatus{}, fmt.Errorf("选中因子指令字节异常: %s", bytesToHex(buf))
 	}
-	layout, layoutErr := runtimeGameLayoutForSigilHook(a.moduleBase, a.sigilMemoryHookAddr)
+	layout, layoutErr := runtimeGameLayoutForSigilHook(a.moduleBase, a.sigilMemoryHookAddr, a.runtimePatchVerifiedDigest)
 	knownSaveRVA := uintptr(0)
 	if layoutErr == nil {
 		knownSaveRVA = layout.SaveFunctionRVA

@@ -36,6 +36,9 @@ var (
 )
 
 func taskScoreRVAForDigest(digest string) uintptr {
+	if strings.EqualFold(digest, game206ExecutableSHA256) {
+		return 0x1FDAA79
+	}
 	if strings.EqualFold(digest, game205ExecutableSHA256) {
 		return 0x1FDA459
 	}
@@ -46,6 +49,9 @@ func taskScoreRVAForDigest(digest string) uintptr {
 }
 
 func taskSideQuestRVAForDigest(index int, digest string) uintptr {
+	if strings.EqualFold(digest, game206ExecutableSHA256) {
+		return []uintptr{0xBACD1C, 0xBAC672}[index]
+	}
 	if strings.EqualFold(digest, game205ExecutableSHA256) {
 		return []uintptr{0xBAC90C, 0xBAC262}[index]
 	}
@@ -146,7 +152,7 @@ func (a *App) setTaskRuleOwned(token string, enabled bool, kind string, install 
 			return TaskRulesStatus{}, err
 		}
 		if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
-			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
+			return TaskRulesStatus{}, errors.New("任务规则增强仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件")
 		}
 	}
 	a.runtimePatchMu.Lock()
@@ -314,9 +320,9 @@ func (a *App) readTaskRulesStatusLocked(ownerToken string) (TaskRulesStatus, err
 	available := isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest)
 	status := TaskRulesStatus{
 		ScoreMultiplier: emptyTaskRuleFeatureStatus(available, 2,
-			"2.0.3 / 2.0.4 / 2.0.5 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
+			"2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 任务分数写入入口已锁定；倍率只改变任务分数，不改变任务奖励物品数量。"),
 		SideQuestAutoComplete: emptyTaskRuleFeatureStatus(available, 0,
-			"2.0.3 / 2.0.4 / 2.0.5 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
+			"2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 两条支线任务计数路径已锁定；开启后会把当前目标进度补到要求值。"),
 	}
 	var joined error
 	if readErr := a.readOneTaskRuleLeaseLocked(ownerToken, a.taskScoreMultiplierLease, &status.ScoreMultiplier); readErr != nil {
@@ -334,7 +340,7 @@ func emptyTaskRuleFeatureStatus(available bool, multiplier float64, note string)
 		CurrentBytes: make([]string, 0), EvidenceNote: note,
 	}
 	if !available {
-		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
+		status.Error = "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件"
 	}
 	return status
 }

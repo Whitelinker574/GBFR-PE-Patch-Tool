@@ -84,6 +84,9 @@ var freeConsumption205RVAs = [...]uintptr{
 }
 
 func freeConsumptionRVAForDigest(index int, digest string) uintptr {
+	if strings.EqualFold(digest, game206ExecutableSHA256) && index >= 0 && index < len(freeConsumption206RVAs) {
+		return freeConsumption206RVAs[index]
+	}
 	if strings.EqualFold(digest, game205ExecutableSHA256) && index >= 0 && index < len(freeConsumption205RVAs) {
 		return freeConsumption205RVAs[index]
 	}
@@ -100,6 +103,8 @@ type freeConsumptionSiteSpec struct {
 	Original []byte
 	Patch    []byte
 }
+
+var freeConsumption206RVAs = [...]uintptr{0x41D3447, 0x3E9A97A, 0x31E6EF, 0x31E714, 0x41D45FC, 0x41CBEDE, 0x35B3B9, 0x35B9B4, 0x1BC6791, 0x400B1C, 0x41CBAF9}
 
 type FreeConsumptionStatus struct {
 	Available    bool     `json:"available"`
@@ -149,7 +154,7 @@ func (a *App) FreeConsumptionSetEnabledOwned(token string, enabled bool) (FreeCo
 		}
 		if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
 			status := emptyFreeConsumptionStatus()
-			status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
+			status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件"
 			return status, errors.New(status.Error)
 		}
 	}
@@ -177,7 +182,7 @@ func emptyFreeConsumptionStatus() FreeConsumptionStatus {
 	return FreeConsumptionStatus{
 		RVAs:         make([]uint64, 0),
 		CurrentBytes: make([]string, 0),
-		EvidenceNote: "2.0.3 / 2.0.4 / 2.0.5 的 11 条制作、交易和升级消费路径已锁定；默认关闭，开启后作为一个整体安装和恢复。",
+		EvidenceNote: "2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 的 11 条制作、交易和升级消费路径已锁定；默认关闭，开启后作为一个整体安装和恢复。",
 	}
 }
 
@@ -267,7 +272,7 @@ func (a *App) readFreeConsumptionStatusLocked(ownerToken string) (FreeConsumptio
 	status := emptyFreeConsumptionStatus()
 	status.Available = isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest)
 	if !status.Available {
-		status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件"
+		status.Error = "免费制作、交易和升级仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件"
 		return status, nil
 	}
 	lease := a.freeConsumptionLease

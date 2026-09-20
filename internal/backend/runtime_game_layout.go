@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 )
 
 type runtimeGameLayout struct {
@@ -68,6 +69,16 @@ var runtimeGameLayouts = [...]runtimeGameLayout{
 		SaveFunctionRVA: 0x798020, PartyCharaPowerRVA: 0x7C22F38, SummonInventoryPtrRVA: 0x7C22408,
 		SpatialGravityRVA: 0x39DA364, InventoryMaterialRVA: 0x34F8C1,
 	},
+	{
+		Version:         "2.0.6",
+		PartyPointerRVA: 0x22CAAB0, PartySlotTableRVA: 0x7035D00,
+		PartyHandleTableRVA: 0x7035CA0, PartyEntityTableRVA: 0x7020988,
+		PartyHandleRootOffset: 0x58,
+		SelectedMaterialRVA:   0x3F49BF3, SelectedKeyItemRVA: 0x3F1E74C,
+		SigilHookRVA: 0x33E3F7, WrightstoneHookRVA: 0x35AF54, WeaponHookRVA: 0x415338C,
+		SaveFunctionRVA: 0x798400, PartyCharaPowerRVA: 0x7C23F78, SummonInventoryPtrRVA: 0x7C23448,
+		SpatialGravityRVA: 0x39DAAA4, InventoryMaterialRVA: 0x34F8C1,
+	},
 }
 
 func isKnownRuntimeGameLayout(candidate runtimeGameLayout) bool {
@@ -106,12 +117,15 @@ func detectRuntimeGameLayout(memory runtimePatchPartyMemory, moduleBase uintptr)
 	return runtimeGameLayout{}, fmt.Errorf("当前游戏的运行时布局未能通过逐功能签名定位")
 }
 
-func runtimeGameLayoutForHookRVA(moduleBase, address uintptr, name string, selectRVA func(runtimeGameLayout) uintptr) (runtimeGameLayout, error) {
+func runtimeGameLayoutForHookRVA(moduleBase, address uintptr, name string, selectRVA func(runtimeGameLayout) uintptr, digests ...string) (runtimeGameLayout, error) {
 	if moduleBase == 0 || address < moduleBase {
 		return runtimeGameLayout{}, fmt.Errorf("%s 地址不在当前模块内", name)
 	}
 	rva := address - moduleBase
 	for _, layout := range runtimeGameLayouts {
+		if len(digests) > 0 && digests[0] != "" && !runtimeLayoutMatchesDigest(layout.Version, digests[0]) {
+			continue
+		}
 		if selectRVA(layout) == rva {
 			return layout, nil
 		}
@@ -119,14 +133,20 @@ func runtimeGameLayoutForHookRVA(moduleBase, address uintptr, name string, selec
 	return runtimeGameLayout{}, fmt.Errorf("%s RVA 0x%X 未知，无法选择版本布局", name, rva)
 }
 
-func runtimeGameLayoutForSigilHook(moduleBase, address uintptr) (runtimeGameLayout, error) {
+func runtimeGameLayoutForSigilHook(moduleBase, address uintptr, digests ...string) (runtimeGameLayout, error) {
 	return runtimeGameLayoutForHookRVA(moduleBase, address, "因子 Hook", func(layout runtimeGameLayout) uintptr {
 		return layout.SigilHookRVA
-	})
+	}, digests...)
 }
 
-func runtimeGameLayoutForWrightstoneHook(moduleBase, address uintptr) (runtimeGameLayout, error) {
+func runtimeGameLayoutForWrightstoneHook(moduleBase, address uintptr, digests ...string) (runtimeGameLayout, error) {
 	return runtimeGameLayoutForHookRVA(moduleBase, address, "祝福 Hook", func(layout runtimeGameLayout) uintptr {
 		return layout.WrightstoneHookRVA
-	})
+	}, digests...)
+}
+
+func runtimeLayoutMatchesDigest(version, digest string) bool {
+	identities := map[string]string{"2.0.2": runtimePatchCatalogGameSHA256, "2.0.3": game203ExecutableSHA256, "2.0.4": game204ExecutableSHA256, "2.0.5": game205ExecutableSHA256, "2.0.6": game206ExecutableSHA256}
+	want, ok := identities[version]
+	return ok && strings.EqualFold(want, digest)
 }

@@ -172,6 +172,8 @@ func addConfluxTimerOffset(base, offset uintptr) (uintptr, error) {
 
 func confluxTimerManagerPointerRVAForDigest(digest string) (uintptr, error) {
 	switch {
+	case strings.EqualFold(digest, game206ExecutableSHA256):
+		return 0x7C23338, nil
 	case strings.EqualFold(digest, game204ExecutableSHA256):
 		return confluxTimerManagerPointerRVA204, nil
 	case strings.EqualFold(digest, game205ExecutableSHA256):

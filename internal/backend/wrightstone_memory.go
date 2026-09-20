@@ -460,7 +460,7 @@ func (a *App) readWrightstoneMemoryStatusLocked() (WrightstoneMemoryStatus, erro
 	if !hooked && !isWrightstoneMemoryOriginal(current) {
 		return WrightstoneMemoryStatus{}, fmt.Errorf("祝福焦点指令字节异常: %s", bytesToHex(current))
 	}
-	layout, layoutErr := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr)
+	layout, layoutErr := runtimeGameLayoutForWrightstoneHook(a.moduleBase, a.wrightstoneMemoryHookAddr, a.runtimePatchVerifiedDigest)
 	knownSaveRVA := uintptr(0)
 	if layoutErr == nil {
 		knownSaveRVA = layout.SaveFunctionRVA

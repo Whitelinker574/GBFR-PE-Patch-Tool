@@ -43,7 +43,7 @@ const runtimeCatalog = computed(() => {
     resources: [
       ['实时货币编辑', '金币、MSP、高级炼成点数、共鸣点数（RP）与极沌空域 CP', '已适配'],
       ['副本药水', '复活药水与群疗药水数量', '需进入副本'],
-      ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3–2.0.5'],
+      ['免费制作、交易与升级', '一次开启 11 条消费路径；制作、交易和装备升级不再扣除所需资源', '2.0.3–2.0.6'],
       ['库存素材扣减保护', '只处理通用库存的负向素材增量，保留正向获得', '兼容路径'],
       ['小钳蟹相关', '临时调整拾取数量与完成收集任务', '运行时钩子'],
     ],
@@ -402,7 +402,7 @@ onBeforeUnmount(() => {
       <div class="memory-card compatibility-note ui-card ui-panel is-compact">
         <div class="memory-header">
           <span class="memory-title">实时修改与离线编辑</span>
-          <span class="memory-hint">GAME 2.0.3–2.0.5 功能边界</span>
+          <span class="memory-hint">GAME 2.0.3–2.0.6 功能边界</span>
         </div>
         <div class="memory-info">
           <span>金币、MSP、高级炼成点数和共鸣点数（RP）使用已复核资源入口；极沌空域 CP 使用独立的 2.0.4 特征定位。实时写入后都会立即回读。</span>
@@ -438,7 +438,7 @@ onBeforeUnmount(() => {
             <span class="memory-title">副本药水</span>
             <span class="memory-hint">稳定指针链读取/写入 int32</span>
           </div>
-          <p class="feature-help">用途：在 2.0.2–2.0.4 副本内调整复活药和群疗药数量。2.0.5 不再直写未经验证的药水链；需要持续使用药水时请开启下方“免费制作、交易与升级”。</p>
+          <p class="feature-help">用途：在 2.0.2–2.0.4 副本内调整复活药和群疗药数量。2.0.6 不再直写未经验证的药水链；需要持续使用药水时请开启下方“免费制作、交易与升级”。</p>
           <div class="currency-grid">
             <div v-for="item in potions" :key="item.id" class="currency-row">
               <div class="currency-name">{{ item.name }}</div>
@@ -458,7 +458,7 @@ onBeforeUnmount(() => {
           <div class="memory-header">
             <span class="memory-title">免费制作、交易与升级</span>
             <span class="info-dot" title="11 条消费路径作为一个整体启用、回读和恢复；任一入口不匹配都会拒绝开启。">!</span>
-            <span class="memory-hint">2.0.3–2.0.5 · 11 站点原子补丁</span>
+            <span class="memory-hint">2.0.3–2.0.6 · 11 站点原子补丁</span>
           </div>
           <p class="feature-help">用途：让制作、商店交易、武器与养成升级不再扣除所需货币和材料。它不会增加任务奖励，也不会改变拾取数量；需要奖励翻倍请使用掉落与锻造规则。</p>
           <div class="memory-info">
@@ -512,8 +512,8 @@ onBeforeUnmount(() => {
         <div v-if="activeRuntimeGroup === 'mission'" class="memory-card ui-card ui-panel is-compact" :class="{ active: infiniteChallengeStatus.enabled && infiniteChallengeStatus.owned }">
           <div class="memory-header">
             <span class="memory-title">连续挑战</span>
-            <span class="info-dot" title="使用 GAME 2.0.3–2.0.5 已核对的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
-            <span class="memory-hint">2.0.3–2.0.5 唯一 AOB · 三字节补丁 · 写后回读</span>
+            <span class="info-dot" title="使用 GAME 2.0.3–2.0.6 已核对的唯一特征定位，开启后阻止挑战完成次数递增。">!</span>
+            <span class="memory-hint">2.0.3–2.0.6 唯一 AOB · 三字节补丁 · 写后回读</span>
           </div>
           <p class="feature-help">用途：完成挑战后保持当前挑战次数，便于连续重复。进入挑战前开启，用完后立即恢复默认。</p>
           <div class="memory-info">

@@ -27,7 +27,7 @@ const (
 	steamAppID  = "881020"
 	gameExeName = "granblue_fantasy_relink.exe"
 	gameFolder  = "Granblue Fantasy Relink"
-	appVersion  = "v2.0.22"
+	appVersion  = "v2.0.23"
 	repoOwner   = "Whitelinker574"
 	repoName    = "GBFR-PE-Patch-Tool"
 )
@@ -871,7 +871,7 @@ func potionDefsForRuntimeVersion(version string) ([]potionDef, error) {
 			{ID: "revive", Name: "复活药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD84}},
 			{ID: "group_chat", Name: "群疗药水", RVA: 0x07369E08, Offsets: []uintptr{0x9B0, 0x38, 0xD64}},
 		}, nil
-	case "2.0.5":
+	case "2.0.5", "2.0.6":
 		return nil, fmt.Errorf("游戏 2.0.5 不再使用未经验证的副本药水直写链；需要持续使用药水时请开启“免费制作、交易与升级”")
 	default:
 		return nil, fmt.Errorf("当前游戏版本 %q 没有经过药水指针链验证", version)
@@ -3005,6 +3005,7 @@ type verifiedGameProcess struct {
 	handle     windows.Handle
 	moduleBase uintptr
 	instance   processInstanceID
+	digest     string
 }
 
 func openVerifiedLegacyRuntimeProcess(pid uint32) (verified verifiedGameProcess, err error) {
@@ -3018,8 +3019,12 @@ func openVerifiedLegacyRuntimeProcess(pid uint32) (verified verifiedGameProcess,
 		}
 	}()
 
-	if err = verifyLegacyRuntimeExecutableHandle(handle, "实时功能"); err != nil {
+	digest, err := runtimeExecutableDigestForHandle(handle)
+	if err != nil {
 		return verifiedGameProcess{}, err
+	}
+	if !isSupportedRuntimeExecutableDigest(digest) {
+		return verifiedGameProcess{}, legacyRuntimeExecutableError("实时功能", digest)
 	}
 	moduleBase, err := getModuleBase(handle)
 	if err != nil {
@@ -3033,6 +3038,7 @@ func openVerifiedLegacyRuntimeProcess(pid uint32) (verified verifiedGameProcess,
 		handle:     handle,
 		moduleBase: moduleBase,
 		instance:   processInstanceID{PID: pid, Created: created},
+		digest:     digest,
 	}, nil
 }
 
@@ -3043,6 +3049,10 @@ func (a *App) publishVerifiedGameProcess(verified verifiedGameProcess) {
 	a.moduleBase = verified.moduleBase
 	a.charaPID = verified.instance.PID
 	a.charaCreated = verified.instance.Created
+	if isSupportedRuntimeExecutableDigest(verified.digest) {
+		a.runtimePatchVerifiedProcess = verified.instance
+		a.runtimePatchVerifiedDigest = verified.digest
+	}
 	a.clearLiveMemoryPoisonForNewProcess(verified.instance)
 }
 
@@ -3232,6 +3242,7 @@ type monsterPatchPoint struct {
 	RVA203            uintptr
 	RVA204            uintptr
 	RVA205            uintptr
+	RVA206            uintptr
 	Only203           bool
 }
 
@@ -3263,6 +3274,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		RVA203:    0x1F74710,
 		RVA204:    0x1F756B0,
 		RVA205:    0x1F758A0,
+		RVA206:    0x1F75EC0,
 	},
 	{
 		ID:           "monster_damage_new",
@@ -3278,6 +3290,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		RVA203:       0x1F74700,
 		RVA204:       0x1F756A0,
 		RVA205:       0x1F75890,
+		RVA206:       0x1F75EB0,
 	},
 	{
 		ID:                "monster_damage",
@@ -3306,6 +3319,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		RVA203:    0xB228A8,
 		RVA204:    0xB23848,
 		RVA205:    0xB231D8,
+		RVA206:    0xB235E8,
 	},
 	{
 		ID:        "overdrive_state",
@@ -3318,6 +3332,7 @@ var monsterPatchPoints = []monsterPatchPoint{
 		RVA203:    0x22C5986,
 		RVA204:    0x22C6926,
 		RVA205:    0x22C6B06,
+		RVA206:    0x22C7126,
 	},
 	{
 		ID:           "od_rate",
@@ -3327,11 +3342,12 @@ var monsterPatchPoints = []monsterPatchPoint{
 		Hook:         true,
 		Available:    true,
 		Candidate:    true,
-		EvidenceNote: "2.0.3 / 2.0.4 / 2.0.5 唯一入口与原字节已核对；倍率写入、回读和恢复链路已覆盖，具体战斗节奏请按需调节。",
+		EvidenceNote: "2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 唯一入口与原字节已核对；倍率写入、回读和恢复链路已覆盖，具体战斗节奏请按需调节。",
 		AOB:          "80 79 50 00 74 13 48 03 51 18 48 C7 C0 FF FF FF FF 48 0F 43 C2 48 89 41 18 C3",
 		RVA203:       0x22C5E50,
 		RVA204:       0x22C6DF0,
 		RVA205:       0x22C6FD0,
+		RVA206:       0x22C75F0,
 		Only203:      true,
 	},
 	{
@@ -3400,7 +3416,7 @@ func (a *App) resolveMonsterPatchPoint(point *monsterPatchPoint) error {
 		return nil
 	}
 	if point.Only203 && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件", point.Name)
+		return fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件", point.Name)
 	}
 	knownRVA := point.RVA
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game203ExecutableSHA256) && point.RVA203 != 0 {
@@ -3411,6 +3427,9 @@ func (a *App) resolveMonsterPatchPoint(point *monsterPatchPoint) error {
 	}
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game205ExecutableSHA256) && point.RVA205 != 0 {
 		knownRVA = point.RVA205
+	}
+	if strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) && point.RVA206 != 0 {
+		knownRVA = point.RVA206
 	}
 	// Resolve the audited per-version address first. Unlike an entry AOB, this
 	// remains usable after our rel32 jump has replaced the original bytes and
@@ -3529,7 +3548,7 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 		return MonsterEnhanceResult{}, err
 	}
 	if point != nil && point.Only203 && !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return MonsterEnhanceResult{}, fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件", point.Name)
+		return MonsterEnhanceResult{}, fmt.Errorf("%s仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件", point.Name)
 	}
 	if point != nil && !point.Available {
 		reason := point.UnavailableReason
@@ -3718,7 +3737,7 @@ func (a *App) readMonsterEnhanceStatus(dllPath string) (MonsterEnhanceResult, er
 				Available:         false,
 				Candidate:         point.Candidate,
 				EvidenceNote:      point.EvidenceNote,
-				UnavailableReason: "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 可执行文件",
+				UnavailableReason: "仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件",
 			})
 			continue
 		}

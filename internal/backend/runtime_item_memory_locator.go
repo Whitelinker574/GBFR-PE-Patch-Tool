@@ -35,6 +35,9 @@ func (a *App) resolveRuntimeItemSite(
 	}
 
 	for _, layout := range runtimeGameLayouts {
+		if a.runtimePatchVerifiedDigest != "" && !runtimeLayoutMatchesDigest(layout.Version, a.runtimePatchVerifiedDigest) {
+			continue
+		}
 		address, ok := checkedRuntimePatchMonitorAddress(a.moduleBase, selectRVA(layout))
 		if !ok {
 			continue
@@ -99,7 +102,7 @@ func (a *App) resolveWeaponMemoryHookLocked() (uintptr, error) {
 	}
 	_, _, version := weaponMemoryRuntimeIdentity(a.runtimePatchVerifiedDigest)
 	if version == "" {
-		return 0, fmt.Errorf("武器技能即时编辑仅支持已识别的 GAME 2.0.3 / 2.0.4 / 2.0.5")
+		return 0, fmt.Errorf("武器技能即时编辑仅支持已识别的 GAME 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6")
 	}
 	return a.resolveRuntimeItemSite(
 		runtimeWeaponHookAOB,

@@ -119,7 +119,8 @@ func TestProcessPoisonIsNotClearedBeforeSuccessfulOpen(t *testing.T) {
 	openHelper := functionBodyInFile(t, "app.go", "openVerifiedLegacyRuntimeProcess")
 	if openHelper == nil ||
 		firstSelectorCallPosition(openHelper, "windows", "OpenProcess") == token.NoPos ||
-		firstIdentCallPosition(openHelper, "verifyLegacyRuntimeExecutableHandle") == token.NoPos ||
+		firstIdentCallPosition(openHelper, "runtimeExecutableDigestForHandle") == token.NoPos ||
+		firstIdentCallPosition(openHelper, "isSupportedRuntimeExecutableDigest") == token.NoPos ||
 		firstIdentCallPosition(openHelper, "getModuleBase") == token.NoPos ||
 		firstIdentCallPosition(openHelper, "processCreationTime") == token.NoPos {
 		t.Fatal("shared process helper must open, verify and fully identify the replacement process")
@@ -194,8 +195,8 @@ func TestGenericRuntimeAttachDoesNotScanLegacyCharacterList(t *testing.T) {
 	}
 }
 
-func TestKnownRuntimeExecutableDigestsIncludeGame202Through204(t *testing.T) {
-	for _, digest := range []string{runtimePatchCatalogGameSHA256, game203ExecutableSHA256, game204ExecutableSHA256, game205ExecutableSHA256} {
+func TestKnownRuntimeExecutableDigestsIncludeGame202Through206(t *testing.T) {
+	for _, digest := range []string{runtimePatchCatalogGameSHA256, game203ExecutableSHA256, game204ExecutableSHA256, game205ExecutableSHA256, game206ExecutableSHA256} {
 		if !isSupportedRuntimeExecutableDigest(digest) {
 			t.Fatalf("known game executable %s was rejected by the shared runtime attach boundary", digest)
 		}
@@ -218,7 +219,7 @@ func TestSharedRuntimeAttachVerifiesExecutableBeforePublishingConnection(t *test
 	if helper == nil {
 		t.Fatal("openVerifiedLegacyRuntimeProcess not found")
 	}
-	if firstIdentCallPosition(helper, "verifyLegacyRuntimeExecutableHandle") == token.NoPos {
+	if firstIdentCallPosition(helper, "runtimeExecutableDigestForHandle") == token.NoPos || firstIdentCallPosition(helper, "isSupportedRuntimeExecutableDigest") == token.NoPos {
 		t.Fatal("shared runtime attach helper does not verify the executable")
 	}
 	for _, method := range []string{"charaAttachLocked", "ensureGameProcessLocked"} {
@@ -234,5 +235,14 @@ func TestSharedRuntimeAttachVerifiesExecutableBeforePublishingConnection(t *test
 		if publishPosition == token.NoPos || openPosition > publishPosition {
 			t.Fatalf("%s publishes the connection before verified open succeeds", method)
 		}
+	}
+}
+
+func TestPublishedProcessRetainsVerifiedVersionDigest(t *testing.T) {
+	app := &App{}
+	identity := processInstanceID{PID: 123, Created: 456}
+	app.publishVerifiedGameProcess(verifiedGameProcess{handle: windows.Handle(1), moduleBase: 0x140000000, instance: identity, digest: game206ExecutableSHA256})
+	if app.runtimePatchVerifiedDigest != game206ExecutableSHA256 || app.runtimePatchVerifiedProcess != identity {
+		t.Fatal("verified process lost its executable identity")
 	}
 }

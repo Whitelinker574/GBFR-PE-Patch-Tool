@@ -577,6 +577,17 @@ static lm_address_t MonsterPatchRva205(const char* id)
     return LM_ADDRESS_BAD;
 }
 
+static lm_address_t MonsterPatchRva206(const char* id)
+{
+ if (strcmp(id,"monster_hp")==0) return 0x1F75EC0;
+ if (strcmp(id,"monster_damage_new")==0) return 0x1F75EB0;
+ if (strcmp(id,"monster_stun")==0) return 0xB235E8;
+ if (strcmp(id,"overdrive_state")==0) return 0x22C7126;
+ if (strcmp(id,"od_rate")==0) return 0x22C75F0;
+ if (strcmp(id,"inventory_set_45")==0) return 0x34F8C1;
+ return LM_ADDRESS_BAD;
+}
+
 static lm_size_t MonsterPatchCaveSize(const char* id)
 {
     if (strcmp(id, "monster_damage_new") == 0) return 512;
@@ -1303,7 +1314,7 @@ static bool PatchOverdriveHook(lm_address_t target, wchar_t* message, size_t mes
     return true;
 }
 
-static bool PatchOdRateHookInline(lm_address_t target, wchar_t* message, size_t messageSize)
+static bool PatchOdRateHookInline(lm_address_t target, const lm_byte_t* epilogue, size_t epilogueSize, wchar_t* message, size_t messageSize)
 {
     const float scale = ReadScale();
     lm_address_t cave = AllocNear(target, 128);
@@ -1326,8 +1337,7 @@ static bool PatchOdRateHookInline(lm_address_t target, wchar_t* message, size_t 
     code[i++] = 0x48; code[i++] = 0x0F; code[i++] = 0x43; code[i++] = 0xC7;
     code[i++] = 0x48; code[i++] = 0x89; code[i++] = 0x46; code[i++] = 0x18;
     size_t epilogueOffset = i;
-    code[i++] = 0x48; code[i++] = 0x83; code[i++] = 0xC4; code[i++] = 0x20;
-    code[i++] = 0x5B; code[i++] = 0x5F; code[i++] = 0x5E; code[i++] = 0xC3;
+    memcpy(code + i, epilogue, epilogueSize); i += epilogueSize;
     size_t scaleOffset = i;
     memcpy(code + i, &scale, sizeof(scale)); i += sizeof(scale);
     code[jzDisp + 1] = static_cast<lm_byte_t>(epilogueOffset - (jzDisp + 2));
@@ -1380,6 +1390,48 @@ static bool PatchOdRateHookInline(lm_address_t target, wchar_t* message, size_t 
         return false;
     }
     return true;
+}
+
+static bool PatchAllOdInlineHooks(const lm_module_t& module, lm_address_t mainRva, wchar_t* message, size_t messageSize)
+{
+ static const lm_byte_t beelTail[] = {0x48,0x83,0xC4,0x20,0x5B,0x5F,0x5E,0xC3};
+ static const lm_byte_t generalTail[] = {0x48,0x83,0xC4,0x28,0x5F,0x5E,0xC3};
+ lm_address_t beelRva = LM_ADDRESS_BAD;
+ if (mainRva==0x22C5E50) beelRva=0x2B3E7DE;
+ else if(mainRva==0x22C6DF0) beelRva=0x2B3F77E;
+ else if(mainRva==0x22C6FD0) beelRva=0x2B3F92E;
+ else if(mainRva==0x22C75F0) beelRva=0x2B3FFFE;
+ if(beelRva==LM_ADDRESS_BAD) { swprintf_s(message,messageSize,L"OD layout is not recognised"); return false; }
+ const lm_address_t rvas[] = {beelRva,0x2AAC2F2};
+ const size_t count = mainRva==0x22C75F0 ? 2 : 1;
+ bool installed[2]{};
+ // Validate every entry and its complete stack epilogue before writing any.
+ for(size_t n=0;n<count;++n) {
+  const auto target=module.base+rvas[n];
+  const auto tail=n==0?beelTail:generalTail;
+  const size_t tailSize=n==0?sizeof(beelTail):sizeof(generalTail);
+  lm_byte_t current[sizeof(kOdRateInlineExpected)]{}, actualTail[8]{};
+  if(LM_ReadMemory(target,current,sizeof(current))!=sizeof(current) ||
+     LM_ReadMemory(target+sizeof(current),actualTail,tailSize)!=tailSize ||
+     !BytesEqual(actualTail,tail,tailSize)) {
+   swprintf_s(message,messageSize,L"OD inline entry/epilogue preflight failed"); return false;
+  }
+  if(BytesEqual(current,kOdRateInlineExpected,sizeof(current))) continue;
+  if(current[0]!=0xE9) {swprintf_s(message,messageSize,L"OD inline entry is not owned");return false;}
+  int32_t displacement=0;memcpy(&displacement,current+1,4);
+  const int64_t cave=static_cast<int64_t>(target)+5+displacement;
+  lm_byte_t marker[sizeof(kMonsterCaveMarker)]{};
+  if(cave<=0 || LM_ReadMemory(static_cast<lm_address_t>(cave)+128-sizeof(marker),marker,sizeof(marker))!=sizeof(marker) ||
+     !BytesEqual(marker,kMonsterCaveMarker,sizeof(marker))) {
+   swprintf_s(message,messageSize,L"OD inline owner marker mismatch");return false;
+  }
+  installed[n]=true;
+ }
+ for(size_t n=0;n<count;++n) {
+  if(installed[n]) continue;
+  if(!PatchOdRateHookInline(module.base+rvas[n],n==0?beelTail:generalTail,n==0?sizeof(beelTail):sizeof(generalTail),message,messageSize)) return false;
+ }
+ return true;
 }
 
 static bool PatchOdRateHook(lm_address_t target, wchar_t* message, size_t messageSize)
@@ -1917,6 +1969,7 @@ static constexpr VirtualSigilRuntimeLayout kVirtualSigilRuntimeLayouts[] = {
     { L"2.0.3", 0x00A1EBE4, 0x00A1F7F6, 0x00A1F80E, 0x00A1F850, 0x00A25D70, 0x07C1D900, 0x07C21940 },
     { L"2.0.4", 0x00A1FB84, 0x00A20796, 0x00A207AE, 0x00A207F0, 0x00A26D10, 0x07C1EB80, 0x07C22BC0 },
     { L"2.0.5", 0x00A1F594, 0x00A201A6, 0x00A201BE, 0x00A20200, 0x00A26720, 0x07C1EE00, 0x07C22E40 },
+    { L"2.0.6", 0x00A1F984, 0x00A20596, 0x00A205AE, 0x00A205F0, 0x00A26B10, 0x07C1FE40, 0x07C23E80 },
 };
 static constexpr int kNativeSigilSlots = 13;
 static constexpr int kMainGemCapacity = 5100;
@@ -2341,7 +2394,7 @@ static_assert(sizeof(WeaponRuntimeSkillEntry) == 8);
 using WeaponTraitAggregationFunction = void(*)(uintptr_t, uintptr_t, uintptr_t);
 using ApplyWeaponTraitFunction = void(*)(uint32_t, uintptr_t, uint32_t, uint32_t, uint32_t);
 static constexpr uint32_t kWeaponRuntimeMaxEntries = 2048;
-static constexpr lm_address_t kWeaponRuntimeStatusManagerRvas[] = { 0x07C21940, 0x07C22BC0, 0x07C22E40 };
+static constexpr lm_address_t kWeaponRuntimeStatusManagerRvas[] = { 0x07C21940, 0x07C22BC0, 0x07C22E40, 0x07C23E80 };
 static SRWLOCK g_weaponRuntimeLock = SRWLOCK_INIT;
 static std::array<WeaponRuntimeSkillEntry, kWeaponRuntimeMaxEntries> g_weaponRuntimeSkills{};
 static size_t g_weaponRuntimeSkillCount = 0;
@@ -4400,6 +4453,7 @@ static bool InstallQOLFreeCaptain(const lm_module_t& module)
         { 0x1CA7870, 0x3F105D0, 0x3F10410, 0x3F10240, 0x41E3F70, 0x7C24980, 0x7C23878 },
         { 0x1CA16D0, 0x3F0C500, 0x3F0C340, 0x3F0C170, 0x41DFEA0, 0x7C21940, 0x7C20838 },
         { 0x1CA1F80, 0x3F0DC70, 0x3F0DAB0, 0x3F0D8E0, 0x41E1610, 0x7C22E40, 0x7C21D38 },
+        { 0x1CA25A0, 0x3F0E700, 0x3F0E540, 0x3F0E370, 0x41E20A0, 0x7C23E80, 0x7C22D78 },
     };
     struct Entry { const char* signature; lm_address_t* target; lm_address_t detour; lm_address_t* original; lm_size_t* size; lm_byte_t* bytes; };
     Entry entries[] = {
@@ -4861,7 +4915,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 		const lm_address_t rva203 = MonsterPatchRva203(point.id);
 		const lm_address_t rva204 = MonsterPatchRva204(point.id);
 		const lm_address_t rva205 = MonsterPatchRva205(point.id);
-		const lm_address_t knownRvas[] = { point.rva, rva203, rva204, rva205 };
+		const lm_address_t rva206 = MonsterPatchRva206(point.id);
+		const lm_address_t knownRvas[] = { point.rva, rva203, rva204, rva205, rva206 };
 		for (const lm_address_t candidate : knownRvas)
 		{
 			if (candidate == LM_ADDRESS_BAD || (candidate == point.rva && resolvedKnownEntry)) continue;
@@ -4950,6 +5005,8 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 
         if (point.hook && current[0] == 0xE9)
         {
+            if (!IsMarkedMonsterHook(target,point.id)) { swprintf_s(message,messageSize,L"existing hook is not owned"); return false; }
+            if (strcmp(point.id,"od_rate")==0 && !PatchAllOdInlineHooks(module,resolvedRva,message,messageSize)) return false;
             ++already;
             continue;
         }
@@ -4986,25 +5043,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
             else if (strcmp(point.id, "od_rate") == 0)
             {
                 if (!PatchOdRateHook(target, message, messageSize)) return false;
-				const lm_address_t inlineRvas[] = { 0x2B3E7DE, 0x2B3F77E, 0x2B3F92E };
-                lm_address_t inlineTarget = LM_ADDRESS_BAD;
-                for (const lm_address_t inlineRva : inlineRvas)
-                {
-                    lm_byte_t original[sizeof(kOdRateInlineExpected)]{};
-                    const lm_address_t candidate = module.base + inlineRva;
-                    if (LM_ReadMemory(candidate, original, sizeof(original)) == sizeof(original) &&
-                        BytesEqual(original, kOdRateInlineExpected, sizeof(original)))
-                    {
-                        inlineTarget = candidate;
-                        break;
-                    }
-                }
-                if (inlineTarget == LM_ADDRESS_BAD)
-                {
-					swprintf_s(message, messageSize, L"inline OD path did not match the verified 2.0.3 / 2.0.4 / 2.0.5 entries");
-                    return false;
-                }
-                if (!PatchOdRateHookInline(inlineTarget, message, messageSize)) return false;
+                if (!PatchAllOdInlineHooks(module, resolvedRva, message, messageSize)) return false;
             }
             else if (strcmp(point.id, "inventory_set_45") == 0)
             {

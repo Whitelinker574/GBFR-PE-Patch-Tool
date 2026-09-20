@@ -897,10 +897,10 @@ func (a *App) startRuntimeCompanionInternal(feature, command, requiredDigest str
 	digestAccepted := requiredDigest == "" || strings.EqualFold(a.runtimePatchVerifiedDigest, requiredDigest) ||
 		(strings.EqualFold(requiredDigest, game203ExecutableSHA256) &&
 			(strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) ||
-				strings.EqualFold(a.runtimePatchVerifiedDigest, game205ExecutableSHA256)))
+				strings.EqualFold(a.runtimePatchVerifiedDigest, game205ExecutableSHA256) || strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256)))
 	if !digestAccepted {
 		a.procMu.Unlock()
-		return fmt.Errorf("此运行时组件只支持已核对的 GAME 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
+		return fmt.Errorf("此运行时组件只支持已核对的 GAME 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件")
 	}
 	handle := a.hProcess
 	status := readRuntimeCompanionStatus(feature)

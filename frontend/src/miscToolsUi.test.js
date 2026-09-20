@@ -23,7 +23,7 @@ test('currency and potion editors keep their own numeric ranges and error copy',
   assert.doesNotMatch(potionHandler, /2147483647/)
 })
 
-test('game 2.0.5 uses the new natural MSP cap without turning it into a hard write limit', () => {
+test('game 2.0.6 uses the new natural MSP cap without turning it into a hard write limit', () => {
   assert.match(source, /item\?\.id === 'msp' \? 9999999 : 2147483647/)
   assert.match(source, /currencyNaturalMax\(item\)[\s\S]*?自然上限/)
   assert.match(source, /value > 2147483647/)
@@ -119,7 +119,7 @@ test('experimental runtime integrations are absent from the stable page', () => 
 test('continuous challenge is a stable owned mission action', () => {
   assert.match(source, /InfiniteChallengeGetStatusOwned/)
   assert.match(source, /InfiniteChallengeSetEnabledOwned/)
-  assert.match(source, /连续挑战[\s\S]*2\.0\.3–2\.0\.5 唯一 AOB · 三字节补丁 · 写后回读/)
+  assert.match(source, /连续挑战[\s\S]*2\.0\.3–2\.0\.6 唯一 AOB · 三字节补丁 · 写后回读/)
   assert.match(source, /infiniteChallengeStatus\.owned/)
 })
 

@@ -1,6 +1,33 @@
 const PARTY_ROLES = Object.freeze(['player', 'party1', 'party2', 'party3', 'companion'])
 const SELECTED_KINDS = Object.freeze(['material', 'keyItem'])
 const RUNTIME_LAYOUTS = deepFreeze({
+  '2.0.4': {
+    partySource: 'game_runtime_patch_2.0.4',
+    spatialSources: ['game_runtime_spatial_2.0.4', 'game_runtime_spatial_continuous_2.0.4'],
+    gravitySource: 'game_runtime_gravity_patch_2.0.4',
+    gravityRva: 0x39D9DC4,
+    hotkeySource: 'game_runtime_spatial_hotkeys_2.0.4',
+    selectedSource: 'game_selected_item_read_only_2.0.4',
+    selectedRvas: { material: 0x3F48993, keyItem: 0x3F1D4EC },
+  },
+  '2.0.5': {
+    partySource: 'game_runtime_patch_2.0.5',
+    spatialSources: ['game_runtime_spatial_2.0.5', 'game_runtime_spatial_continuous_2.0.5'],
+    gravitySource: 'game_runtime_gravity_patch_2.0.5',
+    gravityRva: 0x39DA364,
+    hotkeySource: 'game_runtime_spatial_hotkeys_2.0.5',
+    selectedSource: 'game_selected_item_read_only_2.0.5',
+    selectedRvas: { material: 0x3F49163, keyItem: 0x3F1DCBC },
+  },
+  '2.0.6': {
+    partySource: 'game_runtime_patch_2.0.6',
+    spatialSources: ['game_runtime_spatial_2.0.6', 'game_runtime_spatial_continuous_2.0.6'],
+    gravitySource: 'game_runtime_gravity_patch_2.0.6',
+    gravityRva: 0x39DAAA4,
+    hotkeySource: 'game_runtime_spatial_hotkeys_2.0.6',
+    selectedSource: 'game_selected_item_read_only_2.0.6',
+    selectedRvas: { material: 0x3F49BF3, keyItem: 0x3F1E74C },
+  },
   '2.0.2': {
     partySource: 'game_runtime_patch_2.0.2',
     spatialSources: ['game_runtime_spatial_2.0.2', 'game_runtime_spatial_continuous_2.0.2'],

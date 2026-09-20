@@ -247,7 +247,7 @@ func (a *App) prepareWeaponRuntimeSkillsDeployment(request WeaponRuntimeSkillsDe
 		return false, false, err
 	}
 	if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return false, false, errors.New("额外武器技能只支持已核对的 GAME 2.0.3 / 2.0.4 / 2.0.5 可执行文件")
+		return false, false, errors.New("额外武器技能只支持已核对的 GAME 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6 可执行文件")
 	}
 	weaponMemoryLifecycleMu.Lock()
 	status, statusErr := a.readWeaponMemoryStatusLocked()

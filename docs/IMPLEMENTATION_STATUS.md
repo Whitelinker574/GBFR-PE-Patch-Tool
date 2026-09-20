@@ -2,6 +2,10 @@
 
 This page separates implemented behavior from open calibration work. “Implemented” means the code path and automated verification exist; “field-verified” additionally requires a repeated observation against the running game.
 
+## Game 2.0.6 compatibility
+
+Game 2.0.6 uses its own verified executable identity and runtime layout. The 2,120 extracted system/table files differ from 2.0.5 only in five appraisal-level rows of item_junk_appear_rate; all 11 embedded deployment inputs remain byte-identical. The patch catalog has four relocated original-byte variants and a strengthened 054_11 signature to exclude an accidental match inside another instruction. Native and Go layers cover the two distinct inline OD epilogues and retain all auxiliary recovery records through partial failure. The frontend now recognizes 2.0.4–2.0.6 responses, and shared item-hook addresses use the verified executable digest to select the correct save function. File-based native checks, in-process memory lifecycle tests and copied-save tests are distinct from in-quest gameplay, which was not performed in this run. See GAME_UPDATE_2.0.6_RESEARCH.md for the primary-source and local evidence.
+
 ## Game 2.0.5 compatibility
 
 ### v2.0.21 Fate follow-up (#23)

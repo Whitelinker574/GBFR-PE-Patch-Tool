@@ -12,11 +12,11 @@ test('runtime compatibility boundaries remain Chinese in Chinese mode', () => {
 test('runtime compatibility boundaries are complete and isolated in English mode', () => {
   const translated = translateRuntimeCompatibilityError(`Error: ${unknown}`, 'en')
   assert.doesNotMatch(translated, /[\u3400-\u9fff]/u)
-  assert.match(translated, /game 2\.0\.2, 2\.0\.3, 2\.0\.4, and 2\.0\.5/u)
+  assert.match(translated, /game 2\.0\.2, 2\.0\.3, 2\.0\.4, 2\.0\.5, and 2\.0\.6/u)
   assert.match(translated, /will not/u)
 })
 
 test('stable compatibility codes do not depend on exact Chinese backend copy', () => {
   const unknownCoded = '[GBFR_RUNTIME_UNKNOWN_EXE] 当前版本无法识别'
-  assert.match(translateRuntimeCompatibilityError(unknownCoded, 'en'), /game 2\.0\.2, 2\.0\.3, 2\.0\.4, and 2\.0\.5/u)
+  assert.match(translateRuntimeCompatibilityError(unknownCoded, 'en'), /game 2\.0\.2, 2\.0\.3, 2\.0\.4, 2\.0\.5, and 2\.0\.6/u)
 })

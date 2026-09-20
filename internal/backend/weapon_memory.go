@@ -35,6 +35,9 @@ var (
 )
 
 func weaponMemoryRuntimeIdentity(digest string) (hookRVA, saveRVA uintptr, version string) {
+	if strings.EqualFold(digest, game206ExecutableSHA256) {
+		return 0x415338C, 0x798400, "2.0.6"
+	}
 	if strings.EqualFold(digest, game205ExecutableSHA256) {
 		return 0x41528FC, 0x798020, "2.0.5"
 	}
@@ -260,7 +263,7 @@ func (a *App) scanWeaponMemoryLocked() (WeaponMemoryStatus, error) {
 	original := isWeaponMemoryGuard(guard, false)
 	hooked := isWeaponMemoryGuard(guard, true)
 	if !original && !hooked {
-		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3 / 2.0.4 / 2.0.5", bytesToHex(guard))
+		return WeaponMemoryStatus{}, fmt.Errorf("武器焦点指令字节异常 (%s)：此入口只支持经过完整守卫的 GAME 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6", bytesToHex(guard))
 	}
 	a.weaponMemoryHookAddr = addr
 	if original {

@@ -58,9 +58,13 @@ function validPartySnapshot(version = '2.0.2') {
 }
 
 function capture(kind, selectedAddr = 0, version = '2.0.2') {
-  const rvas = version === '2.0.3'
-    ? { material: 0x3F479F3, keyItem: 0x3F1C54C }
-    : { material: 0x3F4BAC3, keyItem: 0x3F2061C }
+  const rvas = {
+    '2.0.2': { material: 0x3F4BAC3, keyItem: 0x3F2061C },
+    '2.0.3': { material: 0x3F479F3, keyItem: 0x3F1C54C },
+    '2.0.4': { material: 0x3F48993, keyItem: 0x3F1D4EC },
+    '2.0.5': { material: 0x3F49163, keyItem: 0x3F1DCBC },
+    '2.0.6': { material: 0x3F49BF3, keyItem: 0x3F1E74C },
+  }[version]
   return {
     kind,
     displayName: kind,
@@ -507,7 +511,7 @@ test('all runtime monitor contracts accept the audited 2.0.3 layouts without wea
   assert.equal(selected.keyItem.rva, 0x3F1C54C)
 
   assert.throws(
-    () => view.normalizeRuntimePatchPartySnapshot({ ...validPartySnapshot('2.0.3'), gameVersion: '2.0.4' }, ownerToken, processInfo.pid),
+    () => view.normalizeRuntimePatchPartySnapshot({ ...validPartySnapshot('2.0.3'), gameVersion: '9.0.0' }, ownerToken, processInfo.pid),
     /not supported/i,
   )
 })
@@ -524,6 +528,17 @@ test('monitor copy is complete in both Chinese and English', () => {
     assert.doesNotMatch(english, /[\u3400-\u9fff]/u, `${key}: English copy must not contain Chinese`)
   }
   assert.throws(() => view.runtimeMonitorText('not-a-real-key', 'en'), /unknown.*copy/i)
+})
+
+test('party and spatial pages accept 2.0.4 through 2.0.6 with exact version sources', () => {
+  for (const version of ['2.0.4','2.0.5','2.0.6']) {
+    assert.equal(view.normalizeRuntimePatchPartySnapshot(validPartySnapshot(version),ownerToken,processInfo.pid).gameVersion,version)
+    assert.throws(() => view.normalizeRuntimePatchPartySnapshot({...validPartySnapshot(version),source:'game_runtime_patch_2.0.3'},ownerToken,processInfo.pid))
+    assert.equal(view.normalizeRuntimePatchSelectedStatus(validSelectedStatus(version),ownerToken,processInfo.pid).gameVersion,version)
+    const rva = {'2.0.4':0x39D9DC4,'2.0.5':0x39DA364,'2.0.6':0x39DAAA4}[version]
+    const gravity = {ownerToken,enabled:true,available:true,owned:true,recoveryPending:false,address:0x140000000+rva,rva,currentBytes:'90 90 90 90 90 90 90 90',pid:processInfo.pid,processCreated:1337000,gameVersion:version,source:`game_runtime_gravity_patch_${version}`,error:''}
+    assert.equal(view.normalizeRuntimeSpatialGravityStatus(gravity,ownerToken,processInfo.pid).rva,rva)
+  }
 })
 
 test('monitor data formatting is stable and never uses a fake numeric placeholder', () => {

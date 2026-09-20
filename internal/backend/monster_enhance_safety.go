@@ -2,7 +2,6 @@ package backend
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -34,12 +33,14 @@ type monsterEnhanceOwnedPatch struct {
 	AuxPatched  []byte
 	AuxCave     uintptr
 	AuxCaveSize uintptr
+	ExtraAux    []monsterEnhanceOwnedPatch
 }
 
 type monsterEnhanceAuxPreflight struct {
-	Target   uintptr
-	Original []byte
-	CaveSize uintptr
+	Target     uintptr
+	Original   []byte
+	CaveSize   uintptr
+	Additional []monsterEnhanceAuxPreflight
 }
 
 func monsterEnhanceCaveSize(id string) uintptr {
@@ -83,8 +84,11 @@ var odRateInlineOriginal = []byte{
 }
 
 func (a *App) prepareOdRateInlineAuxiliaryHook() (*monsterEnhanceAuxPreflight, error) {
+	if strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) {
+		return a.prepareOdRate206Auxiliaries()
+	}
 	if !isGame203PlusExecutableDigest(a.runtimePatchVerifiedDigest) {
-		return nil, fmt.Errorf("巴布类首领 OD 辅助路径仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5")
+		return nil, fmt.Errorf("巴布类首领 OD 辅助路径仅支持已验证的游戏 2.0.3 / 2.0.4 / 2.0.5 / 2.0.6")
 	}
 	rva := uintptr(0x2B3E7DE)
 	if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) {
@@ -267,6 +271,16 @@ func (a *App) claimMonsterEnhancePatchWithAux(ownerToken string, point *monsterP
 		record.AuxCave = cave
 	}
 
+	if aux != nil {
+		for _, extra := range aux.Additional {
+			captured, err := a.captureMonsterAuxiliary(extra, true)
+			if err != nil {
+				a.monsterEnhanceOwned[point.ID] = record
+				return err
+			}
+			record.ExtraAux = append(record.ExtraAux, captured)
+		}
+	}
 	a.monsterEnhanceOwned[point.ID] = record
 	return nil
 }
@@ -279,56 +293,39 @@ func (a *App) rollbackMonsterEnhanceFailedEnableWithAux(ownerToken string, point
 	if point == nil || len(original) == 0 {
 		return fmt.Errorf("failed monster enable has no rollback metadata")
 	}
-	current, err := a.readMonsterEnhanceEntry(a.moduleBase+point.RVA, len(original))
+	record, err := a.captureMonsterAuxiliary(monsterEnhanceAuxPreflight{Target: a.moduleBase + point.RVA, Original: original, CaveSize: monsterEnhanceCaveSize(point.ID)}, false)
+	if !point.Hook {
+		current, readErr := a.readMonsterEnhanceEntry(a.moduleBase+point.RVA, len(original))
+		if readErr != nil {
+			return readErr
+		}
+		if !bytesEqual(current, original) && !bytesEqual(current, point.Patch) {
+			return fmt.Errorf("failed direct monster patch is not owned")
+		}
+		record = monsterEnhanceOwnedPatch{Target: a.moduleBase + point.RVA, Original: append([]byte(nil), original...), Patched: current}
+		err = nil
+	}
 	if err != nil {
-		return fmt.Errorf("read failed monster enable state: %w", err)
+		return err
 	}
-	if bytesEqual(current, original) {
-		if aux == nil {
-			return nil
-		}
-		auxCurrent, auxErr := a.readMonsterEnhanceEntry(aux.Target, len(aux.Original))
-		if auxErr != nil {
-			return fmt.Errorf("read failed monster auxiliary enable state: %w", auxErr)
-		}
-		if bytesEqual(auxCurrent, aux.Original) {
-			return nil
-		}
-		record := monsterEnhanceOwnedPatch{
-			OwnerToken:  ownerToken,
-			Target:      a.moduleBase + point.RVA,
-			Original:    append([]byte(nil), original...),
-			Patched:     append([]byte(nil), original...),
-			AuxTarget:   aux.Target,
-			AuxOriginal: append([]byte(nil), aux.Original...),
-			AuxPatched:  append([]byte(nil), auxCurrent...),
-			AuxCaveSize: aux.CaveSize,
-		}
-		cave, ok := monsterEnhanceRelJumpTarget(aux.Target, auxCurrent)
-		if !ok {
-			return fmt.Errorf("failed monster auxiliary enable is not a rel32 jump: %s", bytesToHex(auxCurrent))
-		}
-		record.AuxCave = cave
-		if err := a.verifyMonsterEnhanceCaveMarker(monsterEnhanceOwnedPatch{Cave: cave, CaveSize: aux.CaveSize}); err != nil {
-			return fmt.Errorf("failed monster auxiliary cave validation: %w", err)
-		}
-		if a.monsterEnhanceOwned == nil {
-			a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)
-		}
-		a.monsterEnhanceOwned[point.ID] = record
-		return a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false)
+	record.OwnerToken = ownerToken
+	if a.monsterEnhanceOwned == nil {
+		a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)
 	}
-	if err := a.claimMonsterEnhancePatchWithAux(ownerToken, point, original, aux); err != nil {
-		claimErr := fmt.Errorf("claim failed monster enable for rollback: %w", err)
-		if _, ok := a.monsterEnhanceOwned[point.ID]; ok {
-			return errors.Join(claimErr, a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false))
+	a.monsterEnhanceOwned[point.ID] = record
+	if aux != nil {
+		all := append([]monsterEnhanceAuxPreflight{*aux}, aux.Additional...)
+		for _, preflight := range all {
+			captured, err := a.captureMonsterAuxiliary(preflight, false)
+			if err != nil {
+				a.monsterEnhanceOwned[point.ID] = record
+				return err
+			}
+			record.ExtraAux = append(record.ExtraAux, captured)
 		}
-		return claimErr
 	}
-	if err := a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false); err != nil {
-		return fmt.Errorf("rollback failed monster enable: %w", err)
-	}
-	return nil
+	a.monsterEnhanceOwned[point.ID] = record
+	return a.restoreMonsterEnhanceOwned(ownerToken, point.ID, false)
 }
 
 func (a *App) monsterEnhanceHookMarked(point *monsterPatchPoint, entry []byte) bool {
@@ -367,6 +364,9 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 		auxiliaryRVA := uintptr(0x2607DDE)
 		if strings.EqualFold(a.runtimePatchVerifiedDigest, game204ExecutableSHA256) {
 			auxiliaryRVA = 0x2608D7E
+		}
+		if strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) {
+			auxiliaryRVA = 0x26095DE
 		}
 		auxOriginal := []byte{0x48, 0x81, 0xC1, 0x50, 0x01, 0x00, 0x00}
 		auxTarget := a.moduleBase + auxiliaryRVA
@@ -411,6 +411,19 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 	}
 	if a.monsterEnhanceOwned == nil {
 		a.monsterEnhanceOwned = make(map[string]monsterEnhanceOwnedPatch)
+	}
+	if point.ID == "od_rate" && strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) {
+		preflight, err := a.prepareOdRate206Auxiliaries()
+		if err != nil {
+			return err
+		}
+		for _, extra := range preflight.Additional {
+			captured, err := a.captureMonsterAuxiliary(extra, true)
+			if err != nil {
+				return err
+			}
+			record.ExtraAux = append(record.ExtraAux, captured)
+		}
 	}
 	a.monsterEnhanceOwned[point.ID] = record
 	return nil
@@ -475,6 +488,11 @@ func (a *App) restoreMonsterEnhanceOwned(ownerToken, id string, forceAllOwners b
 				if err := a.writeAndVerifyMonsterEnhanceEntry(record.AuxTarget, record.AuxOriginal, "monster "+patchID+" auxiliary restore"); err != nil {
 					return err
 				}
+			}
+		}
+		for _, extra := range record.ExtraAux {
+			if err := a.restoreMonsterAuxiliary(extra); err != nil {
+				return err
 			}
 		}
 		delete(a.monsterEnhanceOwned, patchID)
