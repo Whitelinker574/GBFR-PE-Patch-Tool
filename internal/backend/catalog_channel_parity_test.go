@@ -94,8 +94,8 @@ func TestSigilSaveRuntimeAndConstructorsUseExactUnifiedCatalog(t *testing.T) {
 	if len(runtimeSigils) != len(saveSigils) || len(runtimeTraits) != len(saveTraits) {
 		t.Fatalf("unified factor table count differs: save=%d/%d runtime=%d/%d", len(saveSigils), len(saveTraits), len(runtimeSigils), len(runtimeTraits))
 	}
-	if len(saveSigils) != 223 {
-		t.Fatalf("unified factor table has %d items; want 189 generated gem.tbl rows, 33 locked 2.0.2 supplemental rows, and 1 verified quest-only record", len(saveSigils))
+	if len(saveSigils) != 224 {
+		t.Fatalf("unified factor table has %d items; want 189 generated gem.tbl rows, 1 recovered Firm Stance V+ row, 33 locked 2.0.2 supplemental rows, and 1 verified quest-only record", len(saveSigils))
 	}
 	gen := NewSigilGen()
 	for _, item := range saveSigils {

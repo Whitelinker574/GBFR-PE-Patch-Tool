@@ -230,6 +230,7 @@ var sigilCN = map[string]string{
 	"Rupie Tycoon V":                  "获得金币 V",
 	"Slow Resistance V":               "缓速抗性 V",
 	"Firm Stance V":                   "不动 V",
+	"Firm Stance V+":                  "不动 V+",
 	"Blight Resistance V":             "灾祸抗性 V",
 	"Steady Focus V":                  "蓄力强化 V",
 	"Supplements V":                   "强化效果延长 V",

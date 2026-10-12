@@ -3068,6 +3068,51 @@
             "defaultSecondaryTraitName": null
         },
         {
+            "internalId": "GEEN_087_24",
+            "hash": "0xB1CCC211",
+            "displayName": "Firm Stance V+",
+            "category": "support_sigil",
+            "isPlusSigil": true,
+            "supportsSecondaryTrait": true,
+            "allowedSigilLevels": [
+                15
+            ],
+            "defaultSigilLevel": 15,
+            "maxSigilLevel": 15,
+            "primaryTraitId": "SKILL_087_00",
+            "primaryTraitName": "Firm Stance",
+            "firstTraitMaxLevel": 15,
+            "allowedFirstTraitLevels": [
+                15
+            ],
+            "allowedSecondaryTraitIds": [
+                "SKILL_045_00",
+                "SKILL_065_00",
+                "SKILL_066_00",
+                "SKILL_067_00",
+                "SKILL_068_00",
+                "SKILL_069_00",
+                "SKILL_070_00",
+                "SKILL_072_00",
+                "SKILL_073_00",
+                "SKILL_077_00",
+                "SKILL_078_00",
+                "SKILL_079_00",
+                "SKILL_080_00",
+                "SKILL_094_00",
+                "SKILL_106_00",
+                "SKILL_109_00"
+            ],
+            "disallowedSecondaryTraitIds": [],
+            "secondaryTraitLevelOverrides": {},
+            "compatibilityRuleIds": [],
+            "notes": "Bundled local 2.0.2 gem.tbl row 861 verifies SkillId1 SKILL_087_00 and secondary lot 7; its 16 exact traits use the existing audited lot-7 join. Issue #27 also shows a Firm Stance + Celestial Aqua synthesis preview.",
+            "source": "bundled local 2.0.2 gem.tbl row 861; existing 2.0.2 skill_type_lot.tbl and skill_lot.tbl lot-7 audit; Issue #27 synthesis preview",
+            "confidence": "high",
+            "defaultSecondaryTraitId": null,
+            "defaultSecondaryTraitName": null
+        },
+        {
             "internalId": "GEEN_088_04",
             "hash": "0x1727E6B7",
             "displayName": "Blight Resistance V",
