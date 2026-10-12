@@ -230,7 +230,7 @@ func TestFirmStancePlusSaveCopyBacksUpAndReadsBothTraits(t *testing.T) {
 	if unitID < GemSlotBaseID {
 		t.Fatal("new factor slot missing after readback")
 	}
-	primaryUnit := uint32(TraitSlotBase + (int(unitID)-GemSlotBaseID)*2)
+	primaryUnit := uint32(TraitSlotBase + (int(unitID)-GemSlotBaseID)*100)
 	for _, field := range []struct{ kind, unit, value uint32 }{
 		{GemIDType, unitID, 0xB1CCC211},
 		{GemLevelIDType, unitID, 15},
