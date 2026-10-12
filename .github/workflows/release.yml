@@ -92,6 +92,8 @@ jobs:
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
           RELEASE_COMMIT: ${{ steps.metadata.outputs.commit }}
         run: |
+          git switch --create release-build $env:RELEASE_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to attach the exact tested commit to the build branch.' }
           ./tools/package_windows_release.ps1 `
             -Version $env:RELEASE_VERSION `
             -Commit $env:RELEASE_COMMIT `
