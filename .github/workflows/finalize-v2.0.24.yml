@@ -1,0 +1,51 @@
+name: Finalize v2.0.24
+
+on:
+  push:
+    branches: [master]
+    paths: [.github/workflows/finalize-v2.0.24.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_VERSION: v2.0.24
+      RELEASE_COMMIT: 298edecf66a3159dae45b99067330cdca7fae320
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify immutable source and successful Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/38301622380" --jq '.head_sha')" = "$RELEASE_COMMIT"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/38301622380" --jq '.conclusion')" = success
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/38302282577" --jq '.head_sha')" = "$RELEASE_COMMIT"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/38302282577/jobs" --jq '.jobs[] | select(.name == "build") | .conclusion')" = success
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: release
+          github-token: ${{ github.token }}
+          run-id: 38302282577
+
+      - name: Verify and publish the existing Windows package
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: bash ../tools/publish_windows_release.sh
