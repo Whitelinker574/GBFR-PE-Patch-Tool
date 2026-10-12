@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: windows-release
@@ -18,6 +19,7 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_sha == github.sha &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 30
@@ -37,6 +39,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           $ErrorActionPreference = 'Stop'
           $version = (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion
@@ -56,6 +59,15 @@ jobs:
           if ($existing -and -not $existing.draft) {
             "publish=false" >> $env:GITHUB_OUTPUT
           } else {
+            $jobs = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:CI_RUN_ID/jobs" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect successful CI jobs.' }
+            $testJob = @($jobs.jobs | Where-Object { $_.name -eq 'test' -and $_.conclusion -eq 'success' })
+            if ($testJob.Count -ne 1) { throw 'Expected one successful CI test job.' }
+            $ciLog = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/$($testJob[0].id)/logs"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read successful CI native build evidence.' }
+            $hashes = [regex]::Matches(($ciLog -join "`n"), 'Embedded patch_core.dll: ([0-9a-fA-F]{64})')
+            if ($hashes.Count -ne 1) { throw 'Expected one CI native runtime SHA-256.' }
+            "native_helper_hash=$($hashes[0].Groups[1].Value)" >> $env:GITHUB_OUTPUT
             "publish=true" >> $env:GITHUB_OUTPUT
           }
 
@@ -91,12 +103,14 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
           RELEASE_COMMIT: ${{ steps.metadata.outputs.commit }}
+          NATIVE_HELPER_HASH: ${{ steps.metadata.outputs.native_helper_hash }}
         run: |
           git switch --create release-build $env:RELEASE_COMMIT
           if ($LASTEXITCODE -ne 0) { throw 'Unable to attach the exact tested commit to the build branch.' }
           ./tools/package_windows_release.ps1 `
             -Version $env:RELEASE_VERSION `
             -Commit $env:RELEASE_COMMIT `
+            -ExpectedNativeHelperHash $env:NATIVE_HELPER_HASH `
             -OutputDirectory "$env:RUNNER_TEMP/windows-release"
           Copy-Item "docs/RELEASE_NOTES_$env:RELEASE_VERSION.md" "$env:RUNNER_TEMP/windows-release/RELEASE_NOTES.md"
 

@@ -5,7 +5,10 @@ param(
 
     [string]$OutputDirectory,
 
-    [string]$Commit
+    [string]$Commit,
+
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedNativeHelperHash = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,13 +94,11 @@ try {
         -InheritedBuildLease $packageLease `
         -InheritedBuildLockPath $packageLockPath `
         -InheritedRecoveryTransaction $recoveryTransaction
-    $dirtyAfterBuild = @(& git -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Unable to inspect the worktree after the production build.'
+    if ($ExpectedNativeHelperHash -and
+        (Get-GBFRSha256Hex -LiteralPath $embeddedResource) -ne $ExpectedNativeHelperHash.ToLowerInvariant()) {
+        throw 'Production native runtime does not match the successful CI build.'
     }
-    if ($dirtyAfterBuild.Count -gt 0) {
-        throw "The production build changed tracked or untracked source files; packaging stopped to preserve commit provenance.`n$($dirtyAfterBuild -join "`n")"
-    }
+    Assert-GBFRReleaseWorktree -RepositoryRoot $repositoryRoot -ExpectedNativeHelperHash $ExpectedNativeHelperHash
     Complete-GBFRPatchCoreRecoveryTransaction `
         -RepositoryRoot $repositoryRoot `
         -Transaction $recoveryTransaction `
@@ -172,10 +173,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $finalHead -ne $headCommit) {
         throw 'Repository HEAD changed while the release package was being assembled.'
     }
-    $finalDirty = @(& git -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
-    if ($LASTEXITCODE -ne 0 -or $finalDirty.Count -gt 0) {
-        throw "Repository inputs changed while the release package was being assembled.`n$($finalDirty -join "`n")"
-    }
+    Assert-GBFRReleaseWorktree -RepositoryRoot $repositoryRoot -ExpectedNativeHelperHash $ExpectedNativeHelperHash
     if ((Get-GBFRSha256Hex -LiteralPath $embeddedResource) -ne $nativeHelperHash -or
         (Get-GBFRSha256Hex -LiteralPath $builtExecutable) -ne $executableHash -or
         (Get-GBFRSha256Hex -LiteralPath $releaseExecutable) -ne $executableHash) {

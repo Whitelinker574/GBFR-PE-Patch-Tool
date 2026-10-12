@@ -149,3 +149,7 @@ jobs:
 
       - name: Test maintainer tooling
         run: node --test tools/*.test.js
+
+      - name: Test Windows release transaction protections
+        shell: pwsh
+        run: ./tools/test_windows_release_safety.ps1

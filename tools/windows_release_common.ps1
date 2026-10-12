@@ -563,3 +563,26 @@ function Invoke-GBFRPendingPatchCoreRecovery {
     Write-Warning 'Recovered the embedded patch_core.dll from an interrupted previous build.'
     return $true
 }
+function Assert-GBFRReleaseWorktree {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [string]$ExpectedNativeHelperHash = ''
+    )
+
+    $changes = @(& git -C $RepositoryRoot status --porcelain=v1 --untracked-files=all)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the release worktree.' }
+    foreach ($change in $changes) {
+        # A native rebuild is a declared output, never a source exemption.
+        # Only its unstaged, tracked DLL may differ, and only when the bytes
+        # match the successful CI run for this exact source commit.
+        if ($change -ceq ' M internal/backend/resources/patch_core.dll' -and
+            $ExpectedNativeHelperHash -match '^[0-9a-fA-F]{64}$') {
+            $nativePath = Join-Path $RepositoryRoot 'internal/backend/resources/patch_core.dll'
+            if ((Get-GBFRSha256Hex -LiteralPath $nativePath) -eq $ExpectedNativeHelperHash.ToLowerInvariant()) {
+                continue
+            }
+            throw 'Rebuilt native runtime does not match the successful CI build.'
+        }
+        throw "Release source worktree changed: $change"
+    }
+}

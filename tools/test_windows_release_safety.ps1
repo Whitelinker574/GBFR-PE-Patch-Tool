@@ -18,6 +18,44 @@ $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 )
 [System.IO.Directory]::CreateDirectory($testRoot) | Out-Null
 try {
+    $sourceRepository = Join-Path $testRoot 'source-provenance'
+    $sourceNative = Join-Path $sourceRepository 'internal/backend/resources/patch_core.dll'
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $sourceNative)) | Out-Null
+    [System.IO.File]::WriteAllText($sourceNative, 'original tracked runtime')
+    [System.IO.File]::WriteAllText((Join-Path $sourceRepository 'source.txt'), 'original source')
+    & git -C $sourceRepository init --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to initialize provenance test repository.' }
+    & git -C $sourceRepository add .
+    & git -C $sourceRepository -c user.name=ReleaseTest -c user.email=release-test@example.invalid commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to commit provenance test fixture.' }
+    Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository
+    [System.IO.File]::WriteAllText($sourceNative, 'CI-verified rebuilt runtime')
+    $rebuiltHash = Get-GBFRSha256Hex -LiteralPath $sourceNative
+    foreach ($allowedHash in @('', ('0' * 64))) {
+        $rejected = $false
+        try { Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository -ExpectedNativeHelperHash $allowedHash }
+        catch { $rejected = $true }
+        Assert-GBFR -Condition $rejected -Message 'An unverified or wrong-hash native output was accepted.'
+    }
+    Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository -ExpectedNativeHelperHash $rebuiltHash
+    & git -C $sourceRepository add internal/backend/resources/patch_core.dll
+    $stagedRejected = $false
+    try { Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository -ExpectedNativeHelperHash $rebuiltHash }
+    catch { $stagedRejected = $true }
+    Assert-GBFR -Condition $stagedRejected -Message 'A staged source change was accepted as generated output.'
+    & git -C $sourceRepository reset --quiet HEAD -- internal/backend/resources/patch_core.dll
+    [System.IO.File]::WriteAllText((Join-Path $sourceRepository 'source.txt'), 'unexpected source mutation')
+    $sourceRejected = $false
+    try { Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository -ExpectedNativeHelperHash $rebuiltHash }
+    catch { $sourceRejected = $true }
+    Assert-GBFR -Condition $sourceRejected -Message 'A verified native hash bypassed source integrity.'
+    [System.IO.File]::WriteAllText((Join-Path $sourceRepository 'source.txt'), 'original source')
+    [System.IO.File]::WriteAllText((Join-Path $sourceRepository 'unexpected.txt'), 'untracked input')
+    $untrackedRejected = $false
+    try { Assert-GBFRReleaseWorktree -RepositoryRoot $sourceRepository -ExpectedNativeHelperHash $rebuiltHash }
+    catch { $untrackedRejected = $true }
+    Assert-GBFR -Condition $untrackedRejected -Message 'An untracked release input bypassed source integrity.'
+
     $lockPath = Join-Path $testRoot 'exclusive.lock'
     $firstLease = Enter-GBFRExclusiveLease -LockPath $lockPath -Description 'test build'
     try {
