@@ -1,0 +1,173 @@
+name: Windows Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      commit: ${{ steps.metadata.outputs.commit }}
+      publish: ${{ steps.metadata.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Resolve release version and existing release
+        id: metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version.' }
+          $tag = "v$version"
+          foreach ($path in @('frontend/package.json', 'frontend/package-lock.json')) {
+            if ((Get-Content $path -Raw | ConvertFrom-Json).version -ne $version) {
+              throw "Version mismatch: $path"
+            }
+          }
+          if (-not (Test-Path "docs/RELEASE_NOTES_$tag.md")) { throw 'Release notes missing.' }
+          "version=$tag" >> $env:GITHUB_OUTPUT
+          "commit=$env:RELEASE_COMMIT" >> $env:GITHUB_OUTPUT
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing releases.' }
+          $existing = $releases | Where-Object { $_.tag_name -eq $tag }
+          if ($existing -and -not $existing.draft) {
+            "publish=false" >> $env:GITHUB_OUTPUT
+          } else {
+            "publish=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - uses: actions/setup-go@v7
+        if: steps.metadata.outputs.publish == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v7
+        if: steps.metadata.outputs.publish == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install pinned Wails build tool
+        if: steps.metadata.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+          if ($LASTEXITCODE -ne 0) { throw 'Wails installation failed.' }
+          "$(go env GOPATH)/bin" >> $env:GITHUB_PATH
+
+      - name: Verify release transaction protections
+        if: steps.metadata.outputs.publish == 'true'
+        shell: pwsh
+        run: ./tools/test_windows_release_safety.ps1
+
+      - name: Build and package exact tested commit
+        if: steps.metadata.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.metadata.outputs.commit }}
+        run: |
+          git switch --create release-build $env:RELEASE_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to attach the exact tested commit to the build branch.' }
+          ./tools/package_windows_release.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -Commit $env:RELEASE_COMMIT `
+            -OutputDirectory "$env:RUNNER_TEMP/windows-release"
+          Copy-Item "docs/RELEASE_NOTES_$env:RELEASE_VERSION.md" "$env:RUNNER_TEMP/windows-release/RELEASE_NOTES.md"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.metadata.outputs.publish == 'true'
+        with:
+          name: windows-release
+          path: |
+            ${{ runner.temp }}/windows-release/*.exe
+            ${{ runner.temp }}/windows-release/*.zip
+            ${{ runner.temp }}/windows-release/SHA256SUMS-*.txt
+            ${{ runner.temp }}/windows-release/RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: release
+
+      - name: Verify and publish complete release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="GBFR-PE-Patch-Tool-${RELEASE_VERSION}-windows-amd64"
+          test -s "${archive}.exe"
+          test -s "${archive}.zip"
+          sha256sum --check "SHA256SUMS-${RELEASE_VERSION}.txt"
+          python - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          version = os.environ['RELEASE_VERSION']
+          with zipfile.ZipFile(f'GBFR-PE-Patch-Tool-{version}-windows-amd64.zip') as archive:
+              provenance = json.loads(archive.read('BUILD_PROVENANCE.json'))
+              assert provenance['commit'] == os.environ['RELEASE_COMMIT']
+              assert provenance['version'] == version
+              exe_name = f'GBFR-PE-Patch-Tool-{version}-windows-amd64.exe'
+              exe_hash = hashlib.sha256(pathlib.Path(exe_name).read_bytes()).hexdigest()
+              assert provenance['executable']['sha256'] == exe_hash
+              assert hashlib.sha256(archive.read(exe_name)).hexdigest() == exe_hash
+              assert 'THIRD_PARTY_NOTICES.md' in archive.namelist()
+              assert len([name for name in archive.namelist() if name.startswith('licenses/native/') and name.endswith('.txt')]) == 7
+          PY
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_VERSION}\") | .draft")
+          if [ "$existing" = "false" ]; then
+            echo 'Release already published; leaving its assets unchanged.'
+            exit 0
+          fi
+          title=$(head -n 1 RELEASE_NOTES.md)
+          title=${title#\# }
+          if [ "$existing" != "true" ]; then
+            gh release create "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_COMMIT" --draft \
+              --title "$title" --notes-file RELEASE_NOTES.md
+          fi
+          tag_commit=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_VERSION}" --jq '.object.sha')
+          test "$tag_commit" = "$RELEASE_COMMIT"
+          gh release upload "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --clobber \
+            "${archive}.exe" "${archive}.zip" "SHA256SUMS-${RELEASE_VERSION}.txt"
+          gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --latest --notes-file RELEASE_NOTES.md
