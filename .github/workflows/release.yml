@@ -46,7 +46,7 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version.' }
           $tag = "v$version"
           foreach ($path in @('frontend/package.json', 'frontend/package-lock.json')) {
-            if ((Get-Content $path -Raw | ConvertFrom-Json).version -ne $version) {
+            if ((Get-Content $path -Raw | ConvertFrom-Json -AsHashtable).version -ne $version) {
               throw "Version mismatch: $path"
             }
           }
