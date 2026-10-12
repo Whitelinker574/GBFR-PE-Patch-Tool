@@ -63,8 +63,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect successful CI jobs.' }
             $testJob = @($jobs.jobs | Where-Object { $_.name -eq 'test' -and $_.conclusion -eq 'success' })
             if ($testJob.Count -ne 1) { throw 'Expected one successful CI test job.' }
-            $ciLog = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/$($testJob[0].id)/logs"
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to read successful CI native build evidence.' }
+            $logPath = Join-Path $env:RUNNER_TEMP 'native-ci-evidence.log'
+            Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/jobs/$($testJob[0].id)/logs" `
+              -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' } -OutFile $logPath
+            $ciLog = Get-Content $logPath -Raw
             $hashes = [regex]::Matches(($ciLog -join "`n"), 'Embedded patch_core.dll: ([0-9a-fA-F]{64})')
             if ($hashes.Count -ne 1) { throw 'Expected one CI native runtime SHA-256.' }
             "native_helper_hash=$($hashes[0].Groups[1].Value)" >> $env:GITHUB_OUTPUT
