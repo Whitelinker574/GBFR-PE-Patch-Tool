@@ -1983,14 +1983,30 @@ func naturalDropCreateBackup(path string, data []byte) (resultErr error) {
 	return nil
 }
 
-func naturalDropVerifyOwnedCurrent(gameDir string, manifest *naturalDropManifest, indexData []byte) error {
-	if !strings.EqualFold(fileSHA256(indexData), manifest.DeployedIndexSHA) {
-		return errors.New("当前 data.i 已被其他程序改动；请先恢复或验证游戏文件，拒绝叠加覆盖")
+func naturalDropVerifyOwnedCurrent(gameDir string, manifest *naturalDropManifest, indexData []byte) ([]byte, error) {
+	currentSHA := fileSHA256(indexData)
+	// Steam verification or an external restore may put back the exact original
+	// index without removing our manifest and generated tables. Both recorded
+	// states are safe only while the owned tables and original backup still
+	// validate; an arbitrary new index must never become the deployment baseline.
+	if !strings.EqualFold(currentSHA, manifest.DeployedIndexSHA) && !strings.EqualFold(currentSHA, manifest.OriginalIndexSHA) {
+		return nil, fmt.Errorf("当前 data.i 与清单中的原始和部署后索引均不匹配；可能是游戏更新或其他程序改动，拒绝覆盖。请保留文件并反馈校验信息（当前 SHA-256: %s；原始: %s；部署后: %s）", currentSHA, manifest.OriginalIndexSHA, manifest.DeployedIndexSHA)
 	}
 	if !naturalDropGeneratedFilesMatch(gameDir, manifest) {
-		return errors.New("本工具部署的掉落表已被其他程序改动；拒绝覆盖未知内容")
+		return nil, errors.New("本工具部署的掉落表缺失或已被其他程序改动；拒绝覆盖未知内容")
 	}
-	return nil
+	backup, err := os.ReadFile(filepath.Join(gameDir, naturalDropBackupName))
+	if err != nil || !strings.EqualFold(fileSHA256(backup), manifest.OriginalIndexSHA) {
+		return nil, errors.New("天然掉落原始 data.i 备份缺失或校验失败，拒绝覆盖或恢复")
+	}
+	index, err := parseGBFRDataIndex(backup)
+	if err != nil {
+		return nil, fmt.Errorf("原始 data.i 备份无效: %w", err)
+	}
+	if !strings.EqualFold(index.Codename, "relink") {
+		return nil, fmt.Errorf("原始 data.i 备份标识为 %q，拒绝覆盖或恢复", index.Codename)
+	}
+	return backup, nil
 }
 
 func naturalDropSnapshotExistingFile(path string, readFile func(string) ([]byte, error)) ([]byte, error) {
@@ -2110,12 +2126,9 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	var baseIndex []byte
 	backupCreated := !owned
 	if owned {
-		if err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex); err != nil {
+		baseIndex, err = naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex)
+		if err != nil {
 			return nil, err
-		}
-		baseIndex, err = os.ReadFile(backupPath)
-		if err != nil || !strings.EqualFold(fileSHA256(baseIndex), manifest.OriginalIndexSHA) {
-			return nil, errors.New("天然掉落原始 data.i 备份缺失或校验失败")
 		}
 	} else {
 		if _, err := os.Stat(backupPath); err == nil {
@@ -2289,15 +2302,9 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 	if err != nil {
 		return err
 	}
-	if err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex); err != nil {
+	backup, err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex)
+	if err != nil {
 		return err
-	}
-	backup, err := os.ReadFile(backupPath)
-	if err != nil || !strings.EqualFold(fileSHA256(backup), manifest.OriginalIndexSHA) {
-		return errors.New("原始 data.i 备份缺失或校验失败，拒绝恢复")
-	}
-	if _, err := parseGBFRDataIndex(backup); err != nil {
-		return fmt.Errorf("原始 data.i 备份无效: %w", err)
 	}
 	beforeFiles := make(map[string][]byte, len(manifest.GeneratedFiles))
 	afterFiles := make(map[string][]byte, len(manifest.GeneratedFiles))

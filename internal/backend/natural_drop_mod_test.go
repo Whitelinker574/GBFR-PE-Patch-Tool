@@ -1076,6 +1076,11 @@ func TestNaturalDropDeployAndRestoreLocalGameCopy(t *testing.T) {
 	}
 
 	request.Selections = nil
+	// Simulate Steam restoring only the original index, leaving our deployment
+	// manifest, backup and generated tables behind. Redeploy must remain usable.
+	if err := os.WriteFile(indexPath, originalIndex, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	result, err = app.DeployNaturalDropMod(request)
 	if err != nil {
 		t.Fatal(err)
@@ -1105,6 +1110,10 @@ func TestNaturalDropDeployAndRestoreLocalGameCopy(t *testing.T) {
 		if _, err := os.Stat(naturalDropTargetPath(gameDir, gamePath)); err != nil {
 			t.Fatalf("wrightstone table is missing after redeploy: %s: %v", gamePath, err)
 		}
+	}
+	// The same externally restored state must also permit safe removal.
+	if err := os.WriteFile(indexPath, originalIndex, 0o644); err != nil {
+		t.Fatal(err)
 	}
 	if err := app.RestoreNaturalDropDefaults(NaturalDropRestoreRequest{GameExePath: exePath}); err != nil {
 		t.Fatal(err)
