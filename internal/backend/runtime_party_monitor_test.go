@@ -161,6 +161,25 @@ func newRuntimePatchPartyFixture(t *testing.T) (*fakeRuntimePanelMemory, uintptr
 	return newRuntimePatchPartyFixtureForLayout(t, runtimeGameLayouts[0])
 }
 
+func TestTownPartyWithoutSbaStillExposesCoordinates(t *testing.T) {
+	memory, module := newRuntimePatchPartyFixture(t)
+	root := module + runtimeGameLayouts[0].PartySlotTableRVA
+	entity, err := readRuntimePatchPointer(memory, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory.putF32(entity+runtimePatchPartySBAOffset, 0)
+	memory.putF32(entity+runtimePatchPartyMaxSBAOffset, 0)
+	snapshot, err := readRuntimePatchPartySnapshot(memory, module)
+	if err != nil {
+		t.Fatalf("town snapshot blocked by uninitialised SBA: %v", err)
+	}
+	player := snapshot.Result.Entities[0]
+	if !player.Present || player.Capabilities.SBA || player.SBA != nil || player.MaxSBA != nil || player.Position == (RuntimePatchVector3{}) {
+		t.Fatalf("town SBA fabricated or coordinates lost: %+v", player)
+	}
+}
+
 func newRuntimePatchPartyFixtureForLayout(t *testing.T, layout runtimeGameLayout) (*fakeRuntimePanelMemory, uintptr) {
 	t.Helper()
 	memory := newFakeRuntimePanelMemory()

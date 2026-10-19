@@ -598,10 +598,17 @@ func naturalConstructedSigilItem(t *testing.T) QueueItem {
 			if err != nil || !containsNaturalLevel(levels, 15) || secondary.InternalID == sigil.PrimaryTraitID {
 				continue
 			}
-			return QueueItem{
+			item := QueueItem{
 				SigilID: sigil.InternalID, Level: sigil.AllowedSigilLevels[len(sigil.AllowedSigilLevels)-1],
 				PrimaryLevel:     15,
 				SecondaryTraitID: secondary.InternalID, SecondaryLevel: 15, Quantity: 1,
+			}
+			// The editor intentionally offers writable, non-natural pairings too.
+			// A natural-fixture helper must consult the authoritative report rather
+			// than treating every selectable secondary as a natural drop.
+			report, err := gen.CheckLegality(item)
+			if err == nil && report.Status == LegalityLegal {
+				return item
 			}
 		}
 	}
@@ -1217,6 +1224,17 @@ func TestLoadoutComplianceReportMatchesWritePreflightWithoutMutatingSave(t *test
 	exactTransport.ConstructedSigils = append([]LoadoutConstructedSigil(nil), valid.ConstructedSigils...)
 	exactTransport.ConstructedSigils[0].Item.SigilID = "HASH_39BEA99B"
 	exactTransport.ConstructedSigils[0].Item.SigilName = "昏厥V+"
+	// HASH_ transport carries explicit traits; it has no catalog shell from
+	// which the primary can be inferred.
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := cat.LookupTraitByHash(0xCEB700EE)
+	if primary == nil {
+		t.Fatal("stun power trait is missing")
+	}
+	exactTransport.ConstructedSigils[0].Item.PrimaryTraitID = primary.InternalID
 	report, err = app.LoadoutCheckCompliance(path, exactTransport)
 	if err != nil {
 		t.Fatal(err)
@@ -1443,7 +1461,9 @@ func TestLoadoutApplyRejections(t *testing.T) {
 		t.Skip("伊欧无空槽")
 	}
 	invalidNaturalDraft := naturalConstructedSigilItem(t)
-	invalidNaturalDraft.Level = 999
+	// Positive levels outside natural curves are intentionally writable with
+	// a warning. Negative storage values remain structurally invalid.
+	invalidNaturalDraft.Level = -1
 
 	cases := []struct {
 		name string
@@ -1455,7 +1475,7 @@ func TestLoadoutApplyRejections(t *testing.T) {
 		{"超长名称", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "这是一个非常非常非常非常非常非常非常非常长的配装名称超过六十三字节上限"}},
 		{"重复因子", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", SigilSlotIDs: []uint32{ctx.Sigils[0].SlotID, ctx.Sigils[0].SlotID}}},
 		{"重复技能", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", WeaponSlotID: ctx.Weapons[0].SlotID, SkillHashes: []string{ctx.Skills[0].Hash, ctx.Skills[0].Hash}}},
-		{"构造因子目录外等级", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, Item: invalidNaturalDraft}}}},
+		{"构造因子负等级", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 0, Item: invalidNaturalDraft}}}},
 		{"构造因子索引越界", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "write", Name: "x", ConstructedSigils: []LoadoutConstructedSigil{{Index: 12, Item: naturalConstructedSigilItem(t)}}}},
 		{"未知操作", LoadoutWrite{UnitID: target, ExpectCharaHash: io.CharaHash, Op: "frobnicate"}},
 	}

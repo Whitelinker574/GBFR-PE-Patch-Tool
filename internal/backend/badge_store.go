@@ -3,6 +3,7 @@ package backend
 import (
 	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -107,7 +108,9 @@ func requireBadgeVector(save *SaveData, idType uint32, label string) (*unitEntry
 	}
 	entry := matches[0]
 	values := entry.Bytes()
-	if entry.ValueCnt != badgeVectorLength || len(values) != badgeVectorLength {
+	if entry.ValueOff < 4 || entry.ValueOff > len(save.data) ||
+		binary.LittleEndian.Uint32(save.data[entry.ValueOff-4:entry.ValueOff]) != badgeVectorLength ||
+		entry.ValueCnt != badgeVectorLength || len(values) != badgeVectorLength {
 		return nil, fmt.Errorf("存档%s向量长度为 %d，期望 %d", label, entry.ValueCnt, badgeVectorLength)
 	}
 	for index, value := range values {

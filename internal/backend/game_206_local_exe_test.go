@@ -298,7 +298,8 @@ func TestGame206StandalonePatterns(t *testing.T) {
 	}{{"weapon focus guard", weaponMemoryGuardBytes, 0x415338C},
 		{"spatial gravity context", runtimeSpatialGravityContext, 0x39DAAA0},
 		{"spatial flight", runtimeSpatialFlightHookOriginal, 0xA63FD0},
-		{"jump gate context", runtimeSpatialJumpGateContext, 0x1FA17E3}} {
+		{"jump gate context", runtimeSpatialJumpGateContext, 0x1FA17E3},
+		{"jump check exact context", runtimeSpatialJumpCheckContextForLayout(runtimeGameLayouts[4]), 0x1FA1806}} {
 		matches := findRuntimePatchLocalPatternMatches(sections, exactRuntimePatchPattern(entry.data))
 		if len(matches) != 1 || matches[0].rva != entry.rva {
 			t.Errorf("%s matches=%s, want RVA 0x%X", entry.name, formatRuntimePatchLocalMatchLocations(matches), entry.rva)

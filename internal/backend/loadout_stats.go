@@ -493,6 +493,7 @@ func (a *App) loadoutStatContextFromLoaded(path, charaHex string, parsed *SaveGa
 		if err != nil {
 			return nil, err
 		}
+		context.PermanentGrowth.LegacyMastery = clearUnlearnedLegacyMastery(editableSave, charaHash, context.PermanentGrowth.LegacyMastery)
 	}
 	legacy := context.PermanentGrowth.LegacyMastery.Total
 	context.BaselineHP = context.BaseHP + context.PermanentGrowth.FateHP + context.PermanentGrowth.MasterHP + int(legacy.HP)
@@ -565,7 +566,7 @@ func (a *App) loadoutStatContextFromLoaded(path, charaHex string, parsed *SaveGa
 			context.BaselineCritRate = context.BaseCritRate + legacy.Total.CritRate
 		}
 	}
-	if context.OwnerCode != "" && !context.PermanentGrowth.LegacyMastery.Complete {
+	if context.OwnerCode != "" && !context.PermanentGrowth.LegacyMastery.Complete && context.PermanentGrowth.LegacyMastery.Evidence != "save-unlearned-enhancement-mask" {
 		appendWarning(&context.Warnings,
 			"角色强化四页进度 %d/%d 尚不能由存档标量还原逐节点选择；未把候选值伪装成最终值",
 			context.PermanentGrowth.LegacyMastery.SaveProgress,

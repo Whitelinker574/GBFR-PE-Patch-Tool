@@ -71,6 +71,16 @@ func runtimeSpatialJumpAddresses(moduleBase uintptr, layout runtimeGameLayout) (
 	return moduleBase + gateRVA, moduleBase + checkRVA, nil
 }
 
+func runtimeSpatialJumpCheckContextForLayout(layout runtimeGameLayout) []byte {
+	context := append([]byte(nil), runtimeSpatialJumpCheckContext...)
+	if layout.Version == "2.0.6" {
+		// 0x1FA1817 calls 0x21D5980 in the verified 2.0.6 executable.
+		// The 2.0.3/2.0.4 displacement is not byte-identical after relocation.
+		context[18] = 0x64
+	}
+	return context
+}
+
 func validateRuntimeSpatialJumpLease(lease runtimePatchPatchLease, owner string, process processInstanceID, moduleBase uintptr) error {
 	if lease.FeatureID != runtimeSpatialJumpFeatureID || len(lease.Sites) != 2 {
 		return errors.Join(fmt.Errorf("invalid continuous-jump recovery lease"), errLiveMemoryRollbackUnproven)
@@ -127,7 +137,7 @@ func prepareRuntimeSpatialJumpSites(memory runtimePatchMemory, moduleBase, modul
 	}
 	definitions := []definition{
 		{name: "状态前置判定", address: gate, contextBack: 7, context: runtimeSpatialJumpGateContext, original: runtimeSpatialJumpGateOriginal, patch: runtimeSpatialJumpGatePatch},
-		{name: "动作条件判定", address: check, contextBack: 22, context: runtimeSpatialJumpCheckContext, original: runtimeSpatialJumpCheckOriginal, patch: runtimeSpatialJumpCheckPatch},
+		{name: "动作条件判定", address: check, contextBack: 22, context: runtimeSpatialJumpCheckContextForLayout(layout), original: runtimeSpatialJumpCheckOriginal, patch: runtimeSpatialJumpCheckPatch},
 	}
 	sites := make([]runtimePatchPatchSiteLease, 0, len(definitions))
 	for _, definition := range definitions {

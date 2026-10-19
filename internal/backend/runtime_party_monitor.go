@@ -498,8 +498,15 @@ func readRuntimePatchPartyEntity(memory runtimePatchPartyMemory, address uintptr
 			return RuntimePatchPartyEntity{}, nodes, 0, loadoutFingerprint, fmt.Errorf("%s max SBA: %w", runtimePatchPartyRoleName(role), readErr)
 		}
 		result.DodgeCount = &dodge
-		result.SBA = &sba
-		result.MaxSBA = &maxSBA
+		// A stable town player can have no combat gauge initialised (0/0).
+		// Keep that optional value unavailable instead of rejecting its valid
+		// position/loadout as well. Nonzero invalid gauges still fail validation.
+		if sba == 0 && maxSBA == 0 {
+			result.Capabilities.SBA = false
+		} else {
+			result.SBA = &sba
+			result.MaxSBA = &maxSBA
+		}
 	}
 	if supportsDirectPosition {
 		direct, readErr := readRuntimePatchVector3(memory, address, runtimePatchPartyCompanionDirectXOffset, runtimePatchPartyCompanionDirectYOffset, runtimePatchPartyCompanionDirectZOffset)

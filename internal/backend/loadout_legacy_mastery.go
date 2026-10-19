@@ -206,6 +206,23 @@ func deriveLegacyMasteryGrowth(ownerCode string, saveProgress int, weapons []leg
 	return result, nil
 }
 
+// A reset leaves 1321 intact: it is not an acquisition/spending counter.
+// Never let that legacy scalar fallback restore full bonuses after every
+// active acquisition bit has been removed. Partial-tree estimation is separate.
+func clearUnlearnedLegacyMastery(save *SaveData, hash uint32, growth LoadoutLegacyMasteryGrowth) LoadoutLegacyMasteryGrowth {
+	entries, err := characterEnhancementEntries(save, hash)
+	if err != nil {
+		return growth
+	}
+	for _, entry := range entries {
+		if byte(entry.Uint32()) != 0 {
+			return growth
+		}
+	}
+	return LoadoutLegacyMasteryGrowth{OwnerCode: growth.OwnerCode, SaveProgress: growth.SaveProgress,
+		RequiredProgress: growth.RequiredProgress, Evidence: "save-unlearned-enhancement-mask"}
+}
+
 func legacyMasteryWeaponStates(inventory *ProgressionInventory, ownerCode string) []legacyMasteryWeaponState {
 	if inventory == nil {
 		return nil

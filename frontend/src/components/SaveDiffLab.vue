@@ -4,6 +4,7 @@ import { ApplySaveDiffTransfers, CloseSaveDiff, ExportFateEpisodeEvidence, Expor
 import { characterNamePairByPLID } from '../characterRoster.js'
 import { language } from '../i18n.js'
 import { fateFieldNeedsWrite } from '../fateWorkflow.js'
+import CharacterEnhancementReset from './CharacterEnhancementReset.vue'
 
 const emit = defineEmits(['status'])
 const leftPath = ref('')
@@ -514,8 +515,11 @@ onBeforeUnmount(() => { void CloseSaveDiff().catch(() => {}) })
     <nav class="lab-modes ui-seg" :aria-label="tx('存档实验室功能', 'Save Laboratory Modes')">
       <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'diff' }" @click="mode = 'diff'">{{ tx('比较两份存档', 'Compare Two Saves') }}</button>
       <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'fate' }" @click="mode = 'fate'">{{ tx('命运篇章写入', 'Fate Episode Write') }}</button>
+      <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'enhancement' }" @click="mode = 'enhancement'">{{ tx('角色强化重置', 'Reset Enhancement') }}</button>
       <button type="button" class="ui-seg-btn" :class="{ 'is-on': mode === 'infinity' }" @click="openInfinityRules">{{ tx('查看无尽规则', 'Browse Endless Rules') }}</button>
     </nav>
+
+    <CharacterEnhancementReset v-if="mode === 'enhancement'" @status="(...args) => emit('status', ...args)" />
 
     <div v-if="mode === 'diff'" class="lab-boundary ui-notice is-info">
       <strong>{{ tx('存档差异与定向复制', 'Save Differences and Targeted Copying') }}</strong>

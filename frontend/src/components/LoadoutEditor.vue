@@ -1733,6 +1733,7 @@ async function apply() {
             <div class="legacy-mastery-audit-head">
               <b>角色强化四页</b>
               <small v-if="statContext.permanentGrowth?.legacyMastery?.runtimeObserved">2.0.2 运行时聚合 · 连续 {{ statContext.permanentGrowth?.legacyMastery?.stableReads }} 次稳定读取</small>
+              <small v-else-if="statContext.permanentGrowth?.legacyMastery?.evidence === 'save-unlearned-enhancement-mask'">强化节点均未学习 · 固定加成为 0</small>
               <small v-else-if="statContext.permanentGrowth?.legacyMastery?.complete">2.0.2 解包表 + 存档完成进度</small>
               <small v-else>进度无法逐节点还原 · 不假算</small>
             </div>
