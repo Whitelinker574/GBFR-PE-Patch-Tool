@@ -3606,6 +3606,11 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			if err != nil {
 				return MonsterEnhanceResult{}, err
 			}
+		} else if point != nil && point.ID == "monster_hp" && strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) {
+			auxiliary, err = a.prepareSharedMonster206(false)
+			if err != nil {
+				return MonsterEnhanceResult{}, err
+			}
 		}
 		if point != nil && point.ID == "sba_chain_timer" {
 			if err := a.setSBAChainTimer(point, hpMultiplier); err != nil {
@@ -3634,7 +3639,7 @@ func (a *App) monsterEnhanceSetPatchValueEnabledLocked(ownerToken, id string, en
 			}
 			return MonsterEnhanceResult{}, fmt.Errorf("注入怪物增强 DLL 失败: %w", err)
 		}
-		status, err := a.waitMonsterEnhanceApplied(pointID, dllPath)
+		status, err := a.waitMonsterEnhanceAppliedWithAux(pointID, dllPath, auxiliary)
 		if err != nil {
 			a.poisonCurrentLiveMemoryWrites()
 			rollbackErr := a.rollbackMonsterEnhanceFailedEnableWithAux(ownerToken, point, original, auxiliary)
@@ -3691,14 +3696,26 @@ func (a *App) MonsterEnhanceInject() (MonsterEnhanceResult, error) {
 	return a.MonsterEnhanceSetEnabled(true)
 }
 
-func (a *App) waitMonsterEnhanceApplied(id string, dllPath string) (MonsterEnhanceResult, error) {
+func (a *App) waitMonsterEnhanceAppliedWithAux(id string, dllPath string, auxiliary *monsterEnhanceAuxPreflight) (MonsterEnhanceResult, error) {
 	var last MonsterEnhanceResult
 	var err error
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		last, err = a.readMonsterEnhanceStatus(dllPath)
 		if err == nil && monsterStatusHasPatch(last, id) {
-			return last, nil
+			// DllMain starts an asynchronous worker. The main entry may already
+			// be patched while its auxiliary caves are still being allocated.
+			// Do not claim/restore a half-installed multi-entry feature.
+			if auxiliary != nil {
+				for _, site := range append([]monsterEnhanceAuxPreflight{*auxiliary}, auxiliary.Additional...) {
+					if _, err = a.captureMonsterAuxiliary(site, true); err != nil {
+						break
+					}
+				}
+			}
+			if err == nil {
+				return last, nil
+			}
 		}
 		if time.Now().After(deadline) {
 			if err != nil {

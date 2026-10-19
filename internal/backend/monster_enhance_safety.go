@@ -418,12 +418,25 @@ func (a *App) adoptMonsterEnhanceMarkedHook(ownerToken string, point *monsterPat
 			return err
 		}
 		for _, extra := range preflight.Additional {
-			captured, err := a.captureMonsterAuxiliary(extra, true)
+			// Older releases did not install the shared dual-boss entry. An
+			// already-original auxiliary must not prevent restoring their hooks.
+			captured, err := a.captureMonsterAuxiliary(extra, false)
 			if err != nil {
 				return err
 			}
 			record.ExtraAux = append(record.ExtraAux, captured)
 		}
+	}
+	if point.ID == "monster_hp" && strings.EqualFold(a.runtimePatchVerifiedDigest, game206ExecutableSHA256) {
+		preflight, err := a.prepareSharedMonster206(false)
+		if err != nil {
+			return err
+		}
+		captured, err := a.captureMonsterAuxiliary(*preflight, false)
+		if err != nil {
+			return err
+		}
+		record.ExtraAux = append(record.ExtraAux, captured)
 	}
 	a.monsterEnhanceOwned[point.ID] = record
 	return nil

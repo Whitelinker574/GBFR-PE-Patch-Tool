@@ -590,6 +590,7 @@ static lm_address_t MonsterPatchRva206(const char* id)
 
 static lm_size_t MonsterPatchCaveSize(const char* id)
 {
+    if (strcmp(id, "monster_hp_shared_206") == 0 || strcmp(id, "od_shared_206") == 0) return 128;
     if (strcmp(id, "monster_damage_new") == 0) return 512;
     if (strcmp(id, "monster_damage") == 0) return 192;
     if (strcmp(id, "overdrive_state") == 0) return 128;
@@ -1392,6 +1393,73 @@ static bool PatchOdRateHookInline(lm_address_t target, const lm_byte_t* epilogue
     return true;
 }
 
+#include "monster_shared_206_templates.h"
+
+static bool PatchSharedMonster206(const lm_module_t& module, bool od, bool install, wchar_t* message, size_t messageSize)
+{
+    const lm_address_t rva = od ? 0x3AB6460 : 0x3AB7920;
+    const auto original = od ? kMonsterOdShared206Original : kMonsterHpShared206Original;
+    const size_t originalSize = od ? sizeof(kMonsterOdShared206Original) : sizeof(kMonsterHpShared206Original);
+    const lm_byte_t odPrefix[] = {0x80,0x78,0x50,0x00,0x74,0x13};
+    const lm_byte_t odTail[] = {0x48,0x83,0xC4,0x20,0x5B,0x5F,0x5E,0xC3};
+    const auto tail = od ? odTail : kMonsterHpShared206Tail;
+    const size_t tailSize = od ? sizeof(odTail) : sizeof(kMonsterHpShared206Tail);
+    if (rva + originalSize + tailSize > module.size) return false;
+    const lm_address_t target = module.base + rva;
+    lm_byte_t current[32]{}, actualTail[32]{}, prefix[6]{};
+    if (LM_ReadMemory(target,current,originalSize)!=originalSize ||
+        LM_ReadMemory(target+originalSize,actualTail,tailSize)!=tailSize || !BytesEqual(actualTail,tail,tailSize) ||
+        (od && (LM_ReadMemory(target-6,prefix,6)!=6 || !BytesEqual(prefix,odPrefix,6))))
+    { swprintf_s(message,messageSize,L"dual-boss entry context mismatch"); return false; }
+    if (current[0]==0xE9)
+    {
+        if (IsMarkedMonsterHook(target,od?"od_shared_206":"monster_hp_shared_206")) return true;
+        swprintf_s(message,messageSize,L"dual-boss entry belongs to another tool"); return false;
+    }
+    if (!BytesEqual(current,original,originalSize))
+    { swprintf_s(message,messageSize,L"dual-boss original bytes mismatch"); return false; }
+    if (!install) return true;
+
+    const auto codeTemplate = od ? kMonsterOdShared206Code : kMonsterHpShared206Code;
+    const size_t codeSize = od ? sizeof(kMonsterOdShared206Code) : sizeof(kMonsterHpShared206Code);
+    lm_address_t cave = AllocNear(target,128);
+    if(cave==LM_ADDRESS_BAD) { swprintf_s(message,messageSize,L"dual-boss cave allocation failed"); return false; }
+    lm_byte_t code[128]{};
+    memcpy(code,codeTemplate,codeSize);
+    const double scale = static_cast<double>(ReadScale());
+    memcpy(code+codeSize,&scale,sizeof(scale));
+    size_t scaleDisp = 0;
+    for(size_t i=0;i+8<=codeSize;++i) {
+        if(code[i]==0xF2 && code[i+1]==0x0F && code[i+2]==0x59 && code[i+3]==0x05) {scaleDisp=i+4;break;}
+    }
+    const int64_t backDelta=static_cast<int64_t>(target+originalSize)-static_cast<int64_t>(cave+codeSize);
+    const int64_t hookDelta=static_cast<int64_t>(cave)-static_cast<int64_t>(target+5);
+    if(scaleDisp==0 || codeSize+sizeof(scale)>128-sizeof(kMonsterCaveMarker) ||
+        backDelta<INT32_MIN || backDelta>INT32_MAX || hookDelta<INT32_MIN || hookDelta>INT32_MAX)
+    { VirtualFree(reinterpret_cast<LPVOID>(cave),0,MEM_RELEASE); return false; }
+    const int32_t scaleRelative=static_cast<int32_t>(codeSize-(scaleDisp+4));
+    const int32_t backRelative=static_cast<int32_t>(backDelta);
+    memcpy(code+scaleDisp,&scaleRelative,4);
+    memcpy(code+codeSize-4,&backRelative,4);
+    if(LM_WriteMemory(cave,code,codeSize+sizeof(scale))!=codeSize+sizeof(scale) || !StampMonsterCave(cave,128,message,messageSize))
+    { VirtualFree(reinterpret_cast<LPVOID>(cave),0,MEM_RELEASE); return false; }
+    lm_byte_t jump[32]{};
+    memset(jump,0x90,originalSize); jump[0]=0xE9;
+    const int32_t hookRelative=static_cast<int32_t>(hookDelta);
+    memcpy(jump+1,&hookRelative,4);
+    if(!PatchBytes(target,jump,originalSize)) {
+        lm_byte_t actual[32]{};
+        bool restored=LM_ReadMemory(target,actual,originalSize)==originalSize && BytesEqual(actual,original,originalSize);
+        if(!restored && BytesEqual(actual,jump,originalSize)) {
+            PatchBytes(target,original,originalSize);
+            restored=LM_ReadMemory(target,actual,originalSize)==originalSize && BytesEqual(actual,original,originalSize);
+        }
+        if(restored) VirtualFree(reinterpret_cast<LPVOID>(cave),0,MEM_RELEASE);
+        swprintf_s(message,messageSize,L"dual-boss patch write failed"); return false;
+    }
+    return true;
+}
+
 static bool PatchAllOdInlineHooks(const lm_module_t& module, lm_address_t mainRva, wchar_t* message, size_t messageSize)
 {
  static const lm_byte_t beelTail[] = {0x48,0x83,0xC4,0x20,0x5B,0x5F,0x5E,0xC3};
@@ -1404,6 +1472,7 @@ static bool PatchAllOdInlineHooks(const lm_module_t& module, lm_address_t mainRv
  if(beelRva==LM_ADDRESS_BAD) { swprintf_s(message,messageSize,L"OD layout is not recognised"); return false; }
  const lm_address_t rvas[] = {beelRva,0x2AAC2F2};
  const size_t count = mainRva==0x22C75F0 ? 2 : 1;
+ if(mainRva==0x22C75F0 && !PatchSharedMonster206(module,true,false,message,messageSize)) return false;
  bool installed[2]{};
  // Validate every entry and its complete stack epilogue before writing any.
  for(size_t n=0;n<count;++n) {
@@ -1431,7 +1500,7 @@ static bool PatchAllOdInlineHooks(const lm_module_t& module, lm_address_t mainRv
   if(installed[n]) continue;
   if(!PatchOdRateHookInline(module.base+rvas[n],n==0?beelTail:generalTail,n==0?sizeof(beelTail):sizeof(generalTail),message,messageSize)) return false;
  }
- return true;
+ return mainRva!=0x22C75F0 || PatchSharedMonster206(module,true,true,message,messageSize);
 }
 
 static bool PatchOdRateHook(lm_address_t target, wchar_t* message, size_t messageSize)
@@ -5007,6 +5076,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
         {
             if (!IsMarkedMonsterHook(target,point.id)) { swprintf_s(message,messageSize,L"existing hook is not owned"); return false; }
             if (strcmp(point.id,"od_rate")==0 && !PatchAllOdInlineHooks(module,resolvedRva,message,messageSize)) return false;
+            if (strcmp(point.id,"monster_hp")==0 && resolvedRva==0x1F75EC0 && !PatchSharedMonster206(module,false,true,message,messageSize)) return false;
             ++already;
             continue;
         }
@@ -5024,6 +5094,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
 
         if (point.hook)
         {
+            if (strcmp(point.id,"monster_hp")==0 && resolvedRva==0x1F75EC0 && !PatchSharedMonster206(module,false,false,message,messageSize)) return false;
             if (strcmp(point.id, "monster_stun") == 0)
             {
                 if (!PatchStunHook(target, message, messageSize)) return false;
@@ -5050,6 +5121,7 @@ static bool ApplyMonsterPatches(wchar_t* message, size_t messageSize)
                 if (!PatchInventorySetQuantityHook(target, message, messageSize)) return false;
             }
             else if (!PatchDamageHook(target, message, messageSize)) return false;
+            if (strcmp(point.id,"monster_hp")==0 && resolvedRva==0x1F75EC0 && !PatchSharedMonster206(module,false,true,message,messageSize)) return false;
         }
         else if (!PatchBytes(target, point.patch, point.size))
         {

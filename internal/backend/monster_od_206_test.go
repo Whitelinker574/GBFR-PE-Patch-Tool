@@ -9,7 +9,7 @@ import (
 )
 
 func TestMonsterOdMultipleAuxiliaryRestoreAndPartialRollback(t *testing.T) {
-	for _, mask := range []int{7, 3, 6} {
+	for _, mask := range []int{15, 7, 11, 13, 14, 5, 10} {
 		t.Run(fmt.Sprint(mask), func(t *testing.T) {
 			h := windows.CurrentProcess()
 			page, err := virtualAllocRemote(h, 0x4000, windows.PAGE_EXECUTE_READWRITE)
@@ -19,11 +19,11 @@ func TestMonsterOdMultipleAuxiliaryRestoreAndPartialRollback(t *testing.T) {
 			defer virtualFreeRemote(h, page)
 			point := findMonsterPatchPoint("od_rate")
 			app := &App{hProcess: h, moduleBase: page - point.RVA}
-			original := [][]byte{point.Original, odRateInlineOriginal, odRateInlineOriginal}
-			targets := []uintptr{page, page + 0x100, page + 0x200}
-			caves := []uintptr{page + 0x800, page + 0x1000, page + 0x1800}
-			sizes := []uintptr{96, 128, 128}
-			patches := make([][]byte, 3)
+			original := [][]byte{point.Original, odRateInlineOriginal, odRateInlineOriginal, monsterODShared206Original}
+			targets := []uintptr{page, page + 0x100, page + 0x200, page + 0x300}
+			caves := []uintptr{page + 0x800, page + 0x1000, page + 0x1800, page + 0x2000}
+			sizes := []uintptr{96, 128, 128, 128}
+			patches := make([][]byte, 4)
 			for i := range targets {
 				patches[i], err = makeRelJump(targets[i], caves[i], len(original[i]))
 				if err != nil {
@@ -41,8 +41,8 @@ func TestMonsterOdMultipleAuxiliaryRestoreAndPartialRollback(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			aux := &monsterEnhanceAuxPreflight{Target: targets[1], Original: original[1], CaveSize: 128, Additional: []monsterEnhanceAuxPreflight{{Target: targets[2], Original: original[2], CaveSize: 128}}}
-			if mask == 7 {
+			aux := &monsterEnhanceAuxPreflight{Target: targets[1], Original: original[1], CaveSize: 128, Additional: []monsterEnhanceAuxPreflight{{Target: targets[2], Original: original[2], CaveSize: 128}, {Target: targets[3], Original: original[3], CaveSize: 128}}}
+			if mask == 15 {
 				if err := app.claimMonsterEnhancePatchWithAux("test", point, original[0], aux); err != nil {
 					t.Fatal(err)
 				}
