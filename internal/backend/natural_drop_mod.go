@@ -118,6 +118,7 @@ type NaturalDropWorkspace struct {
 	Installed              bool                           `json:"installed"`
 	Owned                  bool                           `json:"owned"`
 	BackupReady            bool                           `json:"backupReady"`
+	MigrationReady         bool                           `json:"migrationReady"`
 	IndexValid             bool                           `json:"indexValid"`
 	IndexSummary           string                         `json:"indexSummary"`
 	Tables                 []NaturalDropTableStatus       `json:"tables"`
@@ -164,6 +165,7 @@ type NaturalDropRestoreRequest struct {
 
 type NaturalDropDeployResult struct {
 	ModDir               string   `json:"modDir"`
+	MigrationArchive     string   `json:"migrationArchive,omitempty"`
 	GeneratedFiles       []string `json:"generatedFiles"`
 	SelectedSummons      int      `json:"selectedSummons"`
 	SelectedSigils       int      `json:"selectedSigils"`
@@ -766,9 +768,8 @@ func naturalDropReadManifest(gameDir string) (*naturalDropManifest, []byte, erro
 		return nil, data, errors.New("天然掉落清单不属于当前版本的本工具")
 	}
 	for relative := range manifest.GeneratedFiles {
-		clean := filepath.Clean(filepath.FromSlash(relative))
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return nil, data, fmt.Errorf("天然掉落清单包含越界路径: %q", relative)
+		if err := naturalDropValidatePreparedRelative(relative); err != nil {
+			return nil, data, err
 		}
 	}
 	return &manifest, data, nil
@@ -987,6 +988,12 @@ func (a *App) GetNaturalDropWorkspace(sourceDir, gameExePath string) (*NaturalDr
 	if owned {
 		currentDigest := fileSHA256(indexData)
 		workspace.Installed = strings.EqualFold(currentDigest, manifest.DeployedIndexSHA) && naturalDropGeneratedFilesMatch(gameDir, manifest)
+		version, digest, identityErr := naturalDropGameIdentity(validated)
+		if identityErr == nil {
+			_, _, migrating, verifyErr := naturalDropResolveOwnedBaseline(gameDir, manifest, indexData,
+				naturalDropGameIdentityRecord{Version: version, SHA256: digest})
+			workspace.MigrationReady = migrating && verifyErr == nil
+		}
 	} else if _, err := os.Stat(backupPath); err == nil {
 		workspace.BackupReady = true
 	}
@@ -1992,6 +1999,15 @@ func naturalDropVerifyOwnedCurrent(gameDir string, manifest *naturalDropManifest
 	if !strings.EqualFold(currentSHA, manifest.DeployedIndexSHA) && !strings.EqualFold(currentSHA, manifest.OriginalIndexSHA) {
 		return nil, fmt.Errorf("当前 data.i 与清单中的原始和部署后索引均不匹配；可能是游戏更新或其他程序改动，拒绝覆盖。请保留文件并反馈校验信息（当前 SHA-256: %s；原始: %s；部署后: %s）", currentSHA, manifest.OriginalIndexSHA, manifest.DeployedIndexSHA)
 	}
+	return naturalDropVerifyOwnedFiles(gameDir, manifest)
+}
+
+func naturalDropVerifyOwnedFiles(gameDir string, manifest *naturalDropManifest) ([]byte, error) {
+	for relative := range manifest.GeneratedFiles {
+		if err := naturalDropValidatePreparedRelative(relative); err != nil {
+			return nil, err
+		}
+	}
 	if !naturalDropGeneratedFilesMatch(gameDir, manifest) {
 		return nil, errors.New("本工具部署的掉落表缺失或已被其他程序改动；拒绝覆盖未知内容")
 	}
@@ -2124,9 +2140,13 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		return nil, fmt.Errorf("发现无法验证的天然掉落清单: %w", manifestErr)
 	}
 	var baseIndex []byte
+	var oldBackup []byte
+	var migrating bool
+	var migrationArchive string
 	backupCreated := !owned
 	if owned {
-		baseIndex, err = naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex)
+		baseIndex, oldBackup, migrating, err = naturalDropResolveOwnedBaseline(gameDir, manifest, currentIndex,
+			naturalDropGameIdentityRecord{Version: gameVersion, SHA256: gameExecutableSHA})
 		if err != nil {
 			return nil, err
 		}
@@ -2164,6 +2184,12 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		if err != nil {
 			return nil, fmt.Errorf("读取目标表 %s 的原始内容失败，部署已取消: %w", relative, err)
 		}
+		if owned && oldFiles[relative] != nil {
+			expected, recorded := manifest.GeneratedFiles[relative]
+			if !recorded || !strings.EqualFold(fileSHA256(oldFiles[relative]), expected) {
+				return nil, fmt.Errorf("目标表 %s 不属于已验证的旧部署，拒绝覆盖其他模组", relative)
+			}
+		}
 		afterFiles[relative] = data
 		generated[relative] = fileSHA256(data)
 	}
@@ -2183,6 +2209,13 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		}
 	}
 	sort.Strings(staleGenerated)
+	if owned {
+		for relative, expected := range manifest.GeneratedFiles {
+			if !strings.EqualFold(fileSHA256(oldFiles[relative]), expected) {
+				return nil, fmt.Errorf("旧部署表 %s 在读取期间发生变化，部署已取消", relative)
+			}
+		}
+	}
 	selectionCopy := append([]NaturalDropSelection(nil), request.Selections...)
 	sort.Slice(selectionCopy, func(i, j int) bool { return selectionCopy[i].TypeHash < selectionCopy[j].TypeHash })
 	itemCopy := append([]NaturalDropItemSelection(nil), request.Items...)
@@ -2211,6 +2244,12 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 		return nil, err
 	}
 	manifestData = append(manifestData, '\n')
+	if migrating {
+		migrationArchive, err = naturalDropArchiveLegacyInstall(gameDir, currentIndex, oldBackup, oldManifest, oldFiles)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := naturalDropBeginPreparedTransaction(
 		gameDir,
 		currentIndex,
@@ -2229,6 +2268,14 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 			return errors.Join(cause, fmt.Errorf("自动回滚未完全成功: %w", rollbackErr))
 		}
 		return cause
+	}
+	if migrating {
+		if err := naturalDropAddPreparedBackupTransition(gameDir, oldBackup, baseIndex); err != nil {
+			return nil, rollback(fmt.Errorf("记录跨版本备份迁移失败: %w", err))
+		}
+		if err := naturalDropWriteAtomic(backupPath, baseIndex); err != nil {
+			return nil, rollback(fmt.Errorf("更新当前游戏版本的原始备份失败: %w", err))
+		}
 	}
 	if backupCreated {
 		if err := naturalDropCreateBackup(backupPath, baseIndex); err != nil {
@@ -2262,6 +2309,7 @@ func (a *App) DeployNaturalDropMod(request NaturalDropDeployRequest) (*NaturalDr
 	sort.Strings(fileList)
 	return &NaturalDropDeployResult{
 		ModDir:               gameDir,
+		MigrationArchive:     migrationArchive,
 		GeneratedFiles:       fileList,
 		SelectedSummons:      len(selectionCopy),
 		SelectedSigils:       len(request.Sigils),
@@ -2279,6 +2327,10 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 		return err
 	}
 	gameExePath, err := validateNaturalDropGameExecutable(request.GameExePath)
+	if err != nil {
+		return err
+	}
+	gameVersion, gameExecutableSHA, err := naturalDropGameIdentity(gameExePath)
 	if err != nil {
 		return err
 	}
@@ -2302,7 +2354,8 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 	if err != nil {
 		return err
 	}
-	backup, err := naturalDropVerifyOwnedCurrent(gameDir, manifest, currentIndex)
+	backup, oldBackup, migrating, err := naturalDropResolveOwnedBaseline(gameDir, manifest, currentIndex,
+		naturalDropGameIdentityRecord{Version: gameVersion, SHA256: gameExecutableSHA})
 	if err != nil {
 		return err
 	}
@@ -2323,6 +2376,11 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 		relatives = append(relatives, relative)
 	}
 	sort.Strings(relatives)
+	if migrating {
+		if _, err := naturalDropArchiveLegacyInstall(gameDir, currentIndex, oldBackup, manifestData, beforeFiles); err != nil {
+			return err
+		}
+	}
 	if err := naturalDropBeginPreparedTransaction(
 		gameDir,
 		currentIndex,
@@ -2332,11 +2390,11 @@ func (a *App) RestoreNaturalDropDefaults(request NaturalDropRestoreRequest) erro
 		afterFiles,
 		false,
 		nil,
-		naturalDropGameIdentityRecord{Version: manifest.GameVersion, SHA256: manifest.GameExecutableSHA},
+		naturalDropGameIdentityRecord{Version: gameVersion, SHA256: gameExecutableSHA},
 	); err != nil {
 		return fmt.Errorf("创建天然掉落恢复事务失败: %w", err)
 	}
-	if err := naturalDropAddPreparedBackupTransition(gameDir, backup, nil); err != nil {
+	if err := naturalDropAddPreparedBackupTransition(gameDir, oldBackup, nil); err != nil {
 		_ = naturalDropRecoverPreparedTransaction(gameDir)
 		return fmt.Errorf("记录天然掉落恢复备份失败: %w", err)
 	}

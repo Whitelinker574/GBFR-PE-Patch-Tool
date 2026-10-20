@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('./components/NaturalDropLab.vue', import.meta.url), 'utf8')
 
+test('cross-version recovery explains preservation instead of restoring an old game index', () => {
+  assert.match(source, /workspace\.migrationReady/)
+  assert.match(source, /result\.migrationArchive/)
+  assert.match(source, /不会写回旧版索引/)
+  assert.match(source, /data\.i\.gbfr-codex-natural-drop\.history/)
+})
+
 test('natural drop workspace exposes Transmarvel sigils as a first-class configurable pool', () => {
   assert.match(source, /const sigilSelections = reactive\(\{\}\)/)
   assert.match(source, /workspace\.value\?\.sigils/)

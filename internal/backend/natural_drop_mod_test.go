@@ -1059,7 +1059,7 @@ func TestNaturalDropDeployAndRestoreLocalGameCopy(t *testing.T) {
 		}},
 		WrightstoneOnly: true,
 	}
-	app := &App{}
+	app := &App{configPathOverride: filepath.Join(t.TempDir(), "config.json")}
 	result, err := app.DeployNaturalDropMod(request)
 	if err != nil {
 		t.Fatal(err)
