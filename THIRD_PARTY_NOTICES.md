@@ -19,7 +19,7 @@ This repository was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://
 | `github.com/leaanthony/go-ansi-parser` | v1.6.1 | MIT |
 | `github.com/leaanthony/slicer` | v1.6.0 | MIT |
 | `github.com/leaanthony/u` | v1.1.1 | MIT |
-| `github.com/mattn/go-isatty` | v0.0.20 | MIT |
+| `github.com/mattn/go-isatty` | v0.0.22 | MIT |
 | `github.com/ncruces/go-strftime` | v0.1.9 | MIT |
 | `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
 | `github.com/remyoudompheng/bigfft` | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
@@ -27,10 +27,10 @@ This repository was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://
 | `github.com/vmihailenco/msgpack/v5` | v5.4.1 | BSD-2-Clause |
 | `github.com/vmihailenco/tagparser/v2` | v2.0.0 | BSD-2-Clause |
 | `github.com/wailsapp/go-webview2` | v1.0.22 | MIT |
-| `github.com/wailsapp/wails/v2` | v2.13.0 | MIT |
+| `github.com/wailsapp/wails/v2` | v2.17.1 | MIT |
 | `github.com/x448/float16` | v0.8.4 | MIT |
 | `golang.org/x/exp` | v0.0.0-20250620022241-b7579e27df2b | BSD-3-Clause |
-| `golang.org/x/sys` | v0.44.0 | BSD-3-Clause |
+| `golang.org/x/sys` | v0.48.0 | BSD-3-Clause |
 | `modernc.org/libc` | v1.66.10 | BSD-3-Clause |
 | `modernc.org/mathutil` | v1.7.1 | BSD-3-Clause |
 | `modernc.org/memory` | v1.11.0 | BSD-3-Clause |

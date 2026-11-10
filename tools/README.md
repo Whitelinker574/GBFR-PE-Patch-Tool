@@ -32,3 +32,17 @@ and only to those verified bytes; staged, untracked and other source changes
 still stop packaging. The ZIP records the source commit and embedded DLL hash.
 
 For the runtime stress check, start the application or a Chromium page with CDP on port `9223`, then run `npm run check:runtime-stress` in `frontend/`. `--window-size 960x640` fixes the packaged-window profile, `--hidden-seconds 60` runs the release-length idle gate, and `--detector-active` keeps the persistent role-loadout detector active only for a packaged Wails target while restoring its previous state afterward. To test the Vite shell instead, pass `--url http://127.0.0.1:4174/`; that mode installs a read-only Wails API stub and is reported separately in the JSON result.
+
+## Wails toolchain
+
+Use Go 1.26 or newer and Wails CLI v2.17.1, matching `go.mod` and both workflows:
+
+```powershell
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+wails version
+wails dev
+```
+
+Wails v2.17.1 includes the v2.17.0 development IPC origin, Host and capability-cookie protections. Keep the CLI and Go module synchronized. Before upgrading, avoid browsing untrusted websites while the development server is running.
+
+CI builds the Windows application after generating bindings and building the frontend, and runs the existing save read/write and transaction tests. Before releasing, additionally start `wails dev` on Windows and use disposable save copies to verify load, edit, export and reload, then smoke-test the packaged EXE. These interactive checks are not covered by compilation alone.
