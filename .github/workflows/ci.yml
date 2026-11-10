@@ -47,11 +47,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force frontend/dist | Out-Null
           Set-Content frontend/dist/.embed-placeholder 'Wails embed placeholder'
-          go run github.com/wailsapp/wails/v2/cmd/wails@v2.13.0 generate module
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.1 generate module
 
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Build Windows application
+        run: go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.1 build -platform windows/amd64 -s
 
       - name: Enforce frontend performance budgets
         working-directory: frontend

@@ -90,7 +90,7 @@ jobs:
         if: steps.metadata.outputs.publish == 'true'
         shell: pwsh
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
           if ($LASTEXITCODE -ne 0) { throw 'Wails installation failed.' }
           "$(go env GOPATH)/bin" >> $env:GITHUB_PATH
 
