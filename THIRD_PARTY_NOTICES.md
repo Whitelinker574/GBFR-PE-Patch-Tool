@@ -14,12 +14,13 @@ This repository was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
 | `github.com/dustin/go-humanize` | v1.0.1 | MIT |
 | `github.com/fxamacker/cbor/v2` | v2.9.0 | MIT |
+| `github.com/gabriel-vasile/mimetype` | v1.4.16 | MIT |
 | `github.com/google/flatbuffers` | v25.12.19 | Apache-2.0 |
 | `github.com/klauspost/compress` | v1.18.4 | BSD-3-Clause |
 | `github.com/leaanthony/go-ansi-parser` | v1.6.1 | MIT |
 | `github.com/leaanthony/slicer` | v1.6.0 | MIT |
 | `github.com/leaanthony/u` | v1.1.1 | MIT |
-| `github.com/mattn/go-isatty` | v0.0.20 | MIT |
+| `github.com/mattn/go-isatty` | v0.0.22 | MIT |
 | `github.com/ncruces/go-strftime` | v0.1.9 | MIT |
 | `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
 | `github.com/remyoudompheng/bigfft` | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
@@ -27,10 +28,11 @@ This repository was originally forked from [BitterG/GBFR-PE-Patch-Tool](https://
 | `github.com/vmihailenco/msgpack/v5` | v5.4.1 | BSD-2-Clause |
 | `github.com/vmihailenco/tagparser/v2` | v2.0.0 | BSD-2-Clause |
 | `github.com/wailsapp/go-webview2` | v1.0.22 | MIT |
-| `github.com/wailsapp/wails/v2` | v2.13.0 | MIT |
+| `github.com/wailsapp/wails/v2` | v2.17.1 | MIT |
 | `github.com/x448/float16` | v0.8.4 | MIT |
 | `golang.org/x/exp` | v0.0.0-20250620022241-b7579e27df2b | BSD-3-Clause |
-| `golang.org/x/sys` | v0.44.0 | BSD-3-Clause |
+| `golang.org/x/net` | v0.60.0 | BSD-3-Clause |
+| `golang.org/x/sys` | v0.48.0 | BSD-3-Clause |
 | `modernc.org/libc` | v1.66.10 | BSD-3-Clause |
 | `modernc.org/mathutil` | v1.7.1 | BSD-3-Clause |
 | `modernc.org/memory` | v1.11.0 | BSD-3-Clause |
@@ -48,25 +50,82 @@ The table is derived from `go list -deps ./...`; build-only and test-only module
 | `yargs`, `string-width`, `strip-ansi`, `wrap-ansi`, `emoji-regex`, `ansi-regex`, `is-fullwidth-code-point` | 15.4.1, 4.2.3, 6.0.1, 6.2.0, 8.0.0, 5.0.1, 3.0.0 | MIT |
 | `decamelize`, `find-up`, `locate-path`, `path-exists`, `p-locate`, `p-limit`, `camelcase`, `require-directory` | 1.2.0, 4.1.0, 5.0.0, 4.0.0, 4.1.0, 2.3.0, 5.3.1, 2.1.1 | MIT |
 | `cliui`, `get-caller-file`, `require-main-filename`, `set-blocking`, `which-module`, `y18n`, `yargs-parser` | 6.0.0, 2.0.5, 2.0.0, 2.0.0, 2.0.1, 4.0.3, 18.1.3 | ISC |
-| `vue`, `@vue/compiler-core`, `@vue/compiler-dom`, `@vue/compiler-sfc`, `@vue/compiler-ssr`, `@vue/reactivity`, `@vue/runtime-core`, `@vue/runtime-dom`, `@vue/server-renderer`, `@vue/shared` | 3.5.40 | MIT |
-| `@babel/helper-string-parser`, `@babel/helper-validator-identifier`, `@babel/parser`, `@babel/types` | 7.29.7 | MIT |
-| `@jridgewell/sourcemap-codec` | 1.5.5 | MIT |
-| `csstype` | 3.2.3 | MIT |
+| `vue`, `@vue/compiler-core`, `@vue/compiler-dom`, `@vue/compiler-sfc`, `@vue/compiler-ssr`, `@vue/reactivity`, `@vue/runtime-core`, `@vue/runtime-dom`, `@vue/server-renderer`, `@vue/shared` | 3.5.45 | MIT |
+| `@babel/helper-string-parser`, `@babel/helper-validator-identifier`, `@babel/parser`, `@babel/types` | 7.29.14, 7.29.7, 7.29.14, 7.29.14 | MIT |
+| `@jridgewell/sourcemap-codec` | 1.6.0 | MIT |
+| `csstype` | 3.2.4 | MIT |
 | `entities` | 7.0.1 | BSD-2-Clause |
 | `estree-walker` | 2.0.2 | MIT |
 | `magic-string` | 0.30.21 | MIT |
-| `nanoid` | 3.3.16 | MIT |
+| `nanoid` | 3.3.20 | MIT |
 | `opencc-js` | 1.4.1 | MIT AND Apache-2.0 |
 | `picocolors` | 1.1.1 | ISC |
 | `pinyin-pro` | 3.28.1 | MIT |
-| `postcss` | 8.5.21 | MIT |
-| `source-map-js` | 1.2.1 | BSD-3-Clause |
+| `postcss` | 8.5.33 | MIT |
+| `source-map-js` | 1.2.2 | BSD-3-Clause |
+| `jsqr` | 1.4.0 | Apache-2.0 |
 
 Versions and license identifiers come from `frontend/package-lock.json`. Development-only build tools are recorded by that lockfile but are not represented as application runtime dependencies here.
 
 ## Development verification dependencies
 
-`jsqr` 1.4.0 (Apache-2.0) and `sharp` 0.35.3 (Apache-2.0) are development-only dependencies. They are used to decode resized/recompressed share QR images and to prepare test rasters; neither package is bundled into the production frontend entry.
+`sharp` 0.35.5 (Apache-2.0) generates application images and test rasters at build time. It is not bundled into the desktop frontend.
+
+## Windows asset server license texts
+
+### `github.com/gabriel-vasile/mimetype`
+
+MIT License
+
+Copyright (c) 2018 Gabriel Vasile
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### `golang.org/x/net`
+
+Copyright 2009 The Go Authors.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Native helper
 

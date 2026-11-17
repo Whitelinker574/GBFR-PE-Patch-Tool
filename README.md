@@ -135,7 +135,7 @@ go vet -unsafeptr=false ./...
 build-windows.bat
 ```
 
-- 构建环境：Windows amd64、Go 1.25+、Node.js/npm、Wails CLI v2.13、WebView2 Runtime
+- 构建环境：Windows amd64、Go 1.26+、Node.js/npm、Wails CLI v2.17.1、WebView2 Runtime
 - 正式包：`tools/package_windows_release.ps1` 生成版本化 EXE、含许可文件的 ZIP 与 SHA-256 清单
 - 在线分享服务：`services/loadout-share`（Cloudflare Worker + R2/D1）
 

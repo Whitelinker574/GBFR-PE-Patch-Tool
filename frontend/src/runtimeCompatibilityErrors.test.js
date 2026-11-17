@@ -20,3 +20,9 @@ test('stable compatibility codes do not depend on exact Chinese backend copy', (
   const unknownCoded = '[GBFR_RUNTIME_UNKNOWN_EXE] 当前版本无法识别'
   assert.match(translateRuntimeCompatibilityError(unknownCoded, 'en'), /game 2\.0\.2, 2\.0\.3, 2\.0\.4, 2\.0\.5, and 2\.0\.6/u)
 })
+
+test('an unknown executable points to the official build and keeps offline editing available', () => {
+  const error = '[GBFR_RUNTIME_UNKNOWN_EXE] 当前版本无法识别'
+  assert.match(translateRuntimeCompatibilityError(error, 'zh'), /Steam 原版.*离线存档/u)
+  assert.match(translateRuntimeCompatibilityError(error, 'en'), /original Steam.*Offline save/u)
+})

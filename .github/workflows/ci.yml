@@ -47,11 +47,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force frontend/dist | Out-Null
           Set-Content frontend/dist/.embed-placeholder 'Wails embed placeholder'
-          go run github.com/wailsapp/wails/v2/cmd/wails@v2.13.0 generate module
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.1 generate module
 
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Build Windows application
+        run: go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.1 build -platform windows/amd64 -s
 
       - name: Enforce frontend performance budgets
         working-directory: frontend
@@ -137,7 +140,9 @@ jobs:
           # keep every other vet analyzer enabled while excluding this known
           # syscall-boundary false positive.
           go vet -unsafeptr=false ./...
-          go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 '-checks=all,-ST1003,-ST1005' ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 '-checks=all,-ST1003,-ST1005' ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./...
 
       - name: Test frontend

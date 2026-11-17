@@ -135,7 +135,7 @@ go vet -unsafeptr=false ./...
 build-windows.bat
 ```
 
-- Build environment: Windows amd64, Go 1.25+, Node.js/npm, Wails CLI v2.13, WebView2 Runtime
+- Build environment: Windows amd64, Go 1.26+, Node.js/npm, Wails CLI v2.17.1, WebView2 Runtime
 - Release packages: `tools/package_windows_release.ps1` produces the versioned EXE, a ZIP with license files, and a SHA-256 manifest
 - Online sharing service: `services/loadout-share` (Cloudflare Worker + R2/D1)
 
