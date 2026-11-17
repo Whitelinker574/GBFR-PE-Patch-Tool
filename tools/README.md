@@ -40,9 +40,10 @@ Use Go 1.26 or newer and Wails CLI v2.17.1, matching `go.mod` and both workflows
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 wails version
-wails dev
+$env:WAILS_DEV_ALLOWED_HOSTS = 'wails.localhost'
+wails dev -devserver 127.0.0.1:34115
 ```
 
-Wails v2.17.1 includes the v2.17.0 development IPC origin, Host and capability-cookie protections. Keep the CLI and Go module synchronized and keep the development server bound to loopback. The `picomatch` build-only dependency reported by npm has no patched release as of 2026-11-18; it is not shipped in the desktop application. Do not pass untrusted glob patterns to build tools.
+Wails v2.17.1 includes the v2.17.0 development IPC origin, Host and capability-cookie protections. Keep the CLI and Go module synchronized and keep the development server bound to loopback. The exact `wails.localhost` entry is the Windows WebView2 host; do not add wildcard or public hostnames. Set it only in the terminal used for development. The `picomatch` build-only dependency reported by npm has no patched release as of 2026-11-18; it is not shipped in the desktop application. Do not pass untrusted glob patterns to build tools.
 
 CI builds the Windows application after generating bindings and building the frontend, and runs the existing save read/write and transaction tests. Before releasing, additionally start `wails dev` on Windows and use disposable save copies to verify load, edit, export and reload, then smoke-test the packaged EXE. These interactive checks are not covered by compilation alone.
