@@ -11,11 +11,15 @@ export function translateRuntimeCompatibilityError(value, locale = 'zh') {
   const source = String(value ?? '').replace(/^Error:\s*/iu, '')
   const coded = source.match(compatibilityCode)
   const display = source.replace(compatibilityCode, '')
-  if (locale !== 'en') return display
+  if (locale !== 'en') {
+    return coded
+      ? '未识别到已验证的游戏 EXE，实时功能未连接，也没有写入游戏。请使用与工具兼容的 Steam 原版游戏程序；仍可单独使用离线存档编辑。'
+      : display
+  }
 
   const match = display.match(legacyUnknownBuildBoundary)
   if (coded?.[1] === 'GBFR_RUNTIME_UNKNOWN_EXE' || match) {
-    return `${featureLabel(match?.[1])} supports the recognized game 2.0.2, 2.0.3, 2.0.4, 2.0.5, and 2.0.6 executables. This unknown game build will not be connected to or modified.`
+    return `${featureLabel(match?.[1])} supports original Steam game 2.0.2, 2.0.3, 2.0.4, 2.0.5, and 2.0.6 executables. This unknown game build will not be connected to or modified. Offline save editing is still available.`
   }
   return display
 }

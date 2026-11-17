@@ -2,6 +2,8 @@ module gbfrPlayerInfoEdit
 
 go 1.26.0
 
+toolchain go1.26.11
+
 require (
 	github.com/andybalholm/brotli v1.2.2
 	github.com/cespare/xxhash/v2 v2.3.0
